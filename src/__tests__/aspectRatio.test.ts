@@ -288,7 +288,7 @@ describe('convertToPortraitSmart – screen crop & face padding', () => {
     expect(fc).toContain('crop=1440:ih:480:0');
   });
 
-  it('face crop has 20% padding around webcam region', async () => {
+  it('face crop matches target aspect ratio and fills bottom section', async () => {
     const webcamW = 480;
     const webcamH = 270;
     mockDetectWebcam.mockResolvedValue({
@@ -301,14 +301,14 @@ describe('convertToPortraitSmart – screen crop & face padding', () => {
 
     const fc = getCapturedFilterComplex();
     expect(fc).toBeDefined();
-    // Padded dimensions: width + 20%*2 = 480 + 192 = 672 (may be clamped)
-    // Padded dimensions: height + 20%*2 = 270 + 108 = 378 (may be clamped)
-    const padX = Math.round(webcamW * 0.2);
-    const padY = Math.round(webcamH * 0.2);
-    const expectedFaceW = Math.min(1920 - (1440 - padX), webcamW + padX * 2);
-    const expectedFaceH = Math.min(1080 - (810 - padY), webcamH + padY * 2);
-    // The filter_complex should contain a face crop larger than the raw webcam
-    expect(fc).toContain(`crop=${expectedFaceW}:${expectedFaceH}`);
+    // Target AR = 1080/672 = 1.607; webcam AR = 480/270 = 1.778 (wider)
+    // So crop height = 270, width = round(270 * 1.607) = 434
+    const targetAR = 1080 / 672;
+    const expectedW = Math.round(webcamH * targetAR); // 434
+    expect(fc).toContain(`crop=${expectedW}:${webcamH}`);
+    // Should scale directly to 1080:672 with no padding
+    expect(fc).toContain('scale=1080:672[cam]');
+    expect(fc).not.toContain('force_original_aspect_ratio=increase');
   });
 
   it('screen crop uses detected webcam.x directly with no hardcoded margin', async () => {

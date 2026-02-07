@@ -166,21 +166,29 @@ export async function convertToPortraitSmart(
     screenCropW = Math.max(0, resolution.width - screenCropX)
   }
 
-  // Expand webcam region by 20% for better face framing (clamped to frame)
-  const padFactor = 0.2
-  const padX = Math.round(webcam.width * padFactor)
-  const padY = Math.round(webcam.height * padFactor)
-  const faceX = Math.max(0, webcam.x - padX)
-  const faceY = Math.max(0, webcam.y - padY)
-  const faceW = Math.min(resolution.width - faceX, webcam.width + padX * 2)
-  const faceH = Math.min(resolution.height - faceY, webcam.height + padY * 2)
+  // Crop webcam to match target bottom-section aspect ratio, then scale to fill
+  const targetAR = targetW / camH
+  const webcamAR = webcam.width / webcam.height
+
+  let faceX: number, faceY: number, faceW: number, faceH: number
+  if (webcamAR > targetAR) {
+    // Webcam wider than target: keep full height, center-crop width
+    faceH = webcam.height
+    faceW = Math.round(faceH * targetAR)
+    faceX = webcam.x + Math.round((webcam.width - faceW) / 2)
+    faceY = webcam.y
+  } else {
+    // Webcam taller than target: keep full width, center-crop height
+    faceW = webcam.width
+    faceH = Math.round(faceW / targetAR)
+    faceX = webcam.x
+    faceY = webcam.y + Math.round((webcam.height - faceH) / 2)
+  }
 
   const filterComplex = [
     `[0:v]crop=${screenCropW}:ih:${screenCropX}:0,scale=${targetW}:${screenH}:force_original_aspect_ratio=decrease,` +
       `pad=${targetW}:${screenH}:(ow-iw)/2:(oh-ih)/2:black[screen]`,
-    `[0:v]crop=${faceW}:${faceH}:${faceX}:${faceY},` +
-      `scale=${targetW}:${camH}:force_original_aspect_ratio=decrease,` +
-      `pad=${targetW}:${camH}:(ow-iw)/2:(oh-ih)/2:black[cam]`,
+    `[0:v]crop=${faceW}:${faceH}:${faceX}:${faceY},scale=${targetW}:${camH}[cam]`,
     '[screen][cam]vstack[out]',
   ].join(';')
 

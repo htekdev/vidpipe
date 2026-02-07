@@ -415,9 +415,10 @@ describe('generateHookOverlay', () => {
     expect(line).toContain(',Hook,');
   });
 
-  it('contains blur and fade animation \\blur3\\fad(300,500)', () => {
+  it('contains fade animation \\fad(300,500)', () => {
     const line = generateHookOverlay('Test hook text');
-    expect(line).toContain('\\blur3\\fad(300,500)');
+    expect(line).toContain('\\fad(300,500)');
+    expect(line).not.toContain('\\blur3');
   });
 
   it('starts at 0:00:00.00 and ends at ~0:00:04.00 by default', () => {
