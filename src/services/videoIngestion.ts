@@ -39,7 +39,7 @@ export async function ingestVideo(sourcePath: string): Promise<VideoFile> {
   if (fs.existsSync(recordingsDir)) {
     logger.warn(`Output folder already exists, cleaning previous artifacts: ${recordingsDir}`)
 
-    const subDirs = ['thumbnails', 'shorts', 'social-posts', 'chapters', 'mediums']
+    const subDirs = ['thumbnails', 'shorts', 'social-posts', 'chapters', 'medium-clips', 'captions']
     for (const sub of subDirs) {
       await fsp.rm(path.join(recordingsDir, sub), { recursive: true, force: true })
     }

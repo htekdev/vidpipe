@@ -250,7 +250,7 @@ describe('videoIngestion', () => {
     )
 
     // Subdirectories removed
-    for (const sub of ['thumbnails', 'shorts', 'social-posts', 'chapters', 'mediums']) {
+    for (const sub of ['thumbnails', 'shorts', 'social-posts', 'chapters', 'medium-clips', 'captions']) {
       expect(fsp.default.rm).toHaveBeenCalledWith(
         expect.stringContaining(sub),
         { recursive: true, force: true },
