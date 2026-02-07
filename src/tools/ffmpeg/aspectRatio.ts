@@ -2,17 +2,19 @@ import { execFile } from 'child_process'
 import { promises as fs } from 'fs'
 import pathMod from 'path'
 import logger from '../../config/logger'
+import { detectWebcamRegion } from './faceDetection'
 
 const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type AspectRatio = '16:9' | '9:16' | '1:1'
+export type AspectRatio = '16:9' | '9:16' | '1:1' | '4:5'
 
 export type Platform =
   | 'tiktok'
   | 'youtube-shorts'
   | 'instagram-reels'
+  | 'instagram-feed'
   | 'linkedin'
   | 'youtube'
   | 'twitter'
@@ -21,6 +23,7 @@ export const PLATFORM_RATIOS: Record<Platform, AspectRatio> = {
   'tiktok': '9:16',
   'youtube-shorts': '9:16',
   'instagram-reels': '9:16',
+  'instagram-feed': '4:5',
   'linkedin': '1:1',
   'youtube': '16:9',
   'twitter': '1:1',
@@ -30,6 +33,7 @@ export const DIMENSIONS: Record<AspectRatio, { width: number; height: number }> 
   '16:9': { width: 1920, height: 1080 },
   '9:16': { width: 1080, height: 1920 },
   '1:1': { width: 1080, height: 1080 },
+  '4:5': { width: 1080, height: 1350 },
 }
 
 export interface ConvertOptions {
@@ -57,6 +61,9 @@ function buildCropFilter(targetRatio: AspectRatio, letterbox: boolean): string {
     case '1:1':
       // Center-crop to square: use height as the dimension (smaller axis for 16:9)
       return 'crop=ih:ih:(iw-ih)/2:0,scale=1080:1080'
+    case '4:5':
+      // Center-crop landscape to 4:5: crop width = ih*4/5, keep full height
+      return 'crop=ih*4/5:ih:(iw-ih*4/5)/2:0,scale=1080:1350'
     case '16:9':
       // Same ratio — just ensure standard dimensions
       return 'scale=1920:1080'
@@ -121,6 +128,73 @@ export async function convertAspectRatio(
 }
 
 /**
+ * Smart portrait conversion: detects webcam overlay and creates a split-screen
+ * layout (screen top ~65%, webcam bottom ~35%). Falls back to center-crop if
+ * no webcam is detected.
+ *
+ * @returns The output path on success
+ */
+export async function convertToPortraitSmart(
+  inputPath: string,
+  outputPath: string,
+): Promise<string> {
+  const outputDir = pathMod.dirname(outputPath)
+  await fs.mkdir(outputDir, { recursive: true })
+
+  const webcam = await detectWebcamRegion(inputPath)
+
+  if (!webcam) {
+    logger.info('[SmartPortrait] No webcam found, falling back to center-crop')
+    return convertAspectRatio(inputPath, outputPath, '9:16')
+  }
+
+  // Split-screen layout: screen top (1080x1248) + webcam bottom (1080x672) = 1080x1920
+  const screenH = 1248
+  const camH = 672
+  const targetW = 1080
+
+  // Screen region: full frame excluding the webcam corner
+  // Webcam region: crop from detected position
+  const filterComplex = [
+    `[0:v]crop=iw:ih:0:0,scale=${targetW}:${screenH}:force_original_aspect_ratio=decrease,` +
+      `pad=${targetW}:${screenH}:(ow-iw)/2:(oh-ih)/2:black[screen]`,
+    `[0:v]crop=${webcam.width}:${webcam.height}:${webcam.x}:${webcam.y},` +
+      `scale=${targetW}:${camH}:force_original_aspect_ratio=decrease,` +
+      `pad=${targetW}:${camH}:(ow-iw)/2:(oh-ih)/2:black[cam]`,
+    '[screen][cam]vstack[out]',
+  ].join(';')
+
+  logger.info(`[SmartPortrait] Split-screen layout: webcam at ${webcam.position} → ${outputPath}`)
+
+  const args = [
+    '-y',
+    '-i', inputPath,
+    '-filter_complex', filterComplex,
+    '-map', '[out]',
+    '-map', '0:a',
+    '-c:v', 'libx264',
+    '-preset', 'ultrafast',
+    '-crf', '23',
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    '-threads', '4',
+    outputPath,
+  ]
+
+  return new Promise<string>((resolve, reject) => {
+    execFile(ffmpegPath, args, { maxBuffer: 10 * 1024 * 1024 }, (error, _stdout, stderr) => {
+      if (error) {
+        logger.error(`[SmartPortrait] FFmpeg failed: ${stderr || error.message}`)
+        reject(new Error(`Smart portrait conversion failed: ${stderr || error.message}`))
+        return
+      }
+      logger.info(`[SmartPortrait] Complete: ${outputPath}`)
+      resolve(outputPath)
+    })
+  })
+}
+
+/**
  * Generate platform-specific variants of a short clip.
  * Returns the paths of generated variants keyed by platform.
  */
@@ -145,11 +219,15 @@ export async function generatePlatformVariants(
   const variants: { platform: Platform; aspectRatio: AspectRatio; path: string; width: number; height: number }[] = []
 
   for (const [ratio, associatedPlatforms] of ratioMap) {
-    const suffix = ratio === '9:16' ? 'portrait' : 'square'
+    const suffix = ratio === '9:16' ? 'portrait' : ratio === '4:5' ? 'feed' : 'square'
     const outPath = pathMod.join(outputDir, `${slug}-${suffix}.mp4`)
 
     try {
-      await convertAspectRatio(inputPath, outPath, ratio)
+      if (ratio === '9:16') {
+        await convertToPortraitSmart(inputPath, outPath)
+      } else {
+        await convertAspectRatio(inputPath, outPath, ratio)
+      }
       const dims = DIMENSIONS[ratio]
       for (const p of associatedPlatforms) {
         variants.push({ platform: p, aspectRatio: ratio, path: outPath, width: dims.width, height: dims.height })

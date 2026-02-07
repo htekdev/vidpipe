@@ -1,7 +1,7 @@
 import { Tool } from '@github/copilot-sdk'
 import { BaseAgent } from './BaseAgent'
 import { VideoFile, Transcript, MediumClip, MediumSegment } from '../types'
-import { extractClip, extractCompositeClip } from '../tools/ffmpeg/clipExtraction'
+import { extractClip, extractCompositeClipWithTransitions } from '../tools/ffmpeg/clipExtraction'
 import { generateStyledASSForSegment, generateStyledASSForComposite } from '../tools/captions/captionGenerator'
 import { burnCaptions } from '../tools/ffmpeg/captionBurning'
 import { v4 as uuidv4 } from 'uuid'
@@ -202,19 +202,19 @@ export async function generateMediumClips(
         description: s.description,
       }))
 
-      // Extract the clip (single or composite)
+      // Extract the clip — single segment or composite with crossfade transitions
       if (segments.length === 1) {
         await extractClip(video.repoPath, segments[0].start, segments[0].end, outputPath)
       } else {
-        await extractCompositeClip(video.repoPath, segments, outputPath)
+        await extractCompositeClipWithTransitions(video.repoPath, segments, outputPath)
       }
 
-      // Generate ASS captions for the clip's time range and burn them in
+      // Generate ASS captions with medium style (smaller font, bottom-positioned)
       let captionedPath: string | undefined
       try {
         const assContent = segments.length === 1
-          ? generateStyledASSForSegment(transcript, segments[0].start, segments[0].end)
-          : generateStyledASSForComposite(transcript, segments)
+          ? generateStyledASSForSegment(transcript, segments[0].start, segments[0].end, 1.0, 'medium')
+          : generateStyledASSForComposite(transcript, segments, 1.0, 'medium')
 
         const assPath = path.join(clipsDir, `${clipSlug}.ass`)
         await fs.writeFile(assPath, assContent)

@@ -65,15 +65,23 @@ export interface VideoFile {
 // ASPECT RATIO
 // ============================================================================
 
-export type AspectRatio = '16:9' | '9:16' | '1:1';
+export type AspectRatio = '16:9' | '9:16' | '1:1' | '4:5';
 
 export type VideoPlatform =
   | 'tiktok'
   | 'youtube-shorts'
   | 'instagram-reels'
+  | 'instagram-feed'
   | 'linkedin'
   | 'youtube'
   | 'twitter';
+
+// ============================================================================
+// CAPTION STYLE
+// ============================================================================
+
+/** Caption rendering style: 'shorts' for large centered pop captions, 'medium' for smaller bottom-positioned. */
+export type CaptionStyle = 'shorts' | 'medium';
 
 export interface ShortClipVariant {
   path: string;

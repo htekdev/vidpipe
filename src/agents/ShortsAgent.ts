@@ -213,7 +213,7 @@ export async function generateShorts(
       let variants: ShortClipVariant[] | undefined
       try {
         const variantSource = captionedPath ?? outputPath
-        const defaultPlatforms: Platform[] = ['tiktok', 'youtube-shorts', 'instagram-reels', 'linkedin']
+        const defaultPlatforms: Platform[] = ['tiktok', 'youtube-shorts', 'instagram-reels', 'instagram-feed', 'linkedin']
         const results = await generatePlatformVariants(variantSource, shortsDir, shortSlug, defaultPlatforms)
         if (results.length > 0) {
           variants = results.map((v) => ({

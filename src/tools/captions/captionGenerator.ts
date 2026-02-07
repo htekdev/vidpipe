@@ -1,4 +1,4 @@
-import { Transcript, Segment, Word } from '../../types'
+import { Transcript, Segment, Word, CaptionStyle } from '../../types'
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -50,6 +50,15 @@ const BASE_COLOR = '\\c&HFFFFFF&'
 const ACTIVE_FONT_SIZE = 54
 /** Font size for inactive words (matches style default). */
 const BASE_FONT_SIZE = 42
+
+// ---------------------------------------------------------------------------
+// Medium caption constants (smaller, bottom-positioned for longer content)
+// ---------------------------------------------------------------------------
+
+/** Font size for the active word in medium style. */
+const MEDIUM_ACTIVE_FONT_SIZE = 40
+/** Font size for inactive words in medium style. */
+const MEDIUM_BASE_FONT_SIZE = 32
 
 // ---------------------------------------------------------------------------
 // SRT (segment-level)
@@ -106,6 +115,23 @@ Style: Default,Montserrat,42,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `
 
+// Medium style: smaller font, bottom-aligned (Alignment=2 is bottom-center)
+// MarginV=60 pushes it slightly higher from the very bottom edge
+const ASS_HEADER_MEDIUM = `[Script Info]
+Title: Auto-generated captions
+ScriptType: v4.00+
+PlayResX: 1920
+PlayResY: 1080
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Montserrat,32,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,1,2,20,20,60,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+`
+
 /**
  * Group words into caption groups split on silence gaps and max word count.
  * All words within a group are displayed simultaneously; captions disappear
@@ -152,7 +178,9 @@ function splitGroupIntoLines(group: Word[]): Word[][] {
  * all other words stay white at the base size.  Contiguous end/start times
  * between word-states prevent flicker.
  */
-function buildPremiumDialogueLines(words: Word[]): string[] {
+function buildPremiumDialogueLines(words: Word[], style: CaptionStyle = 'shorts'): string[] {
+  const activeFontSize = style === 'medium' ? MEDIUM_ACTIVE_FONT_SIZE : ACTIVE_FONT_SIZE
+  const baseFontSize = style === 'medium' ? MEDIUM_BASE_FONT_SIZE : BASE_FONT_SIZE
   const groups = groupWordsBySpeech(words)
   const dialogues: string[] = []
 
@@ -177,9 +205,9 @@ function buildPremiumDialogueLines(words: Word[]): string[] {
           const idx = globalIdx++
           const text = w.word.trim()
           if (idx === activeIdx) {
-            return `{${ACTIVE_COLOR}\\fs${ACTIVE_FONT_SIZE}}${text}`
+            return `{${ACTIVE_COLOR}\\fs${activeFontSize}}${text}`
           }
-          return `{${BASE_COLOR}\\fs${BASE_FONT_SIZE}}${text}`
+          return `{${BASE_COLOR}\\fs${baseFontSize}}${text}`
         })
         renderedLines.push(rendered.join(' '))
       }
@@ -200,11 +228,12 @@ function buildPremiumDialogueLines(words: Word[]): string[] {
  * larger size; all other words stay white. Captions disappear during
  * silence gaps (> 0.8 s).
  */
-export function generateStyledASS(transcript: Transcript): string {
+export function generateStyledASS(transcript: Transcript, style: CaptionStyle = 'shorts'): string {
+  const header = style === 'medium' ? ASS_HEADER_MEDIUM : ASS_HEADER
   const allWords = transcript.words
-  if (allWords.length === 0) return ASS_HEADER
+  if (allWords.length === 0) return header
 
-  return ASS_HEADER + buildPremiumDialogueLines(allWords).join('\n') + '\n'
+  return header + buildPremiumDialogueLines(allWords, style).join('\n') + '\n'
 }
 
 /**
@@ -217,14 +246,16 @@ export function generateStyledASSForSegment(
   startTime: number,
   endTime: number,
   buffer: number = 1.0,
+  style: CaptionStyle = 'shorts',
 ): string {
+  const header = style === 'medium' ? ASS_HEADER_MEDIUM : ASS_HEADER
   const bufferedStart = Math.max(0, startTime - buffer)
   const bufferedEnd = endTime + buffer
 
   const words = transcript.words.filter(
     (w) => w.start >= bufferedStart && w.end <= bufferedEnd,
   )
-  if (words.length === 0) return ASS_HEADER
+  if (words.length === 0) return header
 
   const adjusted: Word[] = words.map((w) => ({
     word: w.word,
@@ -232,7 +263,7 @@ export function generateStyledASSForSegment(
     end: w.end - bufferedStart,
   }))
 
-  return ASS_HEADER + buildPremiumDialogueLines(adjusted).join('\n') + '\n'
+  return header + buildPremiumDialogueLines(adjusted, style).join('\n') + '\n'
 }
 
 /**
@@ -244,7 +275,9 @@ export function generateStyledASSForComposite(
   transcript: Transcript,
   segments: { start: number; end: number }[],
   buffer: number = 1.0,
+  style: CaptionStyle = 'shorts',
 ): string {
+  const header = style === 'medium' ? ASS_HEADER_MEDIUM : ASS_HEADER
   const allAdjusted: Word[] = []
   let runningOffset = 0
 
@@ -268,7 +301,7 @@ export function generateStyledASSForComposite(
     runningOffset += segDuration
   }
 
-  if (allAdjusted.length === 0) return ASS_HEADER
+  if (allAdjusted.length === 0) return header
 
-  return ASS_HEADER + buildPremiumDialogueLines(allAdjusted).join('\n') + '\n'
+  return header + buildPremiumDialogueLines(allAdjusted, style).join('\n') + '\n'
 }

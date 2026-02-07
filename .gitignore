@@ -3,6 +3,7 @@ dist/
 .env
 *.log
 cache/
+coverage/
 
 # Video recordings and processed output
 recordings/

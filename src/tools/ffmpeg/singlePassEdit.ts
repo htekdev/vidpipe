@@ -15,17 +15,20 @@ export interface KeepSegment {
 }
 
 /**
- * Single-pass silence removal using FFmpeg filter_complex.
- * Uses trim+setpts+concat for frame-accurate cuts instead of -c copy which
- * snaps to keyframes and causes cumulative timestamp drift.
+ * Build FFmpeg filter_complex string for silence removal.
+ * Pure function — no I/O, easy to test.
  */
-export async function singlePassEdit(
-  inputPath: string,
+export function buildFilterComplex(
   keepSegments: KeepSegment[],
-  outputPath: string,
-): Promise<string> {
+  options?: { assFilename?: string; fontsdir?: string },
+): string {
+  if (keepSegments.length === 0) {
+    throw new Error('keepSegments must not be empty')
+  }
+
   const filterParts: string[] = []
   const concatInputs: string[] = []
+  const hasCaptions = options?.assFilename
 
   for (let i = 0; i < keepSegments.length; i++) {
     const seg = keepSegments[i]
@@ -38,11 +41,32 @@ export async function singlePassEdit(
     concatInputs.push(`[v${i}][a${i}]`)
   }
 
+  const concatOutV = hasCaptions ? '[cv]' : '[outv]'
+  const concatOutA = hasCaptions ? '[ca]' : '[outa]'
+
   filterParts.push(
-    `${concatInputs.join('')}concat=n=${keepSegments.length}:v=1:a=1[outv][outa]`,
+    `${concatInputs.join('')}concat=n=${keepSegments.length}:v=1:a=1${concatOutV}${concatOutA}`,
   )
 
-  const filterComplex = filterParts.join(';\n')
+  if (hasCaptions) {
+    const fontsdir = options?.fontsdir ?? '.'
+    filterParts.push(`[cv]ass=${options!.assFilename}:fontsdir=${fontsdir}[outv]`)
+  }
+
+  return filterParts.join(';\n')
+}
+
+/**
+ * Single-pass silence removal using FFmpeg filter_complex.
+ * Uses trim+setpts+concat for frame-accurate cuts instead of -c copy which
+ * snaps to keyframes and causes cumulative timestamp drift.
+ */
+export async function singlePassEdit(
+  inputPath: string,
+  keepSegments: KeepSegment[],
+  outputPath: string,
+): Promise<string> {
+  const filterComplex = buildFilterComplex(keepSegments)
 
   const args = [
     '-y',
@@ -85,24 +109,6 @@ export async function singlePassEditAndCaption(
   assPath: string,
   outputPath: string,
 ): Promise<string> {
-  const filterParts: string[] = []
-  const concatInputs: string[] = []
-
-  for (let i = 0; i < keepSegments.length; i++) {
-    const seg = keepSegments[i]
-    filterParts.push(
-      `[0:v]trim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`,
-    )
-    filterParts.push(
-      `[0:a]atrim=start=${seg.start.toFixed(3)}:end=${seg.end.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`,
-    )
-    concatInputs.push(`[v${i}][a${i}]`)
-  }
-
-  filterParts.push(
-    `${concatInputs.join('')}concat=n=${keepSegments.length}:v=1:a=1[cv][ca]`,
-  )
-
   // Copy ASS + bundled fonts to temp dir to avoid Windows drive colon issue
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'caption-'))
   const tempAss = path.join(tempDir, 'captions.ass')
@@ -115,9 +121,10 @@ export async function singlePassEditAndCaption(
     }
   }
 
-  filterParts.push(`[cv]ass=captions.ass:fontsdir=.[outv]`)
-
-  const filterComplex = filterParts.join(';\n')
+  const filterComplex = buildFilterComplex(keepSegments, {
+    assFilename: 'captions.ass',
+    fontsdir: '.',
+  })
 
   const args = [
     '-y',
