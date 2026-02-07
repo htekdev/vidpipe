@@ -131,6 +131,8 @@ vi.mock('fs/promises', () => ({
     stat: vi.fn().mockResolvedValue({ size: 5_000_000 }),
     readFile: vi.fn().mockResolvedValue('{}'),
     unlink: vi.fn().mockResolvedValue(undefined),
+    rm: vi.fn().mockResolvedValue(undefined),
+    readdir: vi.fn().mockResolvedValue([]),
   },
   mkdir: vi.fn().mockResolvedValue(undefined),
   writeFile: vi.fn().mockResolvedValue(undefined),
@@ -138,6 +140,8 @@ vi.mock('fs/promises', () => ({
   stat: vi.fn().mockResolvedValue({ size: 5_000_000 }),
   readFile: vi.fn().mockResolvedValue('{}'),
   unlink: vi.fn().mockResolvedValue(undefined),
+  rm: vi.fn().mockResolvedValue(undefined),
+  readdir: vi.fn().mockResolvedValue([]),
 }))
 
 vi.mock('fluent-ffmpeg', () => {
@@ -213,6 +217,96 @@ describe('videoIngestion', () => {
     await ingestVideo('/source/video.mp4')
 
     expect(fsp.default.stat).toHaveBeenCalled()
+  })
+
+  it('ingestVideo does not clean artifacts when folder is new', async () => {
+    const fsModule = await import('fs')
+    const fsp = await import('fs/promises')
+    const { ingestVideo } = await import('../services/videoIngestion.js')
+
+    vi.mocked(fsModule.default.existsSync).mockReturnValueOnce(false)
+
+    await ingestVideo('/source/my-video.mp4')
+
+    expect(fsp.default.rm).not.toHaveBeenCalled()
+  })
+
+  it('ingestVideo cleans stale artifacts when folder already exists', async () => {
+    const fsModule = await import('fs')
+    const fsp = await import('fs/promises')
+    const logger = (await import('../config/logger.js')).default
+    const { ingestVideo } = await import('../services/videoIngestion.js')
+
+    vi.mocked(fsModule.default.existsSync).mockReturnValueOnce(true)
+    vi.mocked(fsp.default.readdir).mockResolvedValueOnce([
+      'my-video-edited.mp4',
+      'my-video-captioned.mp4',
+    ] as any)
+
+    await ingestVideo('/source/my-video.mp4')
+
+    expect(logger.warn).toHaveBeenCalledWith(
+      expect.stringContaining('Output folder already exists, cleaning previous artifacts'),
+    )
+
+    // Subdirectories removed
+    for (const sub of ['thumbnails', 'shorts', 'social-posts', 'chapters', 'mediums']) {
+      expect(fsp.default.rm).toHaveBeenCalledWith(
+        expect.stringContaining(sub),
+        { recursive: true, force: true },
+      )
+    }
+
+    // Stale files removed
+    for (const file of ['transcript.json', 'captions.srt', 'captions.vtt', 'captions.ass', 'summary.md', 'blog-post.md', 'README.md']) {
+      expect(fsp.default.rm).toHaveBeenCalledWith(
+        expect.stringContaining(file),
+        { force: true },
+      )
+    }
+
+    // Edited/captioned videos removed
+    expect(fsp.default.rm).toHaveBeenCalledWith(
+      expect.stringContaining('my-video-edited.mp4'),
+      { force: true },
+    )
+    expect(fsp.default.rm).toHaveBeenCalledWith(
+      expect.stringContaining('my-video-captioned.mp4'),
+      { force: true },
+    )
+  })
+
+  it('ingestVideo skips copy when video already exists with same size', async () => {
+    const fsModule = await import('fs')
+    const fsp = await import('fs/promises')
+    const logger = (await import('../config/logger.js')).default
+    const { ingestVideo } = await import('../services/videoIngestion.js')
+
+    // All stat calls return same size → skip copy
+    vi.mocked(fsp.default.stat).mockResolvedValue({ size: 5_000_000 } as any)
+
+    await ingestVideo('/source/my-video.mp4')
+
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining('Video already copied (same size), skipping copy'),
+    )
+    expect(fsModule.default.createReadStream).not.toHaveBeenCalled()
+  })
+
+  it('ingestVideo copies video when dest does not exist', async () => {
+    const fsModule = await import('fs')
+    const fsp = await import('fs/promises')
+    const { ingestVideo } = await import('../services/videoIngestion.js')
+
+    // First stat (destPath for skip-copy check) throws → needs copy
+    // Second stat (destPath for final size) succeeds
+    vi.mocked(fsp.default.stat)
+      .mockRejectedValueOnce(new Error('ENOENT'))
+      .mockResolvedValueOnce({ size: 5_000_000 } as any)
+
+    await ingestVideo('/source/my-video.mp4')
+
+    expect(fsModule.default.createReadStream).toHaveBeenCalled()
   })
 })
 

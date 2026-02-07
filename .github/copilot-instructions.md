@@ -77,6 +77,9 @@ All FFmpeg tools use `execFile()` with `process.env.FFMPEG_PATH` (not shell comm
 
 ## Coding Conventions
 
+### Bug Fix Rule
+Every bug fix **must** include a regression test — see [Bug Fix Testing Convention](#bug-fix-testing-convention) above.
+
 ### Module System
 - ESM modules: `"type": "module"` in package.json
 - TypeScript: ES2022 target, `bundler` moduleResolution
@@ -205,6 +208,12 @@ video-auto-note-taker/
 │   ├── index.ts                    # CLI entry point (watch mode + --once mode)
 │   ├── pipeline.ts                 # Pipeline orchestration, runStage(), adjustTranscript()
 │   ├── types/index.ts              # All TypeScript interfaces and enums
+│   ├── __tests__/
+│   │   ├── *.test.ts               # Unit tests (mock external I/O)
+│   │   └── integration/
+│   │       ├── *.test.ts           # Integration tests (real FFmpeg)
+│   │       ├── fixture.ts          # Synthetic test video generator
+│   │       └── fixtures/           # Real speech video + transcript
 │   ├── config/
 │   │   ├── environment.ts          # .env loading, AppEnvironment config
 │   │   ├── logger.ts               # Winston logger singleton
@@ -253,6 +262,7 @@ video-auto-note-taker/
 ├── cache/                          # Temp audio files (cleaned up after use)
 ├── package.json
 ├── tsconfig.json
+├── vitest.config.ts                # Vitest config (coverage thresholds, test patterns)
 ├── brand.json
 ├── .env                            # Local config (not committed)
 └── .env.example                    # Template for .env
@@ -269,7 +279,23 @@ FFPROBE_PATH=         # Optional — absolute path to ffprobe binary
 EXA_API_KEY=          # Optional — Exa AI API key for web search in posts/blog
 ```
 
+## Bug Fix Testing Convention
+
+> **Every bug fix MUST include a regression test** that:
+> 1. Reproduces the bug (the test should fail without the fix)
+> 2. Verifies the fix works correctly
+> 3. Is placed in the appropriate test file (unit test for logic bugs, integration test for FFmpeg/pipeline bugs)
+> 4. Uses the real speech video fixture when testing caption alignment, speech-related features, or pipeline quality
+
+**Bug fix workflow:**
+1. First write a failing test that demonstrates the issue
+2. Then implement the fix
+3. Verify the test passes
+4. Run full test suite to ensure no regressions: `npm test`
+
 ## Testing
+
+### Running the Pipeline Manually
 
 ```bash
 # Process a single video (no file watcher):
@@ -282,4 +308,35 @@ npx tsx src/index.ts --once
 npx tsx src/index.ts
 ```
 
-No test suite exists yet. Validate changes by running the pipeline against a real video.
+### Test Suite
+
+**Framework:** Vitest with @vitest/coverage-v8
+
+**Test scripts:**
+- `npm test` — run all tests (unit + integration)
+- `npm run test:unit` — unit tests only (fast, no external deps)
+- `npm run test:integration` — integration tests only (requires FFmpeg)
+- `npm run test:coverage` — full coverage report
+- `npm run test:watch` — watch mode for development
+
+**Test structure:**
+- `src/__tests__/*.test.ts` — Unit tests (mock external I/O, test real source functions)
+- `src/__tests__/integration/*.test.ts` — Integration tests (real FFmpeg against test videos)
+- `src/__tests__/integration/fixtures/` — Test fixtures (real speech video + transcript)
+- `src/__tests__/integration/fixture.ts` — Synthetic test video generator
+
+### Key Testing Patterns
+
+- Unit tests mock `execFile`, `fs`, `sharp`, `openai`, `exa-js` — test real source functions not mock reimplementations
+- Integration tests use `describe.skipIf(!ffmpegOk)` for CI safety (skip gracefully when FFmpeg unavailable)
+- Use `vi.hoisted()` for mock variables used in `vi.mock()` factories (Vitest ESM requirement)
+- Agent tool handlers take 2 args: `(args: TArgs, invocation: ToolInvocation)` — always pass mock invocation in tests
+- Use `import.meta.dirname` for ESM path resolution (not `__dirname`)
+- Coverage thresholds at 70% (lines/functions/branches/statements)
+- Current coverage: 308 tests across 20 files, ~79% line coverage
+
+### Test Fixtures
+
+- **Synthetic video** (`fixture.ts`): 5s testsrc + sine audio for basic FFmpeg operation tests
+- **Real speech video** (`fixtures/sample-speech.mp4`): 32s clip with 81 words of real speech for caption quality and pipeline tests
+- **Real transcript** (`fixtures/sample-speech-transcript.json`): Word-level timestamps from Whisper

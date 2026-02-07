@@ -35,6 +35,32 @@ export async function ingestVideo(sourcePath: string): Promise<VideoFile> {
 
   logger.info(`Ingesting video: ${sourcePath} → ${slug}`)
 
+  // Clean stale artifacts if output folder already exists
+  if (fs.existsSync(recordingsDir)) {
+    logger.warn(`Output folder already exists, cleaning previous artifacts: ${recordingsDir}`)
+
+    const subDirs = ['thumbnails', 'shorts', 'social-posts', 'chapters', 'mediums']
+    for (const sub of subDirs) {
+      await fsp.rm(path.join(recordingsDir, sub), { recursive: true, force: true })
+    }
+
+    const stalePatterns = [
+      'transcript.json', 'transcript-edited.json',
+      'captions.srt', 'captions.vtt', 'captions.ass',
+      'summary.md', 'blog-post.md', 'README.md',
+    ]
+    for (const pattern of stalePatterns) {
+      await fsp.rm(path.join(recordingsDir, pattern), { force: true })
+    }
+
+    const files = await fsp.readdir(recordingsDir)
+    for (const file of files) {
+      if (file.endsWith('-edited.mp4') || file.endsWith('-captioned.mp4')) {
+        await fsp.rm(path.join(recordingsDir, file), { force: true })
+      }
+    }
+  }
+
   await fsp.mkdir(recordingsDir, { recursive: true })
   await fsp.mkdir(thumbnailsDir, { recursive: true })
   await fsp.mkdir(shortsDir, { recursive: true })
@@ -43,15 +69,29 @@ export async function ingestVideo(sourcePath: string): Promise<VideoFile> {
   const destFilename = `${slug}.mp4`
   const destPath = path.join(recordingsDir, destFilename)
 
-  await new Promise<void>((resolve, reject) => {
-    const readStream = fs.createReadStream(sourcePath)
-    const writeStream = fs.createWriteStream(destPath)
-    readStream.on('error', reject)
-    writeStream.on('error', reject)
-    writeStream.on('finish', resolve)
-    readStream.pipe(writeStream)
-  })
-  logger.info(`Copied video to ${destPath}`)
+  let needsCopy = true
+  try {
+    const destStats = await fsp.stat(destPath)
+    const srcStats = await fsp.stat(sourcePath)
+    if (destStats.size === srcStats.size) {
+      logger.info(`Video already copied (same size), skipping copy`)
+      needsCopy = false
+    }
+  } catch {
+    // Dest doesn't exist, need to copy
+  }
+
+  if (needsCopy) {
+    await new Promise<void>((resolve, reject) => {
+      const readStream = fs.createReadStream(sourcePath)
+      const writeStream = fs.createWriteStream(destPath)
+      readStream.on('error', reject)
+      writeStream.on('error', reject)
+      writeStream.on('finish', resolve)
+      readStream.pipe(writeStream)
+    })
+    logger.info(`Copied video to ${destPath}`)
+  }
 
   let duration = 0
   try {
