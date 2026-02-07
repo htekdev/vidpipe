@@ -5,6 +5,9 @@ import {
   generateStyledASS,
   generateStyledASSForSegment,
   generateStyledASSForComposite,
+  generateHookOverlay,
+  generatePortraitASSWithHook,
+  generatePortraitASSWithHookComposite,
 } from '../tools/captions/captionGenerator.js';
 import type { Transcript, Word, Segment } from '../types/index.js';
 
@@ -340,6 +343,159 @@ describe('word grouping logic', () => {
         expect(wordCount).toBeLessThanOrEqual(4);
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Portrait style
+// ---------------------------------------------------------------------------
+
+describe('generateStyledASS – portrait style', () => {
+  it('portrait ASS header has PlayResX 1080 and PlayResY 1920', () => {
+    const ass = generateStyledASS(transcriptWithWords, 'portrait');
+    expect(ass).toContain('PlayResX: 1080');
+    expect(ass).toContain('PlayResY: 1920');
+  });
+
+  it('portrait Default style uses Alignment 5', () => {
+    const ass = generateStyledASS(transcriptWithWords, 'portrait');
+    const styleLine = ass.split('\n').find((l) => l.startsWith('Style: Default'));
+    expect(styleLine).toBeDefined();
+    // Alignment is the 18th field in the Style line (0-indexed: 17)
+    const fields = styleLine!.split(',');
+    // Alignment field: "Style: Name(0),Fontname(1),...,Shadow(17),Alignment(18)"
+    expect(fields[18].trim()).toBe('5');
+  });
+
+  it('portrait header contains Hook style definition', () => {
+    const ass = generateStyledASS(transcriptWithWords, 'portrait');
+    expect(ass).toContain('Style: Hook,');
+  });
+
+  it('portrait active word uses green color (not yellow)', () => {
+    const ass = generateStyledASS(transcriptWithWords, 'portrait');
+    const dialogueLines = ass.split('\n').filter((l) => l.startsWith('Dialogue:'));
+    expect(dialogueLines.length).toBeGreaterThan(0);
+    // Should contain green active color
+    expect(ass).toContain('\\c&H00FF00&');
+    // Should NOT contain yellow (shorts) active color
+    const dialogueText = dialogueLines.join('\n');
+    expect(dialogueText).not.toContain('\\c&H00FFFF&');
+  });
+
+  it('portrait active word has scale animation', () => {
+    const ass = generateStyledASS(transcriptWithWords, 'portrait');
+    expect(ass).toContain('\\fscx130\\fscy130');
+    expect(ass).toContain('\\t(0,150,\\fscx100\\fscy100)');
+  });
+
+  it('portrait active word font size is 56', () => {
+    const ass = generateStyledASS(transcriptWithWords, 'portrait');
+    expect(ass).toContain('\\fs56');
+  });
+
+  it('portrait inactive words use white color at size 48', () => {
+    const ass = generateStyledASS(transcriptWithWords, 'portrait');
+    const dialogueLines = ass.split('\n').filter((l) => l.startsWith('Dialogue:'));
+    const hasWhite48 = dialogueLines.some(
+      (l) => l.includes('\\c&HFFFFFF&') && l.includes('\\fs48'),
+    );
+    expect(hasWhite48).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hook overlay
+// ---------------------------------------------------------------------------
+
+describe('generateHookOverlay', () => {
+  it('returns a Dialogue line with Style=Hook on Layer 1', () => {
+    const line = generateHookOverlay('Test hook text');
+    expect(line).toMatch(/^Dialogue: 1,/);
+    expect(line).toContain(',Hook,');
+  });
+
+  it('contains fade animation \\fad(300,500)', () => {
+    const line = generateHookOverlay('Test hook text');
+    expect(line).toContain('\\fad(300,500)');
+  });
+
+  it('starts at 0:00:00.00 and ends at ~0:00:04.00 by default', () => {
+    const line = generateHookOverlay('Test hook text');
+    expect(line).toContain(',0:00:00.00,');
+    expect(line).toContain(',0:00:04.00,');
+  });
+
+  it('truncates long text to ~60 chars with "..."', () => {
+    const longText = 'a'.repeat(100);
+    const line = generateHookOverlay(longText);
+    // Text after last "}" should be 60 chars (57 + "...")
+    const textPart = line.split('}').pop()!;
+    expect(textPart.length).toBeLessThanOrEqual(60);
+    expect(textPart).toContain('...');
+  });
+
+  it('does not truncate short text', () => {
+    const line = generateHookOverlay('Short hook');
+    expect(line).toContain('Short hook');
+    expect(line).not.toContain('...');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Portrait ASS with hook
+// ---------------------------------------------------------------------------
+
+describe('generatePortraitASSWithHook', () => {
+  it('contains both Default and Hook style Dialogue lines', () => {
+    const ass = generatePortraitASSWithHook(transcriptWithWords, 'Hook!', 0, 3.8);
+    const dialogueLines = ass.split('\n').filter((l) => l.startsWith('Dialogue:'));
+    const defaultLines = dialogueLines.filter((l) => l.includes(',Default,'));
+    const hookLines = dialogueLines.filter((l) => l.includes(',Hook,'));
+    expect(defaultLines.length).toBeGreaterThan(0);
+    expect(hookLines.length).toBeGreaterThan(0);
+  });
+
+  it('uses portrait header with PlayResX 1080', () => {
+    const ass = generatePortraitASSWithHook(transcriptWithWords, 'Hook!', 0, 3.8);
+    expect(ass).toContain('PlayResX: 1080');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Composite with hook
+// ---------------------------------------------------------------------------
+
+describe('generatePortraitASSWithHookComposite', () => {
+  const compositeTranscript: Transcript = {
+    text: '',
+    segments: [],
+    words: [
+      { word: 'intro', start: 1.0, end: 1.5 },
+      { word: 'middle', start: 10.0, end: 10.5 },
+    ],
+    language: 'en',
+    duration: 11.0,
+  };
+
+  it('contains caption and hook Dialogue lines', () => {
+    const segments = [
+      { start: 1.0, end: 1.5 },
+      { start: 10.0, end: 10.5 },
+    ];
+    const ass = generatePortraitASSWithHookComposite(compositeTranscript, segments, 'Hook!');
+    const dialogueLines = ass.split('\n').filter((l) => l.startsWith('Dialogue:'));
+    const defaultLines = dialogueLines.filter((l) => l.includes(',Default,'));
+    const hookLines = dialogueLines.filter((l) => l.includes(',Hook,'));
+    expect(defaultLines.length).toBeGreaterThan(0);
+    expect(hookLines.length).toBeGreaterThan(0);
+  });
+
+  it('uses portrait header', () => {
+    const segments = [{ start: 1.0, end: 1.5 }];
+    const ass = generatePortraitASSWithHookComposite(compositeTranscript, segments, 'Test');
+    expect(ass).toContain('PlayResY: 1920');
+    expect(ass).toContain('Style: Hook,');
   });
 });
 

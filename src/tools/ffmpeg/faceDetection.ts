@@ -57,7 +57,7 @@ async function getVideoDuration(videoPath: string): Promise<number> {
   })
 }
 
-async function getVideoResolution(videoPath: string): Promise<{ width: number; height: number }> {
+export async function getVideoResolution(videoPath: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
     execFile(
       ffprobePath,

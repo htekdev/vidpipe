@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Use vi.hoisted to ensure mock fns are available before vi.mock factories
-const { mockExecFile, mockMkdir, mockCopyFile, mockDetectWebcam } = vi.hoisted(() => ({
+const { mockExecFile, mockMkdir, mockCopyFile, mockDetectWebcam, mockGetVideoResolution } = vi.hoisted(() => ({
   mockExecFile: vi.fn(),
   mockMkdir: vi.fn(),
   mockCopyFile: vi.fn(),
   mockDetectWebcam: vi.fn(),
+  mockGetVideoResolution: vi.fn(),
 }));
 
 vi.mock('child_process', () => ({
@@ -37,10 +38,12 @@ vi.mock('../config/logger.js', () => ({
 // Mock face detection — return null (no webcam) so smart portrait falls back to center-crop
 vi.mock('../tools/ffmpeg/faceDetection', () => ({
   detectWebcamRegion: mockDetectWebcam,
+  getVideoResolution: mockGetVideoResolution,
 }));
 
 import {
   convertAspectRatio,
+  convertToPortraitSmart,
   generatePlatformVariants,
   PLATFORM_RATIOS,
   DIMENSIONS,
@@ -80,6 +83,7 @@ beforeEach(() => {
   mockMkdir.mockReset().mockResolvedValue(undefined);
   mockCopyFile.mockReset().mockResolvedValue(undefined);
   mockDetectWebcam.mockReset().mockResolvedValue(null);
+  mockGetVideoResolution.mockReset().mockResolvedValue({ width: 1920, height: 1080 });
   execFileSucceeds();
 });
 
@@ -239,5 +243,71 @@ describe('Error handling', () => {
     const variants = await generatePlatformVariants('/in.mp4', '/out', 'clip', ['tiktok', 'linkedin']);
     // All fail → empty array, no throw
     expect(variants).toEqual([]);
+  });
+});
+
+// ── Smart portrait: screen crop & face padding ─────────────────────────────
+
+describe('convertToPortraitSmart – screen crop & face padding', () => {
+  /** Extract the -filter_complex argument from execFile calls */
+  function getCapturedFilterComplex(): string | undefined {
+    const call = mockExecFile.mock.calls[0];
+    if (!call) return undefined;
+    const args: string[] = call[1];
+    const idx = args.indexOf('-filter_complex');
+    return idx >= 0 ? args[idx + 1] : undefined;
+  }
+
+  it('screen crop excludes webcam region (bottom-right)', async () => {
+    mockDetectWebcam.mockResolvedValue({
+      x: 1440, y: 810, width: 480, height: 270,
+      position: 'bottom-right', confidence: 0.8,
+    });
+    mockGetVideoResolution.mockResolvedValue({ width: 1920, height: 1080 });
+
+    await convertToPortraitSmart('/in.mp4', '/out.mp4');
+
+    const fc = getCapturedFilterComplex();
+    expect(fc).toBeDefined();
+    // Screen crop should start at x=0 and use width=1440 (webcam.x)
+    expect(fc).toContain('crop=1440:ih:0:0');
+  });
+
+  it('screen crop excludes webcam region (bottom-left)', async () => {
+    mockDetectWebcam.mockResolvedValue({
+      x: 0, y: 810, width: 480, height: 270,
+      position: 'bottom-left', confidence: 0.8,
+    });
+    mockGetVideoResolution.mockResolvedValue({ width: 1920, height: 1080 });
+
+    await convertToPortraitSmart('/in.mp4', '/out.mp4');
+
+    const fc = getCapturedFilterComplex();
+    expect(fc).toBeDefined();
+    // Screen crop should start at x=480 with width=1440
+    expect(fc).toContain('crop=1440:ih:480:0');
+  });
+
+  it('face crop has 20% padding around webcam region', async () => {
+    const webcamW = 480;
+    const webcamH = 270;
+    mockDetectWebcam.mockResolvedValue({
+      x: 1440, y: 810, width: webcamW, height: webcamH,
+      position: 'bottom-right', confidence: 0.8,
+    });
+    mockGetVideoResolution.mockResolvedValue({ width: 1920, height: 1080 });
+
+    await convertToPortraitSmart('/in.mp4', '/out.mp4');
+
+    const fc = getCapturedFilterComplex();
+    expect(fc).toBeDefined();
+    // Padded dimensions: width + 20%*2 = 480 + 192 = 672 (may be clamped)
+    // Padded dimensions: height + 20%*2 = 270 + 108 = 378 (may be clamped)
+    const padX = Math.round(webcamW * 0.2);
+    const padY = Math.round(webcamH * 0.2);
+    const expectedFaceW = Math.min(1920 - (1440 - padX), webcamW + padX * 2);
+    const expectedFaceH = Math.min(1080 - (810 - padY), webcamH + padY * 2);
+    // The filter_complex should contain a face crop larger than the raw webcam
+    expect(fc).toContain(`crop=${expectedFaceW}:${expectedFaceH}`);
   });
 });

@@ -2,7 +2,7 @@ import { execFile } from 'child_process'
 import { promises as fs } from 'fs'
 import pathMod from 'path'
 import logger from '../../config/logger'
-import { detectWebcamRegion } from './faceDetection'
+import { detectWebcamRegion, getVideoResolution } from './faceDetection'
 
 const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg'
 
@@ -153,12 +153,32 @@ export async function convertToPortraitSmart(
   const camH = 672
   const targetW = 1080
 
-  // Screen region: full frame excluding the webcam corner
-  // Webcam region: crop from detected position
+  const resolution = await getVideoResolution(inputPath)
+
+  // Determine screen crop region (exclude webcam area)
+  let screenCropX: number
+  let screenCropW: number
+  if (webcam.position === 'top-right' || webcam.position === 'bottom-right') {
+    screenCropX = 0
+    screenCropW = webcam.x
+  } else {
+    screenCropX = webcam.x + webcam.width
+    screenCropW = resolution.width - (webcam.x + webcam.width)
+  }
+
+  // Expand webcam region by 20% for better face framing (clamped to frame)
+  const padFactor = 0.2
+  const padX = Math.round(webcam.width * padFactor)
+  const padY = Math.round(webcam.height * padFactor)
+  const faceX = Math.max(0, webcam.x - padX)
+  const faceY = Math.max(0, webcam.y - padY)
+  const faceW = Math.min(resolution.width - faceX, webcam.width + padX * 2)
+  const faceH = Math.min(resolution.height - faceY, webcam.height + padY * 2)
+
   const filterComplex = [
-    `[0:v]crop=iw:ih:0:0,scale=${targetW}:${screenH}:force_original_aspect_ratio=decrease,` +
+    `[0:v]crop=${screenCropW}:ih:${screenCropX}:0,scale=${targetW}:${screenH}:force_original_aspect_ratio=decrease,` +
       `pad=${targetW}:${screenH}:(ow-iw)/2:(oh-ih)/2:black[screen]`,
-    `[0:v]crop=${webcam.width}:${webcam.height}:${webcam.x}:${webcam.y},` +
+    `[0:v]crop=${faceW}:${faceH}:${faceX}:${faceY},` +
       `scale=${targetW}:${camH}:force_original_aspect_ratio=decrease,` +
       `pad=${targetW}:${camH}:(ow-iw)/2:(oh-ih)/2:black[cam]`,
     '[screen][cam]vstack[out]',

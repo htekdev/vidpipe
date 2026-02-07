@@ -61,6 +61,19 @@ const MEDIUM_ACTIVE_FONT_SIZE = 40
 const MEDIUM_BASE_FONT_SIZE = 32
 
 // ---------------------------------------------------------------------------
+// Portrait caption constants (Opus Clips style)
+// ---------------------------------------------------------------------------
+
+/** Font size for the active word in portrait style. */
+const PORTRAIT_ACTIVE_FONT_SIZE = 56
+/** Font size for inactive words in portrait style. */
+const PORTRAIT_BASE_FONT_SIZE = 48
+/** ASS BGR color for the active word in portrait style – green. */
+const PORTRAIT_ACTIVE_COLOR = '\\c&H00FF00&'
+/** ASS BGR color for inactive words in portrait style – white. */
+const PORTRAIT_BASE_COLOR = '\\c&HFFFFFF&'
+
+// ---------------------------------------------------------------------------
 // SRT (segment-level)
 // ---------------------------------------------------------------------------
 
@@ -110,6 +123,23 @@ WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Montserrat,42,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,2,20,20,40,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+`
+
+// Portrait style for 9:16 shorts with hook overlay support
+const ASS_HEADER_PORTRAIT = `[Script Info]
+Title: Auto-generated captions
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Montserrat,48,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,5,30,30,100,1
+Style: Hook,Montserrat,36,&H00FFFFFF,&H00FFFFFF,&H0000CC00,&H0000AA00,1,0,0,0,100,100,2,0,3,15,0,8,80,80,60,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -179,8 +209,10 @@ function splitGroupIntoLines(group: Word[]): Word[][] {
  * between word-states prevent flicker.
  */
 function buildPremiumDialogueLines(words: Word[], style: CaptionStyle = 'shorts'): string[] {
-  const activeFontSize = style === 'medium' ? MEDIUM_ACTIVE_FONT_SIZE : ACTIVE_FONT_SIZE
-  const baseFontSize = style === 'medium' ? MEDIUM_BASE_FONT_SIZE : BASE_FONT_SIZE
+  const activeFontSize = style === 'portrait' ? PORTRAIT_ACTIVE_FONT_SIZE
+    : style === 'medium' ? MEDIUM_ACTIVE_FONT_SIZE : ACTIVE_FONT_SIZE
+  const baseFontSize = style === 'portrait' ? PORTRAIT_BASE_FONT_SIZE
+    : style === 'medium' ? MEDIUM_BASE_FONT_SIZE : BASE_FONT_SIZE
   const groups = groupWordsBySpeech(words)
   const dialogues: string[] = []
 
@@ -205,7 +237,14 @@ function buildPremiumDialogueLines(words: Word[], style: CaptionStyle = 'shorts'
           const idx = globalIdx++
           const text = w.word.trim()
           if (idx === activeIdx) {
+            if (style === 'portrait') {
+              // Opus Clips style: green color + scale pop animation
+              return `{${PORTRAIT_ACTIVE_COLOR}\\fs${activeFontSize}\\fscx130\\fscy130\\t(0,150,\\fscx100\\fscy100)}${text}`
+            }
             return `{${ACTIVE_COLOR}\\fs${activeFontSize}}${text}`
+          }
+          if (style === 'portrait') {
+            return `{${PORTRAIT_BASE_COLOR}\\fs${baseFontSize}}${text}`
           }
           return `{${BASE_COLOR}\\fs${baseFontSize}}${text}`
         })
@@ -229,7 +268,7 @@ function buildPremiumDialogueLines(words: Word[], style: CaptionStyle = 'shorts'
  * silence gaps (> 0.8 s).
  */
 export function generateStyledASS(transcript: Transcript, style: CaptionStyle = 'shorts'): string {
-  const header = style === 'medium' ? ASS_HEADER_MEDIUM : ASS_HEADER
+  const header = style === 'portrait' ? ASS_HEADER_PORTRAIT : style === 'medium' ? ASS_HEADER_MEDIUM : ASS_HEADER
   const allWords = transcript.words
   if (allWords.length === 0) return header
 
@@ -248,7 +287,7 @@ export function generateStyledASSForSegment(
   buffer: number = 1.0,
   style: CaptionStyle = 'shorts',
 ): string {
-  const header = style === 'medium' ? ASS_HEADER_MEDIUM : ASS_HEADER
+  const header = style === 'portrait' ? ASS_HEADER_PORTRAIT : style === 'medium' ? ASS_HEADER_MEDIUM : ASS_HEADER
   const bufferedStart = Math.max(0, startTime - buffer)
   const bufferedEnd = endTime + buffer
 
@@ -277,7 +316,7 @@ export function generateStyledASSForComposite(
   buffer: number = 1.0,
   style: CaptionStyle = 'shorts',
 ): string {
-  const header = style === 'medium' ? ASS_HEADER_MEDIUM : ASS_HEADER
+  const header = style === 'portrait' ? ASS_HEADER_PORTRAIT : style === 'medium' ? ASS_HEADER_MEDIUM : ASS_HEADER
   const allAdjusted: Word[] = []
   let runningOffset = 0
 
@@ -304,4 +343,58 @@ export function generateStyledASSForComposite(
   if (allAdjusted.length === 0) return header
 
   return header + buildPremiumDialogueLines(allAdjusted, style).join('\n') + '\n'
+}
+
+// ---------------------------------------------------------------------------
+// Hook text overlay for portrait shorts
+// ---------------------------------------------------------------------------
+
+/** Maximum characters for hook text before truncation. */
+const HOOK_TEXT_MAX_LENGTH = 60
+
+/**
+ * Generate ASS dialogue lines for a hook text overlay at the top of the video.
+ * Displays for the first few seconds with a colored pill/badge background.
+ * Should be appended to an existing ASS file's Events section.
+ */
+export function generateHookOverlay(
+  hookText: string,
+  displayDuration: number = 4.0,
+  _style: CaptionStyle = 'portrait',
+): string {
+  const text =
+    hookText.length > HOOK_TEXT_MAX_LENGTH
+      ? hookText.slice(0, HOOK_TEXT_MAX_LENGTH - 3) + '...'
+      : hookText
+
+  return `Dialogue: 1,${toASS(0)},${toASS(displayDuration)},Hook,,0,0,0,,{\\fad(300,500)}${text}`
+}
+
+/**
+ * Generate a complete portrait ASS file with captions AND hook text overlay.
+ */
+export function generatePortraitASSWithHook(
+  transcript: Transcript,
+  hookText: string,
+  startTime: number,
+  endTime: number,
+  buffer?: number,
+): string {
+  const baseASS = generateStyledASSForSegment(transcript, startTime, endTime, buffer, 'portrait')
+  const hookLine = generateHookOverlay(hookText, 4.0, 'portrait')
+  return baseASS + hookLine + '\n'
+}
+
+/**
+ * Generate a complete portrait ASS file for a composite clip with captions AND hook text overlay.
+ */
+export function generatePortraitASSWithHookComposite(
+  transcript: Transcript,
+  segments: { start: number; end: number }[],
+  hookText: string,
+  buffer?: number,
+): string {
+  const baseASS = generateStyledASSForComposite(transcript, segments, buffer, 'portrait')
+  const hookLine = generateHookOverlay(hookText, 4.0, 'portrait')
+  return baseASS + hookLine + '\n'
 }

@@ -2,7 +2,7 @@ import { Tool } from '@github/copilot-sdk'
 import { BaseAgent } from './BaseAgent'
 import { VideoFile, Transcript, ShortClip, ShortSegment, ShortClipVariant } from '../types'
 import { extractClip, extractCompositeClip } from '../tools/ffmpeg/clipExtraction'
-import { generateStyledASSForSegment, generateStyledASSForComposite } from '../tools/captions/captionGenerator'
+import { generateStyledASSForSegment, generateStyledASSForComposite, generatePortraitASSWithHook, generatePortraitASSWithHookComposite } from '../tools/captions/captionGenerator'
 import { burnCaptions } from '../tools/ffmpeg/captionBurning'
 import { generatePlatformVariants, type Platform } from '../tools/ffmpeg/aspectRatio'
 import { v4 as uuidv4 } from 'uuid'
@@ -190,7 +190,28 @@ export async function generateShorts(
         await extractCompositeClip(video.repoPath, segments, outputPath)
       }
 
-      // Generate ASS captions for the short's time range and burn them in
+      // Generate platform-specific aspect ratio variants from UNCAPTIONED video
+      // so portrait/square crops are clean before captions are burned per-variant
+      let variants: ShortClipVariant[] | undefined
+      try {
+        const defaultPlatforms: Platform[] = ['tiktok', 'youtube-shorts', 'instagram-reels', 'instagram-feed', 'linkedin']
+        const results = await generatePlatformVariants(outputPath, shortsDir, shortSlug, defaultPlatforms)
+        if (results.length > 0) {
+          variants = results.map((v) => ({
+            path: v.path,
+            aspectRatio: v.aspectRatio,
+            platform: v.platform as ShortClipVariant['platform'],
+            width: v.width,
+            height: v.height,
+          }))
+          logger.info(`[ShortsAgent] Generated ${variants.length} platform variants for: ${plan.title}`)
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        logger.warn(`[ShortsAgent] Platform variant generation failed for ${plan.title}: ${message}`)
+      }
+
+      // Generate ASS captions for the landscape short and burn them in
       let captionedPath: string | undefined
       try {
         const assContent = segments.length === 1
@@ -209,25 +230,26 @@ export async function generateShorts(
         captionedPath = undefined
       }
 
-      // Generate platform-specific aspect ratio variants (portrait, square)
-      let variants: ShortClipVariant[] | undefined
-      try {
-        const variantSource = captionedPath ?? outputPath
-        const defaultPlatforms: Platform[] = ['tiktok', 'youtube-shorts', 'instagram-reels', 'instagram-feed', 'linkedin']
-        const results = await generatePlatformVariants(variantSource, shortsDir, shortSlug, defaultPlatforms)
-        if (results.length > 0) {
-          variants = results.map((v) => ({
-            path: v.path,
-            aspectRatio: v.aspectRatio,
-            platform: v.platform as ShortClipVariant['platform'],
-            width: v.width,
-            height: v.height,
-          }))
-          logger.info(`[ShortsAgent] Generated ${variants.length} platform variants for: ${plan.title}`)
+      // Burn portrait-style captions (green highlight, centered, hook overlay) onto portrait variant
+      if (variants) {
+        const portraitVariant = variants.find(v => v.aspectRatio === '9:16')
+        if (portraitVariant) {
+          try {
+            const portraitAssContent = segments.length === 1
+              ? generatePortraitASSWithHook(transcript, plan.title, segments[0].start, segments[0].end)
+              : generatePortraitASSWithHookComposite(transcript, segments, plan.title)
+            const portraitAssPath = path.join(shortsDir, `${shortSlug}-portrait.ass`)
+            await fs.writeFile(portraitAssPath, portraitAssContent)
+            const portraitCaptionedPath = portraitVariant.path.replace('.mp4', '-captioned.mp4')
+            await burnCaptions(portraitVariant.path, portraitAssPath, portraitCaptionedPath)
+            // Update the variant path to point to the captioned version
+            portraitVariant.path = portraitCaptionedPath
+            logger.info(`[ShortsAgent] Burned portrait captions with hook for: ${plan.title}`)
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err)
+            logger.warn(`[ShortsAgent] Portrait caption burning failed for ${plan.title}: ${message}`)
+          }
         }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        logger.warn(`[ShortsAgent] Platform variant generation failed for ${plan.title}: ${message}`)
       }
 
       // Generate description markdown

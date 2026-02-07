@@ -81,7 +81,7 @@ export type VideoPlatform =
 // ============================================================================
 
 /** Caption rendering style: 'shorts' for large centered pop captions, 'medium' for smaller bottom-positioned. */
-export type CaptionStyle = 'shorts' | 'medium';
+export type CaptionStyle = 'shorts' | 'medium' | 'portrait';
 
 export interface ShortClipVariant {
   path: string;

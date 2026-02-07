@@ -242,6 +242,34 @@ describe.skipIf(!ffmpegOk)('Real Video Caption Tests', () => {
       expect(countWords(segmentASS)).toBeLessThan(countWords(fullASS));
     });
   });
+
+  // ── 6. Portrait Captions on Real Video ──────────────────────────────────
+
+  describe('Portrait caption burning', () => {
+    it('burns portrait captions onto real video with valid output', async () => {
+      const assContent = generateStyledASS(transcript, 'portrait');
+      const assPath = path.join(tempDir, 'portrait-captions.ass');
+      await fs.writeFile(assPath, assContent);
+
+      // Verify portrait header properties
+      expect(assContent).toContain('PlayResX: 1080');
+      expect(assContent).toContain('PlayResY: 1920');
+      expect(assContent).toContain('\\c&H00FF00&'); // green active
+
+      const outputPath = path.join(tempDir, 'portrait-burned-output.mp4');
+      await burnCaptions(videoPath, assPath, outputPath);
+
+      // Output exists with non-zero size
+      const { exists, size } = await fileExistsWithSize(outputPath);
+      expect(exists).toBe(true);
+      expect(size).toBeGreaterThan(0);
+
+      // Duration matches input (±0.5s)
+      const inputDuration = await getVideoDuration(videoPath);
+      const outputDuration = await getVideoDuration(outputPath);
+      expect(Math.abs(outputDuration - inputDuration)).toBeLessThan(0.5);
+    }, 90000);
+  });
 });
 
 /** Parse ASS timestamp "H:MM:SS.cc" → seconds */
