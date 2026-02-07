@@ -11,7 +11,22 @@ ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
 
 /**
- * Extract a single clip segment using stream copy (-c copy) for speed.
+ * Extract a single clip segment using re-encode for frame-accurate timing.
+ *
+ * ### Why re-encode instead of `-c copy`?
+ * Stream copy (`-c copy`) seeks to the nearest **keyframe** before the
+ * requested start time, which creates a PTS offset between the clip's actual
+ * start and the timestamp the caption generator assumes.  This causes
+ * captions to be out of sync with the audio — especially visible in
+ * landscape-captioned shorts where there's no intermediate re-encode to
+ * normalize PTS (the portrait path gets an extra re-encode via aspect-ratio
+ * conversion which masks the issue).
+ *
+ * Re-encoding with `trim` + `setpts=PTS-STARTPTS` guarantees:
+ * - The clip starts at **exactly** `bufferedStart` (not the nearest keyframe)
+ * - Output PTS starts at 0 with no offset
+ * - Caption timestamps align perfectly with both audio and video
+ *
  * @param buffer Seconds of padding added before start and after end (default 1.0)
  */
 export async function extractClip(
@@ -33,8 +48,7 @@ export async function extractClip(
     ffmpeg(videoPath)
       .setStartTime(bufferedStart)
       .setDuration(duration)
-      .outputOptions('-c copy')
-      .outputOptions('-avoid_negative_ts make_zero')
+      .outputOptions(['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-threads', '4', '-c:a', 'aac', '-b:a', '128k'])
       .output(outputPath)
       .on('end', () => {
         logger.info(`Clip extraction complete: ${outputPath}`);

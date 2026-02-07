@@ -134,13 +134,16 @@ beforeEach(() => {
 // ═══════════════════════════════════════════════════════════════════════════
 describe('clipExtraction', () => {
   describe('extractClip', () => {
-    it('creates output dir and calls ffmpeg with correct start/duration', async () => {
+    it('creates output dir and calls ffmpeg with correct start/duration (re-encode)', async () => {
       const result = await extractClip('/in.mp4', 10, 20, '/out/clip.mp4', 1);
       expect(mockMkdir).toHaveBeenCalledWith(expect.any(String), { recursive: true });
       expect(mockFfmpegCtor).toHaveBeenCalledWith('/in.mp4');
       expect(mockFfmpegInstance.setStartTime).toHaveBeenCalledWith(9); // 10-1
       expect(mockFfmpegInstance.setDuration).toHaveBeenCalledWith(12); // (20+1)-(10-1)
-      expect(mockFfmpegInstance.outputOptions).toHaveBeenCalledWith('-c copy');
+      // Re-encodes for frame-accurate timing (not -c copy which snaps to keyframes)
+      expect(mockFfmpegInstance.outputOptions).toHaveBeenCalledWith(
+        expect.arrayContaining(['-c:v', 'libx264', '-c:a', 'aac']),
+      );
       expect(mockFfmpegInstance.run).toHaveBeenCalled();
       expect(result).toBe('/out/clip.mp4');
     });
