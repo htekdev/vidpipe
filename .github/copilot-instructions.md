@@ -333,10 +333,32 @@ npx tsx src/index.ts
 - Agent tool handlers take 2 args: `(args: TArgs, invocation: ToolInvocation)` — always pass mock invocation in tests
 - Use `import.meta.dirname` for ESM path resolution (not `__dirname`)
 - Coverage thresholds at 70% (lines/functions/branches/statements)
-- Current coverage: 308 tests across 20 files, ~79% line coverage
+- Current coverage: 332 tests across 20 files, ~79% line coverage
 
 ### Test Fixtures
 
 - **Synthetic video** (`fixture.ts`): 5s testsrc + sine audio for basic FFmpeg operation tests
 - **Real speech video** (`fixtures/sample-speech.mp4`): 32s clip with 81 words of real speech for caption quality and pipeline tests
 - **Real transcript** (`fixtures/sample-speech-transcript.json`): Word-level timestamps from Whisper
+
+### Visual Self-Verification
+
+After making changes to video output (captions, portrait layout, aspect ratios, overlays), always **visually verify** by extracting thumbnail frames from the generated video and inspecting them:
+
+```bash
+# Capture a frame at a specific timestamp from a generated video
+ffmpeg -y -ss 2 -i path/to/output.mp4 -frames:v 1 -q:v 2 preview.png
+
+# Capture multiple timestamps to verify different states:
+# - 0.5s: hook text overlay visible?
+# - 2-3s: captions + hook both visible?
+# - 5s+:  hook gone, captions only?
+# - 8s+:  mid-video caption alignment?
+```
+
+**What to check:**
+- Portrait split-screen: face NOT duplicated in top section, face zoomed in at bottom
+- Captions: green highlight on active word, positioned between screen and face sections
+- Hook overlay: visible for first ~4 seconds at top, fades out
+- Font sizes: active word visibly larger than inactive words
+- No visual artifacts from crop/scale operations
