@@ -47,7 +47,6 @@ import {
   generatePlatformVariants,
   PLATFORM_RATIOS,
   DIMENSIONS,
-  WEBCAM_CROP_MARGIN,
   type AspectRatio,
   type Platform,
 } from '../tools/ffmpeg/aspectRatio.js';
@@ -270,8 +269,8 @@ describe('convertToPortraitSmart – screen crop & face padding', () => {
 
     const fc = getCapturedFilterComplex();
     expect(fc).toBeDefined();
-    // Screen crop should start at x=0 and use width=1340 (webcam.x - WEBCAM_CROP_MARGIN)
-    expect(fc).toContain('crop=1340:ih:0:0');
+    // Screen crop uses webcam.x directly as width (no hardcoded margin)
+    expect(fc).toContain('crop=1440:ih:0:0');
   });
 
   it('screen crop excludes webcam region (bottom-left)', async () => {
@@ -285,8 +284,8 @@ describe('convertToPortraitSmart – screen crop & face padding', () => {
 
     const fc = getCapturedFilterComplex();
     expect(fc).toBeDefined();
-    // Screen crop should start at x=580 with width=1340
-    expect(fc).toContain('crop=1340:ih:580:0');
+    // Screen crop starts after webcam (x + width) with remaining width
+    expect(fc).toContain('crop=1440:ih:480:0');
   });
 
   it('face crop has 20% padding around webcam region', async () => {
@@ -312,11 +311,22 @@ describe('convertToPortraitSmart – screen crop & face padding', () => {
     expect(fc).toContain(`crop=${expectedFaceW}:${expectedFaceH}`);
   });
 
-  it('WEBCAM_CROP_MARGIN is 100 pixels', () => {
-    expect(WEBCAM_CROP_MARGIN).toBe(100);
+  it('screen crop uses detected webcam.x directly with no hardcoded margin', async () => {
+    mockDetectWebcam.mockResolvedValue({
+      x: 1728, y: 810, width: 192, height: 270,
+      position: 'bottom-right', confidence: 0.9,
+    });
+    mockGetVideoResolution.mockResolvedValue({ width: 1920, height: 1080 });
+
+    await convertToPortraitSmart('/in.mp4', '/out.mp4');
+
+    const fc = getCapturedFilterComplex();
+    expect(fc).toBeDefined();
+    // With precise bbox detection, crop width = webcam.x = 1728
+    expect(fc).toContain('crop=1728:ih:0:0');
   });
 
-  it('screen crop margin clamps to zero for very small webcam.x (right)', async () => {
+  it('screen crop handles webcam at far edge gracefully', async () => {
     mockDetectWebcam.mockResolvedValue({
       x: 20, y: 810, width: 480, height: 270,
       position: 'bottom-right', confidence: 0.8,
@@ -327,7 +337,7 @@ describe('convertToPortraitSmart – screen crop & face padding', () => {
 
     const fc = getCapturedFilterComplex();
     expect(fc).toBeDefined();
-    // webcam.x (20) - 100 would be negative, clamped to 0
-    expect(fc).toContain('crop=0:ih:0:0');
+    // webcam.x = 20, so screen crop is only 20px wide
+    expect(fc).toContain('crop=20:ih:0:0');
   });
 });

@@ -39,6 +39,12 @@ const CORNER_FRACTION = 0.25
 const MIN_SKIN_RATIO = 0.05
 const MIN_CONFIDENCE = 0.3
 
+// ── Refinement constants ─────────────────────────────────────────────────────
+// Minimum inter-column/row mean difference to accept as a valid overlay edge
+const REFINE_MIN_EDGE_DIFF = 3.0
+const REFINE_MIN_SIZE_FRAC = 0.05
+const REFINE_MAX_SIZE_FRAC = 0.55
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 async function getVideoDuration(videoPath: string): Promise<number> {
@@ -199,6 +205,159 @@ async function analyzeCorner(
   }
 }
 
+// ── Refinement helpers ───────────────────────────────────────────────────────
+
+/** Compute per-column mean grayscale intensity over a row range. */
+function columnMeansForRows(
+  data: Buffer, width: number, channels: number,
+  yFrom: number, yTo: number,
+): Float64Array {
+  const means = new Float64Array(width)
+  const count = yTo - yFrom
+  if (count <= 0) return means
+  for (let x = 0; x < width; x++) {
+    let sum = 0
+    for (let y = yFrom; y < yTo; y++) {
+      const idx = (y * width + x) * channels
+      sum += (data[idx] + data[idx + 1] + data[idx + 2]) / 3
+    }
+    means[x] = sum / count
+  }
+  return means
+}
+
+/** Compute per-row mean grayscale intensity over a column range. */
+function rowMeansForCols(
+  data: Buffer, width: number, channels: number, height: number,
+  xFrom: number, xTo: number,
+): Float64Array {
+  const means = new Float64Array(height)
+  const count = xTo - xFrom
+  if (count <= 0) return means
+  for (let y = 0; y < height; y++) {
+    let sum = 0
+    for (let x = xFrom; x < xTo; x++) {
+      const idx = (y * width + x) * channels
+      sum += (data[idx] + data[idx + 1] + data[idx + 2]) / 3
+    }
+    means[y] = sum / count
+  }
+  return means
+}
+
+/** Element-wise average of Float64Arrays. */
+function averageFloat64Arrays(arrays: Float64Array[]): Float64Array {
+  if (arrays.length === 0) return new Float64Array(0)
+  const len = arrays[0].length
+  const result = new Float64Array(len)
+  for (const arr of arrays) {
+    for (let i = 0; i < len; i++) result[i] += arr[i]
+  }
+  for (let i = 0; i < len; i++) result[i] /= arrays.length
+  return result
+}
+
+/**
+ * Find the column/row with the maximum inter-adjacent mean difference
+ * in the search range.
+ */
+export function findPeakDiff(
+  means: Float64Array, searchFrom: number, searchTo: number, minDiff: number,
+): { index: number; magnitude: number } {
+  const lo = Math.max(0, Math.min(searchFrom, searchTo))
+  const hi = Math.min(means.length - 1, Math.max(searchFrom, searchTo))
+  let maxDiff = 0
+  let maxIdx = -1
+  for (let i = lo; i < hi; i++) {
+    const d = Math.abs(means[i + 1] - means[i])
+    if (d > maxDiff) { maxDiff = d; maxIdx = i }
+  }
+  return maxDiff >= minDiff ? { index: maxIdx, magnitude: maxDiff } : { index: -1, magnitude: maxDiff }
+}
+
+/**
+ * Refine the webcam bounding box by detecting the overlay's spatial edges.
+ * Analyzes inter-column and inter-row intensity differences across sample
+ * frames; the overlay boundary creates a persistent edge while content-based
+ * edges average out across frames.
+ *
+ * @param framePaths Sample frames at analysis resolution
+ * @param position Corner containing the webcam
+ * @returns Refined bounds in analysis coordinates, or null if refinement fails
+ */
+export async function refineBoundingBox(
+  framePaths: string[],
+  position: WebcamRegion['position'],
+): Promise<{ x: number; y: number; width: number; height: number } | null> {
+  if (framePaths.length === 0) return null
+
+  const isRight = position.includes('right')
+  const isBottom = position.includes('bottom')
+  let fw = 0, fh = 0
+
+  const colMeansAll: Float64Array[] = []
+  const rowMeansAll: Float64Array[] = []
+
+  for (const fp of framePaths) {
+    const { data, info } = await sharp(fp).raw().toBuffer({ resolveWithObject: true })
+    fw = info.width; fh = info.height
+
+    // Column means: restrict to rows near the webcam for stronger signal
+    const yFrom = isBottom ? Math.floor(fh * 0.35) : 0
+    const yTo   = isBottom ? fh : Math.ceil(fh * 0.65)
+    colMeansAll.push(columnMeansForRows(data, fw, info.channels, yFrom, yTo))
+
+    // Row means: restrict to columns near the webcam
+    const xFrom = isRight ? Math.floor(fw * 0.35) : 0
+    const xTo   = isRight ? fw : Math.ceil(fw * 0.65)
+    rowMeansAll.push(rowMeansForCols(data, fw, info.channels, fh, xFrom, xTo))
+  }
+
+  const avgCols = averageFloat64Arrays(colMeansAll)
+  const avgRows = averageFloat64Arrays(rowMeansAll)
+
+  // Search for the inner edge in the relevant portion of the frame
+  const xFrom = isRight ? Math.floor(fw * 0.35) : Math.floor(fw * 0.05)
+  const xTo   = isRight ? Math.floor(fw * 0.95) : Math.floor(fw * 0.65)
+  const xEdge = findPeakDiff(avgCols, xFrom, xTo, REFINE_MIN_EDGE_DIFF)
+
+  const yFrom = isBottom ? Math.floor(fh * 0.35) : Math.floor(fh * 0.05)
+  const yTo   = isBottom ? Math.floor(fh * 0.95) : Math.floor(fh * 0.65)
+  const yEdge = findPeakDiff(avgRows, yFrom, yTo, REFINE_MIN_EDGE_DIFF)
+
+  if (xEdge.index < 0 || yEdge.index < 0) {
+    logger.info(
+      `[FaceDetection] Edge refinement: no strong edges ` +
+      `(xDiff=${xEdge.magnitude.toFixed(1)}, yDiff=${yEdge.magnitude.toFixed(1)})`,
+    )
+    return null
+  }
+
+  // Build the refined rectangle
+  let x: number, y: number, w: number, h: number
+  if (isRight) { x = xEdge.index + 1; w = fw - x }
+  else         { x = 0; w = xEdge.index }
+  if (isBottom) { y = yEdge.index + 1; h = fh - y }
+  else          { y = 0; h = yEdge.index }
+
+  // Sanity: webcam should be 5-55% of frame in each dimension
+  if (w < fw * REFINE_MIN_SIZE_FRAC || h < fh * REFINE_MIN_SIZE_FRAC ||
+      w > fw * REFINE_MAX_SIZE_FRAC || h > fh * REFINE_MAX_SIZE_FRAC) {
+    logger.info(
+      `[FaceDetection] Refined bounds implausible ` +
+      `(${w}x${h} in ${fw}x${fh}), using coarse bounds`,
+    )
+    return null
+  }
+
+  logger.info(
+    `[FaceDetection] Refined webcam: (${x},${y}) ${w}x${h} at analysis scale ` +
+    `(xDiff=${xEdge.magnitude.toFixed(1)}, yDiff=${yEdge.magnitude.toFixed(1)})`,
+  )
+
+  return { x, y, width: w, height: h }
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /**
@@ -269,36 +428,48 @@ export async function detectWebcamRegion(videoPath: string): Promise<WebcamRegio
       return null
     }
 
-    // Map from analysis resolution back to original resolution
+    // Refine the bounding box using edge detection, then map to original resolution
+    const refined = await refineBoundingBox(framePaths, bestPosition)
     const scaleX = resolution.width / ANALYSIS_WIDTH
     const scaleY = resolution.height / ANALYSIS_HEIGHT
-    const cornerW = Math.floor(ANALYSIS_WIDTH * CORNER_FRACTION)
-    const cornerH = Math.floor(ANALYSIS_HEIGHT * CORNER_FRACTION)
 
-    let origX: number
-    let origY: number
-    switch (bestPosition) {
-      case 'top-left':     origX = 0; origY = 0; break
-      case 'top-right':    origX = resolution.width - Math.round(cornerW * scaleX); origY = 0; break
-      case 'bottom-left':  origX = 0; origY = resolution.height - Math.round(cornerH * scaleY); break
-      case 'bottom-right':
-        origX = resolution.width - Math.round(cornerW * scaleX)
-        origY = resolution.height - Math.round(cornerH * scaleY)
-        break
+    let origX: number, origY: number, origW: number, origH: number
+
+    if (refined) {
+      origX = Math.round(refined.x * scaleX)
+      origY = Math.round(refined.y * scaleY)
+      origW = Math.round(refined.width * scaleX)
+      origH = Math.round(refined.height * scaleY)
+    } else {
+      // Fall back to coarse 25% corner bounds
+      const cornerW = Math.floor(ANALYSIS_WIDTH * CORNER_FRACTION)
+      const cornerH = Math.floor(ANALYSIS_HEIGHT * CORNER_FRACTION)
+      origW = Math.round(cornerW * scaleX)
+      origH = Math.round(cornerH * scaleY)
+      switch (bestPosition) {
+        case 'top-left':     origX = 0; origY = 0; break
+        case 'top-right':    origX = resolution.width - origW; origY = 0; break
+        case 'bottom-left':  origX = 0; origY = resolution.height - origH; break
+        case 'bottom-right':
+          origX = resolution.width - origW
+          origY = resolution.height - origH
+          break
+      }
     }
 
     const region: WebcamRegion = {
       x: origX,
       y: origY,
-      width: Math.round(cornerW * scaleX),
-      height: Math.round(cornerH * scaleY),
+      width: origW,
+      height: origH,
       position: bestPosition,
       confidence: Math.round(bestConfidence * 100) / 100,
     }
 
     logger.info(
       `[FaceDetection] Webcam detected at ${region.position} ` +
-      `(${region.x},${region.y} ${region.width}x${region.height}) confidence=${region.confidence}`,
+      `(${region.x},${region.y} ${region.width}x${region.height}) ` +
+      `confidence=${region.confidence} refined=${!!refined}`,
     )
 
     return region

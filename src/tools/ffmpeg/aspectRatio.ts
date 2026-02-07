@@ -6,9 +6,6 @@ import { detectWebcamRegion, getVideoResolution } from './faceDetection'
 
 const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg'
 
-/** Safety margin (px) to exclude webcam bleed from the screen crop region. */
-export const WEBCAM_CROP_MARGIN = 100
-
 // ── Types ────────────────────────────────────────────────────────────────────
 
 export type AspectRatio = '16:9' | '9:16' | '1:1' | '4:5'
@@ -158,14 +155,14 @@ export async function convertToPortraitSmart(
 
   const resolution = await getVideoResolution(inputPath)
 
-  // Determine screen crop region (exclude webcam area)
+  // Determine screen crop region (exclude webcam area using detected bounds)
   let screenCropX: number
   let screenCropW: number
   if (webcam.position === 'top-right' || webcam.position === 'bottom-right') {
     screenCropX = 0
-    screenCropW = Math.max(0, webcam.x - WEBCAM_CROP_MARGIN)
+    screenCropW = webcam.x
   } else {
-    screenCropX = Math.min(resolution.width, webcam.x + webcam.width + WEBCAM_CROP_MARGIN)
+    screenCropX = webcam.x + webcam.width
     screenCropW = Math.max(0, resolution.width - screenCropX)
   }
 
