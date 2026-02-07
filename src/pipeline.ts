@@ -30,7 +30,7 @@ import type {
 } from './types'
 import { PipelineStage as Stage } from './types'
 
-async function runStage<T>(
+export async function runStage<T>(
   stageName: PipelineStage,
   fn: () => Promise<T>,
   stageResults: StageResult[],

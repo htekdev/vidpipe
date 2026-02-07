@@ -1,12 +1,36 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { Tool } from '@github/copilot-sdk';
 
-// Mock @github/copilot-sdk before importing BaseAgent
+// ── Shared state via vi.hoisted (available to mock factories) ───────────────
+
+const mockState = vi.hoisted(() => {
+  const state = {
+    capturedTools: [] as any[],
+    mockSession: {
+      sendAndWait: async () => ({ data: { content: '' } }),
+      on: () => {},
+      destroy: async () => {},
+    },
+  };
+  return state;
+});
+
+// ── Mocks — must be declared before imports ─────────────────────────────────
+
 vi.mock('@github/copilot-sdk', () => ({
-  CopilotClient: vi.fn(),
-  CopilotSession: vi.fn(),
+  CopilotClient: function CopilotClientMock() {
+    return {
+      createSession: async (opts: any) => {
+        mockState.capturedTools.length = 0;
+        mockState.capturedTools.push(...(opts.tools || []));
+        return mockState.mockSession;
+      },
+      stop: async () => {},
+    };
+  },
+  CopilotSession: function CopilotSessionMock() {},
 }));
 
-// Mock logger to silence output
 vi.mock('../config/logger.js', () => ({
   default: {
     info: vi.fn(),
@@ -16,265 +40,533 @@ vi.mock('../config/logger.js', () => ({
   },
 }));
 
+vi.mock('../config/brand.js', () => ({
+  getBrandConfig: () => ({
+    name: 'TestBrand',
+    handle: '@test',
+    tagline: 'test tagline',
+    voice: { tone: 'friendly', personality: 'helpful', style: 'concise' },
+    advocacy: { interests: ['testing'], avoids: ['nothing'] },
+    contentGuidelines: { blogFocus: 'testing focus' },
+  }),
+}));
+
+vi.mock('../config/environment.js', () => ({
+  getConfig: () => ({ OUTPUT_DIR: '/tmp/test-output' }),
+}));
+
+vi.mock('../tools/ffmpeg/clipExtraction.js', () => ({
+  extractClip: vi.fn().mockResolvedValue(undefined),
+  extractCompositeClip: vi.fn().mockResolvedValue(undefined),
+  extractCompositeClipWithTransitions: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../tools/ffmpeg/captionBurning.js', () => ({
+  burnCaptions: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../tools/ffmpeg/aspectRatio.js', () => ({
+  generatePlatformVariants: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('../tools/ffmpeg/silenceDetection.js', () => ({
+  detectSilence: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('../tools/ffmpeg/singlePassEdit.js', () => ({
+  singlePassEdit: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../tools/ffmpeg/frameCapture.js', () => ({
+  captureFrame: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../tools/captions/captionGenerator.js', () => ({
+  generateStyledASSForSegment: vi.fn().mockReturnValue(''),
+  generateStyledASSForComposite: vi.fn().mockReturnValue(''),
+}));
+
+vi.mock('../tools/search/exaClient.js', () => ({
+  searchWeb: vi.fn().mockResolvedValue([]),
+}));
+
+vi.mock('fluent-ffmpeg', () => {
+  const mock: any = function () {};
+  mock.setFfmpegPath = () => {};
+  mock.setFfprobePath = () => {};
+  mock.ffprobe = (_p: string, cb: Function) => cb(null, { format: { duration: 300 } });
+  return { default: mock };
+});
+
+vi.mock('uuid', () => ({
+  v4: () => 'test-uuid-1234',
+}));
+
+vi.mock('slugify', () => ({
+  default: (s: string) => s.toLowerCase().replace(/\s+/g, '-'),
+}));
+
+vi.mock('fs', async (importOriginal) => {
+  const actual = (await importOriginal()) as any;
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      mkdirSync: vi.fn(),
+      writeFileSync: vi.fn(),
+      existsSync: vi.fn().mockReturnValue(false),
+    },
+    promises: {
+      mkdir: vi.fn().mockResolvedValue(undefined),
+      writeFile: vi.fn().mockResolvedValue(undefined),
+    },
+    mkdirSync: vi.fn(),
+    writeFileSync: vi.fn(),
+    existsSync: vi.fn().mockReturnValue(false),
+  };
+});
+
+// ── Import REAL agents (BaseAgent for construction tests) ───────────────────
+
 import { BaseAgent } from '../agents/BaseAgent.js';
-import type { Tool } from '@github/copilot-sdk';
 
-// ── Concrete test agent ─────────────────────────────────────────────────────
+// ── Test helpers ────────────────────────────────────────────────────────────
 
-class TestAgent extends BaseAgent {
-  public toolCallLog: { toolName: string; args: Record<string, unknown> }[] = [];
+const mockInvocation = {
+  sessionId: 's1',
+  toolCallId: 'tc1',
+  toolName: 'test',
+  arguments: {},
+} as any;
 
-  constructor(name = 'TestAgent', prompt = 'You are a test agent.') {
-    super(name, prompt);
-  }
-
-  protected getTools(): Tool<unknown>[] {
-    return [
-      {
-        name: 'greet',
-        description: 'Greet a user by name',
-        parameters: {
-          type: 'object',
-          properties: {
-            name: { type: 'string', description: 'Name to greet' },
-          },
-          required: ['name'],
-        },
-        handler: async (args: unknown) => this.handleToolCall('greet', args as Record<string, unknown>),
-      },
-    ];
-  }
-
-  protected async handleToolCall(toolName: string, args: Record<string, unknown>): Promise<unknown> {
-    this.toolCallLog.push({ toolName, args });
-    if (toolName === 'greet') {
-      return { message: `Hello, ${args.name}!` };
-    }
-    throw new Error(`Unknown tool: ${toolName}`);
-  }
-
-  // Expose protected method for testing
-  public exposedGetTools(): Tool<unknown>[] {
-    return this.getTools();
-  }
+function findCapturedTool(name: string): Tool<unknown> {
+  const tool = mockState.capturedTools.find((t: any) => t.name === name);
+  if (!tool) throw new Error(`Tool "${name}" not captured — was the agent's run() called?`);
+  return tool;
 }
 
-// ── ShortsAgent-style plan parsing agent ────────────────────────────────────
+// ── Mock fixtures ───────────────────────────────────────────────────────────
 
-interface PlannedSegment {
-  start: number;
-  end: number;
-  description: string;
-}
+const mockVideo = {
+  filename: 'test.mp4',
+  repoPath: '/tmp/test.mp4',
+  slug: 'test-video',
+  videoDir: '/tmp',
+  duration: 300,
+  createdAt: new Date(),
+} as any;
 
-interface PlannedShort {
-  title: string;
-  description: string;
-  tags: string[];
-  segments: PlannedSegment[];
-}
+const mockTranscriptWithWords = {
+  duration: 300,
+  text: 'Hello world',
+  segments: [
+    {
+      start: 0,
+      end: 10,
+      text: 'Hello world',
+      words: [
+        { start: 0, end: 0.5, word: 'Hello' },
+        { start: 0.6, end: 1.0, word: 'world' },
+      ],
+    },
+  ],
+} as any;
 
-class MockShortsAgent extends BaseAgent {
-  private plannedShorts: PlannedShort[] = [];
+const mockTranscript = {
+  duration: 300,
+  text: 'Hello world',
+  segments: [{ start: 0, end: 10, text: 'Hello world' }],
+} as any;
 
-  constructor() {
-    super('MockShortsAgent', 'Plan shorts from transcripts.');
-  }
+const mockSummary = {
+  title: 'Test',
+  overview: 'An overview',
+  keyTopics: ['topic1'],
+  snapshots: [],
+  markdownPath: '/tmp/README.md',
+} as any;
 
-  protected getTools(): Tool<unknown>[] {
-    return [
-      {
-        name: 'plan_shorts',
-        description: 'Submit planned shorts as structured JSON.',
-        parameters: {
-          type: 'object',
-          properties: {
-            shorts: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  title: { type: 'string' },
-                  description: { type: 'string' },
-                  tags: { type: 'array', items: { type: 'string' } },
-                  segments: {
-                    type: 'array',
-                    items: {
-                      type: 'object',
-                      properties: {
-                        start: { type: 'number' },
-                        end: { type: 'number' },
-                        description: { type: 'string' },
-                      },
-                      required: ['start', 'end', 'description'],
-                    },
-                  },
-                },
-                required: ['title', 'description', 'tags', 'segments'],
-              },
-            },
-          },
-          required: ['shorts'],
-        },
-        handler: async (args: unknown) => this.handleToolCall('plan_shorts', args as Record<string, unknown>),
-      },
-    ];
-  }
-
-  protected async handleToolCall(toolName: string, args: Record<string, unknown>): Promise<unknown> {
-    if (toolName === 'plan_shorts') {
-      this.plannedShorts = args.shorts as PlannedShort[];
-      return { success: true, count: this.plannedShorts.length };
-    }
-    throw new Error(`Unknown tool: ${toolName}`);
-  }
-
-  public getPlannedShorts(): PlannedShort[] {
-    return this.plannedShorts;
-  }
-
-  public exposedGetTools(): Tool<unknown>[] {
-    return this.getTools();
-  }
-}
-
-// ── Tests ───────────────────────────────────────────────────────────────────
+// ── BaseAgent tests ─────────────────────────────────────────────────────────
 
 describe('BaseAgent construction', () => {
+  class MinimalAgent extends BaseAgent {
+    constructor() {
+      super('Minimal', 'prompt');
+    }
+    protected async handleToolCall(_t: string, _a: Record<string, unknown>) {
+      return {};
+    }
+  }
+
   it('stores agent name and system prompt', () => {
-    const agent = new TestAgent('MyAgent', 'Custom system prompt.');
-    // Access protected fields via casting
-    expect((agent as any).agentName).toBe('MyAgent');
-    expect((agent as any).systemPrompt).toBe('Custom system prompt.');
+    const agent = new MinimalAgent();
+    expect((agent as any).agentName).toBe('Minimal');
+    expect((agent as any).systemPrompt).toBe('prompt');
   });
 
   it('initialises with null client and session', () => {
-    const agent = new TestAgent();
+    const agent = new MinimalAgent();
     expect((agent as any).client).toBeNull();
     expect((agent as any).session).toBeNull();
   });
 
-  it('getTools() returns a tools array', () => {
-    const agent = new TestAgent();
-    const tools = agent.exposedGetTools();
-    expect(Array.isArray(tools)).toBe(true);
-    expect(tools.length).toBeGreaterThan(0);
+  it('destroy is safe to call on uninitialised agent', async () => {
+    const agent = new MinimalAgent();
+    await expect(agent.destroy()).resolves.toBeUndefined();
   });
 });
 
-describe('Tool registration', () => {
-  let tools: Tool<unknown>[];
+// ── ShortsAgent (REAL) ──────────────────────────────────────────────────────
 
+describe('Real ShortsAgent', () => {
   beforeEach(() => {
-    const agent = new TestAgent();
-    tools = agent.exposedGetTools();
+    mockState.capturedTools.length = 0;
   });
 
-  it('each tool has name, description, parameters, and handler', () => {
-    for (const tool of tools) {
-      expect(tool.name).toEqual(expect.any(String));
-      expect(tool.description).toEqual(expect.any(String));
-      expect(tool.parameters).toBeDefined();
-      expect(typeof tool.handler).toBe('function');
-    }
-  });
+  it('plan_shorts tool: schema, handler stores shorts and returns count', async () => {
+    const { generateShorts } = await import('../agents/ShortsAgent.js');
 
-  it('handler is callable and returns a result', async () => {
-    const greetTool = tools.find((t) => t.name === 'greet')!;
-    const mockInvocation = { sessionId: 'test', toolCallId: 'tc1', toolName: 'greet', arguments: {} } as any;
-    const result = await greetTool.handler!({ name: 'Alice' }, mockInvocation);
-    expect(result).toEqual({ message: 'Hello, Alice!' });
-  });
-});
+    // generateShorts calls agent.run() → createSession captures tools
+    const result = await generateShorts(mockVideo, mockTranscriptWithWords);
 
-describe('ShortsAgent plan parsing', () => {
-  let agent: MockShortsAgent;
+    // Mock session returns no tool calls, so no shorts planned
+    expect(result).toEqual([]);
 
-  beforeEach(() => {
-    agent = new MockShortsAgent();
-  });
+    // Verify captured tool
+    const planTool = findCapturedTool('plan_shorts');
+    expect(planTool.description).toContain('planned shorts');
 
-  it('parses planned shorts via tool handler', async () => {
-    const mockPlan = {
-      shorts: [
-        {
-          title: 'Best Debugging Tip Ever',
-          description: 'A quick tip on rubber-duck debugging.',
-          tags: ['debugging', 'tips', 'coding'],
-          segments: [
-            { start: 10.5, end: 35.2, description: 'Explains rubber-duck debugging' },
-          ],
-        },
-        {
-          title: 'Why TypeScript Wins',
-          description: 'Comparing TS vs JS for large projects.',
-          tags: ['typescript', 'javascript', 'comparison'],
-          segments: [
-            { start: 120.0, end: 140.0, description: 'Type safety intro' },
-            { start: 200.0, end: 220.0, description: 'Refactoring benefits' },
-          ],
-        },
-      ],
-    };
-
-    const tools = agent.exposedGetTools();
-    const planTool = tools.find((t) => t.name === 'plan_shorts')!;
-    const result = await planTool.handler!(mockPlan, { sessionId: 'test', toolCallId: 'tc2', toolName: 'plan_shorts', arguments: {} } as any);
-
-    expect(result).toEqual({ success: true, count: 2 });
-
-    const planned = agent.getPlannedShorts();
-    expect(planned).toHaveLength(2);
-    expect(planned[0].title).toBe('Best Debugging Tip Ever');
-    expect(planned[0].tags).toEqual(['debugging', 'tips', 'coding']);
-    expect(planned[0].segments).toHaveLength(1);
-    expect(planned[0].segments[0].start).toBe(10.5);
-    expect(planned[0].segments[0].end).toBe(35.2);
-
-    // Composite short
-    expect(planned[1].segments).toHaveLength(2);
-  });
-
-  it('plan_shorts schema requires shorts array', () => {
-    const tools = agent.exposedGetTools();
-    const planTool = tools.find((t) => t.name === 'plan_shorts')!;
+    // Verify schema
     const schema = planTool.parameters as any;
-
     expect(schema.required).toContain('shorts');
     expect(schema.properties.shorts.type).toBe('array');
     expect(schema.properties.shorts.items.required).toEqual(
       expect.arrayContaining(['title', 'description', 'tags', 'segments']),
     );
-  });
 
-  it('segment schema requires start, end, description', () => {
-    const tools = agent.exposedGetTools();
-    const planTool = tools.find((t) => t.name === 'plan_shorts')!;
-    const segmentSchema = (planTool.parameters as any).properties.shorts.items.properties.segments.items;
-
-    expect(segmentSchema.required).toEqual(expect.arrayContaining(['start', 'end', 'description']));
+    const segmentSchema = schema.properties.shorts.items.properties.segments.items;
+    expect(segmentSchema.required).toEqual(
+      expect.arrayContaining(['start', 'end', 'description']),
+    );
     expect(segmentSchema.properties.start.type).toBe('number');
-    expect(segmentSchema.properties.end.type).toBe('number');
+
+    // Call the REAL handler
+    const handlerResult = await planTool.handler!(
+      {
+        shorts: [
+          {
+            title: 'Test Short',
+            description: 'A test',
+            tags: ['test'],
+            segments: [{ start: 5, end: 20, description: 'segment 1' }],
+          },
+          {
+            title: 'Another Short',
+            description: 'Another test',
+            tags: ['demo'],
+            segments: [
+              { start: 30, end: 45, description: 'part 1' },
+              { start: 60, end: 75, description: 'part 2' },
+            ],
+          },
+        ],
+      },
+      mockInvocation,
+    );
+
+    expect(handlerResult).toEqual({ success: true, count: 2 });
   });
 });
 
-describe('Agent error handling', () => {
-  it('handleToolCall throws on unknown tool', async () => {
-    const agent = new TestAgent();
-    await expect(
-      (agent as any).handleToolCall('nonexistent_tool', {}),
-    ).rejects.toThrow('Unknown tool: nonexistent_tool');
+// ── SilenceRemovalAgent (REAL) ──────────────────────────────────────────────
+
+describe('Real SilenceRemovalAgent', () => {
+  beforeEach(() => {
+    mockState.capturedTools.length = 0;
   });
 
-  it('MockShortsAgent throws on unknown tool', async () => {
-    const agent = new MockShortsAgent();
-    await expect(
-      (agent as any).handleToolCall('bad_tool', {}),
-    ).rejects.toThrow('Unknown tool: bad_tool');
+  it('decide_removals tool: schema and handler', async () => {
+    const { removeDeadSilence } = await import('../agents/SilenceRemovalAgent.js');
+    const { detectSilence } = await import('../tools/ffmpeg/silenceDetection.js');
+
+    // Return silence regions ≥ 2s so the agent gets instantiated
+    (detectSilence as any).mockResolvedValue([
+      { start: 10, end: 15, duration: 5 },
+      { start: 30, end: 37, duration: 7 },
+    ]);
+
+    const result = await removeDeadSilence(mockVideo, mockTranscript);
+
+    // Mock session doesn't trigger tool calls → no removals → not edited
+    expect(result.wasEdited).toBe(false);
+
+    // Verify captured tool
+    const removeTool = findCapturedTool('decide_removals');
+    expect(removeTool.description).toContain('silence regions');
+
+    const schema = removeTool.parameters as any;
+    expect(schema.required).toContain('removals');
+    expect(schema.properties.removals.items.required).toEqual(
+      expect.arrayContaining(['start', 'end', 'reason']),
+    );
+
+    // Call the REAL handler
+    const handlerResult = await removeTool.handler!(
+      {
+        removals: [
+          { start: 10, end: 15, reason: 'Dead air' },
+          { start: 30, end: 37, reason: 'Long pause' },
+        ],
+      },
+      mockInvocation,
+    );
+
+    expect(handlerResult).toEqual({ success: true, count: 2 });
+  });
+});
+
+// ── ChapterAgent (REAL) ─────────────────────────────────────────────────────
+
+describe('Real ChapterAgent', () => {
+  beforeEach(() => {
+    mockState.capturedTools.length = 0;
   });
 
-  it('destroy is safe to call on uninitialised agent', async () => {
-    const agent = new TestAgent();
-    await expect(agent.destroy()).resolves.toBeUndefined();
+  it('generate_chapters tool: schema and handler writes files', async () => {
+    const { generateChapters } = await import('../agents/ChapterAgent.js');
+
+    const longVideo = { ...mockVideo, duration: 600 };
+    const longTranscript = {
+      ...mockTranscript,
+      duration: 600,
+      segments: [
+        { start: 0, end: 60, text: 'Introduction' },
+        { start: 60, end: 300, text: 'Main content' },
+        { start: 300, end: 600, text: 'Conclusion' },
+      ],
+    };
+
+    // Will throw because mock session doesn't call generate_chapters
+    try {
+      await generateChapters(longVideo, longTranscript);
+    } catch {
+      // Expected: "ChapterAgent did not call generate_chapters"
+    }
+
+    const chapterTool = findCapturedTool('generate_chapters');
+    expect(chapterTool.description).toContain('chapters');
+
+    const schema = chapterTool.parameters as any;
+    expect(schema.required).toContain('chapters');
+    expect(schema.properties.chapters.items.required).toEqual(
+      expect.arrayContaining(['timestamp', 'title', 'description']),
+    );
+
+    // Call the REAL handler
+    const handlerResult = await chapterTool.handler!(
+      {
+        chapters: [
+          { timestamp: 0, title: 'Introduction', description: 'The beginning' },
+          { timestamp: 120, title: 'Main Topic', description: 'Core content' },
+          { timestamp: 450, title: 'Wrap Up', description: 'Conclusion' },
+        ],
+      },
+      mockInvocation,
+    );
+
+    expect(handlerResult).toContain('Chapters written');
+    expect(handlerResult).toContain('3 chapters');
+  });
+});
+
+// ── MediumVideoAgent (REAL) ─────────────────────────────────────────────────
+
+describe('Real MediumVideoAgent', () => {
+  beforeEach(() => {
+    mockState.capturedTools.length = 0;
+  });
+
+  it('plan_medium_clips tool: schema and handler stores clips', async () => {
+    const { generateMediumClips } = await import('../agents/MediumVideoAgent.js');
+
+    const result = await generateMediumClips(mockVideo, mockTranscriptWithWords);
+    expect(result).toEqual([]);
+
+    const clipTool = findCapturedTool('plan_medium_clips');
+
+    const schema = clipTool.parameters as any;
+    expect(schema.required).toContain('clips');
+    expect(schema.properties.clips.items.required).toEqual(
+      expect.arrayContaining(['title', 'description', 'tags', 'segments', 'totalDuration', 'hook', 'topic']),
+    );
+
+    // Call the REAL handler
+    const handlerResult = await clipTool.handler!(
+      {
+        clips: [
+          {
+            title: 'Deep Dive into Testing',
+            description: 'A complete walkthrough',
+            tags: ['testing', 'vitest'],
+            segments: [{ start: 10, end: 90, description: 'Testing basics' }],
+            totalDuration: 80,
+            hook: 'Ever wondered how to test?',
+            topic: 'Testing',
+          },
+        ],
+      },
+      mockInvocation,
+    );
+
+    expect(handlerResult).toEqual({ success: true, count: 1 });
+  });
+});
+
+// ── SummaryAgent (REAL) ─────────────────────────────────────────────────────
+
+describe('Real SummaryAgent', () => {
+  beforeEach(() => {
+    mockState.capturedTools.length = 0;
+  });
+
+  it('exposes capture_frame and write_summary tools with correct schemas', async () => {
+    const { generateSummary } = await import('../agents/SummaryAgent.js');
+
+    try {
+      await generateSummary(mockVideo, mockTranscript);
+    } catch {
+      // Expected: "SummaryAgent did not call write_summary"
+    }
+
+    const captureTool = findCapturedTool('capture_frame');
+    const writeTool = findCapturedTool('write_summary');
+
+    // Verify capture_frame schema
+    const captureSchema = captureTool.parameters as any;
+    expect(captureSchema.required).toEqual(
+      expect.arrayContaining(['timestamp', 'description', 'index']),
+    );
+
+    // Verify write_summary schema
+    const writeSchema = writeTool.parameters as any;
+    expect(writeSchema.required).toEqual(
+      expect.arrayContaining(['markdown', 'title', 'overview', 'keyTopics']),
+    );
+
+    // Call write_summary REAL handler
+    const writeResult = await writeTool.handler!(
+      {
+        markdown: '# Test Summary\nContent here',
+        title: 'Test Video',
+        overview: 'An overview',
+        keyTopics: ['topic1', 'topic2'],
+      },
+      mockInvocation,
+    );
+
+    expect(writeResult).toContain('Summary written');
+  });
+});
+
+// ── BlogAgent (REAL) ────────────────────────────────────────────────────────
+
+describe('Real BlogAgent', () => {
+  beforeEach(() => {
+    mockState.capturedTools.length = 0;
+  });
+
+  it('exposes search_web and write_blog tools; handlers work', async () => {
+    const { generateBlogPost } = await import('../agents/BlogAgent.js');
+
+    try {
+      await generateBlogPost(mockVideo, mockTranscript, mockSummary);
+    } catch {
+      // Expected: "BlogAgent did not produce any blog content"
+    }
+
+    const searchTool = findCapturedTool('search_web');
+    const writeTool = findCapturedTool('write_blog');
+
+    expect(searchTool).toBeDefined();
+    expect(writeTool).toBeDefined();
+
+    // Test search_web REAL handler
+    const searchResult = await searchTool.handler!(
+      { queries: ['test query'] },
+      mockInvocation,
+    );
+    expect(searchResult).toContain('results');
+
+    // Test write_blog REAL handler
+    const writeResult = await writeTool.handler!(
+      {
+        frontmatter: { title: 'Test Post', description: 'A description', tags: ['test'] },
+        body: '# Hello\nBlog content',
+      },
+      mockInvocation,
+    );
+
+    expect(writeResult).toContain('success');
+  });
+});
+
+// ── SocialMediaAgent (REAL) ─────────────────────────────────────────────────
+
+describe('Real SocialMediaAgent', () => {
+  beforeEach(() => {
+    mockState.capturedTools.length = 0;
+  });
+
+  it('exposes search_links and create_posts tools; handlers work', async () => {
+    const { generateSocialPosts } = await import('../agents/SocialMediaAgent.js');
+
+    const result = await generateSocialPosts(mockVideo, mockTranscript, mockSummary);
+    expect(result).toEqual([]);
+
+    const searchTool = findCapturedTool('search_links');
+    const postsTool = findCapturedTool('create_posts');
+
+    expect(searchTool).toBeDefined();
+    expect(postsTool).toBeDefined();
+
+    // Verify create_posts schema
+    const postsSchema = postsTool.parameters as any;
+    expect(postsSchema.required).toContain('posts');
+    expect(postsSchema.properties.posts.items.required).toEqual(
+      expect.arrayContaining(['platform', 'content', 'hashtags', 'links', 'characterCount']),
+    );
+
+    // Test search_links REAL handler
+    const searchResult = await searchTool.handler!(
+      { topics: ['coding', 'typescript'] },
+      mockInvocation,
+    );
+    expect(searchResult).toContain('results');
+
+    // Test create_posts REAL handler
+    const postsResult = await postsTool.handler!(
+      {
+        posts: [
+          {
+            platform: 'tiktok',
+            content: 'Check this out!',
+            hashtags: ['coding'],
+            links: [],
+            characterCount: 15,
+          },
+          {
+            platform: 'linkedin',
+            content: 'Professional insight on testing.',
+            hashtags: ['testing'],
+            links: ['https://example.com'],
+            characterCount: 31,
+          },
+        ],
+      },
+      mockInvocation,
+    );
+
+    const parsed = JSON.parse(postsResult as string);
+    expect(parsed).toEqual({ success: true, count: 2 });
   });
 });

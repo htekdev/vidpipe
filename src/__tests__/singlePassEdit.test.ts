@@ -1,5 +1,43 @@
-import { describe, it, expect } from 'vitest'
-import { buildFilterComplex, KeepSegment } from '../tools/ffmpeg/singlePassEdit.js'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+
+const { mockExecFile, mockMkdtemp, mockCopyFile, mockReaddir, mockUnlink, mockRmdir } = vi.hoisted(() => ({
+  mockExecFile: vi.fn(),
+  mockMkdtemp: vi.fn(),
+  mockCopyFile: vi.fn(),
+  mockReaddir: vi.fn(),
+  mockUnlink: vi.fn(),
+  mockRmdir: vi.fn(),
+}));
+
+vi.mock('child_process', () => ({
+  execFile: mockExecFile,
+}));
+
+vi.mock('fs', async (importOriginal) => {
+  const original = await importOriginal() as any;
+  return {
+    ...original,
+    promises: {
+      ...original.promises,
+      mkdtemp: mockMkdtemp,
+      copyFile: mockCopyFile,
+      readdir: mockReaddir,
+      unlink: mockUnlink,
+      rmdir: mockRmdir,
+    },
+  };
+});
+
+vi.mock('../config/logger.js', () => ({
+  default: {
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    debug: vi.fn(),
+  },
+}));
+
+import { buildFilterComplex, singlePassEdit, singlePassEditAndCaption, KeepSegment } from '../tools/ffmpeg/singlePassEdit.js'
 
 describe('buildFilterComplex', () => {
   describe('basic filter generation', () => {
@@ -187,5 +225,168 @@ describe('buildFilterComplex', () => {
     it('throws on empty segments array', () => {
       expect(() => buildFilterComplex([])).toThrow('keepSegments must not be empty')
     })
+  })
+})
+
+describe('singlePassEdit', () => {
+  const segments: KeepSegment[] = [
+    { start: 0, end: 5 },
+    { start: 10, end: 15 },
+  ]
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
+      cb(null, '', '')
+    })
+  })
+
+  it('calls execFile with correct input and output paths', async () => {
+    await singlePassEdit('/input.mp4', segments, '/output.mp4')
+
+    expect(mockExecFile).toHaveBeenCalledOnce()
+    const [cmd, args] = mockExecFile.mock.calls[0]
+    expect(cmd).toMatch(/ffmpeg/)
+    expect(args).toContain('/input.mp4')
+    expect(args[args.length - 1]).toBe('/output.mp4')
+  })
+
+  it('includes -filter_complex matching buildFilterComplex output', async () => {
+    await singlePassEdit('/input.mp4', segments, '/output.mp4')
+
+    const args: string[] = mockExecFile.mock.calls[0][1]
+    const fcIdx = args.indexOf('-filter_complex')
+    expect(fcIdx).toBeGreaterThan(-1)
+    expect(args[fcIdx + 1]).toBe(buildFilterComplex(segments))
+  })
+
+  it('uses -preset ultrafast and -threads 4', async () => {
+    await singlePassEdit('/input.mp4', segments, '/output.mp4')
+
+    const args: string[] = mockExecFile.mock.calls[0][1]
+    expect(args).toContain('-preset')
+    expect(args[args.indexOf('-preset') + 1]).toBe('ultrafast')
+    expect(args).toContain('-threads')
+    expect(args[args.indexOf('-threads') + 1]).toBe('4')
+  })
+
+  it('maps [outv] and [outa]', async () => {
+    await singlePassEdit('/input.mp4', segments, '/output.mp4')
+
+    const args: string[] = mockExecFile.mock.calls[0][1]
+    expect(args).toContain('[outv]')
+    expect(args).toContain('[outa]')
+  })
+
+  it('returns output path on success', async () => {
+    const result = await singlePassEdit('/input.mp4', segments, '/output.mp4')
+    expect(result).toBe('/output.mp4')
+  })
+
+  it('rejects with error on FFmpeg failure', async () => {
+    mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
+      cb(new Error('ffmpeg crash'), '', 'some stderr')
+    })
+
+    await expect(singlePassEdit('/input.mp4', segments, '/output.mp4'))
+      .rejects.toThrow('Single-pass edit failed: ffmpeg crash')
+  })
+
+  it('passes maxBuffer option to execFile', async () => {
+    await singlePassEdit('/input.mp4', segments, '/output.mp4')
+
+    const opts = mockExecFile.mock.calls[0][2]
+    expect(opts.maxBuffer).toBe(50 * 1024 * 1024)
+  })
+})
+
+describe('singlePassEditAndCaption', () => {
+  const segments: KeepSegment[] = [
+    { start: 0, end: 5 },
+    { start: 10, end: 15 },
+  ]
+  const tempDir = '/tmp/caption-abc123'
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockMkdtemp.mockResolvedValue(tempDir)
+    mockCopyFile.mockResolvedValue(undefined)
+    mockReaddir.mockResolvedValue(['Montserrat-Bold.ttf', 'readme.txt'])
+    mockUnlink.mockResolvedValue(undefined)
+    mockRmdir.mockResolvedValue(undefined)
+    mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
+      mockReaddir.mockResolvedValueOnce(['captions.ass', 'Montserrat-Bold.ttf'])
+      cb(null, '', '')
+    })
+  })
+
+  it('creates a temp directory via mkdtemp', async () => {
+    await singlePassEditAndCaption('/input.mp4', segments, '/captions.ass', '/output.mp4')
+    expect(mockMkdtemp).toHaveBeenCalledOnce()
+  })
+
+  it('copies ASS file to temp directory', async () => {
+    await singlePassEditAndCaption('/input.mp4', segments, '/captions.ass', '/output.mp4')
+
+    const copyArgs = mockCopyFile.mock.calls.map((c: any[]) => [c[0], c[1]])
+    const assCopy = copyArgs.find((c: string[]) => c[0] === '/captions.ass')
+    expect(assCopy).toBeDefined()
+    expect(assCopy![1]).toContain('captions.ass')
+  })
+
+  it('copies .ttf font files to temp directory but skips non-font files', async () => {
+    await singlePassEditAndCaption('/input.mp4', segments, '/captions.ass', '/output.mp4')
+
+    const copyDests = mockCopyFile.mock.calls.map((c: any[]) => c[1] as string)
+    expect(copyDests.some((d: string) => d.includes('Montserrat-Bold.ttf'))).toBe(true)
+    expect(copyDests.some((d: string) => d.includes('readme.txt'))).toBe(false)
+  })
+
+  it('builds filter_complex with ass filter and fontsdir', async () => {
+    await singlePassEditAndCaption('/input.mp4', segments, '/captions.ass', '/output.mp4')
+
+    const args: string[] = mockExecFile.mock.calls[0][1]
+    const fcIdx = args.indexOf('-filter_complex')
+    const fc = args[fcIdx + 1]
+    expect(fc).toContain('ass=captions.ass')
+    expect(fc).toContain('fontsdir=.')
+  })
+
+  it('maps [ca] instead of [outa] for captioned output', async () => {
+    await singlePassEditAndCaption('/input.mp4', segments, '/captions.ass', '/output.mp4')
+
+    const args: string[] = mockExecFile.mock.calls[0][1]
+    expect(args).toContain('[ca]')
+    expect(args).not.toContain('[outa]')
+  })
+
+  it('runs execFile with cwd set to temp directory', async () => {
+    await singlePassEditAndCaption('/input.mp4', segments, '/captions.ass', '/output.mp4')
+
+    const opts = mockExecFile.mock.calls[0][2]
+    expect(opts.cwd).toBe(tempDir)
+  })
+
+  it('returns output path on success', async () => {
+    const result = await singlePassEditAndCaption('/input.mp4', segments, '/captions.ass', '/output.mp4')
+    expect(result).toBe('/output.mp4')
+  })
+
+  it('cleans up temp directory after completion', async () => {
+    await singlePassEditAndCaption('/input.mp4', segments, '/captions.ass', '/output.mp4')
+
+    expect(mockRmdir).toHaveBeenCalled()
+  })
+
+  it('rejects with error on FFmpeg failure and still cleans up', async () => {
+    mockExecFile.mockImplementation((_cmd: string, _args: string[], _opts: any, cb: Function) => {
+      mockReaddir.mockResolvedValueOnce(['captions.ass'])
+      cb(new Error('encode failed'), '', 'error details')
+    })
+
+    await expect(singlePassEditAndCaption('/input.mp4', segments, '/captions.ass', '/output.mp4'))
+      .rejects.toThrow('Single-pass edit failed: encode failed')
+
+    expect(mockRmdir).toHaveBeenCalled()
   })
 })

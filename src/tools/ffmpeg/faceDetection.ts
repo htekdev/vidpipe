@@ -19,7 +19,7 @@ export interface WebcamRegion {
   confidence: number
 }
 
-interface CornerAnalysis {
+export interface CornerAnalysis {
   position: WebcamRegion['position']
   x: number
   y: number
@@ -126,7 +126,7 @@ async function extractSampleFrames(videoPath: string, tempDir: string): Promise<
  * Check if a pixel (in RGB) falls within skin-tone range.
  * Uses simplified HSV heuristic: hue ~0-50°, moderate saturation.
  */
-function isSkinTone(r: number, g: number, b: number): boolean {
+export function isSkinTone(r: number, g: number, b: number): boolean {
   // Rule-based skin detection in RGB space (avoids HSV conversion overhead)
   // Skin typically: R > 95, G > 40, B > 20, max-min > 15, |R-G| > 15, R > G, R > B
   const max = Math.max(r, g, b)
@@ -202,6 +202,19 @@ async function analyzeCorner(
 // ── Public API ───────────────────────────────────────────────────────────────
 
 /**
+ * Calculate confidence that a corner contains a webcam overlay based on
+ * per-frame scores. Combines consistency (fraction of non-zero frames) with
+ * average score.
+ */
+export function calculateCornerConfidence(scores: number[]): number {
+  if (scores.length === 0) return 0
+  const nonZeroCount = scores.filter(s => s > 0).length
+  const consistency = nonZeroCount / scores.length
+  const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length
+  return consistency * Math.min(avgScore * 10, 1)
+}
+
+/**
  * Detect a webcam overlay region in a screen recording.
  *
  * Samples frames at even intervals and analyzes each corner for skin-tone
@@ -243,12 +256,7 @@ export async function detectWebcamRegion(videoPath: string): Promise<WebcamRegio
     let bestConfidence = 0
 
     for (const [pos, scores] of scoresByPosition) {
-      const nonZeroCount = scores.filter(s => s > 0).length
-      const consistency = nonZeroCount / scores.length
-      const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length
-
-      // Confidence = consistency * average score, normalized
-      const confidence = consistency * Math.min(avgScore * 10, 1)
+      const confidence = calculateCornerConfidence(scores)
 
       if (confidence > bestConfidence) {
         bestConfidence = confidence
