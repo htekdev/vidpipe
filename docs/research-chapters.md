@@ -1,5 +1,29 @@
 # Research: Auto-Generating Video Chapters
 
+> **✅ Implementation Status**
+>
+> Chapters are **implemented** as a pipeline stage using the `ChapterAgent`.
+>
+> | Recommendation | Status | Location |
+> |---|---|---|
+> | `ChapterAgent` extending `BaseAgent` | ✅ Implemented | `src/agents/ChapterAgent.ts` |
+> | LLM-based chapter detection | ✅ Implemented | System prompt with transcript analysis |
+> | YouTube timestamps output | ✅ Implemented | `chapters/chapters-youtube.txt` |
+> | FFmpeg metadata output | ✅ Implemented | `chapters/chapters.ffmetadata` |
+> | JSON output | ✅ Implemented | `chapters/chapters.json` |
+> | Markdown table output | ✅ Implemented | `chapters/chapters.md` (replaces proposed WebVTT) |
+> | Pipeline integration | ✅ Implemented | `PipelineStage.Chapters` — runs after Medium Clips, before Summary |
+> | Summary agent uses chapters | ✅ Implemented | `generateSummary()` receives chapters as a parameter |
+>
+> **Key differences from research:**
+> - **Simplified `Chapter` type**: uses `{ timestamp, title, description }` instead of the proposed
+>   `{ startTime, endTime, title, summary, keywords }`. End times are inferred from the next
+>   chapter's start time (or video duration for the last chapter).
+> - **Tool name**: `generate_chapters` (not `write_chapters` as proposed)
+> - **Markdown output** replaces WebVTT — more useful for the README-based output workflow
+> - **No keywords field** — not needed since chapters are primarily for navigation, not search
+> - **3–10 chapters** (not 3–15) — tighter range in the system prompt
+
 > Research findings on automatically generating chapter markers for video content,
 > covering formats, NLP approaches, and integration with our pipeline.
 
@@ -405,7 +429,13 @@ This is **non-destructive** (`-codec copy`) and fast since it doesn't re-encode.
 
 ### 5.1 Pipeline Placement
 
-Chapters should run **after transcription** and can run **in parallel with captions**:
+> **Note:** The actual implementation places Chapters after Medium Clips and before Summary
+> (not in parallel as originally proposed):
+> ```
+> … → Shorts → Medium Clips → Chapters → Summary → …
+> ```
+
+The original research proposed parallel execution:
 
 ```
 Ingestion → Transcription → ┬─ Silence Removal → Captions → Caption Burn

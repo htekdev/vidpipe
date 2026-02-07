@@ -111,7 +111,7 @@ async function shutdown(): Promise<void> {
 }
 
 async function main(): Promise<void> {
-  console.log(BANNER)
+  logger.info(BANNER)
 
   initConfig(cliOptions)
   if (opts.verbose) setVerbose()

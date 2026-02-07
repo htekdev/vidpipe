@@ -31,7 +31,14 @@ export class PlaceholderPlatformClient implements SocialPlatformClient {
   }
 
   validate(_content: SocialPost): boolean {
-    // TODO: Implement platform-specific validation (character limits, media requirements, etc.)
+    // TODO: Implement platform-specific validation
+    // Each platform has different limits:
+    //   - TikTok: 2200 char caption, video 15s-10min
+    //   - YouTube: 5000 char description, shorts ≤60s
+    //   - Instagram: 2200 char caption, reels ≤90s
+    //   - LinkedIn: 3000 char post, video ≤10min
+    //   - X (Twitter): 280 char tweet, video ≤140s
+    logger.warn(`[${this.platform}] Content validation not yet implemented — accepting all content`)
     return true
   }
 }
@@ -48,22 +55,37 @@ export function getPlatformClient(platform: Platform): SocialPlatformClient {
   switch (platform) {
     case Platform.TikTok:
       // TODO: Replace with TikTokClient once TikTok API integration is implemented
+      // Expected: TikTok Content Posting API (OAuth 2.0, video upload via URL or file)
+      // Docs: https://developers.tiktok.com/doc/content-posting-api-get-started
+      logger.warn('[TikTok] Using placeholder client — TikTok Content Posting API not yet integrated')
       return new PlaceholderPlatformClient(platform)
 
     case Platform.YouTube:
       // TODO: Replace with YouTubeClient once YouTube Data API integration is implemented
+      // Expected: YouTube Data API v3 (OAuth 2.0, videos.insert for Shorts upload)
+      // Docs: https://developers.google.com/youtube/v3/docs/videos/insert
+      logger.warn('[YouTube] Using placeholder client — YouTube Data API v3 not yet integrated')
       return new PlaceholderPlatformClient(platform)
 
     case Platform.Instagram:
       // TODO: Replace with InstagramClient once Instagram Graph API integration is implemented
+      // Expected: Instagram Graph API (OAuth 2.0, Reels publishing via container + publish)
+      // Docs: https://developers.facebook.com/docs/instagram-api/guides/content-publishing
+      logger.warn('[Instagram] Using placeholder client — Instagram Graph API not yet integrated')
       return new PlaceholderPlatformClient(platform)
 
     case Platform.LinkedIn:
       // TODO: Replace with LinkedInClient once LinkedIn API integration is implemented
+      // Expected: LinkedIn Marketing API (OAuth 2.0, ugcPosts for video + text)
+      // Docs: https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares
+      logger.warn('[LinkedIn] Using placeholder client — LinkedIn Marketing API not yet integrated')
       return new PlaceholderPlatformClient(platform)
 
     case Platform.X:
       // TODO: Replace with XClient once X (Twitter) API v2 integration is implemented
+      // Expected: X API v2 (OAuth 2.0, media upload + tweet creation)
+      // Docs: https://developer.x.com/en/docs/x-api/tweets/manage-tweets
+      logger.warn('[X] Using placeholder client — X API v2 not yet integrated')
       return new PlaceholderPlatformClient(platform)
 
     default:

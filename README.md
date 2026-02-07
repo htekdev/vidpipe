@@ -17,16 +17,23 @@ npm install -g video-auto-note-taker
 
 ## ✨ Features
 
-- 🎙️ **Automatic Transcription** — Word-level timestamps via OpenAI Whisper API
-- 🔇 **Silence Removal** — AI-powered dead-air detection and removal
-- 💬 **Auto Captions** — Generates and burns `.ass` subtitles into video
-- 📝 **Smart Summaries** — Markdown READMEs with embedded screenshots
-- ✂️ **Short Clip Extraction** — AI identifies the best 15–60s moments and cuts them
-- 📱 **Social Media Posts** — Platform-tailored content for TikTok, YouTube, Instagram, LinkedIn, X
-- 📰 **Blog Post Generation** — Long-form blog posts from transcripts
+- 🎬 **14-Stage Automated Pipeline** — Drop a video and walk away; everything runs end-to-end
+- 🎙️ **Whisper Transcription** — Word-level timestamps via OpenAI Whisper API
+- 🔇 **AI-Driven Silence Removal** — Conservative, context-aware dead-air detection (capped at 20% removal)
+- 📐 **Smart Split-Screen Layouts** — Webcam + screen content for 3 aspect ratios: portrait (9:16), square (1:1), and feed (4:5)
+- 🔍 **Edge-Based Webcam Detection** — Detects webcam overlay position via skin-tone analysis and inter-frame edge refinement (no hardcoded margins)
+- 🎯 **Face-Aware AR-Matched Cropping** — Webcam region is aspect-ratio-matched and center-cropped to fill each layout with no black bars
+- 💬 **Karaoke Captions** — Opus Clips-style word-by-word highlighting with green active word on portrait, yellow on landscape
+- 🪝 **Hook Overlays** — Animated title text burned into portrait short clips
+- ✂️ **Short Clips** — AI identifies the best 15–60s moments, supports composite (multi-segment) shorts
+- 🎞️ **Medium Clips** — 1–3 min standalone segments for deeper content with crossfade transitions
+- 📑 **Chapter Detection** — AI-identified topic boundaries in 4 formats (JSON, Markdown, FFmetadata, YouTube timestamps)
+- 📱 **Social Media Posts** — Platform-tailored content for TikTok, YouTube, Instagram, LinkedIn, and X
+- 📰 **Dev.to Blog Post** — Long-form technical blog post with frontmatter and web-sourced links
+- 🔗 **Web Search Integration** — Finds relevant links for social posts and blog content via Exa
+- 🔄 **Git Automation** — Auto-commits and pushes all generated content after each video
+- 🎨 **Brand Voice** — Customize AI tone, vocabulary, hashtags, and content style via `brand.json`
 - 👁️ **Watch Mode** — Monitors a folder and processes new `.mp4` files on arrival
-- 🔄 **Git Integration** — Auto-commits and pushes results after each video
-- 🎨 **Brand Customization** — Configure AI voice, vocabulary, and content style via `brand.json`
 - 🧠 **Agent Architecture** — Powered by GitHub Copilot SDK with tool-calling agents
 
 ---
@@ -74,8 +81,9 @@ video-auto-note-taker [options] [video-path]
 | `--once` | Process next video and exit |
 | `--no-silence-removal` | Skip silence removal |
 | `--no-shorts` | Skip short clip extraction |
+| `--no-medium-clips` | Skip medium clip generation |
 | `--no-social` | Skip social media posts |
-| `--no-captions` | Skip caption generation |
+| `--no-captions` | Skip caption generation/burning |
 | `--no-git` | Skip git commit/push |
 | `-v, --verbose` | Debug-level logging |
 
@@ -86,23 +94,44 @@ video-auto-note-taker [options] [video-path]
 ```
 recordings/
 └── my-awesome-demo/
-    ├── my-awesome-demo.mp4              # Original video
-    ├── my-awesome-demo-edited.mp4       # Silence-removed
-    ├── my-awesome-demo-captioned.mp4    # With burned-in captions
-    ├── README.md                        # AI-generated summary
-    ├── transcript.json                  # Word-level transcript
-    ├── blog-post.md                     # Long-form blog post
-    ├── thumbnails/
-    │   └── snapshot-*.png               # Key-moment screenshots
+    ├── my-awesome-demo.mp4                  # Original video
+    ├── my-awesome-demo-edited.mp4           # Silence-removed
+    ├── my-awesome-demo-captioned.mp4        # With burned-in captions
+    ├── transcript.json                      # Word-level transcript
+    ├── transcript-edited.json               # Timestamps adjusted for silence removal
+    ├── README.md                            # AI-generated summary with screenshots
+    ├── captions/
+    │   ├── captions.srt                     # SubRip subtitles
+    │   ├── captions.vtt                     # WebVTT subtitles
+    │   └── captions.ass                     # Advanced SSA (karaoke-style)
     ├── shorts/
-    │   ├── catchy-title.mp4             # Short clips
-    │   └── catchy-title.md              # Clip metadata
+    │   ├── catchy-title.mp4                 # Landscape base clip
+    │   ├── catchy-title-captioned.mp4       # Landscape + burned captions
+    │   ├── catchy-title-portrait.mp4        # 9:16 split-screen
+    │   ├── catchy-title-portrait-captioned.mp4  # Portrait + captions + hook overlay
+    │   ├── catchy-title-feed.mp4            # 4:5 split-screen
+    │   ├── catchy-title-square.mp4          # 1:1 split-screen
+    │   ├── catchy-title.md                  # Clip metadata
+    │   └── catchy-title/
+    │       └── posts/                       # Per-short social posts (5 platforms)
+    ├── medium-clips/
+    │   ├── deep-dive-topic.mp4              # Landscape base clip
+    │   ├── deep-dive-topic-captioned.mp4    # With burned captions
+    │   ├── deep-dive-topic.md               # Clip metadata
+    │   └── deep-dive-topic/
+    │       └── posts/                       # Per-clip social posts (5 platforms)
+    ├── chapters/
+    │   ├── chapters.json                    # Structured chapter data
+    │   ├── chapters.md                      # Markdown table
+    │   ├── chapters.ffmetadata              # FFmpeg metadata format
+    │   └── chapters-youtube.txt             # YouTube description timestamps
     └── social-posts/
-        ├── tiktok.md
+        ├── tiktok.md                        # Full-video social posts
         ├── youtube.md
         ├── instagram.md
         ├── linkedin.md
-        └── x.md
+        ├── x.md
+        └── devto.md                         # Dev.to blog post
 ```
 
 ---
@@ -110,22 +139,27 @@ recordings/
 ## 🔄 Pipeline
 
 ```
-Ingest → Transcribe → Silence Removal → Captions → Shorts → Summary → Social → Blog → Git Push
+Ingest → Transcribe → Silence Removal → Captions → Caption Burn → Shorts → Medium Clips → Chapters → Summary → Social Media → Short Posts → Medium Clip Posts → Blog → Git Push
 ```
 
-| Stage | Description |
-|-------|-------------|
-| **Ingestion** | Copies video, extracts metadata with FFprobe |
-| **Transcription** | Audio → OpenAI Whisper for word-level transcription |
-| **Silence Removal** | AI detects and removes dead-air segments |
-| **Captions** | Generates `.ass` subtitles, burns into video |
-| **Shorts** | AI identifies best moments, FFmpeg cuts clips |
-| **Summary** | AI writes Markdown README with screenshots |
-| **Social Media** | Platform-tailored posts for 5 platforms |
-| **Blog** | AI generates a long-form blog post |
-| **Git Push** | Auto-commits and pushes to `origin main` |
+| # | Stage | Description |
+|---|-------|-------------|
+| 1 | **Ingestion** | Copies video, extracts metadata with FFprobe |
+| 2 | **Transcription** | Extracts audio → OpenAI Whisper for word-level transcription |
+| 3 | **Silence Removal** | AI detects dead-air segments; context-aware removals capped at 20% |
+| 4 | **Captions** | Generates `.srt`, `.vtt`, and `.ass` subtitle files with karaoke word highlighting |
+| 5 | **Caption Burn** | Burns ASS captions into video (single-pass encode when silence was also removed) |
+| 6 | **Shorts** | AI identifies best 15–60s moments; extracts single and composite clips with 6 variants per short |
+| 7 | **Medium Clips** | AI identifies 1–3 min standalone segments with crossfade transitions |
+| 8 | **Chapters** | AI detects topic boundaries; outputs JSON, Markdown, FFmetadata, and YouTube timestamps |
+| 9 | **Summary** | AI writes a Markdown README with captured screenshots |
+| 10 | **Social Media** | Platform-tailored posts for TikTok, YouTube, Instagram, LinkedIn, and X |
+| 11 | **Short Posts** | Per-short social media posts for all 5 platforms |
+| 12 | **Medium Clip Posts** | Per-medium-clip social media posts for all 5 platforms |
+| 13 | **Blog** | Dev.to blog post with frontmatter, web-sourced links via Exa |
+| 14 | **Git Push** | Auto-commits and pushes to `origin main` |
 
-Each stage can be independently skipped with `--no-*` flags.
+Each stage can be independently skipped with `--no-*` flags. A stage failure does not abort the pipeline — subsequent stages proceed with whatever data is available.
 
 ---
 
@@ -138,7 +172,8 @@ Configuration is loaded from CLI flags → environment variables → `.env` file
 OPENAI_API_KEY=sk-your-key-here
 WATCH_FOLDER=/path/to/recordings
 OUTPUT_DIR=/path/to/output
-# EXA_API_KEY=your-exa-key       # optional
+# EXA_API_KEY=your-exa-key       # Optional: enables web search in social/blog posts
+# BRAND_PATH=./brand.json         # Optional: path to brand voice config
 # FFMPEG_PATH=/usr/local/bin/ffmpeg
 # FFPROBE_PATH=/usr/local/bin/ffprobe
 ```
@@ -162,11 +197,13 @@ Agent-based architecture built on the [GitHub Copilot SDK](https://github.com/gi
 
 ```
 BaseAgent (abstract)
-├── SummaryAgent       → capture_frame, write_summary
-├── ShortsAgent        → plan_shorts
-├── SocialMediaAgent   → search_links, create_posts
-├── SilenceRemovalAgent → detect_silence, plan_cuts
-└── BlogAgent          → write_blog_post
+├── SilenceRemovalAgent → detect_silence, decide_removals
+├── SummaryAgent        → capture_frame, write_summary
+├── ShortsAgent         → plan_shorts
+├── MediumVideoAgent    → plan_medium_clips
+├── ChapterAgent        → generate_chapters
+├── SocialMediaAgent    → search_links, create_posts
+└── BlogAgent           → search_web, write_blog
 ```
 
 Each agent communicates with the LLM through structured tool calls, ensuring reliable, parseable outputs.
@@ -177,14 +214,15 @@ Each agent communicates with the LLM through structured tool calls, ensuring rel
 
 | Technology | Purpose |
 |------------|---------|
-| [TypeScript](https://www.typescriptlang.org/) | Language |
+| [TypeScript](https://www.typescriptlang.org/) | Language (ES2022, ESM) |
 | [GitHub Copilot SDK](https://github.com/github/copilot-sdk) | AI agent framework |
 | [OpenAI Whisper](https://platform.openai.com/docs/guides/speech-to-text) | Speech-to-text |
 | [FFmpeg](https://ffmpeg.org/) | Video/audio processing |
+| [Sharp](https://sharp.pixelplumbing.com/) | Image analysis (webcam detection) |
 | [Commander.js](https://github.com/tj/commander.js) | CLI framework |
 | [Chokidar](https://github.com/paulmillr/chokidar) | File system watching |
 | [Winston](https://github.com/winstonjs/winston) | Logging |
-| [Exa AI](https://exa.ai/) | Web search for social posts |
+| [Exa AI](https://exa.ai/) | Web search for social posts and blog |
 
 ---
 

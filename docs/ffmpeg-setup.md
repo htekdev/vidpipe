@@ -50,7 +50,7 @@ choco install ffmpeg
 
 ### Windows ARM64 (important)
 
-The bundled `@ffmpeg-installer/ffmpeg` npm package **does not support Windows ARM64**. You must install FFmpeg manually and point the tool to it:
+Pre-built FFmpeg binaries for Windows ARM64 are less common. You must install FFmpeg manually and point the tool to it:
 
 1. Download an ARM64 build from [github.com/ArsThauwormo/FFmpeg-Builds-ARM64](https://github.com/ArsThauwormo/FFmpeg-Builds-ARM64) or build from source
 2. Extract to a known location, e.g. `C:\tools\ffmpeg-arm64\`
@@ -200,6 +200,6 @@ ffmpeg -version
 
 If it's below 6.0, upgrade using the instructions for your platform above.
 
-### Windows ARM64: "@ffmpeg-installer/ffmpeg unsupported platform"
+### Windows ARM64: FFmpeg not found
 
-This is expected. The bundled FFmpeg package does not include ARM64 binaries. Follow the [Windows ARM64](#windows-arm64-important) section above to install manually and set the paths.
+Pre-built FFmpeg binaries for ARM64 are less common. Follow the [Windows ARM64](#windows-arm64-important) section above to install manually and set the paths via `FFMPEG_PATH` and `FFPROBE_PATH`.

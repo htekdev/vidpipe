@@ -59,6 +59,40 @@ const defaultBrand: BrandConfig = {
 
 let cachedBrand: BrandConfig | null = null
 
+/** Validate brand config and log warnings for missing or empty fields. */
+function validateBrandConfig(brand: Partial<BrandConfig>): void {
+  const requiredStrings: (keyof BrandConfig)[] = ['name', 'handle', 'tagline']
+  for (const field of requiredStrings) {
+    if (!brand[field]) {
+      logger.warn(`brand.json: missing or empty field "${field}"`)
+    }
+  }
+
+  const requiredObjects: { key: keyof BrandConfig; subKeys: string[] }[] = [
+    { key: 'voice', subKeys: ['tone', 'personality', 'style'] },
+    { key: 'advocacy', subKeys: ['primary', 'interests'] },
+    { key: 'hashtags', subKeys: ['always', 'preferred'] },
+    { key: 'contentGuidelines', subKeys: ['shortsFocus', 'blogFocus', 'socialFocus'] },
+  ]
+
+  for (const { key, subKeys } of requiredObjects) {
+    if (!brand[key]) {
+      logger.warn(`brand.json: missing section "${key}"`)
+    } else {
+      const section = brand[key] as Record<string, unknown>
+      for (const sub of subKeys) {
+        if (!section[sub] || (Array.isArray(section[sub]) && (section[sub] as unknown[]).length === 0)) {
+          logger.warn(`brand.json: missing or empty field "${key}.${sub}"`)
+        }
+      }
+    }
+  }
+
+  if (!brand.customVocabulary || brand.customVocabulary.length === 0) {
+    logger.warn('brand.json: "customVocabulary" is empty — Whisper prompt will be blank')
+  }
+}
+
 export function getBrandConfig(): BrandConfig {
   if (cachedBrand) return cachedBrand
 
@@ -73,6 +107,7 @@ export function getBrandConfig(): BrandConfig {
 
   const raw = fs.readFileSync(brandPath, 'utf-8')
   cachedBrand = JSON.parse(raw) as BrandConfig
+  validateBrandConfig(cachedBrand)
   logger.info(`Brand config loaded: ${cachedBrand.name}`)
   return cachedBrand
 }

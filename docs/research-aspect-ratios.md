@@ -1,5 +1,36 @@
 # Research: Platform-Specific Aspect Ratios & Split-Screen Layouts
 
+> **✅ Implementation Status**
+>
+> Major features from this research are now **implemented**. The system uses a pure-Node.js approach
+> (sharp + FFmpeg) rather than the OpenCV approach originally proposed.
+>
+> | Recommendation | Status | Location |
+> |---|---|---|
+> | Platform dimension presets (9:16, 1:1, 4:5, 16:9) | ✅ Implemented | `src/tools/ffmpeg/aspectRatio.ts` — `DIMENSIONS`, `PLATFORM_RATIOS` |
+> | Center-crop fallback (16:9 → 9:16, 1:1, 4:5) | ✅ Implemented | `convertAspectRatio()` with `buildCropFilter()` |
+> | Split-screen layout (65% screen / 35% webcam) | ✅ Implemented | `convertToPortraitSmart()` — 1248px screen / 672px webcam |
+> | Webcam detection | ✅ Implemented (different approach) | `src/tools/ffmpeg/faceDetection.ts` — skin-tone analysis via `sharp`, not OpenCV |
+> | Edge-based bounding box refinement | ✅ Implemented | `refineBoundingBox()` — inter-column/row intensity differences |
+> | AR-matched webcam crop (no black bars) | ✅ Implemented | `convertWithSmartLayout()` — webcam cropped to match target section AR |
+> | Multiple output presets per clip | ✅ Implemented | `generatePlatformVariants()` — deduplicates by aspect ratio |
+> | Smart square (1:1) layout | ✅ Implemented | `convertToSquareSmart()` — 700px screen / 380px webcam |
+> | Smart feed (4:5) layout | ✅ Implemented | `convertToFeedSmart()` — 878px screen / 472px webcam |
+> | Scale + Pad (letterbox) | ✅ Implemented | `convertAspectRatio()` with `letterbox: true` option |
+> | Mouse/activity tracking | ❌ Not implemented | Research Phase 2 — not yet needed |
+> | MediaPipe/AI person detection | ❌ Not implemented | Research Phase 3 — skin-tone + edge approach sufficient |
+> | Scene change detection | ❌ Not implemented | Research Phase 2 |
+>
+> **Key differences from research:**
+> - **No OpenCV dependency** — webcam detection uses `sharp` for pixel-level skin-tone analysis
+>   and variance scoring across sampled frames, rather than Haar Cascades
+> - **Edge-based refinement** — `refineBoundingBox()` averages inter-pixel intensity gradients
+>   across multiple frames to find the persistent overlay boundary (content edges cancel out)
+> - **Confidence scoring** — `calculateCornerConfidence()` combines consistency (fraction of
+>   frames detecting skin) with average score, requiring ≥30% confidence
+> - **Smart layout for all ratios** — research only detailed 9:16; implementation extends
+>   the same `convertWithSmartLayout()` pattern to 1:1 and 4:5
+
 > **Last updated:** 2025-10  
 > **Purpose:** Inform the video-auto-note-taker pipeline on how to reformat landscape screen recordings into platform-optimized short-form video.
 

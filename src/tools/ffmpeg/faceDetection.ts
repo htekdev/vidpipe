@@ -10,6 +10,17 @@ const ffprobePath = process.env.FFPROBE_PATH || 'ffprobe'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+/**
+ * Bounding box and metadata for a detected webcam overlay in a screen recording.
+ *
+ * @property x - Left edge in pixels (original video resolution)
+ * @property y - Top edge in pixels (original video resolution)
+ * @property width - Width of the webcam region in pixels
+ * @property height - Height of the webcam region in pixels
+ * @property position - Which corner of the frame the webcam occupies
+ * @property confidence - Detection confidence 0–1 (combines skin-tone consistency
+ *   across frames with per-frame score strength)
+ */
 export interface WebcamRegion {
   x: number
   y: number
@@ -19,6 +30,14 @@ export interface WebcamRegion {
   confidence: number
 }
 
+/**
+ * Per-frame analysis result for a single corner region.
+ *
+ * @property skinToneRatio - Fraction of pixels matching the skin-tone heuristic (0–1)
+ * @property variance - Average RGB channel variance — high variance means the
+ *   region has complex visual content (a face), low variance means a solid
+ *   background or static UI element.
+ */
 export interface CornerAnalysis {
   position: WebcamRegion['position']
   x: number
@@ -31,18 +50,31 @@ export interface CornerAnalysis {
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
+/** Number of frames sampled evenly across the video for analysis. */
 const SAMPLE_FRAMES = 5
+/** Width to downscale frames to for fast pixel analysis. */
 const ANALYSIS_WIDTH = 320
+/** Height to downscale frames to for fast pixel analysis. */
 const ANALYSIS_HEIGHT = 180
-// Corner region = 25% of each dimension
+/** Each corner region is 25% of the frame width/height. */
 const CORNER_FRACTION = 0.25
+/** Minimum skin-tone pixel ratio to consider a corner as a webcam candidate. */
 const MIN_SKIN_RATIO = 0.05
+/** Minimum confidence score to accept a webcam detection. */
 const MIN_CONFIDENCE = 0.3
 
 // ── Refinement constants ─────────────────────────────────────────────────────
-// Minimum inter-column/row mean difference to accept as a valid overlay edge
+
+/**
+ * Minimum inter-column/row mean difference to accept as a valid overlay edge.
+ * The webcam overlay border creates a sharp intensity step between the
+ * overlay and the screen content behind it. Values below this threshold
+ * are treated as noise or soft gradients.
+ */
 const REFINE_MIN_EDGE_DIFF = 3.0
+/** Webcam must be at least 5% of the frame in each dimension. */
 const REFINE_MIN_SIZE_FRAC = 0.05
+/** Webcam must be at most 55% of the frame in each dimension. */
 const REFINE_MAX_SIZE_FRAC = 0.55
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -207,7 +239,21 @@ async function analyzeCorner(
 
 // ── Refinement helpers ───────────────────────────────────────────────────────
 
-/** Compute per-column mean grayscale intensity over a row range. */
+/**
+ * Compute per-column mean grayscale intensity over a horizontal band of rows.
+ *
+ * Used to find the **vertical edge** of the webcam overlay. Each column gets
+ * a single mean brightness value averaged over `yFrom..yTo` rows. The
+ * resulting 1-D signal has a sharp step at the overlay boundary, which
+ * {@link findPeakDiff} locates.
+ *
+ * @param data - Raw pixel buffer (RGB or RGBA interleaved)
+ * @param width - Image width in pixels
+ * @param channels - Bytes per pixel (3 for RGB, 4 for RGBA)
+ * @param yFrom - First row (inclusive)
+ * @param yTo - Last row (exclusive)
+ * @returns Float64Array of length `width` with per-column mean grayscale
+ */
 function columnMeansForRows(
   data: Buffer, width: number, channels: number,
   yFrom: number, yTo: number,
@@ -226,7 +272,21 @@ function columnMeansForRows(
   return means
 }
 
-/** Compute per-row mean grayscale intensity over a column range. */
+/**
+ * Compute per-row mean grayscale intensity over a vertical band of columns.
+ *
+ * Used to find the **horizontal edge** of the webcam overlay. Each row gets
+ * a single mean brightness value averaged over `xFrom..xTo` columns. Works
+ * the same way as {@link columnMeansForRows} but rotated 90°.
+ *
+ * @param data - Raw pixel buffer
+ * @param width - Image width in pixels
+ * @param channels - Bytes per pixel
+ * @param height - Image height in pixels
+ * @param xFrom - First column (inclusive)
+ * @param xTo - Last column (exclusive)
+ * @returns Float64Array of length `height` with per-row mean grayscale
+ */
 function rowMeansForCols(
   data: Buffer, width: number, channels: number, height: number,
   xFrom: number, xTo: number,
@@ -258,8 +318,18 @@ function averageFloat64Arrays(arrays: Float64Array[]): Float64Array {
 }
 
 /**
- * Find the column/row with the maximum inter-adjacent mean difference
- * in the search range.
+ * Find the position with the largest intensity step between adjacent elements.
+ *
+ * "Peak difference" = the index where `|means[i+1] - means[i]|` is maximized
+ * within the search range. This corresponds to the webcam overlay's edge,
+ * because the overlay border creates a hard brightness transition that
+ * persists across all frames, while content-based edges average out.
+ *
+ * @param means - 1-D array of averaged intensities (from column or row means)
+ * @param searchFrom - Start of search range (inclusive)
+ * @param searchTo - End of search range (inclusive)
+ * @param minDiff - Minimum step magnitude to accept (rejects noise)
+ * @returns `{index, magnitude}` — index of the edge, or -1 if no edge exceeds minDiff
  */
 export function findPeakDiff(
   means: Float64Array, searchFrom: number, searchTo: number, minDiff: number,
@@ -277,13 +347,29 @@ export function findPeakDiff(
 
 /**
  * Refine the webcam bounding box by detecting the overlay's spatial edges.
- * Analyzes inter-column and inter-row intensity differences across sample
- * frames; the overlay boundary creates a persistent edge while content-based
- * edges average out across frames.
  *
- * @param framePaths Sample frames at analysis resolution
- * @param position Corner containing the webcam
- * @returns Refined bounds in analysis coordinates, or null if refinement fails
+ * ### Why refinement is needed
+ * The coarse phase ({@link detectWebcamRegion}'s corner analysis) only identifies
+ * which corner contains a webcam — it uses a fixed 25% region and doesn't know
+ * the overlay's exact boundaries. Refinement finds pixel-accurate edges.
+ *
+ * ### Edge detection algorithm
+ * 1. For each sample frame, compute **per-column** and **per-row** mean grayscale
+ *    intensities (restricted to the webcam's half of the frame for stronger signal).
+ * 2. **Average across all frames** — the overlay border is spatially fixed and
+ *    produces a consistent intensity step, while changing video content (slides,
+ *    code, etc.) averages out to a smooth gradient. This is the key insight that
+ *    makes the approach work without traditional edge detection filters.
+ * 3. Use {@link findPeakDiff} to locate the maximum inter-adjacent intensity
+ *    difference in the averaged signal — this is the overlay's vertical and
+ *    horizontal edge.
+ * 4. Sanity-check: the resulting rectangle must be 5–55% of the frame in each
+ *    dimension (webcams are never tiny or most of the screen).
+ *
+ * @param framePaths - Paths to sample frames at analysis resolution (320×180)
+ * @param position - Which corner contains the webcam (from coarse phase)
+ * @returns Refined bounding box in analysis-resolution coordinates, or null
+ *   if no strong edges are found or the result is implausibly sized
  */
 export async function refineBoundingBox(
   framePaths: string[],
@@ -376,11 +462,26 @@ export function calculateCornerConfidence(scores: number[]): number {
 /**
  * Detect a webcam overlay region in a screen recording.
  *
- * Samples frames at even intervals and analyzes each corner for skin-tone
- * pixels and visual variance. A corner with consistent skin-tone presence
- * across multiple frames is likely a webcam overlay.
+ * ### Two-phase approach
  *
- * @returns The detected region in original video resolution, or null if none found.
+ * **Phase 1 — Coarse corner scan:**
+ * Samples 5 frames at even intervals across the video and analyzes each of the
+ * four corners (25% × 25% regions) for skin-tone pixels and visual variance.
+ * A corner with consistent skin-tone presence across multiple frames is likely
+ * a webcam overlay. The scoring formula weights skin ratio by variance — webcam
+ * corners are visually busy (a moving face), while solid-color UI elements
+ * (like a colored status bar) have low variance even if they match skin tones.
+ *
+ * **Phase 2 — Refined edge detection ({@link refineBoundingBox}):**
+ * Once we know which corner, we find the overlay's exact pixel boundaries by
+ * looking for persistent intensity edges across frames.
+ *
+ * All analysis is performed on downscaled frames (320×180) for speed, then
+ * results are scaled back to the original video resolution.
+ *
+ * @param videoPath - Path to the source video file
+ * @returns The detected webcam region in original video resolution, or null
+ *   if no webcam overlay is found with sufficient confidence
  */
 export async function detectWebcamRegion(videoPath: string): Promise<WebcamRegion | null> {
   const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'face-detect-'))

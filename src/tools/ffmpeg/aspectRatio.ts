@@ -8,8 +8,16 @@ const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+/**
+ * Supported output aspect ratios.
+ * - `16:9` — standard landscape (YouTube, desktop)
+ * - `9:16` — portrait / vertical (TikTok, Reels, Shorts)
+ * - `1:1`  — square (LinkedIn, Twitter)
+ * - `4:5`  — tall feed (Instagram feed)
+ */
 export type AspectRatio = '16:9' | '9:16' | '1:1' | '4:5'
 
+/** Social-media platforms we generate video variants for. */
 export type Platform =
   | 'tiktok'
   | 'youtube-shorts'
@@ -19,6 +27,11 @@ export type Platform =
   | 'youtube'
   | 'twitter'
 
+/**
+ * Maps each platform to its preferred aspect ratio.
+ * Multiple platforms may share a ratio (e.g. TikTok + Reels both use 9:16),
+ * which lets {@link generatePlatformVariants} deduplicate encodes.
+ */
 export const PLATFORM_RATIOS: Record<Platform, AspectRatio> = {
   'tiktok': '9:16',
   'youtube-shorts': '9:16',
@@ -29,6 +42,11 @@ export const PLATFORM_RATIOS: Record<Platform, AspectRatio> = {
   'twitter': '1:1',
 }
 
+/**
+ * Canonical pixel dimensions for each aspect ratio.
+ * Width is always 1080 px for non-landscape ratios (the standard vertical
+ * video width); landscape stays at 1920×1080 for full HD.
+ */
 export const DIMENSIONS: Record<AspectRatio, { width: number; height: number }> = {
   '16:9': { width: 1920, height: 1080 },
   '9:16': { width: 1080, height: 1920 },
@@ -44,8 +62,24 @@ export interface ConvertOptions {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * Build the FFmpeg `-vf` filter string for a given aspect ratio conversion.
- * Uses simple center-crop (MVP approach).
+ * Build the FFmpeg `-vf` filter string for a simple center-crop conversion.
+ *
+ * This is the **fallback** used when smart layout (webcam detection + split-screen)
+ * is unavailable. It center-crops the source frame to the target aspect ratio,
+ * discarding content on the sides (or top/bottom).
+ *
+ * **Letterbox mode**: instead of cropping, scales the video to fit inside the
+ * target dimensions and pads the remaining space with black bars. Useful when
+ * you don't want to lose any content (e.g. screen recordings with important
+ * edges).
+ *
+ * **Crop formulas** assume a 16:9 landscape source. `ih` = input height,
+ * `iw` = input width. We compute the crop width from the height to maintain
+ * the target ratio, then center the crop horizontally.
+ *
+ * @param targetRatio - The desired output aspect ratio
+ * @param letterbox - If true, pad with black bars instead of cropping
+ * @returns An FFmpeg `-vf` filter string
  */
 function buildCropFilter(targetRatio: AspectRatio, letterbox: boolean): string {
   if (letterbox) {
@@ -129,6 +163,26 @@ export async function convertAspectRatio(
 
 // ── Smart Layout ─────────────────────────────────────────────────────────────
 
+/**
+ * Configuration for the smart split-screen layout.
+ *
+ * The split-screen stacks two regions vertically: the **screen content** on top
+ * and the **webcam face** on the bottom. Each field controls the geometry of
+ * the final composite:
+ *
+ * @property label - Human-readable name for logging (e.g. "SmartPortrait")
+ * @property targetW - Output width in pixels. All smart layouts use 1080 px
+ *   (vertical video standard) so both the screen and cam panels share the
+ *   same width.
+ * @property screenH - Height of the top panel (screen recording). Combined
+ *   with `camH`, this determines the total output height and the visual
+ *   ratio between screen content and webcam. Roughly ~65% of total height.
+ * @property camH - Height of the bottom panel (webcam). Roughly ~35% of
+ *   total height. The webcam is AR-matched and center-cropped to fill this
+ *   panel edge-to-edge without black bars.
+ * @property fallbackRatio - Aspect ratio to use with the simple center-crop
+ *   path ({@link buildCropFilter}) when webcam detection fails.
+ */
 interface SmartLayoutConfig {
   label: string
   targetW: number
@@ -138,10 +192,32 @@ interface SmartLayoutConfig {
 }
 
 /**
- * Shared smart conversion: detects webcam overlay and creates a split-screen
- * layout (screen top + webcam bottom). Falls back to center-crop if no webcam
- * is detected. The webcam is AR-matched and center-cropped to fill its section
- * edge-to-edge with no black bars.
+ * Shared smart conversion: detects a webcam overlay in the source video and
+ * builds a **split-screen** layout (screen on top, webcam on bottom).
+ *
+ * ### Why split-screen?
+ * Screen recordings with a webcam overlay (e.g. top-right corner) waste space
+ * when naively center-cropped to portrait/square. The split-screen approach
+ * gives the screen content and webcam each their own dedicated panel, making
+ * both fully visible in a narrow frame.
+ *
+ * ### Algorithm
+ * 1. Run {@link detectWebcamRegion} to find the webcam bounding box.
+ * 2. **Screen crop**: exclude the webcam columns so only the screen content
+ *    remains, then scale to `targetW × screenH` (letterboxing if needed).
+ * 3. **Webcam crop**: aspect-ratio-match the webcam region to `targetW × camH`.
+ *    If the webcam is wider than the target, we keep full height and
+ *    center-crop width; if taller, we keep full width and center-crop height.
+ *    This ensures the webcam fills its panel edge-to-edge with **no black bars**.
+ * 4. **vstack**: vertically stack `[screen][cam]` into the final frame.
+ *
+ * Falls back to simple center-crop ({@link buildCropFilter}) if no webcam is
+ * detected.
+ *
+ * @param inputPath - Source video (assumed 16:9 landscape with optional webcam overlay)
+ * @param outputPath - Destination path for the converted video
+ * @param config - Layout geometry (see {@link SmartLayoutConfig})
+ * @returns The output path on success
  */
 async function convertWithSmartLayout(
   inputPath: string,
@@ -229,9 +305,15 @@ async function convertWithSmartLayout(
 }
 
 /**
- * Smart portrait conversion: detects webcam overlay and creates a split-screen
- * layout (screen top ~65%, webcam bottom ~35%). Falls back to center-crop if
- * no webcam is detected.
+ * Smart portrait (9:16) conversion → 1080×1920.
+ *
+ * Screen panel: 1080×1248 (65%), Webcam panel: 1080×672 (35%).
+ * Total: 1080×1920 — standard TikTok / Reels / Shorts dimensions.
+ *
+ * Falls back to center-crop 9:16 if no webcam is detected.
+ *
+ * @param inputPath - Source landscape video
+ * @param outputPath - Destination path for the portrait video
  */
 export async function convertToPortraitSmart(
   inputPath: string,
@@ -247,9 +329,15 @@ export async function convertToPortraitSmart(
 }
 
 /**
- * Smart square conversion: detects webcam overlay and creates a split-screen
- * layout (screen top ~65%, webcam bottom ~35%). Falls back to center-crop if
- * no webcam is detected.
+ * Smart square (1:1) conversion → 1080×1080.
+ *
+ * Screen panel: 1080×700 (65%), Webcam panel: 1080×380 (35%).
+ * Total: 1080×1080 — standard LinkedIn / Twitter square format.
+ *
+ * Falls back to center-crop 1:1 if no webcam is detected.
+ *
+ * @param inputPath - Source landscape video
+ * @param outputPath - Destination path for the square video
  */
 export async function convertToSquareSmart(
   inputPath: string,
@@ -265,9 +353,15 @@ export async function convertToSquareSmart(
 }
 
 /**
- * Smart feed (4:5) conversion: detects webcam overlay and creates a split-screen
- * layout (screen top ~65%, webcam bottom ~35%). Falls back to center-crop if
- * no webcam is detected.
+ * Smart feed (4:5) conversion → 1080×1350.
+ *
+ * Screen panel: 1080×878 (65%), Webcam panel: 1080×472 (35%).
+ * Total: 1080×1350 — Instagram feed's preferred tall format.
+ *
+ * Falls back to center-crop 4:5 if no webcam is detected.
+ *
+ * @param inputPath - Source landscape video
+ * @param outputPath - Destination path for the 4:5 video
  */
 export async function convertToFeedSmart(
   inputPath: string,
@@ -283,8 +377,22 @@ export async function convertToFeedSmart(
 }
 
 /**
- * Generate platform-specific variants of a short clip.
- * Returns the paths of generated variants keyed by platform.
+ * Generate platform-specific aspect-ratio variants of a short clip.
+ *
+ * ### Routing logic
+ * 1. Maps each requested platform to its aspect ratio via {@link PLATFORM_RATIOS}.
+ * 2. **Deduplicates by ratio** — if TikTok and Reels both need 9:16, only one
+ *    encode is performed and both platforms reference the same output file.
+ * 3. Skips 16:9 entirely since the source is already landscape.
+ * 4. Routes each ratio to its smart converter (portrait / square / feed) for
+ *    split-screen layout, falling back to {@link convertAspectRatio} for any
+ *    ratio without a smart converter.
+ *
+ * @param inputPath - Source video (16:9 landscape)
+ * @param outputDir - Directory to write variant files into
+ * @param slug - Base filename slug (e.g. "my-video-short-1")
+ * @param platforms - Platforms to generate for (default: tiktok + linkedin)
+ * @returns Array of variant metadata (one entry per platform, deduplicated files)
  */
 export async function generatePlatformVariants(
   inputPath: string,

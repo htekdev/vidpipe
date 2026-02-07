@@ -46,6 +46,7 @@ Disable individual pipeline stages:
 | `--no-silence-removal` | Dead-silence detection and removal |
 | `--no-shorts` | Short clip extraction |
 | `--no-social` | Social media post generation |
+| `--no-medium-clips` | Medium clip (1–3 min) extraction |
 | `--no-captions` | Caption generation and burning |
 
 **Examples:**
@@ -135,7 +136,20 @@ The `--output-dir` (default `./recordings`) is the base directory. Each video cr
     │   └── snapshot-*.png            # Key-moment screenshots
     ├── shorts/
     │   ├── <short-slug>.mp4          # Extracted short clips
+    │   ├── <short-slug>-captioned.mp4
+    │   ├── <short-slug>-portrait.mp4 # 9:16 platform variant
+    │   ├── <short-slug>.ass          # Caption file
     │   └── <short-slug>.md           # Clip description & metadata
+    ├── medium-clips/
+    │   ├── <clip-slug>.mp4           # 1–3 minute topic clips
+    │   ├── <clip-slug>-captioned.mp4
+    │   ├── <clip-slug>.ass
+    │   └── <clip-slug>.md
+    ├── chapters/
+    │   ├── chapters.json             # Canonical chapter data
+    │   ├── chapters-youtube.txt      # YouTube description timestamps
+    │   ├── chapters.md               # Markdown table
+    │   └── chapters.ffmetadata       # FFmpeg metadata format
     └── social-posts/
         ├── tiktok.md
         ├── youtube.md

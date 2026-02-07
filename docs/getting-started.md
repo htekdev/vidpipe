@@ -122,8 +122,22 @@ recordings/
     │   └── ...
     ├── shorts/
     │   ├── catchy-clip-title.mp4        # Extracted short clip
+    │   ├── catchy-clip-title-captioned.mp4
+    │   ├── catchy-clip-title-portrait.mp4  # 9:16 platform variant
+    │   ├── catchy-clip-title.ass        # Caption file
     │   ├── catchy-clip-title.md         # Clip metadata & description
     │   └── ...
+    ├── medium-clips/
+    │   ├── topic-deep-dive.mp4          # 1–3 minute topic clip
+    │   ├── topic-deep-dive-captioned.mp4
+    │   ├── topic-deep-dive.ass
+    │   ├── topic-deep-dive.md
+    │   └── ...
+    ├── chapters/
+    │   ├── chapters.json                # Canonical chapter data
+    │   ├── chapters-youtube.txt         # YouTube description timestamps
+    │   ├── chapters.md                  # Markdown table
+    │   └── chapters.ffmetadata          # FFmpeg metadata format
     └── social-posts/
         ├── tiktok.md                    # TikTok post draft
         ├── youtube.md                   # YouTube description
@@ -140,13 +154,16 @@ recordings/
 | 2 | **Transcription** | Extracts audio → sends to OpenAI Whisper for word-level transcription |
 | 3 | **Silence Removal** | AI detects dead-air segments and cuts them out |
 | 4 | **Captions** | Generates `.ass` subtitle file from transcript |
-| 5 | **Caption Burn** | Burns captions into the video with FFmpeg |
-| 6 | **Shorts** | AI identifies compelling moments, FFmpeg cuts clips |
-| 7 | **Summary** | AI writes a Markdown README with embedded screenshots |
-| 8 | **Social Media** | AI generates platform-tailored posts (TikTok, YouTube, Instagram, LinkedIn, X) |
-| 9 | **Short Posts** | AI generates social posts for each short clip |
-| 10 | **Blog Post** | AI writes a long-form blog post from the transcript |
-| 11 | **Git Push** | Auto-commits and pushes all output to your repo |
+| 5 | **Caption Burn** | Burns captions into the video with FFmpeg (single-pass when combined with silence removal) |
+| 6 | **Shorts** | AI identifies compelling moments, FFmpeg cuts clips + generates platform variants |
+| 7 | **Medium Clips** | AI extracts 1–3 minute standalone topic segments with crossfade transitions |
+| 8 | **Chapters** | AI analyses transcript for topic boundaries, generates chapter markers in multiple formats |
+| 9 | **Summary** | AI writes a Markdown README with embedded screenshots |
+| 10 | **Social Media** | AI generates platform-tailored posts (TikTok, YouTube, Instagram, LinkedIn, X) |
+| 11 | **Short Posts** | AI generates social posts for each short clip |
+| 12 | **Medium Clip Posts** | AI generates social posts for each medium clip |
+| 13 | **Blog Post** | AI writes a long-form blog post from the transcript |
+| 14 | **Git Push** | Auto-commits and pushes all output to your repo |
 
 ---
 

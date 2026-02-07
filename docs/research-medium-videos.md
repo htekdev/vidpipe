@@ -1,5 +1,34 @@
 # Research: Medium-Form Video Generation (1–3 Minutes)
 
+> **✅ Implementation Status**
+>
+> Medium-form clip generation is **implemented** as a pipeline stage using the `MediumVideoAgent`.
+>
+> | Recommendation | Status | Location |
+> |---|---|---|
+> | `MediumVideoAgent` (separate from `ShortsAgent`) | ✅ Implemented | `src/agents/MediumVideoAgent.ts` |
+> | `MediumClip` and `MediumSegment` types | ✅ Implemented | `src/types/index.ts` |
+> | `PipelineStage.MediumClips` | ✅ Implemented | Pipeline runs after Shorts stage |
+> | `plan_medium_clips` tool with structured schema | ✅ Implemented | JSON schema matches research proposal |
+> | Deep Dive clips (single contiguous segment) | ✅ Implemented | Uses `extractClip()` |
+> | Compilation clips (multi-segment with transitions) | ✅ Implemented | Uses `extractCompositeClipWithTransitions()` |
+> | `extractCompositeClipWithTransitions()` (Phase 2) | ✅ Implemented | `src/tools/ffmpeg/clipExtraction.ts` |
+> | Caption style parameter (`medium`) | ✅ Implemented | `CaptionStyle = 'shorts' \| 'medium' \| 'portrait'` in `captionGenerator.ts` |
+> | `--no-medium-clips` skip flag | ✅ Implemented | `src/config/environment.ts` — `SKIP_MEDIUM_CLIPS` |
+> | Medium clip social posts | ✅ Implemented | `PipelineStage.MediumClipPosts` in `pipeline.ts` |
+> | Output to `medium-clips/` directory | ✅ Implemented | Each clip gets `.mp4`, `.ass`, `.md` files |
+> | `hook` and `topic` fields | ✅ Implemented | Part of `MediumClip` interface and agent schema |
+> | Highlight Reel clip type | ❌ Not implemented | Only deep-dive and compilation types are supported |
+> | `standaloneScore` / `suggestedPlatforms` | ❌ Not implemented | Omitted to keep the agent simpler |
+> | Pre-filtering with embeddings (Phase 4) | ❌ Not implemented | LLM handles full transcript directly |
+> | Title cards between compilation segments | ❌ Not implemented | Crossfade transitions used instead |
+>
+> **Key differences from research:**
+> - **2 clip types** instead of 3: deep-dive and compilation (no highlight-reel)
+> - **2–4 clips** target instead of 2–5
+> - No `standaloneScore` or `suggestedPlatforms` fields — simpler schema
+> - Crossfade transitions via `xfade` filter replace proposed title cards
+
 > **Goal:** Automatically extract 1–3 minute "medium-form" clips from longer recordings, complementing our existing 15–60s shorts pipeline.
 
 ---

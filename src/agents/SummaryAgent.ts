@@ -382,6 +382,7 @@ export async function generateSummary(
   let lastWriteArgs: WriteSummaryArgs | undefined
 
   // Intercept write_summary args so we can build the return value
+  // Uses `as any` to access private method — required by the intercept-and-capture pattern
   const origHandleWrite = (agent as any).handleWriteSummary.bind(agent) as (
     a: WriteSummaryArgs,
   ) => Promise<string>

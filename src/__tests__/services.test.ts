@@ -840,6 +840,35 @@ describe('FileWatcher', () => {
     expect(emitSpy).not.toHaveBeenCalledWith('new-video', expect.anything())
   })
 
+  it('handleDetectedFile errors are caught and logged, not thrown as unhandled rejections', async () => {
+    const fs = await import('fs')
+    const loggerMod = await import('../config/logger.js')
+    vi.mocked(fs.default.existsSync).mockReturnValueOnce(true)
+    // statSync throws to simulate an unexpected error inside handleDetectedFile
+    vi.mocked(fs.default.statSync).mockImplementationOnce(() => {
+      throw new Error('unexpected disk error')
+    })
+
+    const { FileWatcher } = await import('../services/fileWatcher.js')
+    const fw = new FileWatcher()
+    fw.start()
+
+    // Find the 'add' handler and call it with an mp4 file that will trigger the error
+    const addCall = mockWatcherInstance.on.mock.calls.find((c: any[]) => c[0] === 'add')
+    expect(addCall).toBeDefined()
+
+    // The handler should NOT throw — error is caught by .catch()
+    addCall![1]('/tmp/watch/crash.mp4')
+
+    // Give the .catch() microtask time to execute
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    // The error path in handleDetectedFile logs a warn for stat failures, so no unhandled rejection
+    expect(loggerMod.default.warn).toHaveBeenCalledWith(
+      expect.stringContaining('Could not stat file')
+    )
+  })
+
   it('handleDetectedFile skips small files', async () => {
     const fs = await import('fs')
     vi.mocked(fs.default.existsSync).mockReturnValueOnce(true)

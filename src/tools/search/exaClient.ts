@@ -29,7 +29,8 @@ export async function searchWeb(query: string, numResults: number = 5): Promise<
     return results.results.map(r => ({
       title: r.title || '',
       url: r.url,
-      snippet: (r as any).text || ''
+      // Exa SDK searchAndContents returns `text` when text option is used, but the type doesn't include it
+      snippet: (r as unknown as { text?: string }).text || ''
     }))
   } catch (err) {
     logger.error(`Exa search failed: ${err instanceof Error ? err.message : err}`)

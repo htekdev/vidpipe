@@ -1,5 +1,25 @@
 # Portrait Mode & Caption Redesign Research
 
+> **✅ Implementation Status — Fully Implemented**
+>
+> All recommendations from this research have been implemented. This document captures the
+> original analysis and design decisions that led to the portrait caption improvements.
+>
+> | Issue Identified | Fix | Location |
+> |---|---|---|
+> | Face visible twice (webcam in both sections) | Screen crop **excludes** webcam bounding box | `convertWithSmartLayout()` in `src/tools/ffmpeg/aspectRatio.ts` |
+> | Top section not cropped properly | Crops from edge to webcam's x-position | `screenCropW = webcam.x` (right-side webcam) |
+> | Captions at bottom | Portrait ASS with `MarginV=700`, `Alignment=2` | `ASS_HEADER_PORTRAIT` in `src/tools/captions/captionGenerator.ts` |
+> | Caption style is basic | Opus Clips-style green highlight + scale pop | `PORTRAIT_ACTIVE_COLOR = '\c&H00FF00&'`, `\fscx130\fscy130\t(0,150,...)` |
+> | No hook text overlay | Hook overlay with `Hook` ASS style (opaque box, top-center) | `generateHookOverlay()`, `generatePortraitASSWithHook()` |
+> | Webcam crop not tight enough | AR-matched crop fills section edge-to-edge | `convertWithSmartLayout()` — webcam cropped to target aspect ratio |
+>
+> **Additional improvements beyond this research:**
+> - Edge-based bounding box refinement (`refineBoundingBox()` in `faceDetection.ts`)
+> - Smart layouts extended to square (1:1) and feed (4:5) ratios
+> - Per-clip platform variant generation (`generatePlatformVariants()`)
+> - Portrait captions with hook applied to all short clip portrait variants
+
 ## Current Issues (from user screenshot)
 
 1. **Face visible twice**: Top section shows full 16:9 frame (including webcam corner) → face appears in both top and bottom sections

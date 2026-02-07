@@ -1,3 +1,24 @@
+/**
+ * Caption generator for the Advanced SubStation Alpha (ASS) subtitle format.
+ *
+ * ### Why ASS instead of SRT/VTT?
+ * ASS supports inline style overrides — font size, color, and animation per
+ * character/word — which enables the "active word pop" karaoke effect used
+ * in modern short-form video (TikTok, Reels). SRT and VTT only support
+ * plain text or basic HTML tags with no per-word timing control.
+ *
+ * ### Karaoke word highlighting approach
+ * Instead of ASS's native `\k` karaoke tags (which highlight left-to-right
+ * within a line), we generate **one Dialogue line per word-state**. Each line
+ * renders the entire caption group but with the currently-spoken word in a
+ * different color and size. Contiguous end/start timestamps between
+ * word-states prevent flicker. This gives us full control over the visual
+ * treatment (color, font-size, scale animations) without the limitations
+ * of the `\k` tag.
+ *
+ * @module captionGenerator
+ */
+
 import { Transcript, Segment, Word, CaptionStyle } from '../../types'
 
 // ---------------------------------------------------------------------------
@@ -111,8 +132,25 @@ export function generateVTT(transcript: Transcript): string {
 // ASS – Premium active-word-pop captions
 // ---------------------------------------------------------------------------
 
-// Bundled Montserrat fonts are copied alongside the ASS file at render time;
-// FFmpeg's ass filter is invoked with fontsdir=. so libass finds them.
+/**
+ * ASS header for landscape (16:9, 1920×1080) captions.
+ *
+ * ### Style fields explained (comma-separated in the Style line):
+ * - `Fontname: Montserrat` — bundled with the project; FFmpeg's `ass` filter
+ *   uses `fontsdir=.` so libass finds the .ttf files next to the .ass file.
+ * - `Fontsize: 42` — base size for inactive words
+ * - `PrimaryColour: &H00FFFFFF` — white (ASS uses `&HAABBGGRR` — alpha, blue, green, red)
+ * - `OutlineColour: &H00000000` — black outline for readability on any background
+ * - `BackColour: &H80000000` — 50% transparent black shadow
+ * - `Bold: 1` — bold for better readability at small sizes
+ * - `BorderStyle: 1` — outline + drop shadow (not opaque box)
+ * - `Outline: 3` — 3px outline thickness
+ * - `Shadow: 1` — 1px drop shadow
+ * - `Alignment: 2` — bottom-center (SSA alignment: 1=left, 2=center, 3=right;
+ *   add 4 for top, 8 for middle — so 2 = bottom-center)
+ * - `MarginV: 40` — 40px above the bottom edge
+ * - `WrapStyle: 0` — smart word wrap
+ */
 const ASS_HEADER = `[Script Info]
 Title: Auto-generated captions
 ScriptType: v4.00+
@@ -128,7 +166,17 @@ Style: Default,Montserrat,42,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `
 
-// Portrait style for 9:16 shorts with hook overlay support
+/**
+ * ASS header for portrait (9:16, 1080×1920) captions — used for shorts.
+ *
+ * Key differences from the landscape header:
+ * - `PlayResX/Y: 1080×1920` — matches portrait video dimensions
+ * - `Fontsize: 78` — larger base font for vertical video viewing (small screens)
+ * - `MarginV: 700` — pushes captions to the center-bottom area, leaving room
+ *   for the hook overlay at the top
+ * - Includes a `Hook` style: semi-transparent pill/badge background
+ *   (`BorderStyle: 3` = opaque box) for the opening hook text overlay
+ */
 const ASS_HEADER_PORTRAIT = `[Script Info]
 Title: Auto-generated captions
 ScriptType: v4.00+
@@ -145,8 +193,14 @@ Style: Hook,Montserrat,56,&H00333333,&H00333333,&H60D0D0D0,&H60E0E0E0,1,0,0,0,10
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `
 
-// Medium style: smaller font, bottom-aligned (Alignment=2 is bottom-center)
-// MarginV=60 pushes it slightly higher from the very bottom edge
+/**
+ * ASS header for medium-style captions (1920×1080 but smaller font).
+ *
+ * Used for longer clips where large captions would be distracting.
+ * - `Fontsize: 32` — smaller than the shorts style
+ * - `Alignment: 2` — bottom-center
+ * - `MarginV: 60` — slightly higher from the bottom edge to avoid UI overlaps
+ */
 const ASS_HEADER_MEDIUM = `[Script Info]
 Title: Auto-generated captions
 ScriptType: v4.00+
@@ -263,9 +317,17 @@ function buildPremiumDialogueLines(words: Word[], style: CaptionStyle = 'shorts'
 
 /**
  * Generate premium ASS captions with active-word-pop highlighting.
- * Shows 2–3 lines of text with the currently-spoken word in yellow at a
- * larger size; all other words stay white. Captions disappear during
- * silence gaps (> 0.8 s).
+ *
+ * ### How it works
+ * Words are grouped by speech bursts (split on silence gaps > 0.8s or after
+ * 8 words). Within each group, one Dialogue line is emitted per word — the
+ * full group is shown each time, but the "active" word gets a different color
+ * and larger font size. This creates a karaoke-style bounce effect.
+ *
+ * @param transcript - Full transcript with word-level timestamps
+ * @param style - Visual style: 'shorts' (large centered), 'medium' (small bottom),
+ *   or 'portrait' (Opus Clips style with green highlight + scale animation)
+ * @returns Complete ASS file content (header + dialogue lines)
  */
 export function generateStyledASS(transcript: Transcript, style: CaptionStyle = 'shorts'): string {
   const header = style === 'portrait' ? ASS_HEADER_PORTRAIT : style === 'medium' ? ASS_HEADER_MEDIUM : ASS_HEADER
@@ -354,8 +416,21 @@ const HOOK_TEXT_MAX_LENGTH = 60
 
 /**
  * Generate ASS dialogue lines for a hook text overlay at the top of the video.
- * Displays for the first few seconds with a colored pill/badge background.
- * Should be appended to an existing ASS file's Events section.
+ *
+ * The hook is a short attention-grabbing phrase (e.g. "Here's why you should
+ * learn TypeScript") displayed as a translucent pill/badge at the top of a
+ * portrait video for the first few seconds.
+ *
+ * Uses the `Hook` style defined in {@link ASS_HEADER_PORTRAIT} which has
+ * `BorderStyle: 3` (opaque box background) and `Alignment: 8` (top-center).
+ *
+ * The `\fad(300,500)` tag creates a 300ms fade-in and 500ms fade-out so the
+ * hook doesn't appear/disappear abruptly.
+ *
+ * @param hookText - The attention-grabbing phrase (truncated to 60 chars)
+ * @param displayDuration - How long to show the hook in seconds (default: 4s)
+ * @param _style - Caption style (currently only 'portrait' uses hooks)
+ * @returns A single ASS Dialogue line to append to the Events section
  */
 export function generateHookOverlay(
   hookText: string,

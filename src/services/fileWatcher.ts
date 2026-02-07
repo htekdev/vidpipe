@@ -76,7 +76,9 @@ export class FileWatcher extends EventEmitter {
     for (const file of files) {
       if (path.extname(file).toLowerCase() === '.mp4') {
         const filePath = path.join(this.watchFolder, file)
-        this.handleDetectedFile(filePath)
+        this.handleDetectedFile(filePath).catch(err =>
+          logger.error(`Error processing ${filePath}: ${err instanceof Error ? err.message : String(err)}`)
+        )
       }
     }
   }
@@ -98,14 +100,18 @@ export class FileWatcher extends EventEmitter {
 
     this.watcher.on('add', (filePath: string) => {
       logger.debug(`[watcher] 'add' event: ${filePath}`)
-      this.handleDetectedFile(filePath)
+      this.handleDetectedFile(filePath).catch(err =>
+        logger.error(`Error processing ${filePath}: ${err instanceof Error ? err.message : String(err)}`)
+      )
     })
 
     this.watcher.on('change', (filePath: string) => {
       logger.debug(`[watcher] 'change' event: ${filePath}`)
       if (path.extname(filePath).toLowerCase() !== '.mp4') return
       logger.info(`Change detected on video file: ${filePath}`)
-      this.handleDetectedFile(filePath)
+      this.handleDetectedFile(filePath).catch(err =>
+        logger.error(`Error processing ${filePath}: ${err instanceof Error ? err.message : String(err)}`)
+      )
     })
 
     this.watcher.on('unlink', (filePath: string) => {

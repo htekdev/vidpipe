@@ -30,6 +30,25 @@ import type {
 } from './types'
 import { PipelineStage as Stage } from './types'
 
+/**
+ * Execute a single pipeline stage with error isolation and timing.
+ *
+ * ### Stage contract
+ * - Each stage is wrapped in a try/catch so a failure **does not abort** the
+ *   pipeline. Subsequent stages proceed with whatever data is available.
+ * - Returns `undefined` on failure (callers must null-check before using the result).
+ * - Records success/failure, error message, and wall-clock duration in `stageResults`
+ *   for the pipeline summary.
+ *
+ * This design lets the pipeline produce partial results — e.g. if shorts
+ * generation fails, the summary and social posts can still be generated
+ * from the transcript.
+ *
+ * @param stageName - Enum value identifying the stage (used in logs and results)
+ * @param fn - Async function that performs the stage's work
+ * @param stageResults - Mutable array that accumulates per-stage outcome records
+ * @returns The stage result on success, or `undefined` on failure
+ */
 export async function runStage<T>(
   stageName: PipelineStage,
   fn: () => Promise<T>,
@@ -95,6 +114,31 @@ export function adjustTranscript(
   }
 }
 
+/**
+ * Run the full video processing pipeline.
+ *
+ * ### Stage ordering and data flow
+ * 1. **Ingest** — extracts metadata (slug, duration, paths). Required; aborts if failed.
+ * 2. **Transcribe** — Whisper transcription with word-level timestamps.
+ * 3. **Silence removal** — trims dead air from the video and adjusts the transcript
+ *    timestamps accordingly. Produces an `adjustedTranscript` for captions.
+ * 4. **Captions** — generates SRT/VTT/ASS files from the (adjusted) transcript.
+ * 5. **Caption burn** — renders captions into the video using FFmpeg. Prefers a
+ *    single-pass approach (silence removal + captions in one encode) when possible.
+ * 6. **Shorts** — AI-selected short clips. Uses the **original** transcript because
+ *    clips are cut from the original (unedited) video.
+ * 7. **Medium clips** — longer AI-selected clips (same original-transcript reasoning).
+ * 8. **Chapters** — topic-boundary detection for YouTube chapters.
+ * 9. **Summary** — README generation (runs after shorts/chapters so it can reference them).
+ * 10–12. **Social posts** — platform-specific posts for the full video and each clip.
+ * 13. **Blog** — long-form blog post from transcript + summary.
+ * 14. **Git push** — commits all generated assets and pushes.
+ *
+ * ### Why failures don't abort
+ * Each stage runs through {@link runStage} which catches errors. This means a
+ * transcription failure still lets git-push run (committing whatever was produced),
+ * and a shorts failure doesn't block summary generation.
+ */
 export async function processVideo(videoPath: string): Promise<PipelineResult> {
   const pipelineStart = Date.now()
   const stageResults: StageResult[] = []

@@ -4,9 +4,29 @@ import logger from '../config/logger'
 /**
  * BaseAgent — abstract foundation for all Copilot SDK agents.
  *
- * Subclasses implement `getTools()` and `handleToolCall()` to define
- * agent-specific behaviour.  The `run()` method wires up a session,
- * streams the response, and returns the final assistant message.
+ * ### Agent pattern
+ * Each agent in the pipeline (SummaryAgent, ShortsAgent, BlogAgent, etc.)
+ * extends BaseAgent and implements two methods:
+ * - `getTools()` — declares the tools (functions) the LLM can call
+ * - `handleToolCall()` — dispatches tool invocations to concrete implementations
+ *
+ * ### Tool registration
+ * Tools are declared as JSON Schema objects and passed to the CopilotSession
+ * at creation time. When the LLM decides to call a tool, the SDK routes the
+ * call through `handleToolCall()` where the subclass executes the actual logic
+ * (e.g. reading files, running FFmpeg, querying APIs).
+ *
+ * ### Message flow
+ * 1. `run(userMessage)` lazily creates a CopilotClient (starts the Copilot
+ *    backend process) and a CopilotSession (with system prompt + tools).
+ * 2. The user message is sent via `sendAndWait()`, which blocks until the
+ *    LLM produces a final response (with a 5-minute timeout).
+ * 3. During processing, the LLM may invoke tools multiple times — each call
+ *    is logged via session event handlers.
+ * 4. The final assistant message text is returned to the caller.
+ *
+ * Sessions are reusable: calling `run()` multiple times on the same agent
+ * sends additional messages within the same conversation context.
  */
 export abstract class BaseAgent {
   protected client: CopilotClient | null = null

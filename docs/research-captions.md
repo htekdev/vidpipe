@@ -1,5 +1,28 @@
 # Premium Caption Styles Research
 
+> **✅ Implementation Status**
+>
+> The recommendations in this document have been **implemented** in the caption generation pipeline.
+>
+> | Recommendation | Status | Location |
+> |---|---|---|
+> | Approach A (one Dialogue per word state) | ✅ Implemented | `src/tools/captions/captionGenerator.ts` — `buildPremiumDialogueLines()` |
+> | Montserrat Bold font | ✅ Implemented | `assets/fonts/Montserrat-Bold.ttf`, ASS headers reference `Montserrat` |
+> | Yellow active-word highlight (`&H00FFFF&`) | ✅ Implemented | `ACTIVE_COLOR` constant in `captionGenerator.ts` |
+> | Font size pop on active word | ✅ Implemented | `ACTIVE_FONT_SIZE=54` / `BASE_FONT_SIZE=42` for shorts |
+> | Silence gap grouping | ✅ Implemented | `SILENCE_GAP_THRESHOLD=0.8s` (research suggested 0.5s; tuned up for better results) |
+> | Max 8 words per group | ✅ Implemented | `MAX_WORDS_PER_GROUP=8` |
+> | 2-line layout split | ✅ Implemented | `splitGroupIntoLines()` splits at midpoint when > `WORDS_PER_LINE` (4) words |
+> | Multiple caption styles | ✅ Extended | Three styles: `shorts` (large centered), `medium` (smaller bottom), `portrait` (Opus Clips green pop) |
+> | Portrait green highlight + scale animation | ✅ Implemented | `PORTRAIT_ACTIVE_COLOR`, `\fscx130\fscy130\t(0,150,...)` in `buildPremiumDialogueLines()` |
+> | Hook text overlay | ✅ Implemented | `generateHookOverlay()`, `generatePortraitASSWithHook()` |
+>
+> **Key differences from research:**
+> - Silence gap threshold increased from 500ms to 800ms based on real-world tuning
+> - Font sizes adjusted: 42/54pt for shorts (landscape 1920×1080), 66/78pt for portrait (1080×1920)
+> - Added `medium` caption style (32/40pt) for longer clips beyond what was originally planned
+> - Portrait style uses green (`&H00FF00&`) instead of yellow, plus `\fscx130\fscy130` scale pop animation
+
 > Research findings for implementing viral-quality, word-highlighted captions in our video pipeline.
 > Sources: OpusClip, Captions.ai, CapCut, Aegisub docs, Stack Overflow, Bannerbear, SendShort, Google Fonts.
 

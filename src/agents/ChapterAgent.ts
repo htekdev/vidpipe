@@ -230,6 +230,7 @@ export async function generateChapters(
   let capturedChapters: Chapter[] | undefined
 
   // Intercept generate_chapters args to capture the result
+  // Uses `as any` to access private method — required by the intercept-and-capture pattern
   const origHandler = (agent as any).handleGenerateChapters.bind(agent) as (
     a: GenerateChaptersArgs,
   ) => Promise<string>
