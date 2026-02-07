@@ -138,8 +138,8 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Montserrat,48,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,5,30,30,100,1
-Style: Hook,Montserrat,36,&H00FFFFFF,&H00FFFFFF,&H0000CC00,&H0000AA00,1,0,0,0,100,100,2,0,3,15,0,8,80,80,60,1
+Style: Default,Montserrat,48,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,2,30,30,700,1
+Style: Hook,Montserrat,36,&H00333333,&H00333333,&H60D0D0D0,&H60E0E0E0,1,0,0,0,100,100,2,0,3,18,2,8,80,80,60,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -367,7 +367,7 @@ export function generateHookOverlay(
       ? hookText.slice(0, HOOK_TEXT_MAX_LENGTH - 3) + '...'
       : hookText
 
-  return `Dialogue: 1,${toASS(0)},${toASS(displayDuration)},Hook,,0,0,0,,{\\fad(300,500)}${text}`
+  return `Dialogue: 1,${toASS(0)},${toASS(displayDuration)},Hook,,0,0,0,,{\\blur3\\fad(300,500)}${text}`
 }
 
 /**

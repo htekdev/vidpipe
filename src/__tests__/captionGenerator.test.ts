@@ -357,14 +357,14 @@ describe('generateStyledASS – portrait style', () => {
     expect(ass).toContain('PlayResY: 1920');
   });
 
-  it('portrait Default style uses Alignment 5', () => {
+  it('portrait Default style uses Alignment 2 (bottom-center)', () => {
     const ass = generateStyledASS(transcriptWithWords, 'portrait');
     const styleLine = ass.split('\n').find((l) => l.startsWith('Style: Default'));
     expect(styleLine).toBeDefined();
     // Alignment is the 18th field in the Style line (0-indexed: 17)
     const fields = styleLine!.split(',');
     // Alignment field: "Style: Name(0),Fontname(1),...,Shadow(17),Alignment(18)"
-    expect(fields[18].trim()).toBe('5');
+    expect(fields[18].trim()).toBe('2');
   });
 
   it('portrait header contains Hook style definition', () => {
@@ -415,9 +415,9 @@ describe('generateHookOverlay', () => {
     expect(line).toContain(',Hook,');
   });
 
-  it('contains fade animation \\fad(300,500)', () => {
+  it('contains blur and fade animation \\blur3\\fad(300,500)', () => {
     const line = generateHookOverlay('Test hook text');
-    expect(line).toContain('\\fad(300,500)');
+    expect(line).toContain('\\blur3\\fad(300,500)');
   });
 
   it('starts at 0:00:00.00 and ends at ~0:00:04.00 by default', () => {

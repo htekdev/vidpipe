@@ -47,6 +47,7 @@ import {
   generatePlatformVariants,
   PLATFORM_RATIOS,
   DIMENSIONS,
+  WEBCAM_CROP_MARGIN,
   type AspectRatio,
   type Platform,
 } from '../tools/ffmpeg/aspectRatio.js';
@@ -269,8 +270,8 @@ describe('convertToPortraitSmart – screen crop & face padding', () => {
 
     const fc = getCapturedFilterComplex();
     expect(fc).toBeDefined();
-    // Screen crop should start at x=0 and use width=1440 (webcam.x)
-    expect(fc).toContain('crop=1440:ih:0:0');
+    // Screen crop should start at x=0 and use width=1340 (webcam.x - WEBCAM_CROP_MARGIN)
+    expect(fc).toContain('crop=1340:ih:0:0');
   });
 
   it('screen crop excludes webcam region (bottom-left)', async () => {
@@ -284,8 +285,8 @@ describe('convertToPortraitSmart – screen crop & face padding', () => {
 
     const fc = getCapturedFilterComplex();
     expect(fc).toBeDefined();
-    // Screen crop should start at x=480 with width=1440
-    expect(fc).toContain('crop=1440:ih:480:0');
+    // Screen crop should start at x=580 with width=1340
+    expect(fc).toContain('crop=1340:ih:580:0');
   });
 
   it('face crop has 20% padding around webcam region', async () => {
@@ -309,5 +310,24 @@ describe('convertToPortraitSmart – screen crop & face padding', () => {
     const expectedFaceH = Math.min(1080 - (810 - padY), webcamH + padY * 2);
     // The filter_complex should contain a face crop larger than the raw webcam
     expect(fc).toContain(`crop=${expectedFaceW}:${expectedFaceH}`);
+  });
+
+  it('WEBCAM_CROP_MARGIN is 100 pixels', () => {
+    expect(WEBCAM_CROP_MARGIN).toBe(100);
+  });
+
+  it('screen crop margin clamps to zero for very small webcam.x (right)', async () => {
+    mockDetectWebcam.mockResolvedValue({
+      x: 20, y: 810, width: 480, height: 270,
+      position: 'bottom-right', confidence: 0.8,
+    });
+    mockGetVideoResolution.mockResolvedValue({ width: 1920, height: 1080 });
+
+    await convertToPortraitSmart('/in.mp4', '/out.mp4');
+
+    const fc = getCapturedFilterComplex();
+    expect(fc).toBeDefined();
+    // webcam.x (20) - 100 would be negative, clamped to 0
+    expect(fc).toContain('crop=0:ih:0:0');
   });
 });
