@@ -9,14 +9,13 @@ import { detectWebcamRegion, isSkinTone, calculateCornerConfidence } from '../..
 
 const execFileAsync = promisify(execFile)
 const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg'
+const ffmpegOk = await isFFmpegAvailable()
 
-describe('faceDetection integration', { timeout: 60_000 }, () => {
+describe.skipIf(!ffmpegOk)('faceDetection integration', { timeout: 60_000 }, () => {
   let videoPath: string
   let tempDir: string
 
   beforeAll(async () => {
-    const available = await isFFmpegAvailable()
-    if (!available) throw new Error('FFmpeg not available – skipping integration tests')
 
     // Create a dedicated longer video (10s) to avoid edge-case frame extraction at exact duration
     tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'vantr-face-integ-'))

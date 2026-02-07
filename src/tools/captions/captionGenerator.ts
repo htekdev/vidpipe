@@ -65,9 +65,9 @@ const MEDIUM_BASE_FONT_SIZE = 32
 // ---------------------------------------------------------------------------
 
 /** Font size for the active word in portrait style. */
-const PORTRAIT_ACTIVE_FONT_SIZE = 56
+const PORTRAIT_ACTIVE_FONT_SIZE = 78
 /** Font size for inactive words in portrait style. */
-const PORTRAIT_BASE_FONT_SIZE = 48
+const PORTRAIT_BASE_FONT_SIZE = 66
 /** ASS BGR color for the active word in portrait style – green. */
 const PORTRAIT_ACTIVE_COLOR = '\\c&H00FF00&'
 /** ASS BGR color for inactive words in portrait style – white. */
@@ -138,8 +138,8 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Montserrat,62,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,2,30,30,700,1
-Style: Hook,Montserrat,46,&H00333333,&H00333333,&H60D0D0D0,&H60E0E0E0,1,0,0,0,100,100,2,0,3,18,2,8,80,80,60,1
+Style: Default,Montserrat,78,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,2,30,30,700,1
+Style: Hook,Montserrat,56,&H00333333,&H00333333,&H60D0D0D0,&H60E0E0E0,1,0,0,0,100,100,2,0,3,18,2,8,80,80,60,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

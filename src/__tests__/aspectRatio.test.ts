@@ -44,6 +44,8 @@ vi.mock('../tools/ffmpeg/faceDetection', () => ({
 import {
   convertAspectRatio,
   convertToPortraitSmart,
+  convertToSquareSmart,
+  convertToFeedSmart,
   generatePlatformVariants,
   PLATFORM_RATIOS,
   DIMENSIONS,
@@ -339,5 +341,167 @@ describe('convertToPortraitSmart – screen crop & face padding', () => {
     expect(fc).toBeDefined();
     // webcam.x = 20, so screen crop is only 20px wide
     expect(fc).toContain('crop=20:ih:0:0');
+  });
+});
+
+// ── Smart square: screen crop & face padding ────────────────────────────────
+
+describe('convertToSquareSmart – screen crop & face padding', () => {
+  function getCapturedFilterComplex(): string | undefined {
+    const call = mockExecFile.mock.calls[0];
+    if (!call) return undefined;
+    const args: string[] = call[1];
+    const idx = args.indexOf('-filter_complex');
+    return idx >= 0 ? args[idx + 1] : undefined;
+  }
+
+  it('falls back to center-crop when no webcam detected', async () => {
+    mockDetectWebcam.mockResolvedValue(null);
+
+    await convertToSquareSmart('/in.mp4', '/out.mp4');
+
+    const filter = getCapturedFilter();
+    expect(filter).toContain('crop=ih:ih');
+    expect(filter).toContain('scale=1080:1080');
+  });
+
+  it('screen crop excludes webcam region (bottom-right)', async () => {
+    mockDetectWebcam.mockResolvedValue({
+      x: 1440, y: 810, width: 480, height: 270,
+      position: 'bottom-right', confidence: 0.8,
+    });
+    mockGetVideoResolution.mockResolvedValue({ width: 1920, height: 1080 });
+
+    await convertToSquareSmart('/in.mp4', '/out.mp4');
+
+    const fc = getCapturedFilterComplex();
+    expect(fc).toBeDefined();
+    expect(fc).toContain('crop=1440:ih:0:0');
+  });
+
+  it('face crop matches target aspect ratio and fills bottom section', async () => {
+    const webcamW = 480;
+    const webcamH = 270;
+    mockDetectWebcam.mockResolvedValue({
+      x: 1440, y: 810, width: webcamW, height: webcamH,
+      position: 'bottom-right', confidence: 0.8,
+    });
+    mockGetVideoResolution.mockResolvedValue({ width: 1920, height: 1080 });
+
+    await convertToSquareSmart('/in.mp4', '/out.mp4');
+
+    const fc = getCapturedFilterComplex();
+    expect(fc).toBeDefined();
+    // Target AR = 1080/380 = 2.842; webcam AR = 480/270 = 1.778 (narrower)
+    // Keep full width, center-crop height: faceH = round(480 / (1080/380)) = 169
+    const targetAR = 1080 / 380;
+    const expectedH = Math.round(webcamW / targetAR);
+    expect(fc).toContain(`crop=${webcamW}:${expectedH}`);
+    // Should scale directly to 1080:380 with no padding
+    expect(fc).toContain('scale=1080:380[cam]');
+  });
+
+  it('uses split-screen layout 700+380=1080', async () => {
+    mockDetectWebcam.mockResolvedValue({
+      x: 1440, y: 810, width: 480, height: 270,
+      position: 'bottom-right', confidence: 0.8,
+    });
+    mockGetVideoResolution.mockResolvedValue({ width: 1920, height: 1080 });
+
+    await convertToSquareSmart('/in.mp4', '/out.mp4');
+
+    const fc = getCapturedFilterComplex();
+    expect(fc).toBeDefined();
+    expect(fc).toContain('scale=1080:700');
+    expect(fc).toContain('scale=1080:380[cam]');
+    expect(fc).toContain('vstack');
+  });
+});
+
+// ── Smart feed: screen crop & face padding ──────────────────────────────────
+
+describe('convertToFeedSmart – screen crop & face padding', () => {
+  function getCapturedFilterComplex(): string | undefined {
+    const call = mockExecFile.mock.calls[0];
+    if (!call) return undefined;
+    const args: string[] = call[1];
+    const idx = args.indexOf('-filter_complex');
+    return idx >= 0 ? args[idx + 1] : undefined;
+  }
+
+  it('falls back to center-crop when no webcam detected', async () => {
+    mockDetectWebcam.mockResolvedValue(null);
+
+    await convertToFeedSmart('/in.mp4', '/out.mp4');
+
+    const filter = getCapturedFilter();
+    expect(filter).toContain('crop=ih*4/5:ih');
+    expect(filter).toContain('scale=1080:1350');
+  });
+
+  it('screen crop excludes webcam region (bottom-right)', async () => {
+    mockDetectWebcam.mockResolvedValue({
+      x: 1440, y: 810, width: 480, height: 270,
+      position: 'bottom-right', confidence: 0.8,
+    });
+    mockGetVideoResolution.mockResolvedValue({ width: 1920, height: 1080 });
+
+    await convertToFeedSmart('/in.mp4', '/out.mp4');
+
+    const fc = getCapturedFilterComplex();
+    expect(fc).toBeDefined();
+    expect(fc).toContain('crop=1440:ih:0:0');
+  });
+
+  it('face crop matches target aspect ratio and fills bottom section', async () => {
+    const webcamW = 480;
+    const webcamH = 270;
+    mockDetectWebcam.mockResolvedValue({
+      x: 1440, y: 810, width: webcamW, height: webcamH,
+      position: 'bottom-right', confidence: 0.8,
+    });
+    mockGetVideoResolution.mockResolvedValue({ width: 1920, height: 1080 });
+
+    await convertToFeedSmart('/in.mp4', '/out.mp4');
+
+    const fc = getCapturedFilterComplex();
+    expect(fc).toBeDefined();
+    // Target AR = 1080/472 = 2.288; webcam AR = 480/270 = 1.778 (narrower)
+    // Keep full width, center-crop height: faceH = round(480 / (1080/472)) = 210
+    const targetAR = 1080 / 472;
+    const expectedH = Math.round(webcamW / targetAR);
+    expect(fc).toContain(`crop=${webcamW}:${expectedH}`);
+    // Should scale directly to 1080:472 with no padding
+    expect(fc).toContain('scale=1080:472[cam]');
+  });
+
+  it('uses split-screen layout 878+472=1350', async () => {
+    mockDetectWebcam.mockResolvedValue({
+      x: 1440, y: 810, width: 480, height: 270,
+      position: 'bottom-right', confidence: 0.8,
+    });
+    mockGetVideoResolution.mockResolvedValue({ width: 1920, height: 1080 });
+
+    await convertToFeedSmart('/in.mp4', '/out.mp4');
+
+    const fc = getCapturedFilterComplex();
+    expect(fc).toBeDefined();
+    expect(fc).toContain('scale=1080:878');
+    expect(fc).toContain('scale=1080:472[cam]');
+    expect(fc).toContain('vstack');
+  });
+
+  it('screen crop excludes webcam region (bottom-left)', async () => {
+    mockDetectWebcam.mockResolvedValue({
+      x: 0, y: 810, width: 480, height: 270,
+      position: 'bottom-left', confidence: 0.8,
+    });
+    mockGetVideoResolution.mockResolvedValue({ width: 1920, height: 1080 });
+
+    await convertToFeedSmart('/in.mp4', '/out.mp4');
+
+    const fc = getCapturedFilterComplex();
+    expect(fc).toBeDefined();
+    expect(fc).toContain('crop=1440:ih:480:0');
   });
 });

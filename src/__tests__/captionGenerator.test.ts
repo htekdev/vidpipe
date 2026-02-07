@@ -389,18 +389,18 @@ describe('generateStyledASS – portrait style', () => {
     expect(ass).toContain('\\t(0,150,\\fscx100\\fscy100)');
   });
 
-  it('portrait active word font size is 56', () => {
+  it('portrait active word font size is 78', () => {
     const ass = generateStyledASS(transcriptWithWords, 'portrait');
-    expect(ass).toContain('\\fs56');
+    expect(ass).toContain('\\fs78');
   });
 
-  it('portrait inactive words use white color at size 48', () => {
+  it('portrait inactive words use white color at size 66', () => {
     const ass = generateStyledASS(transcriptWithWords, 'portrait');
     const dialogueLines = ass.split('\n').filter((l) => l.startsWith('Dialogue:'));
-    const hasWhite48 = dialogueLines.some(
-      (l) => l.includes('\\c&HFFFFFF&') && l.includes('\\fs48'),
+    const hasWhite66 = dialogueLines.some(
+      (l) => l.includes('\\c&HFFFFFF&') && l.includes('\\fs66'),
     );
-    expect(hasWhite48).toBe(true);
+    expect(hasWhite66).toBe(true);
   });
 });
 

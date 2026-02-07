@@ -127,31 +127,37 @@ export async function convertAspectRatio(
   })
 }
 
+// ── Smart Layout ─────────────────────────────────────────────────────────────
+
+interface SmartLayoutConfig {
+  label: string
+  targetW: number
+  screenH: number
+  camH: number
+  fallbackRatio: AspectRatio
+}
+
 /**
- * Smart portrait conversion: detects webcam overlay and creates a split-screen
- * layout (screen top ~65%, webcam bottom ~35%). Falls back to center-crop if
- * no webcam is detected.
- *
- * @returns The output path on success
+ * Shared smart conversion: detects webcam overlay and creates a split-screen
+ * layout (screen top + webcam bottom). Falls back to center-crop if no webcam
+ * is detected. The webcam is AR-matched and center-cropped to fill its section
+ * edge-to-edge with no black bars.
  */
-export async function convertToPortraitSmart(
+async function convertWithSmartLayout(
   inputPath: string,
   outputPath: string,
+  config: SmartLayoutConfig,
 ): Promise<string> {
+  const { label, targetW, screenH, camH, fallbackRatio } = config
   const outputDir = pathMod.dirname(outputPath)
   await fs.mkdir(outputDir, { recursive: true })
 
   const webcam = await detectWebcamRegion(inputPath)
 
   if (!webcam) {
-    logger.info('[SmartPortrait] No webcam found, falling back to center-crop')
-    return convertAspectRatio(inputPath, outputPath, '9:16')
+    logger.info(`[${label}] No webcam found, falling back to center-crop`)
+    return convertAspectRatio(inputPath, outputPath, fallbackRatio)
   }
-
-  // Split-screen layout: screen top (1080x1248) + webcam bottom (1080x672) = 1080x1920
-  const screenH = 1248
-  const camH = 672
-  const targetW = 1080
 
   const resolution = await getVideoResolution(inputPath)
 
@@ -192,7 +198,7 @@ export async function convertToPortraitSmart(
     '[screen][cam]vstack[out]',
   ].join(';')
 
-  logger.info(`[SmartPortrait] Split-screen layout: webcam at ${webcam.position} → ${outputPath}`)
+  logger.info(`[${label}] Split-screen layout: webcam at ${webcam.position} → ${outputPath}`)
 
   const args = [
     '-y',
@@ -212,13 +218,67 @@ export async function convertToPortraitSmart(
   return new Promise<string>((resolve, reject) => {
     execFile(ffmpegPath, args, { maxBuffer: 10 * 1024 * 1024 }, (error, _stdout, stderr) => {
       if (error) {
-        logger.error(`[SmartPortrait] FFmpeg failed: ${stderr || error.message}`)
-        reject(new Error(`Smart portrait conversion failed: ${stderr || error.message}`))
+        logger.error(`[${label}] FFmpeg failed: ${stderr || error.message}`)
+        reject(new Error(`${label} conversion failed: ${stderr || error.message}`))
         return
       }
-      logger.info(`[SmartPortrait] Complete: ${outputPath}`)
+      logger.info(`[${label}] Complete: ${outputPath}`)
       resolve(outputPath)
     })
+  })
+}
+
+/**
+ * Smart portrait conversion: detects webcam overlay and creates a split-screen
+ * layout (screen top ~65%, webcam bottom ~35%). Falls back to center-crop if
+ * no webcam is detected.
+ */
+export async function convertToPortraitSmart(
+  inputPath: string,
+  outputPath: string,
+): Promise<string> {
+  return convertWithSmartLayout(inputPath, outputPath, {
+    label: 'SmartPortrait',
+    targetW: 1080,
+    screenH: 1248,
+    camH: 672,
+    fallbackRatio: '9:16',
+  })
+}
+
+/**
+ * Smart square conversion: detects webcam overlay and creates a split-screen
+ * layout (screen top ~65%, webcam bottom ~35%). Falls back to center-crop if
+ * no webcam is detected.
+ */
+export async function convertToSquareSmart(
+  inputPath: string,
+  outputPath: string,
+): Promise<string> {
+  return convertWithSmartLayout(inputPath, outputPath, {
+    label: 'SmartSquare',
+    targetW: 1080,
+    screenH: 700,
+    camH: 380,
+    fallbackRatio: '1:1',
+  })
+}
+
+/**
+ * Smart feed (4:5) conversion: detects webcam overlay and creates a split-screen
+ * layout (screen top ~65%, webcam bottom ~35%). Falls back to center-crop if
+ * no webcam is detected.
+ */
+export async function convertToFeedSmart(
+  inputPath: string,
+  outputPath: string,
+): Promise<string> {
+  return convertWithSmartLayout(inputPath, outputPath, {
+    label: 'SmartFeed',
+    targetW: 1080,
+    screenH: 878,
+    camH: 472,
+    fallbackRatio: '4:5',
   })
 }
 
@@ -253,6 +313,10 @@ export async function generatePlatformVariants(
     try {
       if (ratio === '9:16') {
         await convertToPortraitSmart(inputPath, outPath)
+      } else if (ratio === '1:1') {
+        await convertToSquareSmart(inputPath, outPath)
+      } else if (ratio === '4:5') {
+        await convertToFeedSmart(inputPath, outPath)
       } else {
         await convertAspectRatio(inputPath, outPath, ratio)
       }
