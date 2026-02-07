@@ -1,0 +1,157 @@
+# Getting Started
+
+Get up and running with **video-auto-note-taker** in under five minutes.
+
+---
+
+## Prerequisites
+
+| Requirement | Minimum Version | Notes |
+|-------------|-----------------|-------|
+| **Node.js** | 20+ | [Download](https://nodejs.org/) |
+| **FFmpeg** | 6.0+ | Must be on `PATH` or configured via env vars. See [FFmpeg Setup](./ffmpeg-setup.md). |
+| **OpenAI API key** | — | For Whisper transcription + Copilot SDK agents. [Get a key](https://platform.openai.com/api-keys) |
+| **GitHub Copilot** | Active subscription | Powers the AI agents via [Copilot SDK](https://github.com/github/copilot-sdk) |
+| **Git** | 2.x+ | Only needed if git auto-commit is enabled (on by default) |
+| **Exa AI API key** | — | *Optional* — enables web-search links in social media posts |
+
+---
+
+## Installation
+
+Install globally from npm:
+
+```bash
+npm install -g video-auto-note-taker
+```
+
+Or run directly with `npx`:
+
+```bash
+npx video-auto-note-taker --once /path/to/video.mp4
+```
+
+### From source
+
+```bash
+git clone https://github.com/htekdev/video-auto-note-taker.git
+cd video-auto-note-taker
+npm install
+npm run build
+npm start
+```
+
+---
+
+## Quick Start
+
+### 1. Process a single video
+
+```bash
+video-auto-note-taker --once /path/to/video.mp4
+```
+
+Or pass the file directly (implies `--once`):
+
+```bash
+video-auto-note-taker /path/to/video.mp4
+```
+
+### 2. Watch a folder for new recordings
+
+```bash
+video-auto-note-taker --watch-dir ~/Videos/Recordings
+```
+
+The tool monitors the folder and automatically processes any new `.mp4` that appears.
+
+### 3. Full example with all options
+
+```bash
+video-auto-note-taker \
+  --watch-dir ~/Videos/Recordings \
+  --output-dir ~/Content/processed \
+  --openai-key sk-... \
+  --exa-key exa-... \
+  --brand ./my-brand.json \
+  --verbose
+```
+
+---
+
+## Configuration
+
+There are three ways to configure the tool (highest priority first):
+
+1. **CLI flags** — e.g. `--openai-key sk-...`
+2. **Environment variables** — e.g. `OPENAI_API_KEY=sk-...`
+3. **`.env` file** — automatically loaded from the current working directory
+
+Create a `.env` file for convenience:
+
+```env
+OPENAI_API_KEY=sk-your-key-here
+WATCH_FOLDER=/home/you/Videos/Recordings
+OUTPUT_DIR=/home/you/Content/processed
+# EXA_API_KEY=your-exa-key     # optional
+```
+
+> **Tip:** Copy the included `.env.example` as a starting point.
+
+For the full configuration reference, see the [Configuration Guide](./configuration.md).
+
+---
+
+## What It Produces
+
+After processing a video, the tool creates a rich output directory:
+
+```
+recordings/
+└── my-awesome-demo/
+    ├── my-awesome-demo.mp4              # Original video copy
+    ├── my-awesome-demo-edited.mp4       # Silence-removed version
+    ├── my-awesome-demo-captioned.mp4    # Captioned final video
+    ├── README.md                        # AI-generated summary with screenshots
+    ├── transcript.json                  # Full transcript (word-level timestamps)
+    ├── transcript-edited.json           # Adjusted transcript (after silence removal)
+    ├── blog-post.md                     # Long-form blog post
+    ├── thumbnails/
+    │   ├── snapshot-001.png             # Key-moment screenshots
+    │   ├── snapshot-002.png
+    │   └── ...
+    ├── shorts/
+    │   ├── catchy-clip-title.mp4        # Extracted short clip
+    │   ├── catchy-clip-title.md         # Clip metadata & description
+    │   └── ...
+    └── social-posts/
+        ├── tiktok.md                    # TikTok post draft
+        ├── youtube.md                   # YouTube description
+        ├── instagram.md                 # Instagram caption
+        ├── linkedin.md                  # LinkedIn post
+        └── x.md                         # X (Twitter) post
+```
+
+### Pipeline stages
+
+| # | Stage | What happens |
+|---|-------|-------------|
+| 1 | **Ingestion** | Copies video into output dir, extracts metadata with FFprobe |
+| 2 | **Transcription** | Extracts audio → sends to OpenAI Whisper for word-level transcription |
+| 3 | **Silence Removal** | AI detects dead-air segments and cuts them out |
+| 4 | **Captions** | Generates `.ass` subtitle file from transcript |
+| 5 | **Caption Burn** | Burns captions into the video with FFmpeg |
+| 6 | **Shorts** | AI identifies compelling moments, FFmpeg cuts clips |
+| 7 | **Summary** | AI writes a Markdown README with embedded screenshots |
+| 8 | **Social Media** | AI generates platform-tailored posts (TikTok, YouTube, Instagram, LinkedIn, X) |
+| 9 | **Short Posts** | AI generates social posts for each short clip |
+| 10 | **Blog Post** | AI writes a long-form blog post from the transcript |
+| 11 | **Git Push** | Auto-commits and pushes all output to your repo |
+
+---
+
+## Next Steps
+
+- [Configuration Guide](./configuration.md) — all CLI flags, env vars, and skip options
+- [FFmpeg Setup](./ffmpeg-setup.md) — platform-specific installation instructions
+- [Brand Customization](./brand-customization.md) — tailor AI output to your personal brand

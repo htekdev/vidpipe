@@ -1,0 +1,16 @@
+node_modules/
+dist/
+.env
+*.log
+cache/
+
+# Video recordings and processed output
+recordings/
+*.mp4
+*.mp3
+*.wav
+
+# Large media files
+*.avi
+*.mkv
+*.mov

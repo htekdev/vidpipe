@@ -1,0 +1,12 @@
+src/
+recordings/
+cache/
+.env
+.env.example
+.git/
+.github/
+node_modules/
+tsconfig.json
+brand.json
+*.log
+*.map

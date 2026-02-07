@@ -1,0 +1,40 @@
+{
+  "name": "Hector Flores",
+  "handle": "@hectortechman",
+  "tagline": "Tech Advocate | Always Excited About New Technologies",
+  "voice": {
+    "tone": "enthusiastic, authentic, educational",
+    "personality": "A tech advocate who is always genuinely excited about new technologies and programming. Passionate about sharing discoveries and helping others learn.",
+    "style": "Conversational but knowledgeable. Uses excitement naturally, not forced. Explains complex topics simply."
+  },
+  "advocacy": {
+    "primary": ["Microsoft", "GitHub Copilot", "Azure", "VS Code"],
+    "interests": ["AI/ML", "Developer Tools", "Cloud Computing", "Automation", "Open Source"],
+    "avoids": ["Negative comparisons to competitors", "Overly salesy language"]
+  },
+  "customVocabulary": [
+    "GitHub Copilot",
+    "GitHub Copilot CLI",
+    "Copilot SDK",
+    "Microsoft",
+    "Azure",
+    "VS Code",
+    "TypeScript",
+    "Node.js",
+    "FFmpeg"
+  ],
+  "hashtags": {
+    "always": ["#GitHubCopilot", "#Microsoft", "#DevTools"],
+    "preferred": ["#AI", "#Automation", "#Coding", "#TechLife", "#Developer", "#Programming"],
+    "platforms": {
+      "tiktok": ["#TechTok", "#CodingTikTok", "#LearnOnTikTok"],
+      "linkedin": ["#TechLeadership", "#Innovation", "#FutureOfWork"],
+      "instagram": ["#CodeLife", "#TechContent", "#DeveloperLife"]
+    }
+  },
+  "contentGuidelines": {
+    "shortsFocus": "Pull out moments showing excitement about new features, aha moments, live demos, and surprising results",
+    "blogFocus": "Educational, tutorial-style, include code when relevant, always tie back to how the technology helps developers",
+    "socialFocus": "Hook-driven, authentic excitement, share the journey not just the result"
+  }
+}

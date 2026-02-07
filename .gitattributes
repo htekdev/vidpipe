@@ -1,0 +1,2 @@
+# Track large image files with Git LFS
+*.png filter=lfs diff=lfs merge=lfs -text
