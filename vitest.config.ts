@@ -15,10 +15,10 @@ export default defineConfig({
         'src/index.ts', // CLI entry point
       ],
       thresholds: {
-        statements: 15,
-        branches: 20,
-        functions: 10,
-        lines: 15,
+        statements: 70,
+        branches: 65,
+        functions: 70,
+        lines: 70,
       },
     },
     testTimeout: 30000,
