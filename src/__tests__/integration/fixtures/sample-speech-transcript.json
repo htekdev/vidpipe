@@ -1,0 +1,443 @@
+{
+  "text": "So, I went ahead and ran the spec flow. I mean, I ran through the implementation guide for this new app, the Agentic Video Workflow. And you know what? I did a bunch of research. And there's one particular app out there that they charge $200 a month to have chat-based video editing or clip generation. So, guys, if I'm able to create this, if I'm able to create this, like, if I'm able to create this in the next 10 minutes, right, that would be crazy.",
+  "segments": [
+    {
+      "id": 2,
+      "start": 0,
+      "end": 2.1,
+      "text": "So, I went ahead and ran the spec flow."
+    },
+    {
+      "id": 3,
+      "start": 3,
+      "end": 8.02,
+      "text": "I mean, I ran through the implementation guide for this new app, the Agentic Video Workflow."
+    },
+    {
+      "id": 4,
+      "start": 8,
+      "end": 10.32,
+      "text": "And you know what? I did a bunch of research."
+    },
+    {
+      "id": 5,
+      "start": 11,
+      "end": 20.76,
+      "text": "And there's one particular app out there that they charge $200 a month to have chat-based video editing or clip generation."
+    },
+    {
+      "id": 6,
+      "start": 22,
+      "end": 32.0,
+      "text": "So, guys, if I'm able to create this, if I'm able to create this, like, if I'm able to create this in the next 10 minutes, right, that would be crazy."
+    }
+  ],
+  "words": [
+    {
+      "word": "went",
+      "start": 0.42,
+      "end": 0.58
+    },
+    {
+      "word": "ahead",
+      "start": 0.58,
+      "end": 0.78
+    },
+    {
+      "word": "and",
+      "start": 0.78,
+      "end": 1.22
+    },
+    {
+      "word": "ran",
+      "start": 1.22,
+      "end": 1.36
+    },
+    {
+      "word": "the",
+      "start": 1.36,
+      "end": 1.6
+    },
+    {
+      "word": "spec",
+      "start": 1.6,
+      "end": 1.76
+    },
+    {
+      "word": "flow",
+      "start": 1.76,
+      "end": 2.1
+    },
+    {
+      "word": "I",
+      "start": 2.64,
+      "end": 3.22
+    },
+    {
+      "word": "mean",
+      "start": 3.22,
+      "end": 3.54
+    },
+    {
+      "word": "I",
+      "start": 3.54,
+      "end": 3.58
+    },
+    {
+      "word": "ran",
+      "start": 3.58,
+      "end": 3.58
+    },
+    {
+      "word": "through",
+      "start": 3.58,
+      "end": 3.84
+    },
+    {
+      "word": "the",
+      "start": 3.84,
+      "end": 4.36
+    },
+    {
+      "word": "implementation",
+      "start": 4.36,
+      "end": 4.72
+    },
+    {
+      "word": "guide",
+      "start": 4.72,
+      "end": 5.06
+    },
+    {
+      "word": "for",
+      "start": 5.06,
+      "end": 5.44
+    },
+    {
+      "word": "this",
+      "start": 5.44,
+      "end": 5.84
+    },
+    {
+      "word": "new",
+      "start": 5.84,
+      "end": 6.18
+    },
+    {
+      "word": "app",
+      "start": 6.18,
+      "end": 6.56
+    },
+    {
+      "word": "the",
+      "start": 7.08,
+      "end": 7.08
+    },
+    {
+      "word": "Agentic",
+      "start": 7.08,
+      "end": 7.26
+    },
+    {
+      "word": "Video",
+      "start": 7.26,
+      "end": 7.66
+    },
+    {
+      "word": "Workflow",
+      "start": 7.66,
+      "end": 8.02
+    },
+    {
+      "word": "And",
+      "start": 8.22,
+      "end": 8.6
+    },
+    {
+      "word": "you",
+      "start": 8.6,
+      "end": 8.64
+    },
+    {
+      "word": "know",
+      "start": 8.64,
+      "end": 8.74
+    },
+    {
+      "word": "what",
+      "start": 8.74,
+      "end": 8.88
+    },
+    {
+      "word": "I",
+      "start": 8.9,
+      "end": 9.28
+    },
+    {
+      "word": "did",
+      "start": 9.28,
+      "end": 9.48
+    },
+    {
+      "word": "a",
+      "start": 9.48,
+      "end": 9.8
+    },
+    {
+      "word": "bunch",
+      "start": 9.8,
+      "end": 9.8
+    },
+    {
+      "word": "of",
+      "start": 9.8,
+      "end": 10.32
+    },
+    {
+      "word": "research",
+      "start": 10.32,
+      "end": 10.32
+    },
+    {
+      "word": "And",
+      "start": 11.02,
+      "end": 11.62
+    },
+    {
+      "word": "there's",
+      "start": 11.62,
+      "end": 11.76
+    },
+    {
+      "word": "one",
+      "start": 11.76,
+      "end": 12.14
+    },
+    {
+      "word": "particular",
+      "start": 12.14,
+      "end": 12.52
+    },
+    {
+      "word": "app",
+      "start": 12.52,
+      "end": 12.8
+    },
+    {
+      "word": "out",
+      "start": 12.8,
+      "end": 13.02
+    },
+    {
+      "word": "there",
+      "start": 13.02,
+      "end": 13.24
+    },
+    {
+      "word": "that",
+      "start": 13.24,
+      "end": 13.62
+    },
+    {
+      "word": "they",
+      "start": 13.62,
+      "end": 13.84
+    },
+    {
+      "word": "charge",
+      "start": 13.84,
+      "end": 14.36
+    },
+    {
+      "word": "200",
+      "start": 14.36,
+      "end": 15.4
+    },
+    {
+      "word": "a",
+      "start": 15.4,
+      "end": 16.14
+    },
+    {
+      "word": "month",
+      "start": 16.14,
+      "end": 16.14
+    },
+    {
+      "word": "to",
+      "start": 16.14,
+      "end": 16.98
+    },
+    {
+      "word": "have",
+      "start": 16.98,
+      "end": 17.48
+    },
+    {
+      "word": "chat",
+      "start": 17.48,
+      "end": 17.96
+    },
+    {
+      "word": "based",
+      "start": 17.96,
+      "end": 18.32
+    },
+    {
+      "word": "video",
+      "start": 18.32,
+      "end": 18.7
+    },
+    {
+      "word": "editing",
+      "start": 18.7,
+      "end": 19.02
+    },
+    {
+      "word": "or",
+      "start": 19.02,
+      "end": 20.1
+    },
+    {
+      "word": "clip",
+      "start": 20.1,
+      "end": 20.2
+    },
+    {
+      "word": "generation",
+      "start": 20.2,
+      "end": 20.76
+    },
+    {
+      "word": "So",
+      "start": 21.64,
+      "end": 21.86
+    },
+    {
+      "word": "guys",
+      "start": 21.86,
+      "end": 22.08
+    },
+    {
+      "word": "if",
+      "start": 22.14,
+      "end": 22.46
+    },
+    {
+      "word": "I'm",
+      "start": 22.46,
+      "end": 22.74
+    },
+    {
+      "word": "able",
+      "start": 22.74,
+      "end": 22.74
+    },
+    {
+      "word": "to",
+      "start": 22.74,
+      "end": 22.88
+    },
+    {
+      "word": "create",
+      "start": 22.88,
+      "end": 23.06
+    },
+    {
+      "word": "this",
+      "start": 23.06,
+      "end": 23.42
+    },
+    {
+      "word": "if",
+      "start": 23.66,
+      "end": 24.74
+    },
+    {
+      "word": "I'm",
+      "start": 24.74,
+      "end": 24.92
+    },
+    {
+      "word": "able",
+      "start": 24.92,
+      "end": 24.96
+    },
+    {
+      "word": "to",
+      "start": 24.96,
+      "end": 25.16
+    },
+    {
+      "word": "create",
+      "start": 25.16,
+      "end": 25.34
+    },
+    {
+      "word": "this",
+      "start": 25.34,
+      "end": 26.1
+    },
+    {
+      "word": "like",
+      "start": 27.16,
+      "end": 29.28
+    },
+    {
+      "word": "if",
+      "start": 29.3,
+      "end": 29.4
+    },
+    {
+      "word": "I'm",
+      "start": 29.4,
+      "end": 29.66
+    },
+    {
+      "word": "able",
+      "start": 29.66,
+      "end": 29.66
+    },
+    {
+      "word": "to",
+      "start": 29.66,
+      "end": 29.92
+    },
+    {
+      "word": "create",
+      "start": 29.92,
+      "end": 29.92
+    },
+    {
+      "word": "this",
+      "start": 29.92,
+      "end": 30.16
+    },
+    {
+      "word": "in",
+      "start": 30.16,
+      "end": 30.26
+    },
+    {
+      "word": "the",
+      "start": 30.26,
+      "end": 30.42
+    },
+    {
+      "word": "next",
+      "start": 30.42,
+      "end": 30.62
+    },
+    {
+      "word": "10",
+      "start": 30.62,
+      "end": 31.0
+    },
+    {
+      "word": "minutes",
+      "start": 31.0,
+      "end": 31.3
+    }
+  ],
+  "language": "english"
+}

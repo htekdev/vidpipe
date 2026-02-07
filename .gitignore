@@ -15,3 +15,7 @@ recordings/
 *.avi
 *.mkv
 *.mov
+
+# Exception: test fixtures with real video/audio for integration tests
+!src/__tests__/integration/fixtures/**/*.mp4
+!src/__tests__/integration/fixtures/**/*.mp3
