@@ -9,6 +9,7 @@
   },
   "files": [
     "dist",
+    "!dist/__tests__",
     "assets/",
     "README.md",
     "LICENSE"

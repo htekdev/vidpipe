@@ -2,6 +2,7 @@
 src/
 
 # Test and development files
+dist/__tests__/
 vitest.config.ts
 coverage/
 .eslintrc*

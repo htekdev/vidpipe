@@ -79,6 +79,51 @@ vidpipe \
 
 ---
 
+## First Run
+
+### Pre-flight check
+
+Before processing your first video, verify all prerequisites are installed:
+
+```bash
+vidpipe --doctor
+```
+
+This checks for Node.js, FFmpeg, API keys, and folder permissions in one shot.
+
+### Expected processing time
+
+| Stage | Time (per 10 min of video) |
+|-------|---------------------------|
+| Transcription (Whisper API) | 1–3 minutes |
+| AI analysis (shorts, summaries, social posts) | 2–5 minutes |
+| Video processing (FFmpeg clip extraction) | 1–3 minutes per short clip |
+| **Total** | **~5–15 minutes** for a typical 10–30 min recording |
+
+### What gets created
+
+After the pipeline finishes, your output folder will contain:
+
+- **Transcripts** — full word-level JSON transcripts (original + silence-removed)
+- **Edited video** — silence-removed and captioned versions of the full recording
+- **Shorts** — AI-selected highlight clips with captions and portrait variants
+- **Summaries** — a Markdown README with embedded screenshots
+- **Social posts** — platform-tailored drafts for TikTok, YouTube, Instagram, LinkedIn, and X
+- **Blog post** — long-form Markdown article generated from the transcript
+
+See the [full output structure](#what-it-produces) below for the complete directory layout.
+
+### Common first-run issues
+
+| Symptom | Fix |
+|---------|-----|
+| `Missing required: OPENAI_API_KEY` | Set `OPENAI_API_KEY` in your `.env` file or pass `--openai-key` |
+| FFmpeg errors or codec failures | Run `vidpipe --doctor` to diagnose — usually a missing or outdated FFmpeg install |
+| No videos detected | Verify your watch folder path matches the `WATCH_FOLDER` env var (or `--watch-dir` flag) |
+| Processing takes a long time | Normal for first run — the Whisper API call dominates; subsequent runs with cached transcripts are faster |
+
+---
+
 ## Configuration
 
 There are three ways to configure the tool (highest priority first):

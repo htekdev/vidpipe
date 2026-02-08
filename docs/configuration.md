@@ -108,13 +108,79 @@ REPO_ROOT=/home/you/repos/vidpipe
 
 ---
 
-## brand.json
+## Brand Customization
 
-The `brand.json` file controls how AI agents write summaries, social posts, and blog content. It defines your voice, vocabulary, hashtags, and content guidelines.
+The `brand.json` file controls the visual identity and voice of all generated content — captions, social media posts, blog posts, summaries, and short clip descriptions. Customize it to match your personal or company brand.
 
-By default, the tool looks for `brand.json` in the current working directory. Override with `--brand <path>` or the `BRAND_PATH` env var.
+### Location
 
-See the [Brand Customization Guide](./brand-customization.md) for the full format and examples.
+Place `brand.json` in your project root. The tool looks for it in the current working directory by default. Override the path with:
+
+- **CLI flag:** `--brand /path/to/brand.json`
+- **Environment variable:** `BRAND_PATH=/path/to/brand.json`
+
+> If no `brand.json` exists, sensible defaults are used automatically (name: `"Creator"`, handle: `"@creator"`, neutral professional tone).
+
+### Example brand.json
+
+```json
+{
+  "name": "Your Name",
+  "handle": "@yourhandle",
+  "tagline": "Your tagline here",
+  "voice": {
+    "tone": "professional, friendly",
+    "personality": "A knowledgeable content creator.",
+    "style": "Clear and concise."
+  },
+  "advocacy": {
+    "primary": ["Technology A", "Technology B"],
+    "interests": ["Topic 1", "Topic 2"],
+    "avoids": ["Negative comparisons", "Overly salesy language"]
+  },
+  "customVocabulary": [
+    "ProperNoun",
+    "TechTermThatWhisperMightMisspell"
+  ],
+  "hashtags": {
+    "always": ["#AlwaysInclude"],
+    "preferred": ["#Often", "#Used"],
+    "platforms": {
+      "tiktok": ["#TechTok"],
+      "linkedin": ["#Innovation"],
+      "instagram": ["#CodeLife"]
+    }
+  },
+  "contentGuidelines": {
+    "shortsFocus": "Highlight key moments and insights.",
+    "blogFocus": "Educational and informative content.",
+    "socialFocus": "Engaging and authentic posts."
+  }
+}
+```
+
+### Field Descriptions
+
+| Field | Type | Description | Default |
+|-------|------|-------------|---------|
+| `name` | string | Your display name — used in content attribution | `"Creator"` |
+| `handle` | string | Social media handle — included in generated posts | `"@creator"` |
+| `tagline` | string | Short bio/tagline for intros | `""` |
+| `voice.tone` | string | Comma-separated tone descriptors for AI writing style | `"professional, friendly"` |
+| `voice.personality` | string | Description of your public persona | `"A knowledgeable content creator."` |
+| `voice.style` | string | How generated content should read | `"Clear and concise."` |
+| `advocacy.primary` | string[] | Core technologies/brands you champion | `[]` |
+| `advocacy.interests` | string[] | Broader topics the AI can reference | `[]` |
+| `advocacy.avoids` | string[] | Things the AI should never include | `[]` |
+| `customVocabulary` | string[] | Proper nouns and jargon sent to Whisper as a prompt hint to improve transcription accuracy | `[]` |
+| `hashtags.always` | string[] | Included on every post, every platform | `[]` |
+| `hashtags.preferred` | string[] | Commonly used — AI picks the most relevant | `[]` |
+| `hashtags.platforms` | object | Platform-specific hashtags (keys: `tiktok`, `youtube`, `instagram`, `linkedin`, `x`) | `{}` |
+| `contentGuidelines.shortsFocus` | string | What moments to extract as short clips | `"Highlight key moments and insights."` |
+| `contentGuidelines.blogFocus` | string | Blog post structure and angle | `"Educational and informative content."` |
+| `contentGuidelines.socialFocus` | string | Social media writing strategy | `"Engaging and authentic posts."` |
+
+For full examples (developer, corporate, educator templates) and additional tips, see the [Brand Customization Guide](./brand-customization.md).
 
 ---
 
