@@ -232,13 +232,14 @@ describe('clipExtraction', () => {
       ];
       const result = await extractCompositeClipWithTransitions('/in.mp4', segs, '/out.mp4', 0.5, 1);
 
-      expect(mockExecFile).toHaveBeenCalledTimes(1);
-      const args = mockExecFile.mock.calls[0][1] as string[];
+      expect(mockExecFile).toHaveBeenCalledTimes(2);
+      const args = mockExecFile.mock.calls[1][1] as string[];
       expect(args).toContain('-filter_complex');
       const filterIdx = args.indexOf('-filter_complex');
       const filter = args[filterIdx + 1];
       expect(filter).toContain('xfade');
       expect(filter).toContain('acrossfade');
+      expect(filter).toContain('fps=');
       expect(filter).toContain('[vout]');
       expect(filter).toContain('[aout]');
       expect(args).toContain('/out.mp4');

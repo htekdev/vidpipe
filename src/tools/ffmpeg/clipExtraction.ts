@@ -11,6 +11,32 @@ const ffprobePath = getFFprobePath();
 ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
 
+const DEFAULT_FPS = 25;
+
+/**
+ * Probe the source video's frame rate using ffprobe.
+ * Returns a rounded integer fps, or DEFAULT_FPS if probing fails.
+ * Needed because FFmpeg 7.x xfade requires constant-framerate inputs.
+ */
+async function getVideoFps(videoPath: string): Promise<number> {
+  return new Promise<number>((resolve) => {
+    execFile(
+      ffprobePath,
+      ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=r_frame_rate', '-of', 'csv=p=0', videoPath],
+      { timeout: 5000 },
+      (error, stdout) => {
+        if (error || !stdout.trim()) {
+          resolve(DEFAULT_FPS);
+          return;
+        }
+        const parts = stdout.trim().split('/');
+        const fps = parts.length === 2 ? parseInt(parts[0]) / parseInt(parts[1]) : parseFloat(stdout.trim());
+        resolve(isFinite(fps) && fps > 0 ? Math.round(fps) : DEFAULT_FPS);
+      },
+    );
+  });
+}
+
 /**
  * Extract a single clip segment using re-encode for frame-accurate timing.
  *
@@ -172,6 +198,9 @@ export async function extractCompositeClipWithTransitions(
   const outputDir = pathMod.dirname(outputPath);
   await fs.mkdir(outputDir, { recursive: true });
 
+  // Detect source fps so we can force CFR after trim (FFmpeg 7.x xfade requires it)
+  const fps = await getVideoFps(videoPath);
+
   // Build filter_complex for xfade transitions between segments
   const filterParts: string[] = [];
   const segDurations: number[] = [];
@@ -184,7 +213,7 @@ export async function extractCompositeClipWithTransitions(
     segDurations.push(duration);
 
     filterParts.push(
-      `[0:v]trim=start=${bufferedStart.toFixed(3)}:end=${bufferedEnd.toFixed(3)},setpts=PTS-STARTPTS[v${i}]`,
+      `[0:v]trim=start=${bufferedStart.toFixed(3)}:end=${bufferedEnd.toFixed(3)},setpts=PTS-STARTPTS,fps=${fps}[v${i}]`,
     );
     filterParts.push(
       `[0:a]atrim=start=${bufferedStart.toFixed(3)}:end=${bufferedEnd.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`,
