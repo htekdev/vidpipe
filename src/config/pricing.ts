@@ -20,25 +20,34 @@ export interface ModelPricing {
 export const COPILOT_PRU_OVERAGE_RATE = 0.04;
 
 export const MODEL_PRICING: Record<string, ModelPricing> = {
-  // === OpenAI Models ===
+  // === OpenAI Models (from Copilot model picker) ===
   'gpt-4o': { inputPer1M: 2.50, outputPer1M: 10.00, pruMultiplier: 0, copilotIncluded: true },
   'gpt-4o-mini': { inputPer1M: 0.15, outputPer1M: 0.60, pruMultiplier: 0, copilotIncluded: true },
   'gpt-4.1': { inputPer1M: 2.00, outputPer1M: 8.00, pruMultiplier: 0, copilotIncluded: true },
   'gpt-4.1-mini': { inputPer1M: 0.40, outputPer1M: 1.60 },
   'gpt-5-mini': { inputPer1M: 0.15, outputPer1M: 0.60, pruMultiplier: 0, copilotIncluded: true },
   'gpt-5': { inputPer1M: 2.50, outputPer1M: 10.00, pruMultiplier: 1 },
+  'gpt-5-codex': { inputPer1M: 2.50, outputPer1M: 10.00, pruMultiplier: 1 },
   'gpt-5.1': { inputPer1M: 2.50, outputPer1M: 10.00, pruMultiplier: 1 },
+  'gpt-5.1-codex': { inputPer1M: 2.50, outputPer1M: 10.00, pruMultiplier: 1 },
+  'gpt-5.1-codex-max': { inputPer1M: 2.50, outputPer1M: 10.00, pruMultiplier: 1 },
+  'gpt-5.1-codex-mini': { inputPer1M: 0.15, outputPer1M: 0.60, pruMultiplier: 0.33 },
+  'gpt-5.2': { inputPer1M: 2.50, outputPer1M: 10.00, pruMultiplier: 1 },
+  'gpt-5.2-codex': { inputPer1M: 2.50, outputPer1M: 10.00, pruMultiplier: 1 },
   'o3': { inputPer1M: 10.00, outputPer1M: 40.00, pruMultiplier: 5 },
   'o4-mini-high': { inputPer1M: 1.10, outputPer1M: 4.40, pruMultiplier: 20 },
 
-  // === Anthropic Models ===
+  // === Anthropic Models (from Copilot model picker) ===
+  'claude-haiku-4.5': { inputPer1M: 0.80, outputPer1M: 4.00, pruMultiplier: 0.33 },
   'claude-sonnet-4': { inputPer1M: 3.00, outputPer1M: 15.00, pruMultiplier: 1 },
   'claude-sonnet-4.5': { inputPer1M: 3.00, outputPer1M: 15.00, pruMultiplier: 1 },
-  'claude-haiku-4': { inputPer1M: 0.25, outputPer1M: 1.25 },
   'claude-opus-4.5': { inputPer1M: 15.00, outputPer1M: 75.00, pruMultiplier: 3 },
-  'claude-opus-4.6': { inputPer1M: 5.00, outputPer1M: 25.00, pruMultiplier: 12 },
+  'claude-opus-4.6': { inputPer1M: 5.00, outputPer1M: 25.00, pruMultiplier: 3 },
+  'claude-opus-4.6-fast': { inputPer1M: 5.00, outputPer1M: 25.00, pruMultiplier: 9 },
 
-  // === Google Models ===
+  // === Google Models (from Copilot model picker) ===
+  'gemini-2.5-pro': { inputPer1M: 1.25, outputPer1M: 5.00, pruMultiplier: 1 },
+  'gemini-3-flash': { inputPer1M: 0.10, outputPer1M: 0.40, pruMultiplier: 0.33 },
   'gemini-3-pro': { inputPer1M: 1.25, outputPer1M: 5.00, pruMultiplier: 1 },
 };
 

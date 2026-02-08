@@ -61,9 +61,9 @@ describe('calculatePRUCost', () => {
     expect(calculatePRUCost('o3')).toBe(5);
   });
 
-  it('returns default 1 when pruMultiplier is undefined and not copilotIncluded', () => {
-    // claude-haiku-4 has no pruMultiplier and no copilotIncluded
-    expect(calculatePRUCost('claude-haiku-4')).toBe(1);
+  it('returns pruMultiplier for claude-haiku-4.5', () => {
+    // claude-haiku-4.5 has pruMultiplier: 0.33
+    expect(calculatePRUCost('claude-haiku-4.5')).toBe(0.33);
   });
 });
 
