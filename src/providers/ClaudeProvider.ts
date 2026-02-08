@@ -29,6 +29,7 @@ import type {
 
 const DEFAULT_MODEL = 'claude-sonnet-4-20250514'
 const DEFAULT_MAX_TOKENS = 8192
+const MAX_TOOL_ROUNDS = 50
 
 /** Convert our ToolWithHandler[] to Anthropic tool format */
 function toAnthropicTools(tools: ToolWithHandler[]): Tool[] {
@@ -93,7 +94,12 @@ class ClaudeSession implements LLMSession {
     }
 
     // Agent loop: keep calling until no more tool_use
+    let toolRound = 0
     while (true) {
+      if (++toolRound > MAX_TOOL_ROUNDS) {
+        logger.warn(`Claude agent exceeded ${MAX_TOOL_ROUNDS} tool rounds — aborting to prevent runaway`)
+        throw new Error(`Max tool rounds (${MAX_TOOL_ROUNDS}) exceeded — possible infinite loop`)
+      }
       const response = await this.client.messages.create({
         model: this.model,
         max_tokens: this.maxTokens,

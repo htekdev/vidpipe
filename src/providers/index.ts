@@ -1,4 +1,4 @@
-import { LLMProvider } from './types.js';
+import type { LLMProvider } from './types.js';
 import type { ProviderName } from './types.js';
 import { CopilotProvider } from './CopilotProvider.js';
 import { OpenAIProvider } from './OpenAIProvider.js';
@@ -64,7 +64,7 @@ export function getProviderName(): ProviderName {
 }
 
 // Re-export types and providers
-export { LLMProvider, LLMSession, LLMResponse, SessionConfig, ToolWithHandler, TokenUsage, CostInfo, QuotaSnapshot, ProviderEvent, ProviderEventType } from './types.js';
+export type { LLMProvider, LLMSession, LLMResponse, SessionConfig, ToolWithHandler, TokenUsage, CostInfo, QuotaSnapshot, ProviderEvent, ProviderEventType } from './types.js';
 export type { ProviderName } from './types.js';
 export { CopilotProvider } from './CopilotProvider.js';
 export { OpenAIProvider } from './OpenAIProvider.js';

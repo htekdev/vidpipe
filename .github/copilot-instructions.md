@@ -46,7 +46,7 @@ All LLM interactions go through a provider abstraction layer. `BaseAgent` accept
 | `ClaudeProvider.ts` | Direct Anthropic API backend |
 | `index.ts` | Factory — `getProvider()` reads `LLM_PROVIDER` env var, caches singleton, falls back to copilot |
 
-**Cost tracking** (`src/services/costTracker.ts`): Singleton `CostTracker` records every LLM call's token usage and cost. At pipeline end, `printReport()` logs totals and breakdowns by provider, agent, and model. Cost is in USD for OpenAI/Claude and premium requests (PRUs) for Copilot.
+**Cost tracking** (`src/services/costTracker.ts`): Singleton `CostTracker` records every LLM call's token usage and cost. At pipeline end, `formatReport()` logs totals and breakdowns by provider, agent, and model. Cost is in USD for OpenAI/Claude and premium requests (PRUs) for Copilot.
 
 ### Agent Pattern (@github/copilot-sdk)
 

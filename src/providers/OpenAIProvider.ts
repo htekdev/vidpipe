@@ -23,6 +23,8 @@ import type {
 import { calculateTokenCost } from '../config/pricing.js';
 import logger from '../config/logger.js';
 
+const MAX_TOOL_ROUNDS = 50;
+
 // ── helpers ────────────────────────────────────────────────────────────
 
 /** Convert our ToolWithHandler[] to the OpenAI SDK tool format. */
@@ -80,7 +82,12 @@ class OpenAISession implements LLMSession {
     const start = Date.now();
 
     // Agent loop: keep calling the LLM until no tool_calls remain
+    let toolRound = 0;
     while (true) {
+      if (++toolRound > MAX_TOOL_ROUNDS) {
+        logger.warn(`OpenAI agent exceeded ${MAX_TOOL_ROUNDS} tool rounds — aborting to prevent runaway`);
+        throw new Error(`Max tool rounds (${MAX_TOOL_ROUNDS}) exceeded — possible infinite loop`);
+      }
       const response = await this.client.chat.completions.create({
         model: this.model,
         messages: this.messages,

@@ -59,14 +59,14 @@ export class CopilotProvider implements LLMProvider {
   }
 
   /** Tear down the underlying Copilot client. */
-  async destroy(): Promise<void> {
+  async close(): Promise<void> {
     try {
       if (this.client) {
         await this.client.stop()
         this.client = null
       }
     } catch (err) {
-      logger.error(`[CopilotProvider] Error during destroy: ${err}`)
+      logger.error(`[CopilotProvider] Error during close: ${err}`)
     }
   }
 }

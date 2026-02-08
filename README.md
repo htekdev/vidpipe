@@ -189,7 +189,7 @@ VidPipe supports multiple LLM providers:
 |----------|---------|---------------|-------|
 | `copilot` (default) | — | Claude Sonnet 4 | Uses GitHub Copilot auth |
 | `openai` | `OPENAI_API_KEY` | gpt-4o | Direct OpenAI API |
-| `claude` | `ANTHROPIC_API_KEY` | claude-sonnet-4 | Direct Anthropic API |
+| `claude` | `ANTHROPIC_API_KEY` | claude-sonnet-4-20250514 | Direct Anthropic API |
 
 Set `LLM_PROVIDER` in your `.env` or pass via CLI. Override model with `LLM_MODEL`.
 

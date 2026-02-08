@@ -1,4 +1,4 @@
-import { TokenUsage, CostInfo, QuotaSnapshot } from '../providers/types.js';
+import type { TokenUsage, CostInfo, QuotaSnapshot } from '../providers/types.js';
 import { calculateTokenCost, calculatePRUCost, COPILOT_PRU_OVERAGE_RATE } from '../config/pricing.js';
 import logger from '../config/logger.js';
 
