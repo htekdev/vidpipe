@@ -13,6 +13,10 @@ export default defineConfig({
         'src/**/*.test.ts',
         'src/**/*.d.ts',
         'src/index.ts', // CLI entry point
+        'src/providers/CopilotProvider.ts', // SDK wrappers — require real API keys to test
+        'src/providers/OpenAIProvider.ts',
+        'src/providers/ClaudeProvider.ts',
+        'src/providers/types.ts', // Pure type definitions — no runtime code
       ],
       thresholds: {
         statements: 70,
