@@ -73,7 +73,7 @@ vidpipe \
 
 > **Prerequisites:**
 > - **Node.js 20+**
-> - **FFmpeg 6.0+** — Automatically included via `npm install` (bundled by [`ffmpeg-static`](https://www.npmjs.com/package/ffmpeg-static)). Override with `FFMPEG_PATH` env var if you need a specific build.
+> - **FFmpeg 6.0+** — Auto-bundled on common platforms (Windows x64, macOS, Linux x64) via [`ffmpeg-static`](https://www.npmjs.com/package/ffmpeg-static). On other architectures, install system FFmpeg (see [Troubleshooting](#troubleshooting)). Override with `FFMPEG_PATH` env var if you need a specific build.
 > - **OpenAI API key** (**required**) — Get one at [platform.openai.com/api-keys](https://platform.openai.com/api-keys). Needed for Whisper transcription and all AI features.
 > - **GitHub Copilot subscription** — Required for AI agent features (shorts generation, social media posts, summaries, blog posts). See [GitHub Copilot](https://github.com/features/copilot).
 >
@@ -269,6 +269,23 @@ Each agent communicates with the LLM through structured tool calls, ensuring rel
 - [ ] **Batch processing** — Process an entire folder of existing videos
 - [ ] **Custom short criteria** — Configure what makes a "good" short for your content
 - [ ] **Thumbnail generation** — Auto-generate branded thumbnails for shorts
+
+---
+
+## 🔧 Troubleshooting
+
+### `No binary found for architecture` during install
+
+`ffmpeg-static` (an optional dependency) bundles FFmpeg for common platforms. On unsupported architectures, it skips gracefully and vidpipe falls back to your system FFmpeg.
+
+**Fix:** Install FFmpeg on your system:
+- **Windows:** `winget install Gyan.FFmpeg`
+- **macOS:** `brew install ffmpeg`
+- **Linux:** `sudo apt install ffmpeg` (Debian/Ubuntu) or `sudo dnf install ffmpeg` (Fedora)
+
+You can also point to a custom binary: `export FFMPEG_PATH=/path/to/ffmpeg`
+
+Run `vidpipe doctor` to verify your setup.
 
 ---
 
