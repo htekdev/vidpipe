@@ -197,7 +197,7 @@ export function runDoctor(): void {
   const defaultModels: Record<ProviderName, string> = {
     copilot: 'Claude Sonnet 4',
     openai: 'gpt-4o',
-    claude: 'claude-sonnet-4-20250514',
+    claude: 'claude-opus-4.6',
   }
   if (validProviders.includes(providerName)) {
     const defaultModel = defaultModels[providerName]

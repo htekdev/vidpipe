@@ -36,7 +36,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
   'claude-sonnet-4.5': { inputPer1M: 3.00, outputPer1M: 15.00, pruMultiplier: 1 },
   'claude-haiku-4': { inputPer1M: 0.25, outputPer1M: 1.25 },
   'claude-opus-4.5': { inputPer1M: 15.00, outputPer1M: 75.00, pruMultiplier: 3 },
-  'claude-opus-4.6': { inputPer1M: 15.00, outputPer1M: 75.00, pruMultiplier: 12 },
+  'claude-opus-4.6': { inputPer1M: 5.00, outputPer1M: 25.00, pruMultiplier: 12 },
 
   // === Google Models ===
   'gemini-3-pro': { inputPer1M: 1.25, outputPer1M: 5.00, pruMultiplier: 1 },
