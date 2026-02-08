@@ -4,8 +4,9 @@ import pathMod from 'path'
 import os from 'os'
 import { fileURLToPath } from 'url'
 import logger from '../../config/logger'
+import { getFFmpegPath } from '../../config/ffmpegResolver.js'
 
-const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg'
+const ffmpegPath = getFFmpegPath()
 const __dirname = pathMod.dirname(fileURLToPath(import.meta.url))
 const FONTS_DIR = pathMod.resolve(__dirname, '..', '..', '..', 'assets', 'fonts')
 

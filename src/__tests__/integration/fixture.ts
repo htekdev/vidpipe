@@ -4,11 +4,12 @@ import path from 'path';
 import os from 'os';
 import { promisify } from 'util';
 import 'dotenv/config';
+import { getFFmpegPath, getFFprobePath } from '../../config/ffmpegResolver.js';
 
 const execFileAsync = promisify(execFile);
 
-const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg';
-const ffprobePath = process.env.FFPROBE_PATH || 'ffprobe';
+const ffmpegPath = getFFmpegPath();
+const ffprobePath = getFFprobePath();
 
 export interface TestFixtures {
   dir: string;           // temp directory for all fixtures

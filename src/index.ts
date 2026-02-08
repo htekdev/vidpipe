@@ -4,6 +4,7 @@ import type { CLIOptions } from './config/environment'
 import { FileWatcher } from './services/fileWatcher'
 import { processVideoSafe } from './pipeline'
 import logger, { setVerbose } from './config/logger'
+import { runDoctor } from './commands/doctor'
 import path from 'path'
 import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
@@ -37,10 +38,19 @@ program
   .option('--no-social', 'Skip social media post generation')
   .option('--no-captions', 'Skip caption generation/burning')
   .option('-v, --verbose', 'Verbose logging')
+  .option('--doctor', 'Check all prerequisites and exit')
 
 program.parse()
 
 const opts = program.opts()
+
+// Handle --doctor before anything else
+if (opts.doctor) {
+  runDoctor()
+  // runDoctor() calls process.exit(); this is a safety fallback
+  process.exit(0)
+}
+
 const videoArg = program.args[0]
 const onceMode: boolean = opts.once || !!videoArg
 

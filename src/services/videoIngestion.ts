@@ -6,9 +6,10 @@ import ffmpeg from 'fluent-ffmpeg'
 import { VideoFile } from '../types'
 import { getConfig } from '../config/environment'
 import logger from '../config/logger'
+import { getFFmpegPath, getFFprobePath } from '../config/ffmpegResolver.js'
 
-const ffmpegBin = process.env.FFMPEG_PATH || 'ffmpeg'
-const ffprobeBin = process.env.FFPROBE_PATH || 'ffprobe'
+const ffmpegBin = getFFmpegPath()
+const ffprobeBin = getFFprobePath()
 ffmpeg.setFfmpegPath(ffmpegBin)
 ffmpeg.setFfprobePath(ffprobeBin)
 

@@ -13,8 +13,10 @@ import {
 import { singlePassEdit } from '../../tools/ffmpeg/singlePassEdit.js';
 import { singlePassEditAndCaption } from '../../tools/ffmpeg/singlePassEdit.js';
 
+import { getFFprobePath } from '../../config/ffmpegResolver.js';
+
 const execFileAsync = promisify(execFile);
-const ffprobePath = process.env.FFPROBE_PATH || 'ffprobe';
+const ffprobePath = getFFprobePath();
 const ffmpegOk = await isFFmpegAvailable();
 
 async function getStreams(videoPath: string): Promise<{ video: boolean; audio: boolean }> {

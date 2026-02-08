@@ -1,7 +1,8 @@
 import ffmpeg from 'fluent-ffmpeg'
 import logger from '../../config/logger'
+import { getFFmpegPath } from '../../config/ffmpegResolver.js'
 
-const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg'
+const ffmpegPath = getFFmpegPath()
 ffmpeg.setFfmpegPath(ffmpegPath)
 
 export interface SilenceRegion {

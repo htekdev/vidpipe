@@ -2,9 +2,10 @@ import ffmpeg from 'fluent-ffmpeg';
 import { promises as fs } from 'fs';
 import path from 'path';
 import logger from '../../config/logger';
+import { getFFmpegPath, getFFprobePath } from '../../config/ffmpegResolver.js';
 
-const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg';
-const ffprobePath = process.env.FFPROBE_PATH || 'ffprobe';
+const ffmpegPath = getFFmpegPath();
+const ffprobePath = getFFprobePath();
 ffmpeg.setFfmpegPath(ffmpegPath);
 ffmpeg.setFfprobePath(ffprobePath);
 

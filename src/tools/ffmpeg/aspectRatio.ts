@@ -3,8 +3,9 @@ import { promises as fs } from 'fs'
 import pathMod from 'path'
 import logger from '../../config/logger'
 import { detectWebcamRegion, getVideoResolution } from './faceDetection'
+import { getFFmpegPath } from '../../config/ffmpegResolver.js'
 
-const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg'
+const ffmpegPath = getFFmpegPath()
 
 // ── Types ────────────────────────────────────────────────────────────────────
 

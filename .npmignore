@@ -1,4 +1,17 @@
+# Source (compiled output is in dist/)
 src/
+
+# Test and development files
+vitest.config.ts
+coverage/
+.eslintrc*
+.editorconfig
+.prettierrc*
+
+# Documentation (available on GitHub)
+docs/
+
+# Project files
 recordings/
 cache/
 .env
@@ -8,5 +21,11 @@ cache/
 node_modules/
 tsconfig.json
 brand.json
+
+# Logs and maps
 *.log
 *.map
+
+# OS files
+.DS_Store
+Thumbs.db

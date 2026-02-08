@@ -6,9 +6,10 @@ import { promisify } from 'util'
 import { promises as fs } from 'fs'
 import { isFFmpegAvailable } from './fixture.js'
 import { detectWebcamRegion, isSkinTone, calculateCornerConfidence } from '../../tools/ffmpeg/faceDetection.js'
+import { getFFmpegPath } from '../../config/ffmpegResolver.js'
 
 const execFileAsync = promisify(execFile)
-const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg'
+const ffmpegPath = getFFmpegPath()
 const ffmpegOk = await isFFmpegAvailable()
 
 describe.skipIf(!ffmpegOk)('faceDetection integration', { timeout: 60_000 }, () => {

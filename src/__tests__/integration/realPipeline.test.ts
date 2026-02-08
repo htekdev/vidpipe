@@ -14,8 +14,10 @@ import { singlePassEdit, singlePassEditAndCaption } from '../../tools/ffmpeg/sin
 import { generateStyledASS } from '../../tools/captions/captionGenerator.js';
 import type { Transcript } from '../../types/index.js';
 
+import { getFFprobePath } from '../../config/ffmpegResolver.js';
+
 const execFileAsync = promisify(execFile);
-const ffprobePath = process.env.FFPROBE_PATH || 'ffprobe';
+const ffprobePath = getFFprobePath();
 const ffmpegOk = await isFFmpegAvailable();
 
 async function getStreamInfo(filePath: string) {

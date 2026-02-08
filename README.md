@@ -44,6 +44,18 @@ npm install -g vidpipe
 # Install globally
 npm install -g vidpipe
 
+# Set up your environment
+# Unix/Mac
+cp .env.example .env
+# Windows (PowerShell)
+Copy-Item .env.example .env
+
+# Then edit .env and add your OpenAI API key (REQUIRED):
+#   OPENAI_API_KEY=sk-your-key-here
+
+# Verify all prerequisites are met
+vidpipe --doctor
+
 # Process a single video
 vidpipe /path/to/video.mp4
 
@@ -59,7 +71,12 @@ vidpipe \
   --verbose
 ```
 
-> **Prerequisites:** Node.js 20+, FFmpeg 6.0+, and an OpenAI API key.
+> **Prerequisites:**
+> - **Node.js 20+**
+> - **FFmpeg 6.0+** — Automatically included via `npm install` (bundled by [`ffmpeg-static`](https://www.npmjs.com/package/ffmpeg-static)). Override with `FFMPEG_PATH` env var if you need a specific build.
+> - **OpenAI API key** (**required**) — Get one at [platform.openai.com/api-keys](https://platform.openai.com/api-keys). Needed for Whisper transcription and all AI features.
+> - **GitHub Copilot subscription** — Required for AI agent features (shorts generation, social media posts, summaries, blog posts). See [GitHub Copilot](https://github.com/features/copilot).
+>
 > See [Getting Started](./docs/getting-started.md) for full setup instructions.
 
 ---
@@ -72,6 +89,7 @@ vidpipe [options] [video-path]
 
 | Option | Description |
 |--------|-------------|
+| `--doctor` | Check that all prerequisites (FFmpeg, API keys, etc.) are installed and configured |
 | `[video-path]` | Process a specific video file (implies `--once`) |
 | `--watch-dir <path>` | Folder to watch for new recordings |
 | `--output-dir <path>` | Output directory (default: `./recordings`) |

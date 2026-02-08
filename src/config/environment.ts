@@ -57,8 +57,8 @@ export function initConfig(cli: CLIOptions = {}): AppEnvironment {
     OPENAI_API_KEY: cli.openaiKey || process.env.OPENAI_API_KEY || '',
     WATCH_FOLDER: cli.watchDir || process.env.WATCH_FOLDER || path.join(repoRoot, 'watch'),
     REPO_ROOT: repoRoot,
-    FFMPEG_PATH: process.env.FFMPEG_PATH || 'ffmpeg',
-    FFPROBE_PATH: process.env.FFPROBE_PATH || 'ffprobe',
+    FFMPEG_PATH: process.env.FFMPEG_PATH || 'ffmpeg',   // legacy; prefer ffmpegResolver
+    FFPROBE_PATH: process.env.FFPROBE_PATH || 'ffprobe', // legacy; prefer ffmpegResolver
     EXA_API_KEY: cli.exaKey || process.env.EXA_API_KEY || '',
     OUTPUT_DIR: cli.outputDir || process.env.OUTPUT_DIR || path.join(repoRoot, 'recordings'),
     BRAND_PATH: cli.brand || process.env.BRAND_PATH || path.join(repoRoot, 'brand.json'),

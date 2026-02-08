@@ -15,8 +15,10 @@ import {
 import { burnCaptions } from '../../tools/ffmpeg/captionBurning.js';
 import type { Transcript } from '../../types/index.js';
 
+import { getFFprobePath } from '../../config/ffmpegResolver.js';
+
 const execFileAsync = promisify(execFile);
-const ffprobePath = process.env.FFPROBE_PATH || 'ffprobe';
+const ffprobePath = getFFprobePath();
 const ffmpegOk = await isFFmpegAvailable();
 
 async function getStreams(videoPath: string): Promise<{ video: boolean; audio: boolean }> {

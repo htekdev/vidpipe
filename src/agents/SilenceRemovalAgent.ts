@@ -6,9 +6,10 @@ import { detectSilence, SilenceRegion } from '../tools/ffmpeg/silenceDetection'
 import { singlePassEdit } from '../tools/ffmpeg/singlePassEdit'
 import type { VideoFile, Transcript, SilenceRemovalResult } from '../types'
 import logger from '../config/logger'
+import { getFFmpegPath, getFFprobePath } from '../config/ffmpegResolver.js'
 
-const ffmpegPath = process.env.FFMPEG_PATH || 'ffmpeg'
-const ffprobePath = process.env.FFPROBE_PATH || 'ffprobe'
+const ffmpegPath = getFFmpegPath()
+const ffprobePath = getFFprobePath()
 ffmpeg.setFfmpegPath(ffmpegPath)
 ffmpeg.setFfprobePath(ffprobePath)
 
