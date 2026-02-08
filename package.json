@@ -1,6 +1,6 @@
 {
   "name": "vidpipe",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "AI-powered pipeline that watches for video recordings and generates transcripts, summaries, short clips, and social media posts",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -16,7 +16,8 @@
   ],
   "scripts": {
     "start": "tsx src/index.ts",
-    "build": "tsc && node -e \"const fs=require('fs');const f='dist/index.js';const c=fs.readFileSync(f,'utf8');if(!c.startsWith('#!')){fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c)}\"",
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
     "dev": "tsx watch src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -60,6 +61,7 @@
     "@types/sharp": "^0.32.0",
     "@types/uuid": "^11.0.0",
     "@vitest/coverage-v8": "^4.0.18",
+    "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "vitest": "^4.0.18"
   },
