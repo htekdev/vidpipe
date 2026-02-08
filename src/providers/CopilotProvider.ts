@@ -20,7 +20,7 @@ import type {
   ProviderEventType,
 } from './types'
 
-const DEFAULT_MODEL = 'Claude Sonnet 4'
+const DEFAULT_MODEL = 'Claude Opus 4.6'
 const DEFAULT_TIMEOUT_MS = 300_000 // 5 minutes
 
 export class CopilotProvider implements LLMProvider {

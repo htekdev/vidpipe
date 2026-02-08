@@ -187,7 +187,7 @@ VidPipe supports multiple LLM providers:
 
 | Provider | Env Var | Default Model | Notes |
 |----------|---------|---------------|-------|
-| `copilot` (default) | — | Claude Sonnet 4 | Uses GitHub Copilot auth |
+| `copilot` (default) | — | Claude Opus 4.6 | Uses GitHub Copilot auth |
 | `openai` | `OPENAI_API_KEY` | gpt-4o | Direct OpenAI API |
 | `claude` | `ANTHROPIC_API_KEY` | claude-opus-4.6 | Direct Anthropic API |
 
