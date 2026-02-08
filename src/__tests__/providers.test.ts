@@ -22,6 +22,13 @@ describe('calculateTokenCost', () => {
     expect(calculateTokenCost('nonexistent-model', 500, 500)).toBe(0);
   });
 
+  it('resolves versioned model names via fuzzy matching', () => {
+    // claude-sonnet-4-20250514 should match claude-sonnet-4
+    const cost = calculateTokenCost('claude-sonnet-4-20250514', 1000, 500);
+    expect(cost).toBeGreaterThan(0);
+    expect(cost).toBeCloseTo(calculateTokenCost('claude-sonnet-4', 1000, 500));
+  });
+
   it('handles model with only inputPer1M set', () => {
     // All models in the table have both, so unknown returns 0
     const cost = calculateTokenCost('gpt-4o', 1000, 0);
@@ -42,6 +49,11 @@ describe('calculatePRUCost', () => {
 
   it('returns 1 (default) for an unknown model', () => {
     expect(calculatePRUCost('nonexistent-model')).toBe(1);
+  });
+
+  it('resolves versioned model names via fuzzy matching', () => {
+    // claude-sonnet-4-20250514 should match claude-sonnet-4 (pruMultiplier: 1)
+    expect(calculatePRUCost('claude-sonnet-4-20250514')).toBe(1);
   });
 
   it('returns pruMultiplier for high-cost model', () => {

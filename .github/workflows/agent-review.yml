@@ -13,7 +13,7 @@ jobs:
   agent-review:
     name: Copilot Agent Review
     runs-on: ubuntu-latest
-    # Only run if the secret is available (skip for forks/dependabot)
+    # Skip for Dependabot PRs; for forks without COPILOT_GITHUB_TOKEN the install step will fail gracefully (continue-on-error)
     if: github.event.pull_request.user.login != 'dependabot[bot]'
 
     steps:

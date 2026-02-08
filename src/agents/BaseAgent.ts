@@ -1,7 +1,7 @@
 import type { LLMProvider, LLMSession, ToolWithHandler } from '../providers/types.js'
 import { getProvider } from '../providers/index.js'
 import { costTracker } from '../services/costTracker.js'
-import logger from '../config/logger'
+import logger from '../config/logger.js'
 
 /**
  * BaseAgent — abstract foundation for all LLM-powered agents.
@@ -66,6 +66,7 @@ export abstract class BaseAgent {
         systemPrompt: this.systemPrompt,
         tools: this.getTools(),
         streaming: true,
+        model: process.env.LLM_MODEL || undefined,
         timeoutMs: 300_000, // 5 min timeout
       })
       this.setupEventHandlers(this.session)

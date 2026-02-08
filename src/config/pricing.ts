@@ -51,7 +51,7 @@ export function calculateTokenCost(
   inputTokens: number,
   outputTokens: number
 ): number {
-  const pricing = MODEL_PRICING[model];
+  const pricing = getModelPricing(model);
   if (!pricing || (!pricing.inputPer1M && !pricing.outputPer1M)) return 0;
   
   const inputCost = ((pricing.inputPer1M ?? 0) / 1_000_000) * inputTokens;
@@ -64,7 +64,7 @@ export function calculateTokenCost(
  * Returns PRU count consumed (multiply by $0.04 for overage cost).
  */
 export function calculatePRUCost(model: string): number {
-  const pricing = MODEL_PRICING[model];
+  const pricing = getModelPricing(model);
   if (!pricing) return 1; // Default 1 PRU for unknown models
   if (pricing.copilotIncluded) return 0; // Free on paid plans
   return pricing.pruMultiplier ?? 1;

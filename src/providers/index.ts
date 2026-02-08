@@ -1,10 +1,9 @@
 import { LLMProvider } from './types.js';
+import type { ProviderName } from './types.js';
 import { CopilotProvider } from './CopilotProvider.js';
 import { OpenAIProvider } from './OpenAIProvider.js';
 import { ClaudeProvider } from './ClaudeProvider.js';
 import logger from '../config/logger.js';
-
-export type ProviderName = 'copilot' | 'openai' | 'claude';
 
 const providers: Record<ProviderName, () => LLMProvider> = {
   copilot: () => new CopilotProvider(),
@@ -66,6 +65,7 @@ export function getProviderName(): ProviderName {
 
 // Re-export types and providers
 export { LLMProvider, LLMSession, LLMResponse, SessionConfig, ToolWithHandler, TokenUsage, CostInfo, QuotaSnapshot, ProviderEvent, ProviderEventType } from './types.js';
+export type { ProviderName } from './types.js';
 export { CopilotProvider } from './CopilotProvider.js';
 export { OpenAIProvider } from './OpenAIProvider.js';
 export { ClaudeProvider } from './ClaudeProvider.js';

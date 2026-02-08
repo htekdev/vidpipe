@@ -125,4 +125,6 @@ export interface LLMProvider {
   isAvailable(): boolean
   /** Get the default model for this provider */
   getDefaultModel(): string
+  /** Optional lifecycle hook to release provider-level resources. */
+  close?(): Promise<void>
 }

@@ -328,12 +328,9 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   const totalDuration = Date.now() - pipelineStart
 
   // Cost tracking report
-  const costReport = costTracker.formatReport()
-  if (costTracker.getReport().records.length > 0) {
-    logger.info(costReport)
-  }
   const report = costTracker.getReport()
   if (report.records.length > 0) {
+    logger.info(costTracker.formatReport())
     const costMd = generateCostMarkdown(report)
     const costPath = path.join(video.videoDir, 'cost-report.md')
     await fs.writeFile(costPath, costMd, 'utf-8')

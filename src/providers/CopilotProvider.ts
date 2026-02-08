@@ -6,7 +6,7 @@
  */
 
 import { CopilotClient, CopilotSession, SessionEvent } from '@github/copilot-sdk'
-import logger from '../config/logger'
+import logger from '../config/logger.js'
 import type {
   LLMProvider,
   LLMSession,

@@ -533,3 +533,37 @@ ffmpeg -y -ss 2 -i path/to/output.mp4 -frames:v 1 -q:v 2 preview.png
 - Hook overlay: visible for first ~4 seconds at top, fades out
 - Font sizes: active word visibly larger than inactive words
 - No visual artifacts from crop/scale operations
+
+## Code Review Guidelines
+
+When reviewing pull requests for this repository, keep these conventions in mind:
+
+### ESM Module System
+- This project uses ES modules (`"type": "module"` in package.json)
+- **All runtime imports MUST use `.js` extensions** (e.g., `import logger from '../config/logger.js'`)
+- Type-only imports (`import type { ... }`) don't need `.js` extensions
+- The TypeScript compiler resolves `.js` to `.ts` source files at build time
+
+### Provider Abstraction
+- All agents MUST extend `BaseAgent` and use `LLMProvider` — never import `@github/copilot-sdk` directly
+- Provider adapters (`CopilotProvider`, `OpenAIProvider`, `ClaudeProvider`) are thin SDK wrappers intentionally excluded from coverage — they require real API keys to test
+- The `ProviderName` type is the single source of truth in `src/providers/types.ts`
+- `getModelPricing()` in `src/config/pricing.ts` does fuzzy/prefix matching for versioned model names
+
+### Cost Tracking
+- `CostTracker` is a singleton — call `costTracker.getReport()` once and reuse the result
+- Cost tracking is automatic via `BaseAgent.run()` — new agents get it for free
+
+### Testing
+- Unit tests exist in `src/__tests__/providers.test.ts` covering pricing, cost tracker, and provider factory
+- Coverage thresholds: 70% statements/functions/lines, 65% branches
+- Provider SDK adapters are excluded from coverage (thin wrappers, need real API keys)
+
+### FFmpeg
+- All FFmpeg/FFprobe usage MUST go through `src/config/ffmpegResolver.ts` — never hardcode paths
+- The xfade filter requires explicit fps after trim+setpts (see `getVideoFps()` in clipExtraction.ts)
+
+### What NOT to flag in reviews
+- Don't suggest adding coverage for provider SDK adapters (intentional exclusion)
+- Don't suggest changing the `continue-on-error` on the agent-review workflow (it's advisory by design)
+- Don't flag `any` types in tool handler signatures — they come from JSON-parsed LLM tool call arguments
