@@ -10,7 +10,7 @@ By default, the tool looks for `brand.json` in the current working directory. Ov
 
 ```bash
 # CLI flag
-video-auto-note-taker --brand /path/to/my-brand.json
+vidpipe --brand /path/to/my-brand.json
 
 # Environment variable
 BRAND_PATH=/path/to/my-brand.json

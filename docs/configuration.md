@@ -1,6 +1,6 @@
 # Configuration Guide
 
-All the ways to configure **video-auto-note-taker** — CLI flags, environment variables, the `.env` file, and `brand.json`.
+All the ways to configure **vidpipe** — CLI flags, environment variables, the `.env` file, and `brand.json`.
 
 ---
 
@@ -53,13 +53,13 @@ Disable individual pipeline stages:
 
 ```bash
 # Process without generating shorts or social posts
-video-auto-note-taker --no-shorts --no-social /path/to/video.mp4
+vidpipe --no-shorts --no-social /path/to/video.mp4
 
 # Skip git (useful during testing)
-video-auto-note-taker --no-git --watch-dir ./watch
+vidpipe --no-git --watch-dir ./watch
 
 # Transcription + summary only (skip everything optional)
-video-auto-note-taker \
+vidpipe \
   --no-silence-removal \
   --no-shorts \
   --no-social \
@@ -91,7 +91,7 @@ Set these in your shell or in a `.env` file in the working directory.
 OPENAI_API_KEY=sk-your-api-key-here
 WATCH_FOLDER=/home/you/Videos/Recordings
 OUTPUT_DIR=/home/you/Content/processed
-REPO_ROOT=/home/you/repos/video-auto-note-taker
+REPO_ROOT=/home/you/repos/vidpipe
 
 # Optional: explicit FFmpeg paths
 # FFMPEG_PATH=/usr/local/bin/ffmpeg
@@ -165,7 +165,7 @@ The `--output-dir` (default `./recordings`) is the base directory. Each video cr
 ### Content creator (full pipeline)
 
 ```bash
-video-auto-note-taker \
+vidpipe \
   --watch-dir ~/Videos/Recordings \
   --output-dir ~/Content/processed \
   --brand ./brand.json \
@@ -175,7 +175,7 @@ video-auto-note-taker \
 ### Quick transcription only
 
 ```bash
-video-auto-note-taker \
+vidpipe \
   --no-silence-removal \
   --no-shorts \
   --no-social \
@@ -187,7 +187,7 @@ video-auto-note-taker \
 ### CI/CD or automation (no interactive, no git)
 
 ```bash
-OPENAI_API_KEY=sk-... video-auto-note-taker \
+OPENAI_API_KEY=sk-... vidpipe \
   --once \
   --no-git \
   --output-dir /tmp/output \

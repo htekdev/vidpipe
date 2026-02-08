@@ -1,6 +1,6 @@
 # Getting Started
 
-Get up and running with **video-auto-note-taker** in under five minutes.
+Get up and running with **vidpipe** in under five minutes.
 
 ---
 
@@ -22,20 +22,20 @@ Get up and running with **video-auto-note-taker** in under five minutes.
 Install globally from npm:
 
 ```bash
-npm install -g video-auto-note-taker
+npm install -g vidpipe
 ```
 
 Or run directly with `npx`:
 
 ```bash
-npx video-auto-note-taker --once /path/to/video.mp4
+npx vidpipe --once /path/to/video.mp4
 ```
 
 ### From source
 
 ```bash
 git clone https://github.com/htekdev/video-auto-note-taker.git
-cd video-auto-note-taker
+cd vidpipe
 npm install
 npm run build
 npm start
@@ -48,19 +48,19 @@ npm start
 ### 1. Process a single video
 
 ```bash
-video-auto-note-taker --once /path/to/video.mp4
+vidpipe --once /path/to/video.mp4
 ```
 
 Or pass the file directly (implies `--once`):
 
 ```bash
-video-auto-note-taker /path/to/video.mp4
+vidpipe /path/to/video.mp4
 ```
 
 ### 2. Watch a folder for new recordings
 
 ```bash
-video-auto-note-taker --watch-dir ~/Videos/Recordings
+vidpipe --watch-dir ~/Videos/Recordings
 ```
 
 The tool monitors the folder and automatically processes any new `.mp4` that appears.
@@ -68,7 +68,7 @@ The tool monitors the folder and automatically processes any new `.mp4` that app
 ### 3. Full example with all options
 
 ```bash
-video-auto-note-taker \
+vidpipe \
   --watch-dir ~/Videos/Recordings \
   --output-dir ~/Content/processed \
   --openai-key sk-... \

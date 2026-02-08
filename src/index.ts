@@ -13,15 +13,15 @@ const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '..', 'package.json'
 
 const BANNER = `
 ╔══════════════════════════════════════╗
-║   Video Auto Note Taker  v${pkg.version.padEnd(10)}║
+║   VidPipe  v${pkg.version.padEnd(24)}║
 ╚══════════════════════════════════════╝
 `
 
 const program = new Command()
 
 program
-  .name('video-auto-note-taker')
-  .description('Automatically process videos: transcribe, summarize, generate shorts, captions, and social posts')
+  .name('vidpipe')
+  .description('AI-powered video content pipeline: transcribe, summarize, generate shorts, captions, and social posts')
   .version(pkg.version, '-V, --version')
   .argument('[video-path]', 'Path to a video file to process (implies --once)')
   .option('--watch-dir <path>', 'Folder to watch for new recordings (default: env WATCH_FOLDER)')

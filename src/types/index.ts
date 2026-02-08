@@ -1,5 +1,5 @@
 /**
- * Type definitions for video-auto-note-taker CLI pipeline.
+ * Type definitions for vidpipe CLI pipeline.
  *
  * Domain types covering transcription, video metadata, short-clip planning,
  * social-media post generation, and end-to-end pipeline orchestration.

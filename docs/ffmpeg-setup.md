@@ -1,6 +1,6 @@
 # FFmpeg Setup
 
-**video-auto-note-taker** requires FFmpeg 6.0+ for audio extraction, silence removal, short-clip cutting, and caption burning. Both `ffmpeg` and `ffprobe` must be available.
+**vidpipe** requires FFmpeg 6.0+ for audio extraction, silence removal, short-clip cutting, and caption burning. Both `ffmpeg` and `ffprobe` must be available.
 
 ---
 
@@ -66,7 +66,7 @@ Or pass them as environment variables:
 ```powershell
 $env:FFMPEG_PATH = "C:\tools\ffmpeg-arm64\bin\ffmpeg.exe"
 $env:FFPROBE_PATH = "C:\tools\ffmpeg-arm64\bin\ffprobe.exe"
-video-auto-note-taker --once ./my-video.mp4
+vidpipe --once ./my-video.mp4
 ```
 
 ---
@@ -134,7 +134,7 @@ FFPROBE_PATH=/usr/local/bin/ffprobe
 ```bash
 export FFMPEG_PATH=/opt/ffmpeg/bin/ffmpeg
 export FFPROBE_PATH=/opt/ffmpeg/bin/ffprobe
-video-auto-note-taker --watch-dir ./watch
+vidpipe --watch-dir ./watch
 ```
 
 ### Windows example
@@ -163,7 +163,7 @@ ffprobe -version 2>&1 | head -1
 Then test that the tool can find them:
 
 ```bash
-video-auto-note-taker --verbose --once /path/to/short-test-video.mp4
+vidpipe --verbose --once /path/to/short-test-video.mp4
 ```
 
 In verbose mode, you'll see the FFmpeg paths logged during the ingestion stage.

@@ -32,7 +32,7 @@
 >   the same `convertWithSmartLayout()` pattern to 1:1 and 4:5
 
 > **Last updated:** 2025-10  
-> **Purpose:** Inform the video-auto-note-taker pipeline on how to reformat landscape screen recordings into platform-optimized short-form video.
+> **Purpose:** Inform the vidpipe pipeline on how to reformat landscape screen recordings into platform-optimized short-form video.
 
 ---
 

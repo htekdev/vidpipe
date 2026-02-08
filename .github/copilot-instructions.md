@@ -1,4 +1,4 @@
-# Copilot Instructions — video-auto-note-taker
+# Copilot Instructions — vidpipe
 
 ## Project Overview
 
@@ -356,7 +356,7 @@ npx tsx src/index.ts --no-git --no-social --no-shorts video.mp4
 ## File Structure
 
 ```
-video-auto-note-taker/
+vidpipe/
 ├── src/
 │   ├── index.ts                    # CLI entry point (Commander, watch mode + --once mode)
 │   ├── pipeline.ts                 # Pipeline orchestration, runStage(), adjustTranscript()

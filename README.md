@@ -1,16 +1,16 @@
 [![CI](https://github.com/htekdev/video-auto-note-taker/actions/workflows/ci.yml/badge.svg)](https://github.com/htekdev/video-auto-note-taker/actions/workflows/ci.yml)
-[![npm version](https://img.shields.io/npm/v/video-auto-note-taker)](https://www.npmjs.com/package/video-auto-note-taker)
+[![npm version](https://img.shields.io/npm/v/vidpipe)](https://www.npmjs.com/package/vidpipe)
 [![Node.js 20+](https://img.shields.io/badge/node-20%2B-brightgreen)](https://nodejs.org/)
 [![License: ISC](https://img.shields.io/badge/license-ISC-blue)](./LICENSE)
 
-# 🎬 Video Auto Note Taker
+# 🎬 VidPipe
 
 **Drop a video. Get transcripts, summaries, short clips, captions, blog posts, and social media posts — automatically.**
 
 An AI-powered CLI pipeline that watches for new video recordings and transforms them into rich, structured content using [GitHub Copilot SDK](https://github.com/github/copilot-sdk) agents and OpenAI Whisper.
 
 ```bash
-npm install -g video-auto-note-taker
+npm install -g vidpipe
 ```
 
 ---
@@ -42,16 +42,16 @@ npm install -g video-auto-note-taker
 
 ```bash
 # Install globally
-npm install -g video-auto-note-taker
+npm install -g vidpipe
 
 # Process a single video
-video-auto-note-taker /path/to/video.mp4
+vidpipe /path/to/video.mp4
 
 # Watch a folder for new recordings
-video-auto-note-taker --watch-dir ~/Videos/Recordings
+vidpipe --watch-dir ~/Videos/Recordings
 
 # Full example with options
-video-auto-note-taker \
+vidpipe \
   --watch-dir ~/Videos/Recordings \
   --output-dir ~/Content/processed \
   --openai-key sk-... \
@@ -67,7 +67,7 @@ video-auto-note-taker \
 ## 🎮 CLI Usage
 
 ```
-video-auto-note-taker [options] [video-path]
+vidpipe [options] [video-path]
 ```
 
 | Option | Description |
