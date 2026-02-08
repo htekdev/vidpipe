@@ -49,6 +49,23 @@ function parseVersionFromOutput(output: string): string {
   return match ? match[1] : 'unknown'
 }
 
+function getFFmpegInstallHint(): string {
+  const platform = process.platform
+  const lines = ['Install FFmpeg:']
+  if (platform === 'win32') {
+    lines.push('  winget install Gyan.FFmpeg')
+    lines.push('  choco install ffmpeg        (alternative)')
+  } else if (platform === 'darwin') {
+    lines.push('  brew install ffmpeg')
+  } else {
+    lines.push('  sudo apt install ffmpeg     (Debian/Ubuntu)')
+    lines.push('  sudo dnf install ffmpeg     (Fedora)')
+    lines.push('  sudo pacman -S ffmpeg       (Arch)')
+  }
+  lines.push('  Or set FFMPEG_PATH to a custom binary location')
+  return lines.join('\n          ')
+}
+
 function checkNode(): CheckResult {
   const raw = process.version // e.g. "v20.11.1"
   const major = parseInt(raw.slice(1), 10)
@@ -76,7 +93,7 @@ function checkFFmpeg(): CheckResult {
     label: 'FFmpeg',
     ok: false,
     required: true,
-    message: 'FFmpeg not found — install with: winget install Gyan.FFmpeg (Windows) / brew install ffmpeg (macOS)',
+    message: `FFmpeg not found — ${getFFmpegInstallHint()}`,
   }
 }
 
@@ -93,7 +110,7 @@ function checkFFprobe(): CheckResult {
     label: 'FFprobe',
     ok: false,
     required: true,
-    message: 'FFprobe not found — install with: winget install Gyan.FFmpeg (Windows) / brew install ffmpeg (macOS)',
+    message: `FFprobe not found — usually included with FFmpeg.\n          ${getFFmpegInstallHint()}`,
   }
 }
 
