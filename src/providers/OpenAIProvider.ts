@@ -64,6 +64,7 @@ class OpenAISession implements LLMSession {
   private tools: ChatCompletionTool[];
   private handlers: Map<string, ToolWithHandler['handler']>;
   private listeners = new Map<ProviderEventType, ((e: ProviderEvent) => void)[]>();
+  private timeoutMs?: number;
 
   constructor(client: OpenAI, config: SessionConfig, model: string) {
     this.client = client;
@@ -71,6 +72,7 @@ class OpenAISession implements LLMSession {
     this.messages = [{ role: 'system', content: config.systemPrompt }];
     this.tools = toOpenAITools(config.tools);
     this.handlers = buildHandlerMap(config.tools);
+    this.timeoutMs = config.timeoutMs;
   }
 
   // ── public API ─────────────────────────────────────────────────────
@@ -88,11 +90,23 @@ class OpenAISession implements LLMSession {
         logger.warn(`OpenAI agent exceeded ${MAX_TOOL_ROUNDS} tool rounds — aborting to prevent runaway`);
         throw new Error(`Max tool rounds (${MAX_TOOL_ROUNDS}) exceeded — possible infinite loop`);
       }
-      const response = await this.client.chat.completions.create({
-        model: this.model,
-        messages: this.messages,
-        ...(this.tools.length > 0 ? { tools: this.tools } : {}),
-      });
+      const controller = new AbortController();
+      const timeoutId = this.timeoutMs
+        ? setTimeout(() => controller.abort(), this.timeoutMs)
+        : undefined;
+      let response: OpenAI.Chat.Completions.ChatCompletion;
+      try {
+        response = await this.client.chat.completions.create(
+          {
+            model: this.model,
+            messages: this.messages,
+            ...(this.tools.length > 0 ? { tools: this.tools } : {}),
+          },
+          { signal: controller.signal },
+        );
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+      }
 
       const choice = response.choices[0];
       const assistantMsg = choice.message;

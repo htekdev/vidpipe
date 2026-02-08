@@ -13,6 +13,11 @@ interface CheckResult {
   message: string
 }
 
+/** Normalize LLM_PROVIDER the same way the provider factory does. */
+export function normalizeProviderName(raw: string | undefined): string {
+  return (raw || 'copilot').trim().toLowerCase()
+}
+
 function resolveFFmpegPath(): { path: string; source: string } {
   if (process.env.FFMPEG_PATH) {
     return { path: process.env.FFMPEG_PATH, source: 'FFMPEG_PATH env' }
@@ -165,7 +170,7 @@ export function runDoctor(): void {
 
   // LLM Provider section — check env vars directly to avoid silent fallback
   console.log('\nLLM Provider')
-  const providerName = (process.env.LLM_PROVIDER || 'copilot') as ProviderName
+  const providerName = normalizeProviderName(process.env.LLM_PROVIDER) as ProviderName
   const isDefault = !process.env.LLM_PROVIDER
   const providerLabel = isDefault ? `${providerName} (default)` : providerName
   const validProviders: ProviderName[] = ['copilot', 'openai', 'claude']

@@ -241,9 +241,61 @@ describe('CostTracker', () => {
     const record = costTracker.getReport().records[0];
     expect(record.cost.amount).toBe(42);
   });
+
+  it('costTracker records durationMs when provided', () => {
+    costTracker.reset();
+    costTracker.recordUsage('claude', 'claude-opus-4.6', makeUsage(), undefined, 1500);
+    const report = costTracker.getReport();
+    expect(report.records[0].durationMs).toBe(1500);
+  });
+
+  it('costTracker handles missing durationMs gracefully', () => {
+    costTracker.reset();
+    costTracker.recordUsage('claude', 'claude-opus-4.6', makeUsage());
+    const report = costTracker.getReport();
+    expect(report.records[0].durationMs).toBeUndefined();
+  });
 });
 
-// ─── providers/index.ts ───────────────────────────────────────
+// ─── provider timeout contract ────────────────────────────────
+
+describe('provider timeout contract', () => {
+  it('OpenAIProvider class exists and has createSession', async () => {
+    const { OpenAIProvider } = await import('../providers/OpenAIProvider.js');
+    expect(typeof OpenAIProvider).toBe('function');
+    const provider = new OpenAIProvider();
+    expect(typeof provider.createSession).toBe('function');
+  });
+
+  it('ClaudeProvider class exists and has createSession', async () => {
+    const { ClaudeProvider } = await import('../providers/ClaudeProvider.js');
+    expect(typeof ClaudeProvider).toBe('function');
+    const provider = new ClaudeProvider();
+    expect(typeof provider.createSession).toBe('function');
+  });
+
+  it('SessionConfig type includes timeoutMs (structural check via providers)', () => {
+    // Both providers accept SessionConfig which includes timeoutMs.
+    // This test verifies the type contract compiles correctly — if timeoutMs
+    // were removed from SessionConfig, the providers would fail to compile.
+    const config: import('../providers/types.js').SessionConfig = {
+      systemPrompt: 'test',
+      tools: [],
+      timeoutMs: 5000,
+    };
+    expect(config.timeoutMs).toBe(5000);
+  });
+
+  it('LLMResponse type includes durationMs field', () => {
+    const response: import('../providers/types.js').LLMResponse = {
+      content: 'test',
+      toolCalls: [],
+      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      durationMs: 123,
+    };
+    expect(response.durationMs).toBe(123);
+  });
+});
 
 describe('providers/index', () => {
   beforeEach(async () => {
@@ -299,5 +351,26 @@ describe('providers/index', () => {
     process.env.LLM_PROVIDER = 'openai';
     await resetProvider();
     expect(getProviderName()).toBe('openai');
+  });
+
+  it('getProviderName returns copilot for invalid LLM_PROVIDER values', async () => {
+    process.env.LLM_PROVIDER = 'invalid-provider';
+    await resetProvider();
+    expect(getProviderName()).toBe('copilot');
+  });
+
+  it('resetProvider awaits close and handles rejection gracefully', async () => {
+    // Get a provider so one is cached
+    const provider = getProvider();
+
+    // Mock close to reject
+    const originalClose = provider.close?.bind(provider);
+    provider.close = async () => { throw new Error('close failed'); };
+
+    // resetProvider should NOT throw even if close rejects
+    await expect(resetProvider()).resolves.not.toThrow();
+
+    // Restore
+    provider.close = originalClose;
   });
 });

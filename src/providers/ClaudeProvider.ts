@@ -62,6 +62,7 @@ class ClaudeSession implements LLMSession {
   private model: string
   private maxTokens: number
   private handlers = new Map<ProviderEventType, ((event: ProviderEvent) => void)[]>()
+  private timeoutMs?: number
 
   constructor(client: Anthropic, config: SessionConfig) {
     this.client = client
@@ -70,6 +71,7 @@ class ClaudeSession implements LLMSession {
     this.anthropicTools = toAnthropicTools(config.tools)
     this.model = config.model ?? DEFAULT_MODEL
     this.maxTokens = DEFAULT_MAX_TOKENS
+    this.timeoutMs = config.timeoutMs
   }
 
   on(event: ProviderEventType, handler: (event: ProviderEvent) => void): void {
@@ -93,6 +95,8 @@ class ClaudeSession implements LLMSession {
       totalTokens: 0,
     }
 
+    const startMs = Date.now()
+
     // Agent loop: keep calling until no more tool_use
     let toolRound = 0
     while (true) {
@@ -100,13 +104,25 @@ class ClaudeSession implements LLMSession {
         logger.warn(`Claude agent exceeded ${MAX_TOOL_ROUNDS} tool rounds — aborting to prevent runaway`)
         throw new Error(`Max tool rounds (${MAX_TOOL_ROUNDS}) exceeded — possible infinite loop`)
       }
-      const response = await this.client.messages.create({
-        model: this.model,
-        max_tokens: this.maxTokens,
-        system: this.systemPrompt,
-        messages: this.messages,
-        ...(this.anthropicTools.length > 0 ? { tools: this.anthropicTools } : {}),
-      })
+      const controller = new AbortController()
+      const timeoutId = this.timeoutMs
+        ? setTimeout(() => controller.abort(), this.timeoutMs)
+        : undefined
+      let response: Anthropic.Messages.Message
+      try {
+        response = await this.client.messages.create(
+          {
+            model: this.model,
+            max_tokens: this.maxTokens,
+            system: this.systemPrompt,
+            messages: this.messages,
+            ...(this.anthropicTools.length > 0 ? { tools: this.anthropicTools } : {}),
+          },
+          { signal: controller.signal },
+        )
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId)
+      }
 
       // Accumulate usage
       cumulativeUsage.inputTokens += response.usage.input_tokens
@@ -146,6 +162,7 @@ class ClaudeSession implements LLMSession {
           cost: cost > 0
             ? { amount: cost, unit: 'usd', model: this.model }
             : undefined,
+          durationMs: Date.now() - startMs,
         }
       }
 

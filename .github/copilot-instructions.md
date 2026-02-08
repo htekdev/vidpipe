@@ -567,3 +567,11 @@ When reviewing pull requests for this repository, keep these conventions in mind
 - Don't suggest adding coverage for provider SDK adapters (intentional exclusion)
 - Don't suggest changing the `continue-on-error` on the agent-review workflow (it's advisory by design)
 - Don't flag `any` types in tool handler signatures — they come from JSON-parsed LLM tool call arguments
+
+### Test-First Review Fixes
+
+When addressing code review feedback on testable code:
+1. Write a failing test that exposes the issue before fixing it
+2. Verify the test fails, then implement the fix
+3. This ensures every review item becomes a permanent regression test
+4. Exempt: doc changes, YAML/config changes, comment-only changes

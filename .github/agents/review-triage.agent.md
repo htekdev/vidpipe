@@ -48,6 +48,19 @@ When invoked, you will:
 - Permission scope changes (accept if security-relevant, reject if overly restrictive)
 - Performance optimizations (accept if measurable, reject if premature)
 
+## TDD Process for Fixes
+
+**For every ACCEPT item that involves testable code (not doc-only changes):**
+
+1. **Write a failing test first** — Create a test that exposes the exact bug or missing behavior the reviewer identified
+2. **Verify the test fails** — Run `npx vitest run` and confirm the new test fails with the expected failure
+3. **Implement the minimal fix** — Make the smallest change to pass the new test
+4. **Verify all tests pass** — Run the full suite to confirm no regressions
+
+This ensures every review fix is backed by a regression test, making the test suite bulletproof over time.
+
+**Exempt from TDD:** Documentation changes, YAML/config-only changes, comment updates.
+
 ## Project-Specific Knowledge
 
 - **ESM Module System**: All imports must use `.js` extensions. TypeScript types/interfaces must use `import type` / `export type` to avoid ESM runtime failures.
