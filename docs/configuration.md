@@ -76,7 +76,10 @@ Set these in your shell or in a `.env` file in the working directory.
 
 | Variable | Required | Description | Default |
 |----------|----------|-------------|---------|
-| `OPENAI_API_KEY` | ✅ | OpenAI API key for Whisper and Copilot SDK agents | — |
+| `OPENAI_API_KEY` | ✅ | OpenAI API key for Whisper transcription (and agents when `LLM_PROVIDER=openai`) | — |
+| `LLM_PROVIDER` | ❌ | LLM provider: `copilot`, `openai`, or `claude` | `copilot` |
+| `LLM_MODEL` | ❌ | Override the default model for the selected provider | Provider default |
+| `ANTHROPIC_API_KEY` | ❌ | Anthropic API key (required when `LLM_PROVIDER=claude`) | — |
 | `WATCH_FOLDER` | ❌ | Directory to monitor for new video files | `./watch` |
 | `OUTPUT_DIR` | ❌ | Base output directory for processed videos | `./recordings` |
 | `REPO_ROOT` | ❌ | Repository root for git operations | Current working directory |
@@ -84,6 +87,30 @@ Set these in your shell or in a `.env` file in the working directory.
 | `FFPROBE_PATH` | ❌ | Absolute path to `ffprobe` binary | `ffprobe` (from PATH) |
 | `EXA_API_KEY` | ❌ | Exa AI API key for web search in social posts | — |
 | `BRAND_PATH` | ❌ | Path to `brand.json` | `./brand.json` |
+
+---
+
+## LLM Provider
+
+VidPipe supports multiple LLM providers for AI agent features. Configure via environment variables:
+
+| Variable | Required | Description | Default |
+|----------|----------|-------------|---------|
+| `LLM_PROVIDER` | ❌ | LLM provider to use: `copilot`, `openai`, or `claude` | `copilot` |
+| `LLM_MODEL` | ❌ | Override the default model for the selected provider | Provider default |
+| `ANTHROPIC_API_KEY` | ❌ | Anthropic API key (required when `LLM_PROVIDER=claude`) | — |
+
+### Per-Provider Setup
+
+- **Copilot** (default): No extra config needed — uses your GitHub Copilot subscription. Requires an active [GitHub Copilot](https://github.com/features/copilot) subscription.
+- **OpenAI**: Set `LLM_PROVIDER=openai`. Uses the same `OPENAI_API_KEY` already required for Whisper transcription.
+- **Claude**: Set `LLM_PROVIDER=claude` and `ANTHROPIC_API_KEY=sk-ant-...`. Get a key at [console.anthropic.com](https://console.anthropic.com/).
+
+### Cost Tracking
+
+The pipeline automatically tracks token usage and estimated cost for every LLM call. At the end of each run, a summary is printed showing total tokens, cost (USD for OpenAI/Claude, premium requests for Copilot), and breakdowns by provider, agent, and model. No configuration is needed — cost tracking is always on.
+
+---
 
 ### Example `.env` file
 

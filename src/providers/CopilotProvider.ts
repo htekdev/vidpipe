@@ -1,0 +1,186 @@
+/**
+ * CopilotProvider — wraps @github/copilot-sdk behind the LLMProvider interface.
+ *
+ * Extracts the Copilot-specific logic from BaseAgent into a reusable provider
+ * that can be swapped with OpenAI or Claude providers via the abstraction layer.
+ */
+
+import { CopilotClient, CopilotSession, SessionEvent } from '@github/copilot-sdk'
+import logger from '../config/logger'
+import type {
+  LLMProvider,
+  LLMSession,
+  LLMResponse,
+  SessionConfig,
+  TokenUsage,
+  CostInfo,
+  QuotaSnapshot,
+  ToolCall,
+  ProviderEvent,
+  ProviderEventType,
+} from './types'
+
+const DEFAULT_MODEL = 'Claude Sonnet 4'
+const DEFAULT_TIMEOUT_MS = 300_000 // 5 minutes
+
+export class CopilotProvider implements LLMProvider {
+  readonly name = 'copilot' as const
+  private client: CopilotClient | null = null
+
+  isAvailable(): boolean {
+    // Copilot uses GitHub auth, not an API key
+    return true
+  }
+
+  getDefaultModel(): string {
+    return DEFAULT_MODEL
+  }
+
+  async createSession(config: SessionConfig): Promise<LLMSession> {
+    if (!this.client) {
+      this.client = new CopilotClient({ autoStart: true, logLevel: 'error' })
+    }
+
+    const copilotSession = await this.client.createSession({
+      systemMessage: { mode: 'replace', content: config.systemPrompt },
+      tools: config.tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+        parameters: t.parameters,
+        handler: t.handler,
+      })),
+      streaming: config.streaming ?? true,
+    })
+
+    return new CopilotSessionWrapper(
+      copilotSession,
+      config.timeoutMs ?? DEFAULT_TIMEOUT_MS,
+    )
+  }
+
+  /** Tear down the underlying Copilot client. */
+  async destroy(): Promise<void> {
+    try {
+      if (this.client) {
+        await this.client.stop()
+        this.client = null
+      }
+    } catch (err) {
+      logger.error(`[CopilotProvider] Error during destroy: ${err}`)
+    }
+  }
+}
+
+/** Wraps a CopilotSession to satisfy the LLMSession interface. */
+class CopilotSessionWrapper implements LLMSession {
+  private eventHandlers = new Map<ProviderEventType, Array<(event: ProviderEvent) => void>>()
+
+  // Latest usage data captured from assistant.usage events
+  private lastUsage: TokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+  private lastCost: CostInfo | undefined
+  private lastQuotaSnapshots: Record<string, QuotaSnapshot> | undefined
+
+  constructor(
+    private readonly session: CopilotSession,
+    private readonly timeoutMs: number,
+  ) {
+    this.setupEventForwarding()
+    this.setupUsageTracking()
+  }
+
+  async sendAndWait(message: string): Promise<LLMResponse> {
+    const start = Date.now()
+
+    // Reset usage tracking for this call
+    this.lastUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
+    this.lastCost = undefined
+    this.lastQuotaSnapshots = undefined
+
+    const response = await this.session.sendAndWait(
+      { prompt: message },
+      this.timeoutMs,
+    )
+
+    const content = response?.data?.content ?? ''
+    const toolCalls: ToolCall[] = [] // Copilot SDK handles tool calls internally
+
+    return {
+      content,
+      toolCalls,
+      usage: this.lastUsage,
+      cost: this.lastCost,
+      quotaSnapshots: this.lastQuotaSnapshots,
+      durationMs: Date.now() - start,
+    }
+  }
+
+  on(event: ProviderEventType, handler: (event: ProviderEvent) => void): void {
+    const handlers = this.eventHandlers.get(event) ?? []
+    handlers.push(handler)
+    this.eventHandlers.set(event, handlers)
+  }
+
+  async close(): Promise<void> {
+    await this.session.destroy()
+    this.eventHandlers.clear()
+  }
+
+  /** Capture assistant.usage events for token/cost tracking. */
+  private setupUsageTracking(): void {
+    this.session.on((event: SessionEvent) => {
+      if (event.type === 'assistant.usage') {
+        const d = event.data as Record<string, unknown>
+        this.lastUsage = {
+          inputTokens: (d.inputTokens as number) ?? 0,
+          outputTokens: (d.outputTokens as number) ?? 0,
+          totalTokens: ((d.inputTokens as number) ?? 0) + ((d.outputTokens as number) ?? 0),
+          cacheReadTokens: d.cacheReadTokens as number | undefined,
+          cacheWriteTokens: d.cacheWriteTokens as number | undefined,
+        }
+        if (d.cost != null) {
+          this.lastCost = {
+            amount: d.cost as number,
+            unit: 'premium_requests',
+            model: (d.model as string) ?? DEFAULT_MODEL,
+            multiplier: d.multiplier as number | undefined,
+          }
+        }
+        if (d.quotaSnapshots != null) {
+          this.lastQuotaSnapshots = d.quotaSnapshots as Record<string, QuotaSnapshot>
+        }
+      }
+    })
+  }
+
+  /** Forward CopilotSession events to ProviderEvent subscribers. */
+  private setupEventForwarding(): void {
+    this.session.on((event: SessionEvent) => {
+      switch (event.type) {
+        case 'assistant.message_delta':
+          this.emit('delta', event.data)
+          break
+        case 'tool.execution_start':
+          this.emit('tool_start', event.data)
+          break
+        case 'tool.execution_complete':
+          this.emit('tool_end', event.data)
+          break
+        case 'assistant.usage':
+          this.emit('usage', event.data)
+          break
+        case 'session.error':
+          this.emit('error', event.data)
+          break
+      }
+    })
+  }
+
+  private emit(type: ProviderEventType, data: unknown): void {
+    const handlers = this.eventHandlers.get(type)
+    if (handlers) {
+      for (const handler of handlers) {
+        handler({ type, data })
+      }
+    }
+  }
+}

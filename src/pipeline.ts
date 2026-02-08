@@ -15,6 +15,8 @@ import { commitAndPush } from './services/gitOperations'
 import { removeDeadSilence } from './agents/SilenceRemovalAgent'
 import { burnCaptions } from './tools/ffmpeg/captionBurning'
 import { singlePassEditAndCaption } from './tools/ffmpeg/singlePassEdit'
+import { costTracker } from './services/costTracker.js'
+import type { CostReport } from './services/costTracker.js'
 import type {
   VideoFile,
   Transcript,
@@ -54,6 +56,7 @@ export async function runStage<T>(
   fn: () => Promise<T>,
   stageResults: StageResult[],
 ): Promise<T | undefined> {
+  costTracker.setStage(stageName)
   const start = Date.now()
   try {
     const result = await fn()
@@ -144,6 +147,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   const stageResults: StageResult[] = []
   const cfg = getConfig()
 
+  costTracker.reset()
   logger.info(`Pipeline starting for: ${videoPath}`)
 
   // 1. Ingestion — required for all subsequent stages
@@ -322,6 +326,20 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   }
 
   const totalDuration = Date.now() - pipelineStart
+
+  // Cost tracking report
+  const costReport = costTracker.formatReport()
+  if (costTracker.getReport().records.length > 0) {
+    logger.info(costReport)
+  }
+  const report = costTracker.getReport()
+  if (report.records.length > 0) {
+    const costMd = generateCostMarkdown(report)
+    const costPath = path.join(video.videoDir, 'cost-report.md')
+    await fs.writeFile(costPath, costMd, 'utf-8')
+    logger.info(`Cost report saved: ${costPath}`)
+  }
+
   logger.info(`Pipeline completed in ${totalDuration}ms`)
 
   return {
@@ -339,6 +357,34 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
     stageResults,
     totalDuration,
   }
+}
+
+function generateCostMarkdown(report: CostReport): string {
+  let md = '# Pipeline Cost Report\n\n'
+  md += `| Metric | Value |\n|--------|-------|\n`
+  md += `| Total Cost | $${report.totalCostUSD.toFixed(4)} USD |\n`
+  if (report.totalPRUs > 0) md += `| Total PRUs | ${report.totalPRUs} |\n`
+  md += `| Input Tokens | ${report.totalTokens.input.toLocaleString()} |\n`
+  md += `| Output Tokens | ${report.totalTokens.output.toLocaleString()} |\n`
+  md += `| LLM Calls | ${report.records.length} |\n\n`
+
+  if (Object.keys(report.byAgent).length > 0) {
+    md += '## By Agent\n\n| Agent | Cost | PRUs | Calls |\n|-------|------|------|-------|\n'
+    for (const [agent, data] of Object.entries(report.byAgent)) {
+      md += `| ${agent} | $${data.costUSD.toFixed(4)} | ${data.prus} | ${data.calls} |\n`
+    }
+    md += '\n'
+  }
+
+  if (Object.keys(report.byModel).length > 1) {
+    md += '## By Model\n\n| Model | Cost | PRUs | Calls |\n|-------|------|------|-------|\n'
+    for (const [model, data] of Object.entries(report.byModel)) {
+      md += `| ${model} | $${data.costUSD.toFixed(4)} | ${data.prus} | ${data.calls} |\n`
+    }
+    md += '\n'
+  }
+
+  return md
 }
 
 export async function processVideoSafe(videoPath: string): Promise<PipelineResult | null> {

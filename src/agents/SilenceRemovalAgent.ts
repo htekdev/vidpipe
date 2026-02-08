@@ -1,5 +1,5 @@
 import ffmpeg from 'fluent-ffmpeg'
-import { Tool } from '@github/copilot-sdk'
+import type { ToolWithHandler } from '../providers/types.js'
 import path from 'path'
 import { BaseAgent } from './BaseAgent'
 import { detectSilence, SilenceRegion } from '../tools/ffmpeg/silenceDetection'
@@ -76,7 +76,7 @@ class SilenceRemovalAgent extends BaseAgent {
     super('SilenceRemovalAgent', SYSTEM_PROMPT)
   }
 
-  protected getTools(): Tool<unknown>[] {
+  protected getTools(): ToolWithHandler[] {
     return [
       {
         name: 'decide_removals',

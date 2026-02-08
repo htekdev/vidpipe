@@ -1,4 +1,4 @@
-import { Tool } from '@github/copilot-sdk'
+import type { ToolWithHandler } from '../providers/types.js'
 import { promises as fs } from 'fs'
 import path from 'path'
 
@@ -118,7 +118,7 @@ class ChapterAgent extends BaseAgent {
     return path.join(this.outputDir, 'chapters')
   }
 
-  protected getTools(): Tool<unknown>[] {
+  protected getTools(): ToolWithHandler[] {
     return [
       {
         name: 'generate_chapters',

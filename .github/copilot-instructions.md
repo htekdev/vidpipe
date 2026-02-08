@@ -34,6 +34,20 @@ Automated video processing pipeline that watches a folder for new `.mp4` recordi
 - **Original transcript** is used for shorts, medium clips, and chapters (they reference original video timestamps)
 - Shorts and chapters are generated before summary so the README can reference them
 
+### LLM Provider Abstraction (src/providers/)
+
+All LLM interactions go through a provider abstraction layer. `BaseAgent` accepts an `LLMProvider` instead of directly using `CopilotClient`, allowing agents to work with any supported backend.
+
+| File | Purpose |
+|------|---------|
+| `types.ts` | `LLMProvider`, `LLMSession`, `LLMResponse`, `TokenUsage`, `CostInfo` interfaces |
+| `CopilotProvider.ts` | GitHub Copilot SDK backend (default) |
+| `OpenAIProvider.ts` | Direct OpenAI API backend |
+| `ClaudeProvider.ts` | Direct Anthropic API backend |
+| `index.ts` | Factory — `getProvider()` reads `LLM_PROVIDER` env var, caches singleton, falls back to copilot |
+
+**Cost tracking** (`src/services/costTracker.ts`): Singleton `CostTracker` records every LLM call's token usage and cost. At pipeline end, `printReport()` logs totals and breakdowns by provider, agent, and model. Cost is in USD for OpenAI/Claude and premium requests (PRUs) for Copilot.
+
 ### Agent Pattern (@github/copilot-sdk)
 
 All AI agents extend `BaseAgent` (src/agents/BaseAgent.ts):
@@ -380,8 +394,15 @@ vidpipe/
 │   │   ├── SummaryAgent.ts         # README generation with frame captures
 │   │   ├── SocialMediaAgent.ts     # Multi-platform social post generation (also short/medium posts)
 │   │   └── BlogAgent.ts            # Dev.to blog post generation
+│   ├── providers/
+│   │   ├── types.ts                # LLMProvider, LLMSession, LLMResponse, TokenUsage, CostInfo interfaces
+│   │   ├── CopilotProvider.ts      # GitHub Copilot SDK backend (default)
+│   │   ├── OpenAIProvider.ts       # Direct OpenAI API backend
+│   │   ├── ClaudeProvider.ts       # Direct Anthropic API backend
+│   │   └── index.ts                # Factory: getProvider() reads LLM_PROVIDER, caches singleton
 │   ├── services/
-│   │   ├── videoIngestion.ts       # Copy video, extract metadata, create dirs
+│   │   ├── videoIngestion.ts       # Copy video to `recordings/{slug}/`, extract metadata, create dirs
+│   │   ├── costTracker.ts         # Singleton LLM cost/token tracker, prints summary at pipeline end
 │   │   ├── transcription.ts        # Whisper transcription with chunking
 │   │   ├── captionGeneration.ts    # SRT/VTT/ASS generation orchestration
 │   │   ├── fileWatcher.ts          # Chokidar file watcher with stability checks
@@ -431,7 +452,10 @@ vidpipe/
 ## Environment Variables
 
 ```env
-OPENAI_API_KEY=       # Required — OpenAI API key for Whisper + Copilot SDK
+OPENAI_API_KEY=       # Required — OpenAI API key for Whisper transcription (and agents when LLM_PROVIDER=openai)
+LLM_PROVIDER=         # Optional — LLM provider: copilot (default), openai, claude
+LLM_MODEL=            # Optional — Override default model for the selected provider
+ANTHROPIC_API_KEY=    # Optional — Anthropic API key (required when LLM_PROVIDER=claude)
 WATCH_FOLDER=         # Folder to watch for new .mp4 files (default: ./watch)
 REPO_ROOT=            # Absolute path to this repo (default: cwd)
 FFMPEG_PATH=          # Optional — absolute path to ffmpeg binary (default: 'ffmpeg')

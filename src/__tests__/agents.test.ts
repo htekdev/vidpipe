@@ -204,9 +204,9 @@ describe('BaseAgent construction', () => {
     expect((agent as any).systemPrompt).toBe('prompt');
   });
 
-  it('initialises with null client and session', () => {
+  it('initialises with provider and null session', () => {
     const agent = new MinimalAgent();
-    expect((agent as any).client).toBeNull();
+    expect((agent as any).provider).toBeDefined();
     expect((agent as any).session).toBeNull();
   });
 

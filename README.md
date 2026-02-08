@@ -181,6 +181,22 @@ Each stage can be independently skipped with `--no-*` flags. A stage failure doe
 
 ---
 
+## 🤖 LLM Providers
+
+VidPipe supports multiple LLM providers:
+
+| Provider | Env Var | Default Model | Notes |
+|----------|---------|---------------|-------|
+| `copilot` (default) | — | Claude Sonnet 4 | Uses GitHub Copilot auth |
+| `openai` | `OPENAI_API_KEY` | gpt-4o | Direct OpenAI API |
+| `claude` | `ANTHROPIC_API_KEY` | claude-sonnet-4 | Direct Anthropic API |
+
+Set `LLM_PROVIDER` in your `.env` or pass via CLI. Override model with `LLM_MODEL`.
+
+The pipeline tracks token usage and estimated cost across all providers, displaying a summary at the end of each run.
+
+---
+
 ## ⚙️ Configuration
 
 Configuration is loaded from CLI flags → environment variables → `.env` file → defaults.

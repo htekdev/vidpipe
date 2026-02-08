@@ -1,4 +1,4 @@
-import { Tool } from '@github/copilot-sdk'
+import type { ToolWithHandler } from '../providers/types.js'
 import * as fs from 'fs'
 import * as path from 'path'
 import { BaseAgent } from './BaseAgent'
@@ -66,7 +66,7 @@ class BlogAgent extends BaseAgent {
     super('BlogAgent', buildSystemPrompt())
   }
 
-  protected getTools(): Tool<unknown>[] {
+  protected getTools(): ToolWithHandler[] {
     return [
       {
         name: 'search_web',
