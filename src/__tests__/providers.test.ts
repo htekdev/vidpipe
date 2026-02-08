@@ -246,13 +246,13 @@ describe('CostTracker', () => {
 // ─── providers/index.ts ───────────────────────────────────────
 
 describe('providers/index', () => {
-  beforeEach(() => {
-    resetProvider();
+  beforeEach(async () => {
+    await resetProvider();
     delete process.env.LLM_PROVIDER;
   });
 
-  afterEach(() => {
-    resetProvider();
+  afterEach(async () => {
+    await resetProvider();
     delete process.env.LLM_PROVIDER;
   });
 
@@ -281,9 +281,9 @@ describe('providers/index', () => {
     expect(getProviderName()).toBe('copilot');
   });
 
-  it('resetProvider() clears cached provider', () => {
+  it('resetProvider() clears cached provider', async () => {
     const a = getProvider('copilot');
-    resetProvider();
+    await resetProvider();
     // After reset, getProviderName falls back to env or default
     expect(getProviderName()).toBe('copilot');
     const b = getProvider('copilot');
@@ -295,9 +295,9 @@ describe('providers/index', () => {
     expect(() => getProvider('nonexistent' as any)).toThrow('Unknown LLM provider');
   });
 
-  it('getProviderName reads LLM_PROVIDER env var', () => {
+  it('getProviderName reads LLM_PROVIDER env var', async () => {
     process.env.LLM_PROVIDER = 'openai';
-    resetProvider();
+    await resetProvider();
     expect(getProviderName()).toBe('openai');
   });
 });

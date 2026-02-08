@@ -21,11 +21,15 @@ let currentProviderName: ProviderName | null = null;
  * Caches the instance for reuse.
  */
 export function getProvider(name?: ProviderName): LLMProvider {
-  const providerName = name ?? (process.env.LLM_PROVIDER as ProviderName) ?? 'copilot';
+  const raw = name ?? (process.env.LLM_PROVIDER || 'copilot').trim().toLowerCase();
+  const providerName = raw as ProviderName;
   
   if (currentProvider && currentProviderName === providerName) {
     return currentProvider;
   }
+
+  // Close old provider if switching to a different one
+  void currentProvider?.close?.();
 
   if (!providers[providerName]) {
     throw new Error(
@@ -53,14 +57,15 @@ export function getProvider(name?: ProviderName): LLMProvider {
 }
 
 /** Reset the cached provider (for testing) */
-export function resetProvider(): void {
+export async function resetProvider(): Promise<void> {
+  await currentProvider?.close?.();
   currentProvider = null;
   currentProviderName = null;
 }
 
 /** Get the name of the current provider */
 export function getProviderName(): ProviderName {
-  return currentProviderName ?? (process.env.LLM_PROVIDER as ProviderName) ?? 'copilot';
+  return currentProviderName ?? (process.env.LLM_PROVIDER || 'copilot').trim().toLowerCase() as ProviderName;
 }
 
 // Re-export types and providers

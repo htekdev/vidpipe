@@ -95,7 +95,7 @@ class CostTracker {
       byProvider: {},
       byAgent: {},
       byModel: {},
-      records: this.records,
+      records: [...this.records],
       copilotQuota: this.latestQuota,
     };
 
