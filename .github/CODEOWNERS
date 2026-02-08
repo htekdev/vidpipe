@@ -1,0 +1,8 @@
+# Global owner — all files
+* @htekdev
+
+# Critical paths
+src/providers/ @htekdev
+src/agents/ @htekdev
+src/pipeline.ts @htekdev
+.github/workflows/ @htekdev

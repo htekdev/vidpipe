@@ -1,0 +1,37 @@
+version: 2
+
+updates:
+  # npm dependencies
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    reviewers:
+      - htekdev
+    commit-message:
+      prefix: "deps:"
+    groups:
+      patch-updates:
+        update-types:
+          - patch
+      minor-updates:
+        update-types:
+          - minor
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    reviewers:
+      - htekdev
+    commit-message:
+      prefix: "deps(actions):"
+    groups:
+      actions-updates:
+        patterns:
+          - "*"

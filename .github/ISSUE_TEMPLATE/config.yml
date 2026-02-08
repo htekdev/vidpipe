@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/htekdev/vidpipe/tree/main/docs
+    about: Check the docs before filing an issue
+  - name: Discussions
+    url: https://github.com/htekdev/vidpipe/discussions
+    about: Ask questions and share ideas
