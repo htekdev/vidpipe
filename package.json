@@ -1,6 +1,6 @@
 {
   "name": "vidpipe",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "AI-powered pipeline that watches for video recordings and generates transcripts, summaries, short clips, and social media posts",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
