@@ -34,7 +34,7 @@
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "https://github.com/htekdev/video-auto-note-taker.git"
+    "url": "https://github.com/htekdev/vidpipe.git"
   },
   "type": "module",
   "dependencies": {

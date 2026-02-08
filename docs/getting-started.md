@@ -34,7 +34,7 @@ npx vidpipe --once /path/to/video.mp4
 ### From source
 
 ```bash
-git clone https://github.com/htekdev/video-auto-note-taker.git
+git clone https://github.com/htekdev/vidpipe.git
 cd vidpipe
 npm install
 npm run build
