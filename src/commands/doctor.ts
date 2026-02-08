@@ -2,6 +2,7 @@ import { spawnSync } from 'child_process'
 import { existsSync } from 'fs'
 import { createRequire } from 'module'
 import path from 'path'
+import type { ProviderName } from '../providers/index.js'
 
 const require = createRequire(import.meta.url)
 
@@ -10,6 +11,11 @@ interface CheckResult {
   ok: boolean
   required: boolean
   message: string
+}
+
+/** Normalize LLM_PROVIDER the same way the provider factory does. */
+export function normalizeProviderName(raw: string | undefined): string {
+  return (raw || 'copilot').trim().toLowerCase()
 }
 
 function resolveFFmpegPath(): { path: string; source: string } {
@@ -160,6 +166,52 @@ export function runDoctor(): void {
   for (const r of results) {
     const icon = r.ok ? '✅' : r.required ? '❌' : '⬚'
     console.log(`  ${icon} ${r.message}`)
+  }
+
+  // LLM Provider section — check env vars directly to avoid silent fallback
+  console.log('\nLLM Provider')
+  const providerName = normalizeProviderName(process.env.LLM_PROVIDER) as ProviderName
+  const isDefault = !process.env.LLM_PROVIDER
+  const providerLabel = isDefault ? `${providerName} (default)` : providerName
+  const validProviders: ProviderName[] = ['copilot', 'openai', 'claude']
+
+  if (!validProviders.includes(providerName)) {
+    console.log(`  ❌ Provider: ${providerLabel} — unknown provider`)
+    results.push({ label: 'LLM Provider', ok: false, required: true, message: `Unknown provider: ${providerName}` })
+  } else if (providerName === 'copilot') {
+    console.log(`  ✅ Provider: ${providerLabel}`)
+    console.log('  ✅ Copilot — uses GitHub auth')
+  } else if (providerName === 'openai') {
+    console.log(`  ✅ Provider: ${providerLabel}`)
+    if (process.env.OPENAI_API_KEY) {
+      console.log('  ✅ OPENAI_API_KEY is set (also used for Whisper)')
+    } else {
+      console.log('  ❌ OPENAI_API_KEY not set (required for openai provider)')
+      results.push({ label: 'LLM Provider', ok: false, required: true, message: 'OPENAI_API_KEY not set for OpenAI LLM' })
+    }
+  } else if (providerName === 'claude') {
+    console.log(`  ✅ Provider: ${providerLabel}`)
+    if (process.env.ANTHROPIC_API_KEY) {
+      console.log('  ✅ ANTHROPIC_API_KEY is set')
+    } else {
+      console.log('  ❌ ANTHROPIC_API_KEY not set (required for claude provider)')
+      results.push({ label: 'LLM Provider', ok: false, required: true, message: 'ANTHROPIC_API_KEY not set for Claude LLM' })
+    }
+  }
+
+  const defaultModels: Record<ProviderName, string> = {
+    copilot: 'Claude Opus 4.6',
+    openai: 'gpt-4o',
+    claude: 'claude-opus-4.6',
+  }
+  if (validProviders.includes(providerName)) {
+    const defaultModel = defaultModels[providerName]
+    const modelOverride = process.env.LLM_MODEL
+    if (modelOverride) {
+      console.log(`  ℹ️  Model override: ${modelOverride} (default: ${defaultModel})`)
+    } else {
+      console.log(`  ℹ️  Default model: ${defaultModel}`)
+    }
   }
 
   const failedRequired = results.filter(r => r.required && !r.ok)

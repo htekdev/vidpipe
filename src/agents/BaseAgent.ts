@@ -1,8 +1,10 @@
-import { CopilotClient, CopilotSession, Tool, SessionEvent } from '@github/copilot-sdk'
-import logger from '../config/logger'
+import type { LLMProvider, LLMSession, ToolWithHandler } from '../providers/types.js'
+import { getProvider } from '../providers/index.js'
+import { costTracker } from '../services/costTracker.js'
+import logger from '../config/logger.js'
 
 /**
- * BaseAgent — abstract foundation for all Copilot SDK agents.
+ * BaseAgent — abstract foundation for all LLM-powered agents.
  *
  * ### Agent pattern
  * Each agent in the pipeline (SummaryAgent, ShortsAgent, BlogAgent, etc.)
@@ -11,14 +13,14 @@ import logger from '../config/logger'
  * - `handleToolCall()` — dispatches tool invocations to concrete implementations
  *
  * ### Tool registration
- * Tools are declared as JSON Schema objects and passed to the CopilotSession
- * at creation time. When the LLM decides to call a tool, the SDK routes the
- * call through `handleToolCall()` where the subclass executes the actual logic
- * (e.g. reading files, running FFmpeg, querying APIs).
+ * Tools are declared as JSON Schema objects and passed to the LLMSession
+ * at creation time. When the LLM decides to call a tool, the provider routes
+ * the call through the tool handler where the subclass executes the actual
+ * logic (e.g. reading files, running FFmpeg, querying APIs).
  *
  * ### Message flow
- * 1. `run(userMessage)` lazily creates a CopilotClient (starts the Copilot
- *    backend process) and a CopilotSession (with system prompt + tools).
+ * 1. `run(userMessage)` lazily creates an LLMSession via the configured
+ *    provider (Copilot, OpenAI, or Claude).
  * 2. The user message is sent via `sendAndWait()`, which blocks until the
  *    LLM produces a final response (with a 5-minute timeout).
  * 3. During processing, the LLM may invoke tools multiple times — each call
@@ -29,16 +31,19 @@ import logger from '../config/logger'
  * sends additional messages within the same conversation context.
  */
 export abstract class BaseAgent {
-  protected client: CopilotClient | null = null
-  protected session: CopilotSession | null = null
+  protected provider: LLMProvider
+  protected session: LLMSession | null = null
 
   constructor(
     protected readonly agentName: string,
     protected readonly systemPrompt: string,
-  ) {}
+    provider?: LLMProvider,
+  ) {
+    this.provider = provider ?? getProvider()
+  }
 
   /** Tools this agent exposes to the LLM. Override in subclasses. */
-  protected getTools(): Tool<unknown>[] {
+  protected getTools(): ToolWithHandler[] {
     return []
   }
 
@@ -51,76 +56,69 @@ export abstract class BaseAgent {
   /**
    * Send a user message to the agent and return the final response text.
    *
-   * 1. Lazily creates a CopilotClient + CopilotSession
-   * 2. Registers an event listener to accumulate the response
-   * 3. Calls sendAndWait and returns the completed message
+   * 1. Lazily creates an LLMSession via the provider
+   * 2. Registers event listeners for logging
+   * 3. Calls sendAndWait and records usage via CostTracker
    */
   async run(userMessage: string): Promise<string> {
-    if (!this.client) {
-      this.client = new CopilotClient({ autoStart: true, logLevel: 'error' })
-    }
-
     if (!this.session) {
-      this.session = await this.client.createSession({
-        systemMessage: { mode: 'replace', content: this.systemPrompt },
+      this.session = await this.provider.createSession({
+        systemPrompt: this.systemPrompt,
         tools: this.getTools(),
         streaming: true,
+        model: process.env.LLM_MODEL || undefined,
+        timeoutMs: 300_000, // 5 min timeout
       })
       this.setupEventHandlers(this.session)
     }
 
     logger.info(`[${this.agentName}] Sending message: ${userMessage.substring(0, 80)}…`)
 
-    const response = await this.session.sendAndWait(
-      { prompt: userMessage },
-      300_000, // 5 min timeout
+    costTracker.setAgent(this.agentName)
+    const response = await this.session.sendAndWait(userMessage)
+
+    // Record usage via CostTracker
+    costTracker.recordUsage(
+      this.provider.name,
+      response.cost?.model ?? this.provider.getDefaultModel(),
+      response.usage,
+      response.cost,
+      response.durationMs,
+      response.quotaSnapshots
+        ? Object.values(response.quotaSnapshots)[0]
+        : undefined,
     )
 
-    const content = response?.data?.content ?? ''
+    const content = response.content
     logger.info(`[${this.agentName}] Response received (${content.length} chars)`)
     return content
   }
 
-  /** Wire up session event listeners for logging / streaming. */
-  private setupEventHandlers(session: CopilotSession): void {
-    session.on((event: SessionEvent) => {
-      switch (event.type) {
-        case 'assistant.message_delta':
-          // Streaming delta — log at debug level to avoid noise
-          logger.debug(`[${this.agentName}] delta: ${event.data.deltaContent}`)
-          break
+  /** Wire up session event listeners for logging. */
+  private setupEventHandlers(session: LLMSession): void {
+    session.on('delta', (event) => {
+      logger.debug(`[${this.agentName}] delta: ${JSON.stringify(event.data)}`)
+    })
 
-        case 'assistant.message':
-          logger.debug(`[${this.agentName}] message complete`)
-          break
+    session.on('tool_start', (event) => {
+      logger.info(`[${this.agentName}] tool start: ${JSON.stringify(event.data)}`)
+    })
 
-        case 'tool.execution_start':
-          logger.info(`[${this.agentName}] tool start: ${event.data.toolName}`)
-          break
+    session.on('tool_end', (event) => {
+      logger.info(`[${this.agentName}] tool done: ${JSON.stringify(event.data)}`)
+    })
 
-        case 'tool.execution_complete':
-          logger.info(
-            `[${this.agentName}] tool done: ${event.data.toolCallId} success=${event.data.success}`,
-          )
-          break
-
-        case 'session.error':
-          logger.error(`[${this.agentName}] error: ${event.data.message}`)
-          break
-      }
+    session.on('error', (event) => {
+      logger.error(`[${this.agentName}] error: ${JSON.stringify(event.data)}`)
     })
   }
 
-  /** Tear down the client + session. */
+  /** Tear down the session. */
   async destroy(): Promise<void> {
     try {
       if (this.session) {
-        await this.session.destroy()
+        await this.session.close()
         this.session = null
-      }
-      if (this.client) {
-        await this.client.stop()
-        this.client = null
       }
     } catch (err) {
       logger.error(`[${this.agentName}] Error during destroy: ${err}`)

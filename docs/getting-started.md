@@ -10,8 +10,8 @@ Get up and running with **vidpipe** in under five minutes.
 |-------------|-----------------|-------|
 | **Node.js** | 20+ | [Download](https://nodejs.org/) |
 | **FFmpeg** | 6.0+ | Must be on `PATH` or configured via env vars. See [FFmpeg Setup](./ffmpeg-setup.md). |
-| **OpenAI API key** | — | For Whisper transcription + Copilot SDK agents. [Get a key](https://platform.openai.com/api-keys) |
-| **GitHub Copilot** | Active subscription | Powers the AI agents via [Copilot SDK](https://github.com/github/copilot-sdk) |
+| **OpenAI API key** | — | For Whisper transcription (and for agents only when `LLM_PROVIDER=openai`). [Get a key](https://platform.openai.com/api-keys) |
+| **GitHub Copilot** | Active subscription | Default LLM provider for AI agents via [Copilot SDK](https://github.com/github/copilot-sdk). Alternative providers (OpenAI, Claude) are also supported — see [Configuration](./configuration.md#llm-provider). |
 | **Git** | 2.x+ | Only needed if git auto-commit is enabled (on by default) |
 | **Exa AI API key** | — | *Optional* — enables web-search links in social media posts |
 

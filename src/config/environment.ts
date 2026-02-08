@@ -15,6 +15,9 @@ export interface AppEnvironment {
   FFMPEG_PATH: string
   FFPROBE_PATH: string
   EXA_API_KEY: string
+  LLM_PROVIDER: string
+  LLM_MODEL: string
+  ANTHROPIC_API_KEY: string
   OUTPUT_DIR: string
   BRAND_PATH: string
   VERBOSE: boolean
@@ -60,7 +63,10 @@ export function initConfig(cli: CLIOptions = {}): AppEnvironment {
     FFMPEG_PATH: process.env.FFMPEG_PATH || 'ffmpeg',   // legacy; prefer ffmpegResolver
     FFPROBE_PATH: process.env.FFPROBE_PATH || 'ffprobe', // legacy; prefer ffmpegResolver
     EXA_API_KEY: cli.exaKey || process.env.EXA_API_KEY || '',
-    OUTPUT_DIR: cli.outputDir || process.env.OUTPUT_DIR || path.join(repoRoot, 'recordings'),
+    LLM_PROVIDER: process.env.LLM_PROVIDER || 'copilot',
+    LLM_MODEL: process.env.LLM_MODEL || '',
+    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
+    OUTPUT_DIR:cli.outputDir || process.env.OUTPUT_DIR || path.join(repoRoot, 'recordings'),
     BRAND_PATH: cli.brand || process.env.BRAND_PATH || path.join(repoRoot, 'brand.json'),
     VERBOSE: cli.verbose ?? false,
     SKIP_GIT: cli.git === false,

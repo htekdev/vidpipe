@@ -7,12 +7,16 @@ export default defineConfig({
     include: ['src/**/*.test.ts'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'text-summary', 'lcov', 'html'],
+      reporter: ['text', 'text-summary', 'lcov', 'html', 'json-summary', 'json'],
       include: ['src/**/*.ts'],
       exclude: [
         'src/**/*.test.ts',
         'src/**/*.d.ts',
         'src/index.ts', // CLI entry point
+        'src/providers/CopilotProvider.ts', // SDK wrappers — require real API keys to test
+        'src/providers/OpenAIProvider.ts',
+        'src/providers/ClaudeProvider.ts',
+        'src/providers/types.ts', // Pure type definitions — no runtime code
       ],
       thresholds: {
         statements: 70,

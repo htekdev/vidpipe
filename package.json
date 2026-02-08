@@ -39,6 +39,7 @@
   },
   "type": "module",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.74.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@github/copilot-sdk": "^0.1.23",
     "chokidar": "^5.0.0",

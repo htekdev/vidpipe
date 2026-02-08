@@ -2,6 +2,7 @@ import ffmpeg from 'fluent-ffmpeg';
 import { execFile } from 'child_process';
 import { promises as fs } from 'fs';
 import pathMod from 'path';
+import { randomUUID } from 'node:crypto';
 import logger from '../../config/logger';
 import { ShortSegment } from '../../types';
 import { getFFmpegPath, getFFprobePath } from '../../config/ffmpegResolver.js';
@@ -112,7 +113,7 @@ export async function extractCompositeClip(
   const outputDir = pathMod.dirname(outputPath);
   await fs.mkdir(outputDir, { recursive: true });
 
-  const tempDir = pathMod.join(outputDir, `.temp-${Date.now()}`);
+  const tempDir = pathMod.join(outputDir, `.temp-${randomUUID()}`);
   await fs.mkdir(tempDir, { recursive: true });
 
   const tempFiles: string[] = [];

@@ -34,6 +34,20 @@ Automated video processing pipeline that watches a folder for new `.mp4` recordi
 - **Original transcript** is used for shorts, medium clips, and chapters (they reference original video timestamps)
 - Shorts and chapters are generated before summary so the README can reference them
 
+### LLM Provider Abstraction (src/providers/)
+
+All LLM interactions go through a provider abstraction layer. `BaseAgent` accepts an `LLMProvider` instead of directly using `CopilotClient`, allowing agents to work with any supported backend.
+
+| File | Purpose |
+|------|---------|
+| `types.ts` | `LLMProvider`, `LLMSession`, `LLMResponse`, `TokenUsage`, `CostInfo` interfaces |
+| `CopilotProvider.ts` | GitHub Copilot SDK backend (default) |
+| `OpenAIProvider.ts` | Direct OpenAI API backend |
+| `ClaudeProvider.ts` | Direct Anthropic API backend |
+| `index.ts` | Factory — `getProvider()` reads `LLM_PROVIDER` env var, caches singleton, falls back to copilot |
+
+**Cost tracking** (`src/services/costTracker.ts`): Singleton `CostTracker` records every LLM call's token usage and cost. At pipeline end, `formatReport()` logs totals and breakdowns by provider, agent, and model. Cost is in USD for OpenAI/Claude and premium requests (PRUs) for Copilot.
+
 ### Agent Pattern (@github/copilot-sdk)
 
 All AI agents extend `BaseAgent` (src/agents/BaseAgent.ts):
@@ -380,8 +394,15 @@ vidpipe/
 │   │   ├── SummaryAgent.ts         # README generation with frame captures
 │   │   ├── SocialMediaAgent.ts     # Multi-platform social post generation (also short/medium posts)
 │   │   └── BlogAgent.ts            # Dev.to blog post generation
+│   ├── providers/
+│   │   ├── types.ts                # LLMProvider, LLMSession, LLMResponse, TokenUsage, CostInfo interfaces
+│   │   ├── CopilotProvider.ts      # GitHub Copilot SDK backend (default)
+│   │   ├── OpenAIProvider.ts       # Direct OpenAI API backend
+│   │   ├── ClaudeProvider.ts       # Direct Anthropic API backend
+│   │   └── index.ts                # Factory: getProvider() reads LLM_PROVIDER, caches singleton
 │   ├── services/
-│   │   ├── videoIngestion.ts       # Copy video, extract metadata, create dirs
+│   │   ├── videoIngestion.ts       # Copy video to `recordings/{slug}/`, extract metadata, create dirs
+│   │   ├── costTracker.ts         # Singleton LLM cost/token tracker, prints summary at pipeline end
 │   │   ├── transcription.ts        # Whisper transcription with chunking
 │   │   ├── captionGeneration.ts    # SRT/VTT/ASS generation orchestration
 │   │   ├── fileWatcher.ts          # Chokidar file watcher with stability checks
@@ -431,7 +452,10 @@ vidpipe/
 ## Environment Variables
 
 ```env
-OPENAI_API_KEY=       # Required — OpenAI API key for Whisper + Copilot SDK
+OPENAI_API_KEY=       # Required — OpenAI API key for Whisper transcription (and agents when LLM_PROVIDER=openai)
+LLM_PROVIDER=         # Optional — LLM provider: copilot (default), openai, claude
+LLM_MODEL=            # Optional — Override default model for the selected provider
+ANTHROPIC_API_KEY=    # Optional — Anthropic API key (required when LLM_PROVIDER=claude)
 WATCH_FOLDER=         # Folder to watch for new .mp4 files (default: ./watch)
 REPO_ROOT=            # Absolute path to this repo (default: cwd)
 FFMPEG_PATH=          # Optional — absolute path to ffmpeg binary (default: 'ffmpeg')
@@ -509,3 +533,45 @@ ffmpeg -y -ss 2 -i path/to/output.mp4 -frames:v 1 -q:v 2 preview.png
 - Hook overlay: visible for first ~4 seconds at top, fades out
 - Font sizes: active word visibly larger than inactive words
 - No visual artifacts from crop/scale operations
+
+## Code Review Guidelines
+
+When reviewing pull requests for this repository, keep these conventions in mind:
+
+### ESM Module System
+- This project uses ES modules (`"type": "module"` in package.json)
+- **All runtime imports MUST use `.js` extensions** (e.g., `import logger from '../config/logger.js'`)
+- Type-only imports (`import type { ... }`) don't need `.js` extensions
+- The TypeScript compiler resolves `.js` to `.ts` source files at build time
+
+### Provider Abstraction
+- All agents MUST extend `BaseAgent` and use `LLMProvider` — never import `@github/copilot-sdk` directly
+- Provider adapters (`CopilotProvider`, `OpenAIProvider`, `ClaudeProvider`) are thin SDK wrappers intentionally excluded from coverage — they require real API keys to test
+- The `ProviderName` type is the single source of truth in `src/providers/types.ts`
+- `getModelPricing()` in `src/config/pricing.ts` does fuzzy/prefix matching for versioned model names
+
+### Cost Tracking
+- `CostTracker` is a singleton — call `costTracker.getReport()` once and reuse the result
+- Cost tracking is automatic via `BaseAgent.run()` — new agents get it for free
+
+### Testing
+- Unit tests exist in `src/__tests__/providers.test.ts` covering pricing, cost tracker, and provider factory
+- Coverage thresholds: 70% statements/functions/lines, 65% branches
+- Provider SDK adapters are excluded from coverage (thin wrappers, need real API keys)
+
+### FFmpeg
+- All FFmpeg/FFprobe usage MUST go through `src/config/ffmpegResolver.ts` — never hardcode paths
+- The xfade filter requires explicit fps after trim+setpts (see `getVideoFps()` in clipExtraction.ts)
+
+### What NOT to flag in reviews
+- Don't suggest adding coverage for provider SDK adapters (intentional exclusion)
+- Don't suggest changing the `continue-on-error` on the agent-review workflow (it's advisory by design)
+- Don't flag `any` types in tool handler signatures — they come from JSON-parsed LLM tool call arguments
+
+### Test-First Review Fixes
+
+When addressing code review feedback on testable code:
+1. Write a failing test that exposes the issue before fixing it
+2. Verify the test fails, then implement the fix
+3. This ensures every review item becomes a permanent regression test
+4. Exempt: doc changes, YAML/config changes, comment-only changes

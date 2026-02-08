@@ -1,4 +1,4 @@
-import { Tool } from '@github/copilot-sdk'
+import type { ToolWithHandler } from '../providers/types.js'
 import { BaseAgent } from './BaseAgent'
 import { VideoFile, Transcript, ShortClip, ShortSegment, ShortClipVariant } from '../types'
 import { extractClip, extractCompositeClip } from '../tools/ffmpeg/clipExtraction'
@@ -101,7 +101,7 @@ class ShortsAgent extends BaseAgent {
     super('ShortsAgent', SYSTEM_PROMPT)
   }
 
-  protected getTools(): Tool<unknown>[] {
+  protected getTools(): ToolWithHandler[] {
     return [
       {
         name: 'plan_shorts',

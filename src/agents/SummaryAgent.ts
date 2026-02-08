@@ -1,4 +1,4 @@
-import { Tool } from '@github/copilot-sdk'
+import type { ToolWithHandler } from '../providers/types.js'
 import { promises as fs } from 'fs'
 import path from 'path'
 
@@ -146,7 +146,7 @@ class SummaryAgent extends BaseAgent {
 
   /* ── Tools exposed to the LLM ─────────────────────────────────────────── */
 
-  protected getTools(): Tool<unknown>[] {
+  protected getTools(): ToolWithHandler[] {
     return [
       {
         name: 'capture_frame',

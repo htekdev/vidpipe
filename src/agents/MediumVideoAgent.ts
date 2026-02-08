@@ -1,4 +1,4 @@
-import { Tool } from '@github/copilot-sdk'
+import type { ToolWithHandler } from '../providers/types.js'
 import { BaseAgent } from './BaseAgent'
 import { VideoFile, Transcript, MediumClip, MediumSegment } from '../types'
 import { extractClip, extractCompositeClipWithTransitions } from '../tools/ffmpeg/clipExtraction'
@@ -120,7 +120,7 @@ class MediumVideoAgent extends BaseAgent {
     super('MediumVideoAgent', SYSTEM_PROMPT)
   }
 
-  protected getTools(): Tool<unknown>[] {
+  protected getTools(): ToolWithHandler[] {
     return [
       {
         name: 'plan_medium_clips',

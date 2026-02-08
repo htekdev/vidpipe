@@ -1,0 +1,80 @@
+name: Bug Report
+description: Report a bug or unexpected behavior
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the information below.
+  - type: input
+    id: version
+    attributes:
+      label: VidPipe Version
+      description: Run `vidpipe --version` or check package.json
+      placeholder: "1.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: LLM Provider
+      description: Which provider were you using?
+      options:
+        - copilot (default)
+        - openai
+        - claude
+        - N/A
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear description of what the bug is
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior
+      value: |
+        1. Run '...'
+        2. With video '...'
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / Error Output
+      description: Paste relevant log output (use code block)
+      render: shell
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js Version
+      placeholder: "22.x"
+  - type: input
+    id: ffmpeg-version
+    attributes:
+      label: FFmpeg Version
+      placeholder: "7.x or 8.x"
