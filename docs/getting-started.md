@@ -217,3 +217,16 @@ recordings/
 - [Configuration Guide](./configuration.md) — all CLI flags, env vars, and skip options
 - [FFmpeg Setup](./ffmpeg-setup.md) — platform-specific installation instructions
 - [Brand Customization](./brand-customization.md) — tailor AI output to your personal brand
+- [Social Publishing](./social-publishing.md) — review, schedule, and publish posts to social media
+
+---
+
+## Optional: Social Publishing
+
+To publish posts to social media:
+
+1. Sign up at [getlate.dev](https://getlate.dev)
+2. Connect your social accounts
+3. Run `vidpipe init` to configure
+
+See [Social Publishing Guide](social-publishing.md) for details.

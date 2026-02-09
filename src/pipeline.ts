@@ -12,6 +12,8 @@ import { generateSocialPosts, generateShortPosts } from './agents/SocialMediaAge
 import { generateBlogPost } from './agents/BlogAgent'
 import { generateChapters } from './agents/ChapterAgent'
 import { commitAndPush } from './services/gitOperations'
+import { buildPublishQueue } from './services/queueBuilder'
+import type { QueueBuildResult } from './services/queueBuilder'
 import { removeDeadSilence } from './agents/SilenceRemovalAgent'
 import { burnCaptions } from './tools/ffmpeg/captionBurning'
 import { singlePassEditAndCaption } from './tools/ffmpeg/singlePassEdit'
@@ -135,8 +137,9 @@ export function adjustTranscript(
  * 8. **Chapters** — topic-boundary detection for YouTube chapters.
  * 9. **Summary** — README generation (runs after shorts/chapters so it can reference them).
  * 10–12. **Social posts** — platform-specific posts for the full video and each clip.
- * 13. **Blog** — long-form blog post from transcript + summary.
- * 14. **Git push** — commits all generated assets and pushes.
+ * 13. **Queue build** — populates publish-queue/ for review before publishing.
+ * 14. **Blog** — long-form blog post from transcript + summary.
+ * 15. **Git push** — commits all generated assets and pushes.
  *
  * ### Why failures don't abort
  * Each stage runs through {@link runStage} which catches errors. This means a
@@ -311,7 +314,16 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
     )
   }
 
-  // 13. Blog Post
+  // 13. Queue Build — populate publish-queue/ for review
+  if (socialPosts.length > 0 && !cfg.SKIP_SOCIAL_PUBLISH) {
+    await runStage<QueueBuildResult>(
+      Stage.QueueBuild,
+      () => buildPublishQueue(video, shorts, mediumClips, socialPosts, captionedVideoPath),
+      stageResults,
+    )
+  }
+
+  // 14. Blog Post
   let blogPost: string | undefined
   if (transcript && summary) {
     blogPost = await runStage<string>(
@@ -321,7 +333,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
     )
   }
 
-  // 14. Git
+  // 15. Git
   if (!cfg.SKIP_GIT) {
     await runStage<void>(Stage.GitPush, () => commitAndPush(video.slug), stageResults)
   }

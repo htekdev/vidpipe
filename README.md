@@ -31,6 +31,7 @@ npm install -g vidpipe
 - 📱 **Social Media Posts** — Platform-tailored content for TikTok, YouTube, Instagram, LinkedIn, and X
 - 📰 **Dev.to Blog Post** — Long-form technical blog post with frontmatter and web-sourced links
 - 🔗 **Web Search Integration** — Finds relevant links for social posts and blog content via Exa
+- 📱 **Social Media Publishing** — Review, schedule, and publish posts to TikTok, YouTube, Instagram, LinkedIn, and X via Late API
 - 🔄 **Git Automation** — Auto-commits and pushes all generated content after each video
 - 🎨 **Brand Voice** — Customize AI tone, vocabulary, hashtags, and content style via `brand.json`
 - 👁️ **Watch Mode** — Monitors a folder and processes new `.mp4` files on arrival
@@ -85,6 +86,9 @@ vidpipe \
 
 ```
 vidpipe [options] [video-path]
+vidpipe init              # Interactive setup wizard
+vidpipe review            # Open post review web app
+vidpipe schedule          # View posting schedule
 ```
 
 | Option | Description |
@@ -101,6 +105,8 @@ vidpipe [options] [video-path]
 | `--no-shorts` | Skip short clip extraction |
 | `--no-medium-clips` | Skip medium clip generation |
 | `--no-social` | Skip social media posts |
+| `--no-social-publish` | Skip social media queue-build stage |
+| `--late-api-key <key>` | Override Late API key |
 | `--no-captions` | Skip caption generation/burning |
 | `--no-git` | Skip git commit/push |
 | `-v, --verbose` | Debug-level logging |
@@ -210,7 +216,10 @@ OUTPUT_DIR=/path/to/output
 # BRAND_PATH=./brand.json         # Optional: path to brand voice config
 # FFMPEG_PATH=/usr/local/bin/ffmpeg
 # FFPROBE_PATH=/usr/local/bin/ffprobe
+# LATE_API_KEY=sk_your_key_here   # Optional: Late API for social publishing
 ```
+
+Social media publishing is configured via `schedule.json` and the Late API. See [Social Publishing Guide](./docs/social-publishing.md) for details.
 
 ---
 
@@ -222,6 +231,7 @@ OUTPUT_DIR=/path/to/output
 | [Configuration](./docs/configuration.md) | All CLI flags, env vars, skip options, and examples |
 | [FFmpeg Setup](./docs/ffmpeg-setup.md) | Platform-specific install (Windows, macOS, Linux, ARM64) |
 | [Brand Customization](./docs/brand-customization.md) | Customize AI voice, vocabulary, hashtags, and content style |
+| [Social Publishing](./docs/social-publishing.md) | Review, schedule, and publish social posts via Late API |
 
 ---
 
@@ -262,7 +272,7 @@ Each agent communicates with the LLM through structured tool calls, ensuring rel
 
 ## 🗺️ Roadmap
 
-- [ ] **Automated social posting** — Publish directly to platforms via their APIs
+- [x] **Automated social posting** — Publish directly to platforms via Late API
 - [ ] **Multi-language support** — Transcription and summaries in multiple languages
 - [ ] **Custom templates** — User-defined Markdown & social post templates
 - [ ] **Web dashboard** — Browser UI for reviewing and editing outputs

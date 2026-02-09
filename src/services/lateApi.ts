@@ -1,0 +1,211 @@
+/**
+ * Media Upload Flow (verified via live testing 2026-02-09):
+ * - Step 1: POST /media/presign { filename, contentType } → { uploadUrl, publicUrl, key, expiresIn }
+ * - Step 2: PUT file bytes to uploadUrl (presigned Cloudflare R2 URL) with Content-Type header
+ * - Step 3: Use publicUrl (https://media.getlate.dev/temp/...) in createPost({ mediaUrls: [publicUrl] })
+ *
+ * Notes:
+ * - The old POST /media/upload endpoint exists but requires an "upload token" (not an API key).
+ *   It is likely used internally by Late's web UI; the presign flow is the correct API approach.
+ * - Presigned URLs expire in 3600s (1 hour).
+ * - Public URLs are served from media.getlate.dev CDN and are immediately accessible after PUT.
+ * - No confirmation step is needed after uploading to the presigned URL.
+ */
+import { getConfig } from '../config/environment.js'
+import logger from '../config/logger.js'
+import { promises as fs } from 'fs'
+import path from 'path'
+
+// ── Types ──────────────────────────────────────────────────────────────
+
+export interface LateAccount {
+  _id: string
+  platform: string // 'tiktok' | 'youtube' | 'instagram' | 'linkedin' | 'twitter'
+  displayName: string
+  username: string
+  isActive: boolean
+  profileId: { _id: string; name: string }
+}
+
+export interface LateProfile {
+  _id: string
+  name: string
+}
+
+export interface LatePost {
+  _id: string
+  content: string
+  status: string // 'draft' | 'scheduled' | 'published' | 'failed'
+  platforms: Array<{ platform: string; accountId: string }>
+  scheduledFor?: string
+  mediaUrls?: string[]
+  isDraft?: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface LateMediaPresignResult {
+  uploadUrl: string
+  publicUrl: string
+  key: string
+  expiresIn: number
+}
+
+export interface LateMediaUploadResult {
+  url: string
+}
+
+export interface CreatePostParams {
+  content: string
+  platforms: Array<{ platform: string; accountId: string }>
+  scheduledFor?: string
+  timezone?: string
+  isDraft?: boolean
+  mediaUrls?: string[]
+  platformSpecificData?: Record<string, unknown>
+}
+
+// ── Client ─────────────────────────────────────────────────────────────
+
+export class LateApiClient {
+  private baseUrl = 'https://getlate.dev/api/v1'
+  private apiKey: string
+
+  constructor(apiKey?: string) {
+    this.apiKey = apiKey ?? getConfig().LATE_API_KEY
+    if (!this.apiKey) {
+      throw new Error('LATE_API_KEY is required — set it in environment or pass to constructor')
+    }
+  }
+
+  // ── Private request helper ───────────────────────────────────────────
+
+  private async request<T>(
+    endpoint: string,
+    options: RequestInit = {},
+    retries = 3,
+  ): Promise<T> {
+    const url = `${this.baseUrl}${endpoint}`
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.apiKey}`,
+      ...(options.headers as Record<string, string> | undefined),
+    }
+
+    // Only set Content-Type for non-FormData bodies
+    if (!(options.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json'
+    }
+
+    logger.debug(`Late API ${options.method ?? 'GET'} ${endpoint}`)
+
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      const response = await fetch(url, { ...options, headers })
+
+      if (response.ok) {
+        // 204 No Content
+        if (response.status === 204) return undefined as T
+        return (await response.json()) as T
+      }
+
+      // 429 — rate limited, retry
+      if (response.status === 429 && attempt < retries) {
+        const retryAfter = Number(response.headers.get('Retry-After')) || 2
+        logger.warn(`Late API rate limited, retrying in ${retryAfter}s (attempt ${attempt}/${retries})`)
+        await new Promise((r) => setTimeout(r, retryAfter * 1000))
+        continue
+      }
+
+      // 401 — bad API key
+      if (response.status === 401) {
+        throw new Error(
+          'Late API authentication failed (401). Check that LATE_API_KEY is valid.',
+        )
+      }
+
+      // Other errors
+      const body = await response.text().catch(() => '<no body>')
+      throw new Error(
+        `Late API error ${response.status} ${options.method ?? 'GET'} ${endpoint}: ${body}`,
+      )
+    }
+
+    // Should not reach here, but satisfy TS
+    throw new Error(`Late API request failed after ${retries} retries`)
+  }
+
+  // ── Core methods ─────────────────────────────────────────────────────
+
+  async listProfiles(): Promise<LateProfile[]> {
+    return this.request<LateProfile[]>('/profiles')
+  }
+
+  async listAccounts(): Promise<LateAccount[]> {
+    return this.request<LateAccount[]>('/accounts')
+  }
+
+  async getScheduledPosts(platform?: string): Promise<LatePost[]> {
+    const query = platform ? `?platform=${encodeURIComponent(platform)}` : ''
+    return this.request<LatePost[]>(`/posts/scheduled${query}`)
+  }
+
+  async getDraftPosts(platform?: string): Promise<LatePost[]> {
+    const query = platform ? `?platform=${encodeURIComponent(platform)}` : ''
+    return this.request<LatePost[]>(`/posts/drafts${query}`)
+  }
+
+  async createPost(params: CreatePostParams): Promise<LatePost> {
+    return this.request<LatePost>('/posts', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    })
+  }
+
+  async deletePost(postId: string): Promise<void> {
+    await this.request<void>(`/posts/${encodeURIComponent(postId)}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async uploadMedia(filePath: string): Promise<LateMediaUploadResult> {
+    const fileBuffer = await fs.readFile(filePath)
+    const fileName = path.basename(filePath)
+    const ext = path.extname(fileName).toLowerCase()
+    const contentType =
+      ext === '.mp4' ? 'video/mp4' : ext === '.webm' ? 'video/webm' : ext === '.mov' ? 'video/quicktime' : 'video/mp4'
+
+    // Step 1: Get presigned upload URL
+    const presign = await this.request<LateMediaPresignResult>('/media/presign', {
+      method: 'POST',
+      body: JSON.stringify({ filename: fileName, contentType }),
+    })
+    logger.debug(`Late API presigned URL obtained for ${fileName} (expires in ${presign.expiresIn}s)`)
+
+    // Step 2: PUT file to presigned URL (direct to Cloudflare R2, no auth header)
+    const uploadResp = await fetch(presign.uploadUrl, {
+      method: 'PUT',
+      headers: { 'Content-Type': contentType },
+      body: fileBuffer,
+    })
+    if (!uploadResp.ok) {
+      throw new Error(`Late media upload failed: ${uploadResp.status} ${uploadResp.statusText}`)
+    }
+    logger.debug(`Late API media uploaded → ${presign.publicUrl}`)
+
+    return { url: presign.publicUrl }
+  }
+
+  // ── Helper ───────────────────────────────────────────────────────────
+
+  async validateConnection(): Promise<{ valid: boolean; profileName?: string; error?: string }> {
+    try {
+      const profiles = await this.listProfiles()
+      const name = profiles[0]?.name
+      logger.info(`Late API connection valid — profile: ${name ?? 'unknown'}`)
+      return { valid: true, profileName: name }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      logger.error(`Late API connection failed: ${message}`)
+      return { valid: false, error: message }
+    }
+  }
+}

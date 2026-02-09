@@ -5,6 +5,10 @@ import { FileWatcher } from './services/fileWatcher'
 import { processVideoSafe } from './pipeline'
 import logger, { setVerbose } from './config/logger'
 import { runDoctor } from './commands/doctor'
+import { runInit } from './commands/init'
+import { runSchedule } from './commands/schedule'
+import { startReviewServer } from './review/server'
+import open from 'open'
 import path from 'path'
 import { readFileSync } from 'fs'
 import { fileURLToPath } from 'url'
@@ -37,8 +41,58 @@ program
   .option('--no-medium-clips', 'Skip medium clip generation')
   .option('--no-social', 'Skip social media post generation')
   .option('--no-captions', 'Skip caption generation/burning')
+  .option('--no-social-publish', 'Skip social media publishing/queue-build stage')
+  .option('--late-api-key <key>', 'Late API key (default: env LATE_API_KEY)')
+  .option('--late-profile-id <id>', 'Late profile ID (default: env LATE_PROFILE_ID)')
   .option('-v, --verbose', 'Verbose logging')
   .option('--doctor', 'Check all prerequisites and exit')
+
+// --- Subcommands ---
+
+program
+  .command('init')
+  .description('Interactive setup wizard — configure API keys, providers, and social publishing')
+  .action(async () => {
+    await runInit()
+    process.exit(0)
+  })
+
+program
+  .command('review')
+  .description('Open the social media post review app in your browser')
+  .option('--port <number>', 'Server port (default: 3847)', '3847')
+  .action(async (opts) => {
+    initConfig()
+    const { port, close } = await startReviewServer({ port: parseInt(opts.port) })
+    await open(`http://localhost:${port}`)
+    console.log(`\nReview app running at http://localhost:${port}`)
+    console.log('Press Ctrl+C to stop.\n')
+
+    process.on('SIGINT', async () => {
+      await close()
+      process.exit(0)
+    })
+    process.on('SIGTERM', async () => {
+      await close()
+      process.exit(0)
+    })
+  })
+
+program
+  .command('schedule')
+  .description('View the current posting schedule across platforms')
+  .option('--platform <name>', 'Filter by platform (tiktok, youtube, instagram, linkedin, twitter)')
+  .action(async (opts) => {
+    await runSchedule({ platform: opts.platform })
+    process.exit(0)
+  })
+
+program
+  .command('doctor')
+  .description('Check all prerequisites and dependencies')
+  .action(async () => {
+    runDoctor()
+  })
 
 program.parse()
 
@@ -46,7 +100,7 @@ const opts = program.opts()
 
 // Handle --doctor before anything else
 if (opts.doctor) {
-  runDoctor()
+  await runDoctor()
   // runDoctor() calls process.exit(); this is a safety fallback
   process.exit(0)
 }
@@ -67,6 +121,9 @@ const cliOptions: CLIOptions = {
   mediumClips: opts.mediumClips,
   social: opts.social,
   captions: opts.captions,
+  socialPublish: opts.socialPublish,
+  lateApiKey: opts.lateApiKey,
+  lateProfileId: opts.lateProfileId,
 }
 
 const queue: string[] = []

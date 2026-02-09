@@ -293,6 +293,7 @@ export enum PipelineStage {
   ShortPosts = 'short-posts',
   MediumClipPosts = 'medium-clip-posts',
   Blog = 'blog',
+  QueueBuild = 'queue-build',
   GitPush = 'git-push',
 }
 
@@ -376,4 +377,42 @@ export interface AgentResult<T = unknown> {
     promptTokens: number;
     completionTokens: number;
   };
+}
+
+// ============================================================================
+// SOCIAL PUBLISHING / QUEUE
+// ============================================================================
+
+/** Character limits per social media platform */
+export const PLATFORM_CHAR_LIMITS: Record<string, number> = {
+  tiktok: 2200,
+  youtube: 5000,
+  instagram: 2200,
+  linkedin: 3000,
+  twitter: 280,
+}
+
+/**
+ * Maps vidpipe Platform enum values to Late API platform strings.
+ * Platform.X = 'x' but Late API expects 'twitter'.
+ */
+export function toLateplatform(platform: Platform): string {
+  return platform === Platform.X ? 'twitter' : platform
+}
+
+/**
+ * Maps a Late API platform string back to vidpipe Platform enum.
+ */
+export function fromLatePlatform(latePlatform: string): Platform {
+  if (latePlatform === 'twitter') return Platform.X
+  return latePlatform as Platform
+}
+
+/** Schedule time slot for a platform */
+export interface ScheduleSlot {
+  platform: string
+  scheduledFor: string  // ISO datetime
+  postId?: string       // Late post ID if already published
+  itemId?: string       // Local queue item ID
+  label?: string
 }

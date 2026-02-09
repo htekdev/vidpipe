@@ -5,6 +5,9 @@ dist/
 cache/
 coverage/
 
+# Social publishing queue (transient — reviewed via vidpipe review)
+publish-queue/
+
 # Video recordings and processed output
 recordings/
 *.mp4
@@ -19,3 +22,6 @@ recordings/
 # Exception: test fixtures with real video/audio for integration tests
 !src/__tests__/integration/fixtures/**/*.mp4
 !src/__tests__/integration/fixtures/**/*.mp3
+
+# Late account cache
+.vidpipe-cache.json

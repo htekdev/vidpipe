@@ -1,0 +1,46 @@
+{
+  "timezone": "America/Chicago",
+  "platforms": {
+    "linkedin": {
+      "slots": [
+        { "days": ["tue", "wed"], "time": "08:00", "label": "Morning thought leadership" },
+        { "days": ["tue", "wed", "thu"], "time": "12:00", "label": "Lunch break engagement" }
+      ],
+      "maxPerDay": 1,
+      "avoidDays": ["sat", "sun"]
+    },
+    "tiktok": {
+      "slots": [
+        { "days": ["tue", "wed", "thu"], "time": "19:00", "label": "Prime entertainment hours" },
+        { "days": ["fri", "sat"], "time": "21:00", "label": "Weekend evening" }
+      ],
+      "maxPerDay": 2,
+      "avoidDays": []
+    },
+    "instagram": {
+      "slots": [
+        { "days": ["tue", "wed", "thu"], "time": "10:00", "label": "Morning scroll" },
+        { "days": ["wed", "thu", "fri"], "time": "19:30", "label": "Evening couch time" }
+      ],
+      "maxPerDay": 2,
+      "avoidDays": []
+    },
+    "youtube": {
+      "slots": [
+        { "days": ["fri"], "time": "15:00", "label": "Afternoon pre-weekend" },
+        { "days": ["thu", "fri"], "time": "20:00", "label": "Prime evening viewing" }
+      ],
+      "maxPerDay": 1,
+      "avoidDays": ["mon"]
+    },
+    "twitter": {
+      "slots": [
+        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "08:30", "label": "Morning news check" },
+        { "days": ["tue", "wed", "thu"], "time": "12:00", "label": "Lunch scroll" },
+        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "17:00", "label": "Commute home" }
+      ],
+      "maxPerDay": 3,
+      "avoidDays": []
+    }
+  }
+}

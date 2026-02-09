@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>vidpipe — Review Queue</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            surface: '#1a1a2e',
+            card: '#16213e',
+            cardHover: '#1a2744',
+            accent: '#0f3460',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-12px); } }
+    @keyframes slideInRight { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes toastOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-20px); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+
+    .card-enter { animation: fadeIn 0.3s ease-out forwards; }
+    .card-exit { animation: fadeOut 0.25s ease-in forwards; }
+    .slide-in { animation: slideInRight 0.3s ease-out forwards; }
+    .toast-enter { animation: toastIn 0.3s ease-out forwards; }
+    .toast-exit { animation: toastOut 0.3s ease-in forwards; }
+    .spinner { animation: spin 0.7s linear infinite; }
+    .skeleton { animation: pulse 1.5s ease-in-out infinite; }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #1a1a2e; }
+    ::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 3px; }
+
+    /* Character count bar */
+    .char-bar { transition: width 0.3s ease, background-color 0.3s ease; }
+
+    /* Action button hover effects */
+    .action-btn { transition: all 0.15s ease; }
+    .action-btn:hover { transform: translateY(-2px); }
+    .action-btn:active { transform: translateY(0); }
+
+    /* Focus ring for keyboard navigation */
+    .action-btn:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+
+    /* Platform filter tab */
+    .platform-tab { transition: all 0.2s ease; }
+    .platform-tab.active { border-bottom: 2px solid currentColor; }
+
+    body { background: #0f0f23; }
+  </style>
+</head>
+<body class="h-full text-gray-100 overflow-hidden">
+  <div id="app" class="h-full flex flex-col">
+
+    <!-- Toast container -->
+    <div id="toasts" class="fixed top-4 right-4 z-50 flex flex-col gap-2"></div>
+
+    <!-- Loading overlay -->
+    <div id="loading-overlay" class="hidden fixed inset-0 z-40 bg-black/50 flex items-center justify-center">
+      <div class="bg-card rounded-2xl p-8 flex flex-col items-center gap-3 shadow-2xl">
+        <div class="w-8 h-8 border-3 border-blue-400 border-t-transparent rounded-full spinner" style="border-width:3px"></div>
+        <span class="text-sm text-gray-400" id="loading-text">Processing…</span>
+      </div>
+    </div>
+
+    <!-- Header -->
+    <header class="flex-shrink-0 border-b border-white/10 bg-surface/80 backdrop-blur-sm">
+      <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">vidpipe</span>
+          <span class="text-gray-500 text-sm">Review Queue</span>
+        </div>
+        <div class="flex items-center gap-2 text-xs text-gray-500">
+          <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">←</kbd> Reject
+          <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">→</kbd> Approve
+          <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">E</kbd> Edit
+          <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">Space</kbd> Skip
+        </div>
+      </div>
+    </header>
+
+    <!-- Platform filter tabs -->
+    <nav class="flex-shrink-0 border-b border-white/5 bg-surface/50">
+      <div class="max-w-4xl mx-auto px-4 flex gap-1 overflow-x-auto" id="platform-tabs"></div>
+    </nav>
+
+    <!-- Main content area -->
+    <main class="flex-1 overflow-y-auto flex items-start justify-center pt-6 pb-4 px-4">
+      <!-- Empty state -->
+      <div id="empty-state" class="hidden flex-col items-center justify-center gap-4 text-center mt-20">
+        <div class="text-6xl">🎬</div>
+        <h2 class="text-xl font-semibold text-gray-300">No posts pending review</h2>
+        <p class="text-gray-500">Run your pipeline first!</p>
+      </div>
+
+      <!-- Summary screen -->
+      <div id="summary-state" class="hidden flex-col items-center justify-center gap-6 text-center mt-20">
+        <div class="text-6xl">🎉</div>
+        <h2 class="text-2xl font-bold text-gray-200">All caught up!</h2>
+        <div id="summary-stats" class="flex gap-6 text-sm"></div>
+        <button onclick="location.reload()" class="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors text-sm font-medium">
+          Refresh Queue
+        </button>
+      </div>
+
+      <!-- Post card -->
+      <div id="post-card" class="hidden w-full max-w-2xl">
+        <div class="bg-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden card-enter" id="card-inner">
+
+          <!-- Platform badge -->
+          <div class="flex items-center justify-between px-5 pt-4 pb-2">
+            <div class="flex items-center gap-2" id="platform-badge">
+              <span id="platform-icon" class="text-lg"></span>
+              <span id="platform-name" class="text-sm font-semibold"></span>
+              <span id="account-name" class="text-xs text-gray-500"></span>
+            </div>
+            <div class="flex items-center gap-2">
+              <span id="clip-type-badge" class="text-xs px-2 py-0.5 rounded-full bg-white/10 text-gray-400"></span>
+            </div>
+          </div>
+
+          <!-- Video preview -->
+          <div class="px-5 pb-3">
+            <div class="rounded-xl overflow-hidden bg-black/40 aspect-video relative" id="video-container">
+              <video id="video-player" class="w-full h-full object-contain" autoplay muted loop playsinline>
+                <source id="video-source" src="" type="video/mp4">
+              </video>
+              <div id="video-placeholder" class="hidden absolute inset-0 flex items-center justify-center bg-black/60">
+                <div class="text-center text-gray-500">
+                  <div class="text-4xl mb-2">🎞️</div>
+                  <div class="text-sm">No media preview</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Post content (view mode) -->
+          <div id="content-view" class="px-5 pb-3">
+            <div id="post-text" class="text-sm leading-relaxed text-gray-200 whitespace-pre-wrap break-words"></div>
+          </div>
+
+          <!-- Post content (edit mode) -->
+          <div id="content-edit" class="hidden px-5 pb-3">
+            <textarea id="edit-textarea"
+              class="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-sm text-gray-200 leading-relaxed resize-y focus:outline-none focus:border-blue-500/50 transition-colors"
+              rows="6"></textarea>
+            <div class="flex items-center justify-between mt-2">
+              <span id="edit-char-count" class="text-xs text-gray-500"></span>
+              <div class="flex gap-2">
+                <button onclick="cancelEdit()" class="px-3 py-1.5 text-xs bg-white/5 hover:bg-white/10 rounded-lg transition-colors">Cancel</button>
+                <button onclick="saveEdit()" class="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors font-medium">Save</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Hashtags -->
+          <div id="hashtags-container" class="px-5 pb-3 flex flex-wrap gap-1.5"></div>
+
+          <!-- Character count bar -->
+          <div class="px-5 pb-3">
+            <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
+              <span id="char-label">Characters</span>
+              <span id="char-count"></span>
+            </div>
+            <div class="h-1.5 bg-white/5 rounded-full overflow-hidden">
+              <div id="char-bar" class="char-bar h-full rounded-full"></div>
+            </div>
+          </div>
+
+          <!-- Metadata row -->
+          <div class="px-5 pb-4 flex items-center justify-between text-xs text-gray-500">
+            <div class="flex items-center gap-3">
+              <span id="meta-source" title="Source video"></span>
+              <span id="meta-schedule" title="Suggested schedule"></span>
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div class="border-t border-white/5"></div>
+
+          <!-- Action buttons -->
+          <div class="px-5 py-4 flex items-center justify-center gap-3" id="action-buttons">
+            <button onclick="rejectPost()" class="action-btn flex items-center gap-2 px-5 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl text-sm font-medium border border-red-500/20" title="Reject (←)">
+              <span>❌</span> Reject
+            </button>
+            <button onclick="startEdit()" class="action-btn flex items-center gap-2 px-5 py-2.5 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 rounded-xl text-sm font-medium border border-yellow-500/20" title="Edit (E)">
+              <span>✏️</span> Edit
+            </button>
+            <button onclick="skipPost()" class="action-btn flex items-center gap-2 px-5 py-2.5 bg-white/5 hover:bg-white/10 text-gray-400 rounded-xl text-sm font-medium border border-white/10" title="Skip (Space)">
+              <span>⏭️</span> Skip
+            </button>
+            <button onclick="approvePost()" class="action-btn flex items-center gap-2 px-5 py-2.5 bg-green-500/10 hover:bg-green-500/20 text-green-400 rounded-xl text-sm font-medium border border-green-500/20" title="Approve (→)">
+              <span>✅</span> Approve
+            </button>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Progress bar -->
+    <footer class="flex-shrink-0 border-t border-white/5 bg-surface/50">
+      <div class="max-w-4xl mx-auto px-4 py-2.5 flex items-center justify-between text-xs text-gray-500">
+        <span id="progress-text"></span>
+        <div class="flex items-center gap-3">
+          <span id="stats-approved" class="text-green-400/70"></span>
+          <span id="stats-rejected" class="text-red-400/70"></span>
+          <span id="stats-skipped" class="text-gray-500"></span>
+        </div>
+      </div>
+    </footer>
+  </div>
+
+  <script>
+    // ── Platform config ──
+    const PLATFORMS = {
+      tiktok:    { icon: '🎵', color: '#00f2ea', name: 'TikTok' },
+      youtube:   { icon: '▶️',  color: '#ff0000', name: 'YouTube' },
+      instagram: { icon: '📸', color: '#e1306c', name: 'Instagram' },
+      linkedin:  { icon: '💼', color: '#0077b5', name: 'LinkedIn' },
+      twitter:   { icon: '🐦', color: '#1da1f2', name: 'X/Twitter' },
+    };
+
+    // ── State ──
+    let allItems = [];
+    let filteredItems = [];
+    let currentIndex = 0;
+    let currentFilter = 'all';
+    let isEditing = false;
+    let isBusy = false;
+    let stats = { approved: 0, rejected: 0, skipped: 0 };
+
+    // ── Init ──
+    document.addEventListener('DOMContentLoaded', init);
+
+    async function init() {
+      try {
+        const res = await fetch('/api/posts/pending');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        allItems = data.items || [];
+      } catch (err) {
+        showToast(`Failed to load posts: ${err.message}`, 'error');
+        allItems = [];
+      }
+      renderTabs();
+      applyFilter('all');
+    }
+
+    // ── Filter / Tabs ──
+    function renderTabs() {
+      const tabs = document.getElementById('platform-tabs');
+      const platforms = ['all', ...new Set(allItems.map(i => normalizePlatform(i.metadata.platform)))];
+
+      tabs.innerHTML = platforms.map(p => {
+        const cfg = p === 'all' ? { icon: '📋', name: 'All' } : (PLATFORMS[p] || { icon: '❓', name: p });
+        const count = p === 'all' ? allItems.length : allItems.filter(i => normalizePlatform(i.metadata.platform) === p).length;
+        return `<button class="platform-tab flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium text-gray-400 hover:text-gray-200 transition-colors border-b-2 border-transparent whitespace-nowrap ${currentFilter === p ? 'active text-gray-100' : ''}"
+          onclick="applyFilter('${p}')" style="${currentFilter === p ? `border-color: ${p === 'all' ? '#60a5fa' : cfg.color}; color: ${p === 'all' ? '#93c5fd' : cfg.color}` : ''}">
+          <span>${cfg.icon}</span> ${cfg.name} <span class="text-gray-600">${count}</span>
+        </button>`;
+      }).join('');
+    }
+
+    function applyFilter(platform) {
+      currentFilter = platform;
+      currentIndex = 0;
+      isEditing = false;
+      if (platform === 'all') {
+        filteredItems = [...allItems];
+      } else {
+        filteredItems = allItems.filter(i => normalizePlatform(i.metadata.platform) === platform);
+      }
+      renderTabs();
+      renderCurrent();
+    }
+
+    function normalizePlatform(raw) {
+      if (!raw) return 'unknown';
+      const lower = raw.toLowerCase();
+      if (lower.includes('tiktok') || lower === 'tik-tok') return 'tiktok';
+      if (lower.includes('youtube') || lower === 'yt') return 'youtube';
+      if (lower.includes('instagram') || lower === 'ig') return 'instagram';
+      if (lower.includes('linkedin')) return 'linkedin';
+      if (lower.includes('twitter') || lower === 'x') return 'twitter';
+      return lower;
+    }
+
+    // ── Render ──
+    function renderCurrent() {
+      const emptyEl = document.getElementById('empty-state');
+      const summaryEl = document.getElementById('summary-state');
+      const cardEl = document.getElementById('post-card');
+
+      // Hide all
+      emptyEl.classList.add('hidden');
+      emptyEl.classList.remove('flex');
+      summaryEl.classList.add('hidden');
+      summaryEl.classList.remove('flex');
+      cardEl.classList.add('hidden');
+
+      if (allItems.length === 0) {
+        emptyEl.classList.remove('hidden');
+        emptyEl.classList.add('flex');
+        document.getElementById('progress-text').textContent = '';
+        return;
+      }
+
+      if (filteredItems.length === 0 || currentIndex >= filteredItems.length) {
+        showSummary();
+        return;
+      }
+
+      cardEl.classList.remove('hidden');
+      const item = filteredItems[currentIndex];
+      renderCard(item);
+      updateProgress();
+    }
+
+    function renderCard(item) {
+      const inner = document.getElementById('card-inner');
+      inner.classList.remove('card-enter', 'slide-in');
+      void inner.offsetWidth; // reflow
+      inner.classList.add('card-enter');
+
+      const platform = normalizePlatform(item.metadata.platform);
+      const cfg = PLATFORMS[platform] || { icon: '❓', color: '#888', name: platform };
+
+      // Platform badge
+      document.getElementById('platform-icon').textContent = cfg.icon;
+      const nameEl = document.getElementById('platform-name');
+      nameEl.textContent = cfg.name;
+      nameEl.style.color = cfg.color;
+      document.getElementById('account-name').textContent = item.metadata.accountId ? `@${item.metadata.accountId}` : '';
+
+      // Clip type
+      const clipBadge = document.getElementById('clip-type-badge');
+      const clipLabels = { 'video': '📹 Full Video', 'short': '⚡ Short', 'medium-clip': '🎬 Medium Clip' };
+      clipBadge.textContent = clipLabels[item.metadata.clipType] || item.metadata.clipType;
+
+      // Video
+      const video = document.getElementById('video-player');
+      const source = document.getElementById('video-source');
+      const placeholder = document.getElementById('video-placeholder');
+      if (item.hasMedia) {
+        source.src = `/media/queue/${item.id}/media.mp4`;
+        video.load();
+        video.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+      } else {
+        video.classList.add('hidden');
+        placeholder.classList.remove('hidden');
+        placeholder.classList.add('flex');
+      }
+
+      // Content
+      document.getElementById('post-text').textContent = item.postContent || '';
+      document.getElementById('content-view').classList.remove('hidden');
+      document.getElementById('content-edit').classList.add('hidden');
+
+      // Hashtags
+      const hashContainer = document.getElementById('hashtags-container');
+      const hashtags = item.metadata.hashtags || [];
+      hashContainer.innerHTML = hashtags.map(tag =>
+        `<span class="inline-block px-2 py-0.5 text-xs rounded-full font-medium" style="background:${cfg.color}20;color:${cfg.color};border:1px solid ${cfg.color}30">#${tag.replace(/^#/, '')}</span>`
+      ).join('');
+
+      // Character count
+      const count = item.metadata.characterCount || (item.postContent || '').length;
+      const limit = item.metadata.platformCharLimit || 280;
+      const pct = Math.min((count / limit) * 100, 100);
+      const barColor = pct > 95 ? '#ef4444' : pct > 80 ? '#f59e0b' : '#22c55e';
+      document.getElementById('char-count').textContent = `${count} / ${limit}`;
+      const bar = document.getElementById('char-bar');
+      bar.style.width = `${pct}%`;
+      bar.style.backgroundColor = barColor;
+
+      // Metadata
+      const sourceVideo = item.metadata.sourceVideo || 'Unknown';
+      document.getElementById('meta-source').textContent = `📹 ${truncate(sourceVideo, 40)}`;
+      const schedule = item.metadata.suggestedSlot;
+      document.getElementById('meta-schedule').textContent = schedule ? `🕐 ${formatDate(schedule)}` : '';
+    }
+
+    function showSummary() {
+      const summaryEl = document.getElementById('summary-state');
+      summaryEl.classList.remove('hidden');
+      summaryEl.classList.add('flex');
+
+      const statsEl = document.getElementById('summary-stats');
+      const parts = [];
+      if (stats.approved > 0) parts.push(`<div class="flex flex-col items-center px-4 py-2 bg-green-500/10 rounded-xl border border-green-500/20"><span class="text-2xl font-bold text-green-400">${stats.approved}</span><span class="text-green-400/70">approved</span></div>`);
+      if (stats.rejected > 0) parts.push(`<div class="flex flex-col items-center px-4 py-2 bg-red-500/10 rounded-xl border border-red-500/20"><span class="text-2xl font-bold text-red-400">${stats.rejected}</span><span class="text-red-400/70">rejected</span></div>`);
+      if (stats.skipped > 0) parts.push(`<div class="flex flex-col items-center px-4 py-2 bg-white/5 rounded-xl border border-white/10"><span class="text-2xl font-bold text-gray-400">${stats.skipped}</span><span class="text-gray-500">skipped</span></div>`);
+      if (parts.length === 0) parts.push(`<div class="text-gray-400">Nothing to show</div>`);
+      statsEl.innerHTML = parts.join('');
+
+      document.getElementById('progress-text').textContent = 'Review complete';
+    }
+
+    function updateProgress() {
+      const total = filteredItems.length;
+      const current = Math.min(currentIndex + 1, total);
+      document.getElementById('progress-text').textContent = `Post ${current} of ${total}`;
+      document.getElementById('stats-approved').textContent = stats.approved ? `✅ ${stats.approved}` : '';
+      document.getElementById('stats-rejected').textContent = stats.rejected ? `❌ ${stats.rejected}` : '';
+      document.getElementById('stats-skipped').textContent = stats.skipped ? `⏭️ ${stats.skipped}` : '';
+    }
+
+    // ── Actions ──
+    async function approvePost() {
+      if (isBusy || isEditing) return;
+      const item = filteredItems[currentIndex];
+      if (!item) return;
+
+      isBusy = true;
+      showLoading('Scheduling post…');
+      try {
+        const res = await fetch(`/api/posts/${item.id}/approve`, { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        stats.approved++;
+        showToast(`Approved! Scheduled for ${data.scheduledFor ? formatDate(data.scheduledFor) : 'publishing'}`, 'success');
+        removeCurrentAndAdvance();
+      } catch (err) {
+        showToast(`Approve failed: ${err.message}`, 'error');
+      } finally {
+        isBusy = false;
+        hideLoading();
+      }
+    }
+
+    async function rejectPost() {
+      if (isBusy || isEditing) return;
+      const item = filteredItems[currentIndex];
+      if (!item) return;
+
+      isBusy = true;
+      showLoading('Rejecting…');
+      try {
+        const res = await fetch(`/api/posts/${item.id}/reject`, { method: 'POST' });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+        stats.rejected++;
+        showToast('Post rejected', 'info');
+        removeCurrentAndAdvance();
+      } catch (err) {
+        showToast(`Reject failed: ${err.message}`, 'error');
+      } finally {
+        isBusy = false;
+        hideLoading();
+      }
+    }
+
+    function skipPost() {
+      if (isBusy || isEditing) return;
+      stats.skipped++;
+      currentIndex++;
+      renderCurrent();
+    }
+
+    function startEdit() {
+      if (isBusy || isEditing) return;
+      const item = filteredItems[currentIndex];
+      if (!item) return;
+
+      isEditing = true;
+      const textarea = document.getElementById('edit-textarea');
+      textarea.value = item.postContent || '';
+      document.getElementById('content-view').classList.add('hidden');
+      document.getElementById('content-edit').classList.remove('hidden');
+      document.getElementById('action-buttons').classList.add('opacity-50', 'pointer-events-none');
+      textarea.focus();
+      updateEditCharCount();
+      textarea.addEventListener('input', updateEditCharCount);
+    }
+
+    function cancelEdit() {
+      isEditing = false;
+      document.getElementById('content-view').classList.remove('hidden');
+      document.getElementById('content-edit').classList.add('hidden');
+      document.getElementById('action-buttons').classList.remove('opacity-50', 'pointer-events-none');
+      document.getElementById('edit-textarea').removeEventListener('input', updateEditCharCount);
+    }
+
+    async function saveEdit() {
+      const item = filteredItems[currentIndex];
+      if (!item) return;
+
+      const newText = document.getElementById('edit-textarea').value;
+      isBusy = true;
+      showLoading('Saving…');
+      try {
+        const res = await fetch(`/api/posts/${item.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ postContent: newText }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || `HTTP ${res.status}`);
+        }
+        const updated = await res.json();
+        // Update local state
+        item.postContent = updated.postContent || newText;
+        item.metadata.characterCount = (item.postContent || '').length;
+        showToast('Post updated', 'success');
+        cancelEdit();
+        renderCard(item);
+      } catch (err) {
+        showToast(`Save failed: ${err.message}`, 'error');
+      } finally {
+        isBusy = false;
+        hideLoading();
+      }
+    }
+
+    function updateEditCharCount() {
+      const item = filteredItems[currentIndex];
+      if (!item) return;
+      const len = document.getElementById('edit-textarea').value.length;
+      const limit = item.metadata.platformCharLimit || 280;
+      const el = document.getElementById('edit-char-count');
+      el.textContent = `${len} / ${limit}`;
+      el.className = len > limit ? 'text-xs text-red-400' : 'text-xs text-gray-500';
+    }
+
+    function removeCurrentAndAdvance() {
+      const item = filteredItems[currentIndex];
+      // Remove from both arrays
+      allItems = allItems.filter(i => i.id !== item.id);
+      filteredItems = filteredItems.filter(i => i.id !== item.id);
+      // Don't increment index since array shifted
+      renderTabs();
+      animateTransition(() => renderCurrent());
+    }
+
+    function animateTransition(callback) {
+      const inner = document.getElementById('card-inner');
+      inner.classList.add('card-exit');
+      setTimeout(() => {
+        inner.classList.remove('card-exit');
+        callback();
+      }, 250);
+    }
+
+    // ── Keyboard shortcuts ──
+    document.addEventListener('keydown', (e) => {
+      // Don't trigger shortcuts when editing text
+      if (isEditing) {
+        if (e.key === 'Escape') cancelEdit();
+        return;
+      }
+      if (isBusy) return;
+
+      switch (e.key) {
+        case 'ArrowLeft':  e.preventDefault(); rejectPost(); break;
+        case 'ArrowRight': e.preventDefault(); approvePost(); break;
+        case 'e': case 'E': e.preventDefault(); startEdit(); break;
+        case ' ':          e.preventDefault(); skipPost(); break;
+      }
+    });
+
+    // ── Toast notifications ──
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toasts');
+      const colors = {
+        success: 'bg-green-500/20 border-green-500/30 text-green-300',
+        error:   'bg-red-500/20 border-red-500/30 text-red-300',
+        info:    'bg-blue-500/20 border-blue-500/30 text-blue-300',
+      };
+      const icons = { success: '✅', error: '⚠️', info: 'ℹ️' };
+
+      const toast = document.createElement('div');
+      toast.className = `toast-enter flex items-center gap-2 px-4 py-2.5 rounded-xl border backdrop-blur-sm text-sm shadow-lg ${colors[type] || colors.info}`;
+      toast.innerHTML = `<span>${icons[type] || ''}</span><span>${escapeHtml(message)}</span>`;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.classList.remove('toast-enter');
+        toast.classList.add('toast-exit');
+        setTimeout(() => toast.remove(), 300);
+      }, 4000);
+    }
+
+    // ── Loading overlay ──
+    function showLoading(text = 'Processing…') {
+      document.getElementById('loading-text').textContent = text;
+      document.getElementById('loading-overlay').classList.remove('hidden');
+    }
+
+    function hideLoading() {
+      document.getElementById('loading-overlay').classList.add('hidden');
+    }
+
+    // ── Helpers ──
+    function truncate(str, max) {
+      if (!str) return '';
+      return str.length > max ? str.slice(0, max) + '…' : str;
+    }
+
+    function formatDate(iso) {
+      try {
+        const d = new Date(iso);
+        return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) +
+          ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+      } catch { return iso; }
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>

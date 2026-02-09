@@ -3,6 +3,8 @@ import { existsSync } from 'fs'
 import { createRequire } from 'module'
 import path from 'path'
 import { getConfig } from '../config/environment.js'
+import { LateApiClient } from '../services/lateApi.js'
+import { loadScheduleConfig } from '../services/scheduleConfig.js'
 import type { ProviderName } from '../providers/index.js'
 
 const require = createRequire(import.meta.url)
@@ -170,7 +172,7 @@ function checkWatchFolder(): CheckResult {
   }
 }
 
-export function runDoctor(): void {
+export async function runDoctor(): Promise<void> {
   console.log('\n🔍 VidPipe Doctor — Checking prerequisites...\n')
 
   const results: CheckResult[] = [
@@ -235,6 +237,13 @@ export function runDoctor(): void {
     }
   }
 
+  // Late API (optional — social publishing)
+  console.log('\nSocial Publishing')
+  await checkLateApi(config.LATE_API_KEY)
+
+  // Schedule config
+  await checkScheduleConfig()
+
   const failedRequired = results.filter(r => r.required && !r.ok)
 
   console.log()
@@ -244,5 +253,68 @@ export function runDoctor(): void {
   } else {
     console.log(`  ${failedRequired.length} required check${failedRequired.length > 1 ? 's' : ''} failed ❌\n`)
     process.exit(1)
+  }
+}
+
+const PLATFORM_LABELS: Record<string, string> = {
+  tiktok: 'TikTok',
+  youtube: 'YouTube',
+  instagram: 'Instagram',
+  linkedin: 'LinkedIn',
+  twitter: 'X/Twitter',
+}
+
+async function checkLateApi(apiKey: string): Promise<void> {
+  if (!apiKey) {
+    console.log('  ⬚ Late API key: not configured (optional — set LATE_API_KEY for social publishing)')
+    return
+  }
+
+  try {
+    const client = new LateApiClient(apiKey)
+    const { valid, profileName, error } = await client.validateConnection()
+
+    if (!valid) {
+      console.log(`  ❌ Late API key: invalid (${error ?? 'unknown error'})`)
+      return
+    }
+
+    console.log(`  ✅ Late API key: connected to profile "${profileName ?? 'unknown'}"`)
+
+    // List connected accounts
+    try {
+      const accounts = await client.listAccounts()
+      if (accounts.length === 0) {
+        console.log('  ⚠️ No social accounts connected in Late dashboard')
+      } else {
+        for (const acct of accounts) {
+          const label = PLATFORM_LABELS[acct.platform] ?? acct.platform
+          const handle = acct.username ? `@${acct.username}` : acct.displayName
+          console.log(`  ✅ ${label} — ${handle}`)
+        }
+      }
+    } catch {
+      console.log('  ⚠️ Could not fetch connected accounts')
+    }
+  } catch {
+    console.log('  ❌ Late API key: could not connect (network error)')
+  }
+}
+
+async function checkScheduleConfig(): Promise<void> {
+  const schedulePath = path.join(process.cwd(), 'schedule.json')
+
+  if (!existsSync(schedulePath)) {
+    console.log('  ⬚ Schedule config: schedule.json not found (will use defaults on first run)')
+    return
+  }
+
+  try {
+    const scheduleConfig = await loadScheduleConfig(schedulePath)
+    const platformCount = Object.keys(scheduleConfig.platforms).length
+    console.log(`  ✅ Schedule config: schedule.json found (${platformCount} platform${platformCount !== 1 ? 's' : ''} configured)`)
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.log(`  ❌ Schedule config: schedule.json invalid — ${msg}`)
   }
 }

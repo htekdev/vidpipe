@@ -28,6 +28,9 @@ export interface AppEnvironment {
   SKIP_MEDIUM_CLIPS: boolean
   SKIP_SOCIAL: boolean
   SKIP_CAPTIONS: boolean
+  LATE_API_KEY: string
+  LATE_PROFILE_ID: string
+  SKIP_SOCIAL_PUBLISH: boolean
 }
 
 export interface CLIOptions {
@@ -43,6 +46,9 @@ export interface CLIOptions {
   mediumClips?: boolean
   social?: boolean
   captions?: boolean
+  socialPublish?: boolean
+  lateApiKey?: string
+  lateProfileId?: string
 }
 
 let config: AppEnvironment | null = null
@@ -77,6 +83,9 @@ export function initConfig(cli: CLIOptions = {}): AppEnvironment {
     SKIP_MEDIUM_CLIPS: cli.mediumClips === false,
     SKIP_SOCIAL: cli.social === false,
     SKIP_CAPTIONS: cli.captions === false,
+    LATE_API_KEY: cli.lateApiKey || process.env.LATE_API_KEY || '',
+    LATE_PROFILE_ID: cli.lateProfileId || process.env.LATE_PROFILE_ID || '',
+    SKIP_SOCIAL_PUBLISH: cli.socialPublish === false,
   }
 
   return config
