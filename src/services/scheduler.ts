@@ -148,19 +148,14 @@ function countPostsOnDate(
   date: Date,
   platform: string,
   bookedSlots: Array<{ scheduledFor: string; platform?: string }>,
+  timezone: string,
 ): number {
-  // Load timezone synchronously from the module-level — callers ensure config is loaded
   let count = 0
   for (const slot of bookedSlots) {
     if (slot.platform && slot.platform !== platform) continue
     const slotDate = new Date(slot.scheduledFor)
     if (isNaN(slotDate.getTime())) continue
-    // Compare calendar dates (using UTC date components from the ISO string)
-    if (
-      slotDate.getUTCFullYear() === date.getUTCFullYear() &&
-      slotDate.getUTCMonth() === date.getUTCMonth() &&
-      slotDate.getUTCDate() === date.getUTCDate()
-    ) {
+    if (isSameDayInTimezone(slotDate, date, timezone)) {
       count++
     }
   }
@@ -219,10 +214,7 @@ export async function findNextSlot(platform: string): Promise<string | null> {
     if (candidateTimes.length === 0) continue
 
     // Check maxPerDay
-    const { year, month, day } = getDateInTimezone(candidateDate, timezone)
-    // Build a reference date for counting — use noon to avoid DST edge cases
-    const refDate = new Date(`${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00Z`)
-    const postsOnDay = countPostsOnDate(refDate, platform, bookedSlots)
+    const postsOnDay = countPostsOnDate(candidateDate, platform, bookedSlots, timezone)
     if (postsOnDay >= platformConfig.maxPerDay) continue
 
     for (const time of candidateTimes) {

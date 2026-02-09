@@ -2,7 +2,8 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import logger from '../config/logger'
 import { PLATFORM_CHAR_LIMITS, toLateplatform } from '../types'
-import type { VideoFile, ShortClip, MediumClip, SocialPost, Platform, VideoPlatform } from '../types'
+import { Platform } from '../types'
+import type { VideoFile, ShortClip, MediumClip, SocialPost, VideoPlatform } from '../types'
 import { createItem, itemExists, type QueueItemMetadata } from './postStore'
 
 // ============================================================================
@@ -150,8 +151,9 @@ export async function buildPublishQueue(
         // Video-level post (stage 10)
         clipSlug = video.slug
         clipType = 'video'
-        if (post.platform === ('youtube' as Platform) && captionedVideoPath) {
-          mediaPath = captionedVideoPath
+        const videoNeedsMedia: Platform[] = [Platform.YouTube, Platform.TikTok, Platform.Instagram]
+        if (videoNeedsMedia.includes(post.platform)) {
+          mediaPath = captionedVideoPath ?? path.join(video.videoDir, video.filename)
         }
       }
 

@@ -50,14 +50,23 @@ program
     console.log(`\nReview app running at http://localhost:${port}`)
     console.log('Press Ctrl+C to stop.\n')
 
-    process.on('SIGINT', async () => {
+    const shutdown = async () => {
+      console.log('\nShutting down...')
       await close()
       process.exit(0)
-    })
-    process.on('SIGTERM', async () => {
-      await close()
-      process.exit(0)
-    })
+    }
+    process.on('SIGINT', shutdown)
+    process.on('SIGTERM', shutdown)
+
+    // On Windows, listen for raw input since SIGINT is unreliable
+    if (process.platform === 'win32') {
+      process.stdin.resume()
+      process.stdin.setRawMode?.(true)
+      process.stdin.on('data', (data) => {
+        // Ctrl-C is byte 0x03
+        if (data[0] === 0x03) void shutdown()
+      })
+    }
   })
 
 program

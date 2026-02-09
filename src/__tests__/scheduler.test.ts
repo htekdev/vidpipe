@@ -157,4 +157,58 @@ describe('scheduler', () => {
     // Should still find a slot using local data only
     expect(slot).toBeTruthy()
   })
+
+  it('does not count evening CST post on next UTC day (timezone bug)', async () => {
+    // Config: tiktok at 19:00 CST (Tue-Thu), maxPerDay=1
+    // A post at Tue 19:00 CST = Wed 01:00 UTC.
+    // Without timezone-aware counting, Wednesday would appear "full" and be skipped.
+    const config = {
+      timezone: 'America/Chicago',
+      platforms: {
+        tiktok: {
+          slots: [
+            { days: ['tue', 'wed', 'thu'], time: '19:00', label: 'Evening' },
+          ],
+          maxPerDay: 1,
+          avoidDays: [] as string[],
+        },
+      },
+    }
+    mockLoadScheduleConfig.mockResolvedValue(config)
+
+    // Simulate: one post already booked on the first available Tuesday at 19:00 CST
+    const firstSlot = await findNextSlot('tiktok')
+    expect(firstSlot).toBeTruthy()
+    expect(firstSlot).toMatch(/T19:00:00-06:00/)
+
+    // Now mark that slot as booked and request next slot
+    vi.clearAllMocks()
+    mockGetPublishedItems.mockResolvedValue([])
+    mockLoadScheduleConfig.mockResolvedValue(config)
+    mockGetScheduledPosts.mockResolvedValue([
+      {
+        _id: 'existing-tue',
+        content: 'Tuesday post',
+        status: 'scheduled',
+        platforms: [{ platform: 'tiktok', accountId: 'acct-tt' }],
+        scheduledFor: firstSlot,
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      },
+    ])
+
+    const secondSlot = await findNextSlot('tiktok')
+    expect(secondSlot).toBeTruthy()
+
+    // The next slot should be the NEXT day (Wed or Thu), not skip a day
+    // Parse both dates and verify they're consecutive available days
+    const firstDate = new Date(firstSlot!)
+    const secondDate = new Date(secondSlot!)
+    const dayDiffMs = secondDate.getTime() - firstDate.getTime()
+    const dayDiffDays = Math.round(dayDiffMs / (24 * 60 * 60 * 1000))
+
+    // Should be 1 day apart (consecutive), not 2+ (skipping)
+    expect(dayDiffDays).toBe(1)
+    expect(secondSlot).toMatch(/T19:00:00/)
+  })
 })

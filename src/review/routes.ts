@@ -1,11 +1,27 @@
+import fs from 'node:fs/promises'
 import { Router } from 'express'
 import { getPendingItems, getItem, updateItem, approveItem, rejectItem } from '../services/postStore'
 import { findNextSlot, getScheduleCalendar } from '../services/scheduler'
 import { getAccountId } from '../services/accountMapping'
-import { LateApiClient } from '../services/lateApi'
+import { LateApiClient, type LateAccount, type LateProfile } from '../services/lateApi'
 import { loadScheduleConfig } from '../services/scheduleConfig'
 import { fromLatePlatform } from '../types'
 import logger from '../config/logger'
+
+// ── Simple in-memory cache (avoids repeated Late API calls) ────────────
+const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
+const cache = new Map<string, { data: unknown; expiry: number }>()
+
+function getCached<T>(key: string): T | null {
+  const entry = cache.get(key)
+  if (entry && entry.expiry > Date.now()) return entry.data as T
+  cache.delete(key)
+  return null
+}
+
+function setCache(key: string, data: unknown, ttl = CACHE_TTL_MS): void {
+  cache.set(key, { data, expiry: Date.now() + ttl })
+}
 
 export function createRouter(): Router {
   const router = Router()
@@ -14,6 +30,36 @@ export function createRouter(): Router {
   router.get('/api/posts/pending', async (req, res) => {
     const items = await getPendingItems()
     res.json({ items, total: items.length })
+  })
+
+  // GET /api/init — combined endpoint for initial page load (1 request instead of 3)
+  router.get('/api/init', async (req, res) => {
+    const [itemsResult, accountsResult, profileResult] = await Promise.allSettled([
+      getPendingItems(),
+      (async () => {
+        const cached = getCached<LateAccount[]>('accounts')
+        if (cached) return cached
+        const client = new LateApiClient()
+        const accounts = await client.listAccounts()
+        setCache('accounts', accounts)
+        return accounts
+      })(),
+      (async () => {
+        const cached = getCached<LateProfile | null>('profile')
+        if (cached !== null) return cached
+        const client = new LateApiClient()
+        const profiles = await client.listProfiles()
+        const profile = profiles[0] || null
+        setCache('profile', profile)
+        return profile
+      })(),
+    ])
+
+    const items = itemsResult.status === 'fulfilled' ? itemsResult.value : []
+    const accounts = accountsResult.status === 'fulfilled' ? accountsResult.value : []
+    const profile = profileResult.status === 'fulfilled' ? profileResult.value : null
+
+    res.json({ items, total: items.length, accounts, profile })
   })
 
   // GET /api/posts/:id — get single post with full content
@@ -38,23 +84,41 @@ export function createRouter(): Router {
       const accountId = item.metadata.accountId || await getAccountId(platform)
       if (!accountId) return res.status(400).json({ error: `No Late account connected for ${item.metadata.platform}` })
 
-      // 3. Upload media if exists
+      // 3. Upload media if exists (fallback to source media when queue copy is missing)
       const client = new LateApiClient()
-      let mediaUrls: string[] | undefined
-      if (item.hasMedia && item.mediaPath) {
-        const upload = await client.uploadMedia(item.mediaPath)
-        mediaUrls = [upload.url]
+      let mediaItems: Array<{ type: 'image' | 'video'; url: string }> | undefined
+      const effectiveMediaPath = item.mediaPath ?? item.metadata.sourceMediaPath
+      if (effectiveMediaPath) {
+        const mediaExists = await fs.access(effectiveMediaPath).then(() => true, () => false)
+        if (mediaExists) {
+          if (!item.mediaPath && item.metadata.sourceMediaPath) {
+            logger.info(`Using source media fallback for ${item.id}: ${item.metadata.sourceMediaPath}`)
+          }
+          const upload = await client.uploadMedia(effectiveMediaPath)
+          mediaItems = [{ type: upload.type, url: upload.url }]
+        }
       }
 
       // 4. Create scheduled post in Late
+      const isTikTok = item.metadata.platform === 'tiktok'
+      const tiktokSettings = isTikTok ? {
+        privacy_level: 'PUBLIC_TO_EVERYONE',
+        allow_comment: true,
+        allow_duet: true,
+        allow_stitch: true,
+        content_preview_confirmed: true,
+        express_consent_given: true,
+      } : undefined
+
       const schedConfig = await loadScheduleConfig()
       const latePost = await client.createPost({
         content: item.postContent,
         platforms: [{ platform: item.metadata.platform, accountId }],
         scheduledFor: slot,
         timezone: schedConfig.timezone,
-        mediaUrls,
+        mediaItems,
         platformSpecificData: item.metadata.platformSpecificData,
+        tiktokSettings,
       })
 
       // 5. Move to published (persist resolved accountId to metadata)
@@ -119,23 +183,32 @@ export function createRouter(): Router {
     }
   })
 
-  // GET /api/accounts — list connected Late accounts
+  // GET /api/accounts — list connected Late accounts (cached)
   router.get('/api/accounts', async (req, res) => {
     try {
+      const cached = getCached<LateAccount[]>('accounts')
+      if (cached) return res.json({ accounts: cached })
+
       const client = new LateApiClient()
       const accounts = await client.listAccounts()
+      setCache('accounts', accounts)
       res.json({ accounts })
     } catch (err) {
       res.json({ accounts: [], error: err instanceof Error ? err.message : 'Failed to fetch accounts' })
     }
   })
 
-  // GET /api/profile — get Late profile info
+  // GET /api/profile — get Late profile info (cached)
   router.get('/api/profile', async (req, res) => {
     try {
+      const cached = getCached<LateProfile | null>('profile')
+      if (cached !== null) return res.json({ profile: cached })
+
       const client = new LateApiClient()
       const profiles = await client.listProfiles()
-      res.json({ profile: profiles[0] || null })
+      const profile = profiles[0] || null
+      setCache('profile', profile)
+      res.json({ profile })
     } catch (err) {
       res.json({ profile: null, error: err instanceof Error ? err.message : 'Failed to fetch profile' })
     }

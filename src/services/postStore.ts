@@ -206,7 +206,20 @@ export async function approveItem(
   const publishedDir = getPublishedDir()
   const destPath = path.join(publishedDir, id)
   await fs.mkdir(publishedDir, { recursive: true })
-  await fs.rename(item.folderPath, destPath)
+
+  try {
+    await fs.rename(item.folderPath, destPath)
+  } catch (renameErr: unknown) {
+    // On Windows, rename can fail with EPERM if a file handle is still releasing.
+    // Fall back to recursive copy + delete.
+    if ((renameErr as NodeJS.ErrnoException).code === 'EPERM') {
+      logger.warn(`rename failed (EPERM) for ${id}, falling back to copy+delete`)
+      await fs.cp(item.folderPath, destPath, { recursive: true })
+      await fs.rm(item.folderPath, { recursive: true, force: true })
+    } else {
+      throw renameErr
+    }
+  }
 
   logger.debug(`Approved and moved queue item: ${id}`)
 }

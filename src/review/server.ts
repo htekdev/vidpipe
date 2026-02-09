@@ -47,9 +47,21 @@ export async function startReviewServer(options: ReviewServerOptions = {}): Prom
     const tryPort = (p: number, attempts: number) => {
       const server = app.listen(p, () => {
         logger.info(`Review server running at http://localhost:${p}`)
+
+        // Track open connections so we can destroy them on shutdown
+        const connections = new Set<import('net').Socket>()
+        server.on('connection', (conn) => {
+          connections.add(conn)
+          conn.on('close', () => connections.delete(conn))
+        })
+
         resolve({
           port: p,
-          close: () => new Promise<void>((res) => server.close(() => res())),
+          close: () => new Promise<void>((res) => {
+            for (const conn of connections) conn.destroy()
+            server.close(() => res())
+            setTimeout(() => res(), 2000).unref()
+          }),
         })
       })
       

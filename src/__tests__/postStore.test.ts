@@ -189,6 +189,41 @@ describe('postStore', () => {
       expect(publishedMeta.latePostId).toBe('late-abc')
       expect(publishedMeta.publishedAt).toBeTruthy()
     })
+
+    it('falls back to copy+delete when rename fails with EPERM', async () => {
+      const meta = makeMetadata({ id: 'approve-eperm' })
+      const item = await createItem('approve-eperm', meta, 'EPERM test', undefined)
+
+      // Write a media file so the folder has content to copy
+      await fs.writeFile(path.join(item.folderPath, 'media.mp4'), 'fake-video-bytes')
+
+      // Spy on fs.rename to simulate EPERM (Windows file handle lock)
+      const renameSpy = vi.spyOn(fs, 'rename').mockRejectedValueOnce(
+        Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' }),
+      )
+
+      await approveItem('approve-eperm', {
+        latePostId: 'late-eperm',
+        scheduledFor: '2025-07-01T12:00:00Z',
+      })
+
+      // Source folder should be gone
+      const pending = await getItem('approve-eperm')
+      expect(pending).toBeNull()
+
+      // Published folder should have both files
+      const publishedDir = path.join(tmpDir, 'published', 'approve-eperm')
+      const publishedMeta = JSON.parse(
+        await fs.readFile(path.join(publishedDir, 'metadata.json'), 'utf-8'),
+      )
+      expect(publishedMeta.status).toBe('published')
+      expect(publishedMeta.latePostId).toBe('late-eperm')
+
+      const mediaContent = await fs.readFile(path.join(publishedDir, 'media.mp4'), 'utf-8')
+      expect(mediaContent).toBe('fake-video-bytes')
+
+      renameSpy.mockRestore()
+    })
   })
 
   describe('rejectItem', () => {

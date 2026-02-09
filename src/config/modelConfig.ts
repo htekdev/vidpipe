@@ -19,8 +19,8 @@ export const AGENT_MODEL_MAP: Record<string, string> = {
   BlogAgent: STANDARD_MODEL,
   SummaryAgent: FREE_MODEL,
   ChapterAgent: FREE_MODEL,
-  ShortPostsAgent: FREE_MODEL,
-  MediumClipPostsAgent: FREE_MODEL,
+  ShortPostsAgent: STANDARD_MODEL,
+  MediumClipPostsAgent: PREMIUM_MODEL,
 };
 
 /**

@@ -2,7 +2,7 @@
  * Media Upload Flow (verified via live testing 2026-02-09):
  * - Step 1: POST /media/presign { filename, contentType } → { uploadUrl, publicUrl, key, expiresIn }
  * - Step 2: PUT file bytes to uploadUrl (presigned Cloudflare R2 URL) with Content-Type header
- * - Step 3: Use publicUrl (https://media.getlate.dev/temp/...) in createPost({ mediaUrls: [publicUrl] })
+ * - Step 3: Use publicUrl (https://media.getlate.dev/temp/...) in createPost({ mediaItems: [{ type, url }] })
  *
  * Notes:
  * - The old POST /media/upload endpoint exists but requires an "upload token" (not an API key).
@@ -13,7 +13,8 @@
  */
 import { getConfig } from '../config/environment.js'
 import logger from '../config/logger.js'
-import { promises as fs } from 'fs'
+import { promises as fs, createReadStream } from 'fs'
+import { Readable } from 'stream'
 import path from 'path'
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -38,7 +39,7 @@ export interface LatePost {
   status: string // 'draft' | 'scheduled' | 'published' | 'failed'
   platforms: Array<{ platform: string; accountId: string }>
   scheduledFor?: string
-  mediaUrls?: string[]
+  mediaItems?: Array<{ type: string; url: string }>
   isDraft?: boolean
   createdAt: string
   updatedAt: string
@@ -53,6 +54,7 @@ export interface LateMediaPresignResult {
 
 export interface LateMediaUploadResult {
   url: string
+  type: 'image' | 'video'
 }
 
 export interface CreatePostParams {
@@ -61,8 +63,17 @@ export interface CreatePostParams {
   scheduledFor?: string
   timezone?: string
   isDraft?: boolean
-  mediaUrls?: string[]
+  mediaItems?: Array<{ type: 'image' | 'video'; url: string; thumbnail?: { url: string } }>
   platformSpecificData?: Record<string, unknown>
+  tiktokSettings?: {
+    privacy_level: string
+    allow_comment: boolean
+    allow_duet?: boolean
+    allow_stitch?: boolean
+    content_preview_confirmed: boolean
+    express_consent_given: boolean
+    [key: string]: unknown
+  }
 }
 
 // ── Client ─────────────────────────────────────────────────────────────
@@ -174,11 +185,13 @@ export class LateApiClient {
   }
 
   async uploadMedia(filePath: string): Promise<LateMediaUploadResult> {
-    const fileBuffer = await fs.readFile(filePath)
+    const fileStats = await fs.stat(filePath)
     const fileName = path.basename(filePath)
     const ext = path.extname(fileName).toLowerCase()
     const contentType =
       ext === '.mp4' ? 'video/mp4' : ext === '.webm' ? 'video/webm' : ext === '.mov' ? 'video/quicktime' : 'video/mp4'
+
+    logger.info(`Late API uploading ${fileName} (${(fileStats.size / 1024 / 1024).toFixed(1)} MB)`)
 
     // Step 1: Get presigned upload URL
     const presign = await this.request<LateMediaPresignResult>('/media/presign', {
@@ -187,18 +200,30 @@ export class LateApiClient {
     })
     logger.debug(`Late API presigned URL obtained for ${fileName} (expires in ${presign.expiresIn}s)`)
 
-    // Step 2: PUT file to presigned URL (direct to Cloudflare R2, no auth header)
-    const uploadResp = await fetch(presign.uploadUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': contentType },
-      body: fileBuffer,
-    })
-    if (!uploadResp.ok) {
-      throw new Error(`Late media upload failed: ${uploadResp.status} ${uploadResp.statusText}`)
+    // Step 2: Stream file to presigned URL (avoids loading entire file into memory)
+    const nodeStream = createReadStream(filePath)
+    try {
+      const webStream = Readable.toWeb(nodeStream) as ReadableStream
+      const uploadResp = await fetch(presign.uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': contentType,
+          'Content-Length': String(fileStats.size),
+        },
+        body: webStream,
+        duplex: 'half',
+      } as RequestInit)
+      if (!uploadResp.ok) {
+        throw new Error(`Late media upload failed: ${uploadResp.status} ${uploadResp.statusText}`)
+      }
+    } finally {
+      // Ensure file handle is released so the folder can be renamed/moved on Windows
+      nodeStream.destroy()
     }
     logger.debug(`Late API media uploaded → ${presign.publicUrl}`)
 
-    return { url: presign.publicUrl }
+    const type: 'image' | 'video' = contentType.startsWith('image/') ? 'image' : 'video'
+    return { url: presign.publicUrl, type }
   }
 
   // ── Helper ───────────────────────────────────────────────────────────
