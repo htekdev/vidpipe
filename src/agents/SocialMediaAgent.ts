@@ -141,6 +141,8 @@ function toPlatformEnum(raw: string): Platform {
       return Platform.LinkedIn
     case 'x':
     case 'twitter':
+    case 'x (twitter)':
+    case 'x/twitter':
       return Platform.X
     default:
       return normalised as Platform

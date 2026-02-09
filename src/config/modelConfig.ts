@@ -15,11 +15,11 @@ export const AGENT_MODEL_MAP: Record<string, string> = {
   SilenceRemovalAgent: PREMIUM_MODEL,
   ShortsAgent: PREMIUM_MODEL,
   MediumVideoAgent: PREMIUM_MODEL,
-  SocialMediaAgent: STANDARD_MODEL,
-  BlogAgent: STANDARD_MODEL,
-  SummaryAgent: FREE_MODEL,
-  ChapterAgent: FREE_MODEL,
-  ShortPostsAgent: STANDARD_MODEL,
+  SocialMediaAgent: PREMIUM_MODEL,
+  BlogAgent: PREMIUM_MODEL,
+  SummaryAgent: PREMIUM_MODEL,
+  ChapterAgent: PREMIUM_MODEL,
+  ShortPostsAgent: PREMIUM_MODEL,
   MediumClipPostsAgent: PREMIUM_MODEL,
 };
 

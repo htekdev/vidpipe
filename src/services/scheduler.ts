@@ -61,32 +61,7 @@ function getDayOfWeekInTimezone(date: Date, timezone: string): DayOfWeek {
   return map[short] ?? 'mon'
 }
 
-/**
- * Get date components in the target timezone.
- */
-function getDateInTimezone(date: Date, timezone: string): { year: number; month: number; day: number } {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
-  const parts = formatter.formatToParts(date)
-  return {
-    year: Number(parts.find(p => p.type === 'year')!.value),
-    month: Number(parts.find(p => p.type === 'month')!.value),
-    day: Number(parts.find(p => p.type === 'day')!.value),
-  }
-}
 
-/**
- * Check if two dates are the same calendar day in the given timezone.
- */
-function isSameDayInTimezone(a: Date, b: Date, timezone: string): boolean {
-  const aDate = getDateInTimezone(a, timezone)
-  const bDate = getDateInTimezone(b, timezone)
-  return aDate.year === bDate.year && aDate.month === bDate.month && aDate.day === bDate.day
-}
 
 /**
  * Fetch scheduled posts from Late API, returning empty array on failure.
@@ -141,42 +116,17 @@ async function buildBookedSlots(platform?: string): Promise<BookedSlot[]> {
   return slots
 }
 
-/**
- * Count how many posts are scheduled for a given platform on a given date.
- */
-function countPostsOnDate(
-  date: Date,
-  platform: string,
-  bookedSlots: Array<{ scheduledFor: string; platform?: string }>,
-  timezone: string,
-): number {
-  let count = 0
-  for (const slot of bookedSlots) {
-    if (slot.platform && slot.platform !== platform) continue
-    const slotDate = new Date(slot.scheduledFor)
-    if (isNaN(slotDate.getTime())) continue
-    if (isSameDayInTimezone(slotDate, date, timezone)) {
-      count++
-    }
-  }
-  return count
-}
+
 
 /**
  * Find the next available posting slot for a platform.
  *
- * Algorithm:
+ * Algorithm (generate-sort-filter):
  * 1. Load platform schedule config from schedule.json
- * 2. Query Late API for existing scheduled posts for this platform
- * 3. Get locally published items for this platform (from published/ folder)
- * 4. Build set of already-booked slots
- * 5. Starting from tomorrow, iterate through configured days/times:
- *    a. Skip if day not in slot.days
- *    b. Skip if day is in avoidDays
- *    c. Skip if day already has maxPerDay posts scheduled
- *    d. Skip if this exact datetime is already booked
- *    e. Return first available slot as ISO datetime string
- * 6. If no slot found within 14 days, return null with warning
+ * 2. Build set of already-booked datetimes from Late API + local published items
+ * 3. Generate ALL candidate slot datetimes for the next MAX_LOOKAHEAD_DAYS days
+ * 4. Sort candidates chronologically
+ * 5. Return the first candidate not already booked, or null if none found
  */
 export async function findNextSlot(platform: string): Promise<string | null> {
   const config = await loadScheduleConfig()
@@ -194,36 +144,30 @@ export async function findNextSlot(platform: string): Promise<string | null> {
 
   const now = new Date()
 
+  // Generate all candidate slot datetimes across the lookahead window
+  const candidates: string[] = []
   for (let dayOffset = 1; dayOffset <= MAX_LOOKAHEAD_DAYS; dayOffset++) {
     const candidateDate = new Date(now)
     candidateDate.setDate(candidateDate.getDate() + dayOffset)
 
     const dayOfWeek = getDayOfWeekInTimezone(candidateDate, timezone)
 
-    // Skip avoid days
     if (platformConfig.avoidDays.includes(dayOfWeek)) continue
 
-    // Collect all candidate times for this day, sorted chronologically
-    const candidateTimes: string[] = []
     for (const slot of platformConfig.slots) {
       if (!slot.days.includes(dayOfWeek)) continue
-      candidateTimes.push(slot.time)
+      candidates.push(buildSlotDatetime(candidateDate, slot.time, timezone))
     }
-    candidateTimes.sort()
+  }
 
-    if (candidateTimes.length === 0) continue
+  // Sort chronologically (ISO format strings sort correctly)
+  candidates.sort()
 
-    // Check maxPerDay
-    const postsOnDay = countPostsOnDate(candidateDate, platform, bookedSlots, timezone)
-    if (postsOnDay >= platformConfig.maxPerDay) continue
-
-    for (const time of candidateTimes) {
-      const slotDatetime = buildSlotDatetime(candidateDate, time, timezone)
-      if (!bookedDatetimes.has(slotDatetime)) {
-        logger.debug(`Found available slot for ${platform}: ${slotDatetime}`)
-        return slotDatetime
-      }
-    }
+  // Return first available (not booked) candidate
+  const available = candidates.find(c => !bookedDatetimes.has(c))
+  if (available) {
+    logger.debug(`Found available slot for ${platform}: ${available}`)
+    return available
   }
 
   logger.warn(`No available slot found for "${platform}" within ${MAX_LOOKAHEAD_DAYS} days`)

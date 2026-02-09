@@ -23,6 +23,13 @@ function setCache(key: string, data: unknown, ttl = CACHE_TTL_MS): void {
   cache.set(key, { data, expiry: Date.now() + ttl })
 }
 
+/** Normalize platform names to Late API values (schedule.json keys). */
+function normalizePlatform(raw: string): string {
+  const lower = raw.toLowerCase().trim()
+  if (lower === 'x' || lower === 'x (twitter)' || lower === 'x/twitter') return 'twitter'
+  return lower
+}
+
 export function createRouter(): Router {
   const router = Router()
 
@@ -75,14 +82,17 @@ export function createRouter(): Router {
       const item = await getItem(req.params.id)
       if (!item) return res.status(404).json({ error: 'Item not found' })
 
+      // Normalize platform — LLM may output "x (twitter)" but Late API and schedule use "twitter"
+      const latePlatform = normalizePlatform(item.metadata.platform)
+
       // 1. Find next available slot
-      const slot = await findNextSlot(item.metadata.platform)
+      const slot = await findNextSlot(latePlatform)
       if (!slot) return res.status(409).json({ error: 'No available schedule slots within 14 days' })
 
       // 2. Resolve account ID
-      const platform = fromLatePlatform(item.metadata.platform)
+      const platform = fromLatePlatform(latePlatform)
       const accountId = item.metadata.accountId || await getAccountId(platform)
-      if (!accountId) return res.status(400).json({ error: `No Late account connected for ${item.metadata.platform}` })
+      if (!accountId) return res.status(400).json({ error: `No Late account connected for ${latePlatform}` })
 
       // 3. Upload media if exists (fallback to source media when queue copy is missing)
       const client = new LateApiClient()
@@ -100,7 +110,7 @@ export function createRouter(): Router {
       }
 
       // 4. Create scheduled post in Late
-      const isTikTok = item.metadata.platform === 'tiktok'
+      const isTikTok = latePlatform === 'tiktok'
       const tiktokSettings = isTikTok ? {
         privacy_level: 'PUBLIC_TO_EVERYONE',
         allow_comment: true,
@@ -113,7 +123,7 @@ export function createRouter(): Router {
       const schedConfig = await loadScheduleConfig()
       const latePost = await client.createPost({
         content: item.postContent,
-        platforms: [{ platform: item.metadata.platform, accountId }],
+        platforms: [{ platform: latePlatform, accountId }],
         scheduledFor: slot,
         timezone: schedConfig.timezone,
         mediaItems,
@@ -175,8 +185,9 @@ export function createRouter(): Router {
   // GET /api/schedule/next-slot/:platform — calculate next available slot
   router.get('/api/schedule/next-slot/:platform', async (req, res) => {
     try {
-      const slot = await findNextSlot(req.params.platform)
-      res.json({ platform: req.params.platform, nextSlot: slot })
+      const normalized = normalizePlatform(req.params.platform)
+      const slot = await findNextSlot(normalized)
+      res.json({ platform: normalized, nextSlot: slot })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       res.status(500).json({ error: msg })

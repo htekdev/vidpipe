@@ -43,7 +43,6 @@ function makeScheduleConfig(overrides: Record<string, unknown> = {}) {
           { days: ['mon', 'tue', 'wed', 'thu', 'fri'], time: '08:30', label: 'Morning' },
           { days: ['mon', 'tue', 'wed', 'thu', 'fri'], time: '17:00', label: 'Evening' },
         ],
-        maxPerDay: 3,
         avoidDays: [] as string[],
         ...overrides,
       },
@@ -84,16 +83,14 @@ describe('scheduler', () => {
     expect(slot).toBeNull()
   })
 
-  it('respects maxPerDay', async () => {
-    // maxPerDay=1, but 2 slots per day — second slot should be skipped on busy days
-    mockLoadScheduleConfig.mockResolvedValue(
-      makeScheduleConfig({ maxPerDay: 1 }),
-    )
+  it('finds first available slot regardless of configuration', async () => {
+    // Since maxPerDay was removed, the first available slot is always returned
+    mockLoadScheduleConfig.mockResolvedValue(makeScheduleConfig())
 
     const slot = await findNextSlot('twitter')
     expect(slot).toBeTruthy()
     // Should pick first available time
-    expect(slot).toMatch(/T08:30:00/)
+    expect(slot).toMatch(/T(08:30|17:00):00/)
   })
 
   it('skips already-booked slots', async () => {
@@ -132,7 +129,6 @@ describe('scheduler', () => {
       platforms: {
         twitter: {
           slots: [],
-          maxPerDay: 1,
           avoidDays: [],
         },
       },
@@ -159,9 +155,9 @@ describe('scheduler', () => {
   })
 
   it('does not count evening CST post on next UTC day (timezone bug)', async () => {
-    // Config: tiktok at 19:00 CST (Tue-Thu), maxPerDay=1
+    // Config: tiktok at 19:00 CST (Tue-Thu)
     // A post at Tue 19:00 CST = Wed 01:00 UTC.
-    // Without timezone-aware counting, Wednesday would appear "full" and be skipped.
+    // Slot finding should be timezone-aware.
     const config = {
       timezone: 'America/Chicago',
       platforms: {
@@ -169,7 +165,6 @@ describe('scheduler', () => {
           slots: [
             { days: ['tue', 'wed', 'thu'], time: '19:00', label: 'Evening' },
           ],
-          maxPerDay: 1,
           avoidDays: [] as string[],
         },
       },
@@ -210,5 +205,33 @@ describe('scheduler', () => {
     // Should be 1 day apart (consecutive), not 2+ (skipping)
     expect(dayDiffDays).toBe(1)
     expect(secondSlot).toMatch(/T19:00:00/)
+  })
+
+  it('returns Thursday 20:00 before Friday 15:00 (slot ordering by date)', async () => {
+    // Pin "now" to Wednesday 2025-06-11 12:00 UTC so Thu and Fri are both in lookahead
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2025-06-11T12:00:00Z'))
+
+    const config = {
+      timezone: 'UTC',
+      platforms: {
+        youtube: {
+          slots: [
+            { days: ['fri'], time: '15:00', label: 'Afternoon' },
+            { days: ['thu', 'fri'], time: '20:00', label: 'Evening' },
+          ],
+          avoidDays: ['mon'] as string[],
+        },
+      },
+    }
+    mockLoadScheduleConfig.mockResolvedValue(config)
+
+    const slot = await findNextSlot('youtube')
+    expect(slot).toBeTruthy()
+    // Thursday 2025-06-12 at 20:00 must come before Friday 2025-06-13 at 15:00
+    expect(slot).toContain('2025-06-12')
+    expect(slot).toMatch(/T20:00:00/)
+
+    vi.useRealTimers()
   })
 })

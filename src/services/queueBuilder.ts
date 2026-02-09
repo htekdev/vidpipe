@@ -3,7 +3,9 @@ import path from 'path'
 import logger from '../config/logger'
 import { PLATFORM_CHAR_LIMITS, toLateplatform } from '../types'
 import { Platform } from '../types'
-import type { VideoFile, ShortClip, MediumClip, SocialPost, VideoPlatform } from '../types'
+import type { VideoFile, ShortClip, MediumClip, SocialPost } from '../types'
+import { getMediaRule, platformAcceptsMedia } from './platformContentStrategy'
+import type { ClipType } from './platformContentStrategy'
 import { createItem, itemExists, type QueueItemMetadata } from './postStore'
 
 // ============================================================================
@@ -17,39 +19,62 @@ export interface QueueBuildResult {
 }
 
 // ============================================================================
-// PLATFORM → VIDEO VARIANT MAPPING
+// MEDIA RESOLUTION (driven by platformContentStrategy)
 // ============================================================================
 
-const PLATFORM_TO_VIDEO_PLATFORM: Record<string, VideoPlatform> = {
-  tiktok: 'tiktok',
-  youtube: 'youtube-shorts',
-  instagram: 'instagram-reels',
-  linkedin: 'linkedin',
-  x: 'twitter',
-}
-
-const INSTAGRAM_FALLBACK: VideoPlatform = 'instagram-feed'
-
 /**
- * Find the best video variant for a platform from a ShortClip.
- * Falls back to captionedPath → outputPath when no matching variant exists.
+ * Resolve the media file path for a short clip on a given platform.
+ * Uses the content strategy's variantKey to find the right variant,
+ * then falls back to captionedPath → outputPath.
  */
-function findVariantForPlatform(clip: ShortClip, platform: Platform): string | null {
-  if (!clip.variants || clip.variants.length === 0) return null
+function resolveShortMedia(clip: ShortClip, platform: Platform): string | null {
+  const rule = getMediaRule(platform, 'short')
+  if (!rule) return null // platform doesn't accept short media
 
-  const target = PLATFORM_TO_VIDEO_PLATFORM[platform]
-  if (!target) return null
+  // If the rule specifies a variant key, look it up
+  if (rule.variantKey && clip.variants?.length) {
+    const match = clip.variants.find(v => v.platform === rule.variantKey)
+    if (match) return match.path
 
-  const match = clip.variants.find(v => v.platform === target)
-  if (match) return match.path
-
-  // Instagram fallback: try instagram-feed if instagram-reels not found
-  if (platform === 'instagram') {
-    const fallback = clip.variants.find(v => v.platform === INSTAGRAM_FALLBACK)
-    if (fallback) return fallback.path
+    // Instagram fallback: try instagram-feed when instagram-reels missing
+    if (platform === Platform.Instagram) {
+      const fallback = clip.variants.find(v => v.platform === 'instagram-feed')
+      if (fallback) return fallback.path
+    }
   }
 
-  return null
+  // Fallback: captioned landscape → original
+  return rule.captions
+    ? (clip.captionedPath ?? clip.outputPath)
+    : clip.outputPath
+}
+
+/**
+ * Resolve the media file path for a medium clip on a given platform.
+ */
+function resolveMediumMedia(clip: MediumClip, platform: Platform): string | null {
+  const rule = getMediaRule(platform, 'medium-clip')
+  if (!rule) return null // platform doesn't accept medium-clip media
+
+  return rule.captions
+    ? (clip.captionedPath ?? clip.outputPath)
+    : clip.outputPath
+}
+
+/**
+ * Resolve the media file path for a video-level post on a given platform.
+ */
+function resolveVideoMedia(
+  video: VideoFile,
+  platform: Platform,
+  captionedVideoPath: string | undefined,
+): string | null {
+  const rule = getMediaRule(platform, 'video')
+  if (!rule) return null // platform doesn't accept main-video media
+
+  return rule.captions
+    ? (captionedVideoPath ?? path.join(video.videoDir, video.filename))
+    : path.join(video.videoDir, video.filename)
 }
 
 // ============================================================================
@@ -122,7 +147,7 @@ export async function buildPublishQueue(
       const frontmatter = await parsePostFrontmatter(post.outputPath)
 
       let clipSlug: string
-      let clipType: 'video' | 'short' | 'medium-clip'
+      let clipType: ClipType
       let mediaPath: string | null = null
       let sourceClip: string | null = null
 
@@ -135,13 +160,12 @@ export async function buildPublishQueue(
           clipSlug = short.slug
           clipType = 'short'
           sourceClip = path.dirname(short.outputPath)
-          mediaPath = findVariantForPlatform(short, post.platform)
-            ?? short.captionedPath ?? short.outputPath
+          mediaPath = resolveShortMedia(short, post.platform)
         } else if (medium) {
           clipSlug = medium.slug
           clipType = 'medium-clip'
           sourceClip = path.dirname(medium.outputPath)
-          mediaPath = medium.captionedPath ?? medium.outputPath
+          mediaPath = resolveMediumMedia(medium, post.platform)
         } else {
           clipSlug = frontmatter.shortSlug
           clipType = 'short'
@@ -151,10 +175,14 @@ export async function buildPublishQueue(
         // Video-level post (stage 10)
         clipSlug = video.slug
         clipType = 'video'
-        const videoNeedsMedia: Platform[] = [Platform.YouTube, Platform.TikTok, Platform.Instagram]
-        if (videoNeedsMedia.includes(post.platform)) {
-          mediaPath = captionedVideoPath ?? path.join(video.videoDir, video.filename)
-        }
+        mediaPath = resolveVideoMedia(video, post.platform, captionedVideoPath)
+      }
+
+      // Skip posts for platform+clipType combos not in the content matrix
+      if (!platformAcceptsMedia(post.platform, clipType)) {
+        logger.debug(`Skipping ${post.platform}/${clipType} — not in content matrix`)
+        result.itemsSkipped++
+        continue
       }
 
       const itemId = `${clipSlug}-${latePlatform}`
@@ -186,7 +214,6 @@ export async function buildPublishQueue(
         createdAt: new Date().toISOString(),
         reviewedAt: null,
         publishedAt: null,
-        ...(mediaPath == null && { textOnly: true }),
       }
 
       // Use raw post content (strip frontmatter if the content includes it)

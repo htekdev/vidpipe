@@ -52,7 +52,6 @@ describe('scheduleConfig', () => {
         platforms: {
           test: {
             slots: [{ days: ['mon'], time: '25:00', label: 'Bad' }],
-            maxPerDay: 1,
             avoidDays: [],
           },
         },
@@ -66,7 +65,6 @@ describe('scheduleConfig', () => {
         platforms: {
           test: {
             slots: [{ days: ['monday'], time: '08:00', label: 'Bad day' }],
-            maxPerDay: 1,
             avoidDays: [],
           },
         },
@@ -80,7 +78,6 @@ describe('scheduleConfig', () => {
         platforms: {
           test: {
             slots: [{ days: ['mon'], time: '08:00', label: 'Good' }],
-            maxPerDay: 1,
             avoidDays: ['funday'],
           },
         },
@@ -95,20 +92,6 @@ describe('scheduleConfig', () => {
 
     it('rejects missing timezone', () => {
       expect(() => validateScheduleConfig({ platforms: {} })).toThrow(/timezone/)
-    })
-
-    it('rejects maxPerDay < 1', () => {
-      const config = {
-        timezone: 'UTC',
-        platforms: {
-          test: {
-            slots: [{ days: ['mon'], time: '08:00', label: 'Test' }],
-            maxPerDay: 0,
-            avoidDays: [],
-          },
-        },
-      }
-      expect(() => validateScheduleConfig(config)).toThrow(/maxPerDay/)
     })
   })
 
@@ -131,7 +114,6 @@ describe('scheduleConfig', () => {
         platforms: {
           twitter: {
             slots: [{ days: ['mon'], time: '09:00', label: 'Morning' }],
-            maxPerDay: 2,
             avoidDays: [],
           },
         },
@@ -141,7 +123,7 @@ describe('scheduleConfig', () => {
 
       const config = await loadScheduleConfig(filePath)
       expect(config.timezone).toBe('Europe/London')
-      expect(config.platforms.twitter.maxPerDay).toBe(2)
+      expect(config.platforms.twitter.slots[0].time).toBe('09:00')
     })
   })
 

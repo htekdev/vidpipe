@@ -12,7 +12,6 @@ export interface TimeSlot {
 
 export interface PlatformSchedule {
   slots: TimeSlot[]
-  maxPerDay: number
   avoidDays: DayOfWeek[]
 }
 
@@ -35,7 +34,6 @@ export function getDefaultScheduleConfig(): ScheduleConfig {
           { days: ['tue', 'wed'], time: '08:00', label: 'Morning thought leadership' },
           { days: ['tue', 'wed', 'thu'], time: '12:00', label: 'Lunch break engagement' },
         ],
-        maxPerDay: 1,
         avoidDays: ['sat', 'sun'],
       },
       tiktok: {
@@ -43,7 +41,6 @@ export function getDefaultScheduleConfig(): ScheduleConfig {
           { days: ['tue', 'wed', 'thu'], time: '19:00', label: 'Prime entertainment hours' },
           { days: ['fri', 'sat'], time: '21:00', label: 'Weekend evening' },
         ],
-        maxPerDay: 2,
         avoidDays: [],
       },
       instagram: {
@@ -51,7 +48,6 @@ export function getDefaultScheduleConfig(): ScheduleConfig {
           { days: ['tue', 'wed', 'thu'], time: '10:00', label: 'Morning scroll' },
           { days: ['wed', 'thu', 'fri'], time: '19:30', label: 'Evening couch time' },
         ],
-        maxPerDay: 2,
         avoidDays: [],
       },
       youtube: {
@@ -59,7 +55,6 @@ export function getDefaultScheduleConfig(): ScheduleConfig {
           { days: ['fri'], time: '15:00', label: 'Afternoon pre-weekend' },
           { days: ['thu', 'fri'], time: '20:00', label: 'Prime evening viewing' },
         ],
-        maxPerDay: 1,
         avoidDays: ['mon'],
       },
       twitter: {
@@ -68,7 +63,6 @@ export function getDefaultScheduleConfig(): ScheduleConfig {
           { days: ['tue', 'wed', 'thu'], time: '12:00', label: 'Lunch scroll' },
           { days: ['mon', 'tue', 'wed', 'thu', 'fri'], time: '17:00', label: 'Commute home' },
         ],
-        maxPerDay: 3,
         avoidDays: [],
       },
     },
@@ -105,10 +99,6 @@ export function validateScheduleConfig(config: unknown): ScheduleConfig {
 
     if (!Array.isArray(plat.slots)) {
       throw new Error(`Platform "${name}" must have a "slots" array`)
-    }
-
-    if (typeof plat.maxPerDay !== 'number' || plat.maxPerDay < 1) {
-      throw new Error(`Platform "${name}" must have a positive "maxPerDay" number`)
     }
 
     if (!Array.isArray(plat.avoidDays)) {
@@ -152,7 +142,6 @@ export function validateScheduleConfig(config: unknown): ScheduleConfig {
 
     validated.platforms[name] = {
       slots: validatedSlots,
-      maxPerDay: plat.maxPerDay,
       avoidDays: plat.avoidDays as DayOfWeek[],
     }
   }
