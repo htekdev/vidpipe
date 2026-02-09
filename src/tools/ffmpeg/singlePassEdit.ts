@@ -1,5 +1,5 @@
 import { execFile } from 'child_process'
-import { promises as fs } from 'fs'
+import { promises as fs, existsSync } from 'fs'
 import path from 'path'
 import os from 'os'
 import { fileURLToPath } from 'url'
@@ -8,7 +8,12 @@ import { getFFmpegPath } from '../../config/ffmpegResolver.js'
 
 const ffmpegPath = getFFmpegPath()
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const FONTS_DIR = path.resolve(__dirname, '..', '..', '..', 'assets', 'fonts')
+
+// In tsup bundle: __dirname = dist/, fonts copied to dist/fonts/
+// In dev (tsx): __dirname = src/tools/ffmpeg/, fonts at ../../../assets/fonts/
+const FONTS_DIR = existsSync(path.join(__dirname, 'fonts'))
+  ? path.join(__dirname, 'fonts')
+  : path.resolve(__dirname, '..', '..', '..', 'assets', 'fonts')
 
 export interface KeepSegment {
   start: number

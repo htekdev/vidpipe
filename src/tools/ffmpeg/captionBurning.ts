@@ -1,5 +1,5 @@
 import { execFile } from 'child_process'
-import { promises as fs } from 'fs'
+import { promises as fs, existsSync } from 'fs'
 import pathMod from 'path'
 import os from 'os'
 import { fileURLToPath } from 'url'
@@ -8,7 +8,12 @@ import { getFFmpegPath } from '../../config/ffmpegResolver.js'
 
 const ffmpegPath = getFFmpegPath()
 const __dirname = pathMod.dirname(fileURLToPath(import.meta.url))
-const FONTS_DIR = pathMod.resolve(__dirname, '..', '..', '..', 'assets', 'fonts')
+
+// In tsup bundle: __dirname = dist/, fonts copied to dist/fonts/
+// In dev (tsx): __dirname = src/tools/ffmpeg/, fonts at ../../../assets/fonts/
+const FONTS_DIR = existsSync(pathMod.join(__dirname, 'fonts'))
+  ? pathMod.join(__dirname, 'fonts')
+  : pathMod.resolve(__dirname, '..', '..', '..', 'assets', 'fonts')
 
 /**
  * Burn ASS subtitles into video (hard-coded subtitles).

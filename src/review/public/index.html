@@ -133,7 +133,7 @@
           <!-- Video preview -->
           <div class="px-5 pb-3">
             <div class="rounded-xl overflow-hidden bg-black/40 aspect-video relative" id="video-container">
-              <video id="video-player" class="w-full h-full object-contain" autoplay muted loop playsinline>
+              <video id="video-player" class="w-full h-full object-contain" controls autoplay muted loop playsinline>
                 <source id="video-source" src="" type="video/mp4">
               </video>
               <div id="video-placeholder" class="hidden absolute inset-0 flex items-center justify-center bg-black/60">
@@ -353,11 +353,17 @@
       const source = document.getElementById('video-source');
       const placeholder = document.getElementById('video-placeholder');
       if (item.hasMedia) {
-        source.src = `/media/queue/${item.id}/media.mp4`;
+        const mediaUrl = `/media/queue/${encodeURIComponent(item.id)}/media.mp4`;
+        source.src = mediaUrl;
+        video.src = mediaUrl;
         video.load();
         video.classList.remove('hidden');
         placeholder.classList.add('hidden');
+        placeholder.classList.remove('flex');
       } else {
+        video.pause();
+        video.removeAttribute('src');
+        source.removeAttribute('src');
         video.classList.add('hidden');
         placeholder.classList.remove('hidden');
         placeholder.classList.add('flex');
