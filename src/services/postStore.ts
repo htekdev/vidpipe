@@ -108,7 +108,11 @@ export async function getPendingItems(): Promise<QueueItem[]> {
     if (item) items.push(item)
   }
 
-  items.sort((a, b) => a.metadata.createdAt.localeCompare(b.metadata.createdAt))
+  // Sort: items with media first (shorts/clips), then text-only (video-level), then by date
+  items.sort((a, b) => {
+    if (a.hasMedia !== b.hasMedia) return a.hasMedia ? -1 : 1
+    return a.metadata.createdAt.localeCompare(b.metadata.createdAt)
+  })
   return items
 }
 

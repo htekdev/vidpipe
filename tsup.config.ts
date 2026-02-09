@@ -1,4 +1,5 @@
 import { defineConfig } from 'tsup'
+import { copyFileSync, mkdirSync } from 'fs'
 
 export default defineConfig({
   entry: ['src/index.ts'],
@@ -18,4 +19,9 @@ export default defineConfig({
     // All dependencies are external (installed by npm)
     /^[^./]/,
   ],
+  onSuccess: async () => {
+    // Copy static assets for review server
+    mkdirSync('dist/public', { recursive: true })
+    copyFileSync('src/review/public/index.html', 'dist/public/index.html')
+  },
 })
