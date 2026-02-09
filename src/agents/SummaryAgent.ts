@@ -129,8 +129,8 @@ class SummaryAgent extends BaseAgent {
   private outputDir: string
   private snapshots: VideoSnapshot[] = []
 
-  constructor(videoPath: string, outputDir: string, systemPrompt: string) {
-    super('SummaryAgent', systemPrompt)
+  constructor(videoPath: string, outputDir: string, systemPrompt: string, model?: string) {
+    super('SummaryAgent', systemPrompt, undefined, model)
     this.videoPath = videoPath
     this.outputDir = outputDir
   }
@@ -339,6 +339,7 @@ export async function generateSummary(
   transcript: Transcript,
   shorts?: ShortClip[],
   chapters?: Chapter[],
+  model?: string,
 ): Promise<VideoSummary> {
   const config = getConfig()
   const outputDir = path.join(config.OUTPUT_DIR, video.slug)
@@ -350,7 +351,7 @@ export async function generateSummary(
   const chaptersInfo = buildChaptersSection(chapters)
 
   const systemPrompt = buildSystemPrompt(shortsInfo, socialPostsInfo, captionsInfo, chaptersInfo)
-  const agent = new SummaryAgent(video.repoPath, outputDir, systemPrompt)
+  const agent = new SummaryAgent(video.repoPath, outputDir, systemPrompt, model)
 
   const transcriptBlock = buildTranscriptBlock(transcript)
 

@@ -1,17 +1,13 @@
-import type { ToolWithHandler } from '../providers/types.js'
+import type { ToolWithHandler, MCPServerConfig } from '../providers/types.js'
 import * as fs from 'fs'
 import * as path from 'path'
 import { BaseAgent } from './BaseAgent'
 import logger from '../config/logger'
 import { getBrandConfig } from '../config/brand'
-import { searchWeb } from '../tools/search/exaClient'
+import { getConfig } from '../config/environment.js'
 import type { Transcript, VideoFile, VideoSummary } from '../types'
 
 // ── Tool argument shapes ────────────────────────────────────────────────────
-
-interface SearchWebArgs {
-  queries: string[]
-}
 
 interface WriteBlogArgs {
   frontmatter: {
@@ -49,7 +45,7 @@ The blog post MUST include:
 7. A footer referencing the original video
 
 Workflow:
-1. First call "search_web" with key topics to find relevant articles/resources to link to.
+1. First use the "web_search_exa" tool to search for relevant articles and resources to link to. Search for key topics from the video.
 2. Then call "write_blog" with the complete blog post including frontmatter and body.
    - Weave the search result links organically into the post text (don't dump them at the end).
    - Reference the video and any shorts naturally.
@@ -62,37 +58,25 @@ Always call "write_blog" exactly once with the complete post.`
 class BlogAgent extends BaseAgent {
   private blogContent: WriteBlogArgs | null = null
 
-  constructor() {
-    super('BlogAgent', buildSystemPrompt())
+  constructor(model?: string) {
+    super('BlogAgent', buildSystemPrompt(), undefined, model)
+  }
+
+  protected getMcpServers(): Record<string, MCPServerConfig> | undefined {
+    const config = getConfig()
+    if (!config.EXA_API_KEY) return undefined
+    return {
+      exa: {
+        type: 'http' as const,
+        url: `${config.EXA_MCP_URL}?exaApiKey=${config.EXA_API_KEY}&tools=web_search_exa`,
+        headers: {},
+        tools: ['*'],
+      },
+    }
   }
 
   protected getTools(): ToolWithHandler[] {
     return [
-      {
-        name: 'search_web',
-        description:
-          'Search the web for relevant articles and resources to link in the blog post.',
-        parameters: {
-          type: 'object',
-          properties: {
-            queries: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'List of search queries for finding relevant links',
-            },
-          },
-          required: ['queries'],
-        },
-        handler: async (args: unknown) => {
-          const { queries } = args as SearchWebArgs
-          logger.info(`[BlogAgent] search_web called with ${queries.length} queries`)
-          const allResults: Record<string, { title: string; url: string; snippet: string }[]> = {}
-          for (const query of queries) {
-            allResults[query] = await searchWeb(query, 3)
-          }
-          return JSON.stringify({ results: allResults })
-        },
-      },
       {
         name: 'write_blog',
         description:
@@ -167,8 +151,9 @@ export async function generateBlogPost(
   video: VideoFile,
   transcript: Transcript,
   summary: VideoSummary,
+  model?: string,
 ): Promise<string> {
-  const agent = new BlogAgent()
+  const agent = new BlogAgent(model)
 
   try {
     const userMessage = [

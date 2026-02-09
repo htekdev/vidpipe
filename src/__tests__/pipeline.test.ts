@@ -357,7 +357,7 @@ describe('processVideo', () => {
   it('passes transcript from transcription to silence removal', async () => {
     await processVideo('/videos/test.mp4')
 
-    expect(mockRemoveDeadSilence).toHaveBeenCalledWith(video, transcript)
+    expect(mockRemoveDeadSilence).toHaveBeenCalledWith(video, transcript, expect.any(String))
   })
 
   it('uses adjusted transcript for captions after silence removal', async () => {
@@ -511,7 +511,7 @@ describe('processVideo', () => {
 
     const result = await processVideo('/videos/test.mp4')
 
-    expect(mockGenerateShortPosts).toHaveBeenCalledWith(video, shorts[0], transcript)
+    expect(mockGenerateShortPosts).toHaveBeenCalledWith(video, shorts[0], transcript, expect.any(String))
     expect(result.socialPosts.length).toBeGreaterThanOrEqual(1)
   })
 
@@ -529,6 +529,7 @@ describe('processVideo', () => {
       video,
       expect.objectContaining({ id: 'm1', title: 'Medium 1', slug: 'medium-1' }),
       transcript,
+      expect.any(String),
     )
     expect(result.socialPosts.length).toBeGreaterThanOrEqual(1)
   })

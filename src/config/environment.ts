@@ -15,6 +15,7 @@ export interface AppEnvironment {
   FFMPEG_PATH: string
   FFPROBE_PATH: string
   EXA_API_KEY: string
+  EXA_MCP_URL: string
   LLM_PROVIDER: string
   LLM_MODEL: string
   ANTHROPIC_API_KEY: string
@@ -63,6 +64,7 @@ export function initConfig(cli: CLIOptions = {}): AppEnvironment {
     FFMPEG_PATH: process.env.FFMPEG_PATH || 'ffmpeg',   // legacy; prefer ffmpegResolver
     FFPROBE_PATH: process.env.FFPROBE_PATH || 'ffprobe', // legacy; prefer ffmpegResolver
     EXA_API_KEY: cli.exaKey || process.env.EXA_API_KEY || '',
+    EXA_MCP_URL: process.env.EXA_MCP_URL || 'https://mcp.exa.ai/mcp',
     LLM_PROVIDER: process.env.LLM_PROVIDER || 'copilot',
     LLM_MODEL: process.env.LLM_MODEL || '',
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',

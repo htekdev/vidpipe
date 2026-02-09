@@ -16,6 +16,7 @@ import type {
 } from '@anthropic-ai/sdk/resources/messages.js'
 import { calculateTokenCost } from '../config/pricing.js'
 import logger from '../config/logger.js'
+import { getConfig } from '../config/environment.js'
 import type {
   LLMProvider,
   LLMSession,
@@ -219,7 +220,7 @@ export class ClaudeProvider implements LLMProvider {
   readonly name = 'claude' as const
 
   isAvailable(): boolean {
-    return !!process.env.ANTHROPIC_API_KEY
+    return !!getConfig().ANTHROPIC_API_KEY
   }
 
   getDefaultModel(): string {

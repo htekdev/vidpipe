@@ -4,6 +4,7 @@ import { CopilotProvider } from './CopilotProvider.js';
 import { OpenAIProvider } from './OpenAIProvider.js';
 import { ClaudeProvider } from './ClaudeProvider.js';
 import logger from '../config/logger.js';
+import { getConfig } from '../config/environment.js';
 
 const providers: Record<ProviderName, () => LLMProvider> = {
   copilot: () => new CopilotProvider(),
@@ -21,7 +22,7 @@ let currentProviderName: ProviderName | null = null;
  * Caches the instance for reuse.
  */
 export function getProvider(name?: ProviderName): LLMProvider {
-  const raw = name ?? (process.env.LLM_PROVIDER || 'copilot').trim().toLowerCase();
+  const raw = name ?? getConfig().LLM_PROVIDER.trim().toLowerCase();
   const providerName = raw as ProviderName;
   
   if (currentProvider && currentProviderName === providerName) {
@@ -65,7 +66,7 @@ export async function resetProvider(): Promise<void> {
 
 /** Get the name of the current provider */
 export function getProviderName(): ProviderName {
-  const raw = (process.env.LLM_PROVIDER || 'copilot').trim().toLowerCase();
+  const raw = getConfig().LLM_PROVIDER.trim().toLowerCase();
   const valid: ProviderName[] = ['copilot', 'openai', 'claude'];
   return currentProviderName ?? (valid.includes(raw as ProviderName) ? (raw as ProviderName) : 'copilot');
 }

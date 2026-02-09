@@ -22,6 +22,7 @@ import type {
 } from './types.js';
 import { calculateTokenCost } from '../config/pricing.js';
 import logger from '../config/logger.js';
+import { getConfig } from '../config/environment.js';
 
 const MAX_TOOL_ROUNDS = 50;
 
@@ -201,7 +202,7 @@ export class OpenAIProvider implements LLMProvider {
   readonly name = 'openai' as const;
 
   isAvailable(): boolean {
-    return !!process.env.OPENAI_API_KEY;
+    return !!getConfig().OPENAI_API_KEY;
   }
 
   getDefaultModel(): string {

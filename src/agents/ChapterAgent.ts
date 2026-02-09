@@ -108,8 +108,8 @@ class ChapterAgent extends BaseAgent {
   private outputDir: string
   private totalDuration: number
 
-  constructor(outputDir: string, totalDuration: number) {
-    super('ChapterAgent', buildChapterSystemPrompt())
+  constructor(outputDir: string, totalDuration: number, model?: string) {
+    super('ChapterAgent', buildChapterSystemPrompt(), undefined, model)
     this.outputDir = outputDir
     this.totalDuration = totalDuration
   }
@@ -209,11 +209,12 @@ class ChapterAgent extends BaseAgent {
 export async function generateChapters(
   video: VideoFile,
   transcript: Transcript,
+  model?: string,
 ): Promise<Chapter[]> {
   const config = getConfig()
   const outputDir = path.join(config.OUTPUT_DIR, video.slug)
 
-  const agent = new ChapterAgent(outputDir, video.duration)
+  const agent = new ChapterAgent(outputDir, video.duration, model)
   const transcriptBlock = buildTranscriptBlock(transcript)
 
   const userPrompt = [

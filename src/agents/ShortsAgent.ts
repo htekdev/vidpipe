@@ -97,8 +97,8 @@ const PLAN_SHORTS_SCHEMA = {
 class ShortsAgent extends BaseAgent {
   private plannedShorts: PlannedShort[] = []
 
-  constructor() {
-    super('ShortsAgent', SYSTEM_PROMPT)
+  constructor(model?: string) {
+    super('ShortsAgent', SYSTEM_PROMPT, undefined, model)
   }
 
   protected getTools(): ToolWithHandler[] {
@@ -137,8 +137,9 @@ class ShortsAgent extends BaseAgent {
 export async function generateShorts(
   video: VideoFile,
   transcript: Transcript,
+  model?: string,
 ): Promise<ShortClip[]> {
-  const agent = new ShortsAgent()
+  const agent = new ShortsAgent(model)
 
   // Build prompt with full transcript including word-level timestamps
   const transcriptLines = transcript.segments.map((seg) => {

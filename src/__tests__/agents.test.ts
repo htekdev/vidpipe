@@ -52,7 +52,13 @@ vi.mock('../config/brand.js', () => ({
 }));
 
 vi.mock('../config/environment.js', () => ({
-  getConfig: () => ({ OUTPUT_DIR: '/tmp/test-output' }),
+  getConfig: () => ({
+    OUTPUT_DIR: '/tmp/test-output',
+    LLM_PROVIDER: 'copilot',
+    LLM_MODEL: '',
+    EXA_API_KEY: '',
+    EXA_MCP_URL: 'https://mcp.exa.ai/mcp',
+  }),
 }));
 
 vi.mock('../tools/ffmpeg/clipExtraction.js', () => ({
@@ -84,10 +90,6 @@ vi.mock('../tools/ffmpeg/frameCapture.js', () => ({
 vi.mock('../tools/captions/captionGenerator.js', () => ({
   generateStyledASSForSegment: vi.fn().mockReturnValue(''),
   generateStyledASSForComposite: vi.fn().mockReturnValue(''),
-}));
-
-vi.mock('../tools/search/exaClient.js', () => ({
-  searchWeb: vi.fn().mockResolvedValue([]),
 }));
 
 vi.mock('fluent-ffmpeg', () => {
@@ -475,7 +477,7 @@ describe('Real BlogAgent', () => {
     mockState.capturedTools.length = 0;
   });
 
-  it('exposes search_web and write_blog tools; handlers work', async () => {
+  it('exposes write_blog tool; handler works (search is via MCP)', async () => {
     const { generateBlogPost } = await import('../agents/BlogAgent.js');
 
     try {
@@ -484,18 +486,9 @@ describe('Real BlogAgent', () => {
       // Expected: "BlogAgent did not produce any blog content"
     }
 
-    const searchTool = findCapturedTool('search_web');
     const writeTool = findCapturedTool('write_blog');
 
-    expect(searchTool).toBeDefined();
     expect(writeTool).toBeDefined();
-
-    // Test search_web REAL handler
-    const searchResult = await searchTool.handler!(
-      { queries: ['test query'] },
-      mockInvocation,
-    );
-    expect(searchResult).toContain('results');
 
     // Test write_blog REAL handler
     const writeResult = await writeTool.handler!(
@@ -517,16 +510,14 @@ describe('Real SocialMediaAgent', () => {
     mockState.capturedTools.length = 0;
   });
 
-  it('exposes search_links and create_posts tools; handlers work', async () => {
+  it('exposes create_posts tool; handler works (search is via MCP)', async () => {
     const { generateSocialPosts } = await import('../agents/SocialMediaAgent.js');
 
     const result = await generateSocialPosts(mockVideo, mockTranscript, mockSummary);
     expect(result).toEqual([]);
 
-    const searchTool = findCapturedTool('search_links');
     const postsTool = findCapturedTool('create_posts');
 
-    expect(searchTool).toBeDefined();
     expect(postsTool).toBeDefined();
 
     // Verify create_posts schema
@@ -535,13 +526,6 @@ describe('Real SocialMediaAgent', () => {
     expect(postsSchema.properties.posts.items.required).toEqual(
       expect.arrayContaining(['platform', 'content', 'hashtags', 'links', 'characterCount']),
     );
-
-    // Test search_links REAL handler
-    const searchResult = await searchTool.handler!(
-      { topics: ['coding', 'typescript'] },
-      mockInvocation,
-    );
-    expect(searchResult).toContain('results');
 
     // Test create_posts REAL handler
     const postsResult = await postsTool.handler!(

@@ -10,14 +10,22 @@ vi.mock('child_process', () => ({
   execFile: vi.fn(),
 }))
 
-vi.mock('fs', () => ({
-  promises: {
-    mkdtemp: vi.fn().mockResolvedValue('/tmp/face-detect-abc'),
-    readdir: vi.fn().mockResolvedValue([]),
-    unlink: vi.fn().mockResolvedValue(undefined),
-    rmdir: vi.fn().mockResolvedValue(undefined),
-  },
-}))
+vi.mock('fs', async (importOriginal) => {
+  const actual = (await importOriginal()) as any
+  return {
+    ...actual,
+    default: {
+      ...actual,
+      existsSync: actual.existsSync,
+    },
+    promises: {
+      mkdtemp: vi.fn().mockResolvedValue('/tmp/face-detect-abc'),
+      readdir: vi.fn().mockResolvedValue([]),
+      unlink: vi.fn().mockResolvedValue(undefined),
+      rmdir: vi.fn().mockResolvedValue(undefined),
+    },
+  }
+})
 
 vi.mock('sharp', () => ({
   default: vi.fn(),

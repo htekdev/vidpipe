@@ -72,8 +72,8 @@ const DECIDE_REMOVALS_SCHEMA = {
 class SilenceRemovalAgent extends BaseAgent {
   private removals: RemovalDecision[] = []
 
-  constructor() {
-    super('SilenceRemovalAgent', SYSTEM_PROMPT)
+  constructor(model?: string) {
+    super('SilenceRemovalAgent', SYSTEM_PROMPT, undefined, model)
   }
 
   protected getTools(): ToolWithHandler[] {
@@ -129,6 +129,7 @@ function getVideoDuration(videoPath: string): Promise<number> {
 export async function removeDeadSilence(
   video: VideoFile,
   transcript: Transcript,
+  model?: string,
 ): Promise<SilenceRemovalResult> {
   const noEdit: SilenceRemovalResult = { editedPath: video.repoPath, removals: [], keepSegments: [], wasEdited: false }
 
@@ -158,7 +159,7 @@ export async function removeDeadSilence(
   }
 
   // 2. Run the agent to decide which silences to remove
-  const agent = new SilenceRemovalAgent()
+  const agent = new SilenceRemovalAgent(model)
 
   const transcriptLines = transcript.segments.map(
     (seg) => `[${seg.start.toFixed(2)}s – ${seg.end.toFixed(2)}s] ${seg.text}`,

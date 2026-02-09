@@ -20,7 +20,7 @@ import type {
   ProviderEventType,
 } from './types'
 
-const DEFAULT_MODEL = 'Claude Opus 4.6'
+const DEFAULT_MODEL = 'claude-opus-4.5'
 const DEFAULT_TIMEOUT_MS = 300_000 // 5 minutes
 
 export class CopilotProvider implements LLMProvider {
@@ -42,6 +42,8 @@ export class CopilotProvider implements LLMProvider {
     }
 
     const copilotSession = await this.client.createSession({
+      model: config.model,
+      mcpServers: config.mcpServers,
       systemMessage: { mode: 'replace', content: config.systemPrompt },
       tools: config.tools.map((t) => ({
         name: t.name,

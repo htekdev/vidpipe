@@ -14,6 +14,15 @@ export interface UsageRecord {
   durationMs?: number;
 }
 
+/** Record of a non-LLM service usage event */
+export interface ServiceUsageRecord {
+  timestamp: Date;
+  service: string;
+  stage: string;
+  costUSD: number;
+  metadata: Record<string, unknown>;
+}
+
 /** Aggregated cost report */
 export interface CostReport {
   totalCostUSD: number;
@@ -22,7 +31,10 @@ export interface CostReport {
   byProvider: Record<string, { costUSD: number; prus: number; calls: number }>;
   byAgent: Record<string, { costUSD: number; prus: number; calls: number }>;
   byModel: Record<string, { costUSD: number; prus: number; calls: number }>;
+  byService: Record<string, { costUSD: number; calls: number }>;
   records: UsageRecord[];
+  serviceRecords: ServiceUsageRecord[];
+  totalServiceCostUSD: number;
   /** Copilot quota info (if available) */
   copilotQuota?: QuotaSnapshot;
 }
@@ -30,6 +42,7 @@ export interface CostReport {
 /** Singleton cost tracker for a pipeline run */
 class CostTracker {
   private records: UsageRecord[] = [];
+  private serviceRecords: ServiceUsageRecord[] = [];
   private latestQuota?: QuotaSnapshot;
   private currentAgent = 'unknown';
   private currentStage = 'unknown';
@@ -86,6 +99,23 @@ class CostTracker {
     );
   }
 
+  /** Record a non-LLM service usage event */
+  recordServiceUsage(service: string, costUSD: number, metadata?: Record<string, unknown>): void {
+    const record: ServiceUsageRecord = {
+      timestamp: new Date(),
+      service,
+      stage: this.currentStage,
+      costUSD,
+      metadata: metadata ?? {},
+    };
+
+    this.serviceRecords.push(record);
+
+    logger.debug(
+      `[CostTracker] service=${service} | stage=${this.currentStage} | cost=$${costUSD.toFixed(4)}`
+    );
+  }
+
   /** Get the full cost report */
   getReport(): CostReport {
     const report: CostReport = {
@@ -95,7 +125,10 @@ class CostTracker {
       byProvider: {},
       byAgent: {},
       byModel: {},
+      byService: {},
       records: [...this.records],
+      serviceRecords: [...this.serviceRecords],
+      totalServiceCostUSD: 0,
       copilotQuota: this.latestQuota,
     };
 
@@ -132,6 +165,17 @@ class CostTracker {
       report.byModel[model].calls += 1;
     }
 
+    for (const record of this.serviceRecords) {
+      const { service, costUSD } = record;
+      report.totalServiceCostUSD += costUSD;
+
+      if (!report.byService[service]) report.byService[service] = { costUSD: 0, calls: 0 };
+      report.byService[service].costUSD += costUSD;
+      report.byService[service].calls += 1;
+    }
+
+    report.totalCostUSD += report.totalServiceCostUSD;
+
     return report;
   }
 
@@ -144,7 +188,8 @@ class CostTracker {
       '  💰 Pipeline Cost Report',
       '═══════════════════════════════════════════',
       '',
-      `  Total Cost:    $${report.totalCostUSD.toFixed(4)} USD`,
+      `  Total Cost:    $${report.totalCostUSD.toFixed(4)} USD` +
+        (report.totalServiceCostUSD > 0 ? ` (incl. $${report.totalServiceCostUSD.toFixed(4)} services)` : ''),
     ];
 
     if (report.totalPRUs > 0) {
@@ -183,6 +228,14 @@ class CostTracker {
       }
     }
 
+    // By service breakdown
+    if (Object.keys(report.byService).length > 0) {
+      lines.push('', '  By Service:');
+      for (const [service, data] of Object.entries(report.byService)) {
+        lines.push(`    ${service}: $${data.costUSD.toFixed(4)} (${data.calls} calls)`);
+      }
+    }
+
     lines.push('', '═══════════════════════════════════════════', '');
     return lines.join('\n');
   }
@@ -190,6 +243,7 @@ class CostTracker {
   /** Reset all tracking (for new pipeline run) */
   reset(): void {
     this.records = [];
+    this.serviceRecords = [];
     this.latestQuota = undefined;
     this.currentAgent = 'unknown';
     this.currentStage = 'unknown';

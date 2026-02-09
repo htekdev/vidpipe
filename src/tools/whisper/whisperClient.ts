@@ -4,8 +4,10 @@ import { getConfig } from '../../config/environment'
 import logger from '../../config/logger'
 import { getWhisperPrompt } from '../../config/brand'
 import { Transcript, Segment, Word } from '../../types'
+import { costTracker } from '../../services/costTracker.js'
 
 const MAX_FILE_SIZE_MB = 25
+const WHISPER_COST_PER_MINUTE = 0.006  // $0.006/minute for whisper-1
 const WARN_FILE_SIZE_MB = 20
 
 export async function transcribeAudio(audioPath: string): Promise<Transcript> {
@@ -72,6 +74,14 @@ export async function transcribeAudio(audioPath: string): Promise<Transcript> {
       `Transcription complete — ${segments.length} segments, ` +
       `${words.length} words, language=${response.language}`
     )
+
+    // Track Whisper API cost
+    const durationMinutes = (response.duration ?? 0) / 60
+    costTracker.recordServiceUsage('whisper', durationMinutes * WHISPER_COST_PER_MINUTE, {
+      model: 'whisper-1',
+      durationSeconds: response.duration ?? 0,
+      audioFile: audioPath,
+    })
 
     return {
       text: response.text,

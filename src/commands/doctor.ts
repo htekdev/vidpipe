@@ -2,6 +2,7 @@ import { spawnSync } from 'child_process'
 import { existsSync } from 'fs'
 import { createRequire } from 'module'
 import path from 'path'
+import { getConfig } from '../config/environment.js'
 import type { ProviderName } from '../providers/index.js'
 
 const require = createRequire(import.meta.url)
@@ -19,8 +20,9 @@ export function normalizeProviderName(raw: string | undefined): string {
 }
 
 function resolveFFmpegPath(): { path: string; source: string } {
-  if (process.env.FFMPEG_PATH) {
-    return { path: process.env.FFMPEG_PATH, source: 'FFMPEG_PATH env' }
+  const config = getConfig()
+  if (config.FFMPEG_PATH && config.FFMPEG_PATH !== 'ffmpeg') {
+    return { path: config.FFMPEG_PATH, source: 'FFMPEG_PATH config' }
   }
   try {
     const staticPath = require('ffmpeg-static') as string
@@ -32,8 +34,9 @@ function resolveFFmpegPath(): { path: string; source: string } {
 }
 
 function resolveFFprobePath(): { path: string; source: string } {
-  if (process.env.FFPROBE_PATH) {
-    return { path: process.env.FFPROBE_PATH, source: 'FFPROBE_PATH env' }
+  const config = getConfig()
+  if (config.FFPROBE_PATH && config.FFPROBE_PATH !== 'ffprobe') {
+    return { path: config.FFPROBE_PATH, source: 'FFPROBE_PATH config' }
   }
   try {
     const { path: probePath } = require('@ffprobe-installer/ffprobe') as { path: string }
@@ -115,7 +118,7 @@ function checkFFprobe(): CheckResult {
 }
 
 function checkOpenAIKey(): CheckResult {
-  const set = !!process.env.OPENAI_API_KEY
+  const set = !!getConfig().OPENAI_API_KEY
   return {
     label: 'OPENAI_API_KEY',
     ok: set,
@@ -127,7 +130,7 @@ function checkOpenAIKey(): CheckResult {
 }
 
 function checkExaKey(): CheckResult {
-  const set = !!process.env.EXA_API_KEY
+  const set = !!getConfig().EXA_API_KEY
   return {
     label: 'EXA_API_KEY',
     ok: set,
@@ -155,7 +158,7 @@ function checkGit(): CheckResult {
 }
 
 function checkWatchFolder(): CheckResult {
-  const watchDir = process.env.WATCH_FOLDER || path.join(process.cwd(), 'watch')
+  const watchDir = getConfig().WATCH_FOLDER || path.join(process.cwd(), 'watch')
   const exists = existsSync(watchDir)
   return {
     label: 'Watch folder',
@@ -185,10 +188,11 @@ export function runDoctor(): void {
     console.log(`  ${icon} ${r.message}`)
   }
 
-  // LLM Provider section — check env vars directly to avoid silent fallback
+  // LLM Provider section — check config values to avoid silent fallback
+  const config = getConfig()
   console.log('\nLLM Provider')
-  const providerName = normalizeProviderName(process.env.LLM_PROVIDER) as ProviderName
-  const isDefault = !process.env.LLM_PROVIDER
+  const providerName = normalizeProviderName(config.LLM_PROVIDER) as ProviderName
+  const isDefault = !config.LLM_PROVIDER
   const providerLabel = isDefault ? `${providerName} (default)` : providerName
   const validProviders: ProviderName[] = ['copilot', 'openai', 'claude']
 
@@ -200,7 +204,7 @@ export function runDoctor(): void {
     console.log('  ✅ Copilot — uses GitHub auth')
   } else if (providerName === 'openai') {
     console.log(`  ✅ Provider: ${providerLabel}`)
-    if (process.env.OPENAI_API_KEY) {
+    if (config.OPENAI_API_KEY) {
       console.log('  ✅ OPENAI_API_KEY is set (also used for Whisper)')
     } else {
       console.log('  ❌ OPENAI_API_KEY not set (required for openai provider)')
@@ -208,7 +212,7 @@ export function runDoctor(): void {
     }
   } else if (providerName === 'claude') {
     console.log(`  ✅ Provider: ${providerLabel}`)
-    if (process.env.ANTHROPIC_API_KEY) {
+    if (config.ANTHROPIC_API_KEY) {
       console.log('  ✅ ANTHROPIC_API_KEY is set')
     } else {
       console.log('  ❌ ANTHROPIC_API_KEY not set (required for claude provider)')
@@ -223,7 +227,7 @@ export function runDoctor(): void {
   }
   if (validProviders.includes(providerName)) {
     const defaultModel = defaultModels[providerName]
-    const modelOverride = process.env.LLM_MODEL
+    const modelOverride = config.LLM_MODEL
     if (modelOverride) {
       console.log(`  ℹ️  Model override: ${modelOverride} (default: ${defaultModel})`)
     } else {

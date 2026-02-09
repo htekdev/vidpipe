@@ -8,6 +8,7 @@ import {
 import { costTracker } from '../services/costTracker.js';
 import { getProvider, getProviderName, resetProvider } from '../providers/index.js';
 import { CopilotProvider } from '../providers/CopilotProvider.js';
+import { initConfig } from '../config/environment.js';
 
 // ─── pricing.ts ───────────────────────────────────────────────
 
@@ -301,11 +302,13 @@ describe('providers/index', () => {
   beforeEach(async () => {
     await resetProvider();
     delete process.env.LLM_PROVIDER;
+    initConfig();
   });
 
   afterEach(async () => {
     await resetProvider();
     delete process.env.LLM_PROVIDER;
+    initConfig();
   });
 
   it('getProvider() returns CopilotProvider by default', () => {
@@ -349,12 +352,14 @@ describe('providers/index', () => {
 
   it('getProviderName reads LLM_PROVIDER env var', async () => {
     process.env.LLM_PROVIDER = 'openai';
+    initConfig();
     await resetProvider();
     expect(getProviderName()).toBe('openai');
   });
 
   it('getProviderName returns copilot for invalid LLM_PROVIDER values', async () => {
     process.env.LLM_PROVIDER = 'invalid-provider';
+    initConfig();
     await resetProvider();
     expect(getProviderName()).toBe('copilot');
   });

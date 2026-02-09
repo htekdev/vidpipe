@@ -61,18 +61,7 @@ vi.mock('openai', () => ({
   },
 }))
 
-// Mock exa-js for exaClient.ts
-const mockSearchAndContents = vi.fn().mockResolvedValue({
-  results: [
-    { title: 'Test Result', url: 'https://test.com', text: 'test content' },
-  ],
-})
 
-vi.mock('exa-js', () => ({
-  default: class MockExa {
-    searchAndContents = mockSearchAndContents
-  },
-}))
 
 // ── Imports (after mocks) ──────────────────────────────────────────────
 
@@ -277,75 +266,4 @@ describe('whisperClient.ts', () => {
   })
 })
 
-// ========================================================================
-// 4. exaClient.ts
-// ========================================================================
 
-describe('exaClient.ts', () => {
-  beforeEach(() => {
-    vi.resetModules()
-    mockSearchAndContents.mockClear()
-    mockSearchAndContents.mockResolvedValue({
-      results: [
-        { title: 'Test Result', url: 'https://test.com', text: 'test content' },
-      ],
-    })
-    vi.mocked(getConfig).mockReturnValue({
-      EXA_API_KEY: 'test-exa-key',
-      OPENAI_API_KEY: '',
-      BRAND_PATH: '',
-    } as any)
-  })
-
-  it('searchWeb() returns results', async () => {
-    const { searchWeb } = await import('../tools/search/exaClient.js')
-    const results = await searchWeb('TypeScript')
-
-    expect(results).toHaveLength(1)
-    expect(results[0].title).toBe('Test Result')
-    expect(results[0].url).toBe('https://test.com')
-    expect(results[0].snippet).toBe('test content')
-  })
-
-  it('searchWeb() returns empty array when EXA_API_KEY not set', async () => {
-    vi.mocked(getConfig).mockReturnValue({
-      EXA_API_KEY: '',
-      OPENAI_API_KEY: '',
-      BRAND_PATH: '',
-    } as any)
-
-    const { searchWeb } = await import('../tools/search/exaClient.js')
-    const results = await searchWeb('test')
-
-    expect(results).toEqual([])
-  })
-
-  it('searchWeb() returns empty array on API error', async () => {
-    mockSearchAndContents.mockRejectedValueOnce(new Error('API failure'))
-
-    const { searchWeb } = await import('../tools/search/exaClient.js')
-    const results = await searchWeb('test')
-
-    expect(results).toEqual([])
-  })
-
-  it('searchTopics() returns map of topic → results', async () => {
-    const { searchTopics } = await import('../tools/search/exaClient.js')
-    const map = await searchTopics(['topic1', 'topic2'])
-
-    expect(map).toBeInstanceOf(Map)
-    expect(map.size).toBe(2)
-    expect(map.get('topic1')).toHaveLength(1)
-    expect(map.get('topic2')).toHaveLength(1)
-  })
-
-  it('searchTopics() passes numResults=3 per topic', async () => {
-    const { searchTopics } = await import('../tools/search/exaClient.js')
-    await searchTopics(['single-topic'])
-
-    expect(mockSearchAndContents).toHaveBeenCalledWith(
-      'single-topic',
-      expect.objectContaining({ numResults: 3 })
-    )
-  })
-})

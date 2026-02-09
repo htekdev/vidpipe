@@ -3,7 +3,8 @@ import * as fs from 'fs'
 import * as path from 'path'
 import { BaseAgent } from './BaseAgent'
 import logger from '../config/logger'
-import { searchWeb } from '../tools/search/exaClient'
+import type { MCPServerConfig } from '../providers/types.js'
+import { getConfig } from '../config/environment.js'
 import {
   Platform,
   ShortClip,
@@ -27,11 +28,7 @@ interface CreatePostsArgs {
   posts: PlatformPost[]
 }
 
-interface SearchLinksArgs {
-  topics: string[]
-}
-
-// ── System prompt ───────────────────────────────────────────────────────────
+// ── System prompt───────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `You are a viral social-media content strategist.
 Given a video transcript and summary you MUST generate one post for each of the 5 platforms listed below.
@@ -48,7 +45,7 @@ IMPORTANT – Content format:
 The "content" field you provide must be the FINAL, ready-to-post text that can be directly copied and pasted onto the platform. Do NOT use markdown headers, bullet points, or any formatting inside the content. Include hashtags inline at the end of the post text where appropriate. The content is saved as-is for direct posting.
 
 Workflow:
-1. First call the "search_links" tool with the key topics to find relevant URLs.
+1. First use the "web_search_exa" tool to search for relevant URLs based on the key topics discussed in the video.
 2. Then call the "create_posts" tool with a JSON object that has a "posts" array.
    Each element must have: platform, content, hashtags (array), links (array), characterCount.
 
@@ -60,37 +57,25 @@ Always call "create_posts" exactly once with all 5 platform posts.`
 class SocialMediaAgent extends BaseAgent {
   private collectedPosts: PlatformPost[] = []
 
-  constructor() {
-    super('SocialMediaAgent', SYSTEM_PROMPT)
+  constructor(model?: string) {
+    super('SocialMediaAgent', SYSTEM_PROMPT, undefined, model)
+  }
+
+  protected getMcpServers(): Record<string, MCPServerConfig> | undefined {
+    const config = getConfig()
+    if (!config.EXA_API_KEY) return undefined
+    return {
+      exa: {
+        type: 'http' as const,
+        url: `${config.EXA_MCP_URL}?exaApiKey=${config.EXA_API_KEY}&tools=web_search_exa`,
+        headers: {},
+        tools: ['*'],
+      },
+    }
   }
 
   protected getTools(): ToolWithHandler[] {
     return [
-      {
-        name: 'search_links',
-        description:
-          'Search for relevant URLs based on topics discussed in the video.',
-        parameters: {
-          type: 'object',
-          properties: {
-            topics: {
-              type: 'array',
-              items: { type: 'string' },
-              description: 'List of topics to search for',
-            },
-          },
-          required: ['topics'],
-        },
-        handler: async (args: unknown) => {
-          const { topics } = args as SearchLinksArgs
-          logger.info(`[SocialMediaAgent] search_links called with topics: ${topics.join(', ')}`)
-          const allResults: Record<string, { title: string; url: string; snippet: string }[]> = {}
-          for (const topic of topics) {
-            allResults[topic] = await searchWeb(topic, 3)
-          }
-          return JSON.stringify({ results: allResults })
-        },
-      },
       {
         name: 'create_posts',
         description:
@@ -215,8 +200,9 @@ export async function generateShortPosts(
   video: VideoFile,
   short: ShortClip,
   transcript: Transcript,
+  model?: string,
 ): Promise<SocialPost[]> {
-  const agent = new SocialMediaAgent()
+  const agent = new SocialMediaAgent(model)
 
   try {
     // Extract transcript segments that overlap with the short's time ranges
@@ -279,8 +265,9 @@ export async function generateSocialPosts(
   transcript: Transcript,
   summary: VideoSummary,
   outputDir?: string,
+  model?: string,
 ): Promise<SocialPost[]> {
-  const agent = new SocialMediaAgent()
+  const agent = new SocialMediaAgent(model)
 
   try {
     // Build the user prompt with transcript summary and metadata

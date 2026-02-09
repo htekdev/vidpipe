@@ -116,8 +116,8 @@ const PLAN_MEDIUM_CLIPS_SCHEMA = {
 class MediumVideoAgent extends BaseAgent {
   private plannedClips: PlannedMediumClip[] = []
 
-  constructor() {
-    super('MediumVideoAgent', SYSTEM_PROMPT)
+  constructor(model?: string) {
+    super('MediumVideoAgent', SYSTEM_PROMPT, undefined, model)
   }
 
   protected getTools(): ToolWithHandler[] {
@@ -156,8 +156,9 @@ class MediumVideoAgent extends BaseAgent {
 export async function generateMediumClips(
   video: VideoFile,
   transcript: Transcript,
+  model?: string,
 ): Promise<MediumClip[]> {
-  const agent = new MediumVideoAgent()
+  const agent = new MediumVideoAgent(model)
 
   // Build prompt with full transcript including word-level timestamps
   const transcriptLines = transcript.segments.map((seg) => {

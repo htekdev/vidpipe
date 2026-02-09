@@ -1,5 +1,6 @@
-import type { LLMProvider, LLMSession, ToolWithHandler } from '../providers/types.js'
+import type { LLMProvider, LLMSession, ToolWithHandler, MCPServerConfig } from '../providers/types.js'
 import { getProvider } from '../providers/index.js'
+import { getModelForAgent } from '../config/modelConfig.js'
 import { costTracker } from '../services/costTracker.js'
 import logger from '../config/logger.js'
 
@@ -33,18 +34,26 @@ import logger from '../config/logger.js'
 export abstract class BaseAgent {
   protected provider: LLMProvider
   protected session: LLMSession | null = null
+  protected readonly model?: string
 
   constructor(
     protected readonly agentName: string,
     protected readonly systemPrompt: string,
     provider?: LLMProvider,
+    model?: string,
   ) {
     this.provider = provider ?? getProvider()
+    this.model = model
   }
 
   /** Tools this agent exposes to the LLM. Override in subclasses. */
   protected getTools(): ToolWithHandler[] {
     return []
+  }
+
+  /** MCP servers this agent needs. Override in subclasses that use MCP tools. */
+  protected getMcpServers(): Record<string, MCPServerConfig> | undefined {
+    return undefined
   }
 
   /** Dispatch a tool call to the concrete agent. Override in subclasses. */
@@ -66,8 +75,9 @@ export abstract class BaseAgent {
         systemPrompt: this.systemPrompt,
         tools: this.getTools(),
         streaming: true,
-        model: process.env.LLM_MODEL || undefined,
+        model: this.model ?? getModelForAgent(this.agentName),
         timeoutMs: 300_000, // 5 min timeout
+        mcpServers: this.getMcpServers(),
       })
       this.setupEventHandlers(this.session)
     }

@@ -91,6 +91,33 @@ export interface ToolWithHandler extends ToolDefinition {
   handler: ToolHandler
 }
 
+/** MCP server configuration — base fields shared by all server types */
+interface MCPServerConfigBase {
+  /** Tool names to include ('*' for all, empty array for none) */
+  tools: string[]
+  /** Optional timeout in milliseconds */
+  timeout?: number
+}
+
+/** Local MCP server — runs as a subprocess via stdio */
+export interface MCPLocalServerConfig extends MCPServerConfigBase {
+  type?: 'local' | 'stdio'
+  command: string
+  args: string[]
+  env?: Record<string, string>
+  cwd?: string
+}
+
+/** Remote MCP server — connects via HTTP or SSE */
+export interface MCPRemoteServerConfig extends MCPServerConfigBase {
+  type: 'http' | 'sse'
+  url: string
+  headers?: Record<string, string>
+}
+
+/** Union of all MCP server configuration types */
+export type MCPServerConfig = MCPLocalServerConfig | MCPRemoteServerConfig
+
 /** Configuration for creating a provider session */
 export interface SessionConfig {
   /** System prompt for the LLM */
@@ -103,6 +130,8 @@ export interface SessionConfig {
   model?: string
   /** Timeout in milliseconds */
   timeoutMs?: number
+  /** MCP servers to connect during this session */
+  mcpServers?: Record<string, MCPServerConfig>
 }
 
 /** An active session with an LLM provider */

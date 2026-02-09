@@ -1,13 +1,15 @@
 import { createRequire } from 'module';
 import { existsSync } from 'fs';
 import logger from './logger.js';
+import { getConfig } from './environment.js';
 
 const require = createRequire(import.meta.url);
 
 export function getFFmpegPath(): string {
-  if (process.env.FFMPEG_PATH) {
-    logger.debug(`FFmpeg: using FFMPEG_PATH env var: ${process.env.FFMPEG_PATH}`);
-    return process.env.FFMPEG_PATH;
+  const config = getConfig();
+  if (config.FFMPEG_PATH && config.FFMPEG_PATH !== 'ffmpeg') {
+    logger.debug(`FFmpeg: using FFMPEG_PATH config: ${config.FFMPEG_PATH}`);
+    return config.FFMPEG_PATH;
   }
   try {
     const staticPath = require('ffmpeg-static') as string;
@@ -21,9 +23,10 @@ export function getFFmpegPath(): string {
 }
 
 export function getFFprobePath(): string {
-  if (process.env.FFPROBE_PATH) {
-    logger.debug(`FFprobe: using FFPROBE_PATH env var: ${process.env.FFPROBE_PATH}`);
-    return process.env.FFPROBE_PATH;
+  const config = getConfig();
+  if (config.FFPROBE_PATH && config.FFPROBE_PATH !== 'ffprobe') {
+    logger.debug(`FFprobe: using FFPROBE_PATH config: ${config.FFPROBE_PATH}`);
+    return config.FFPROBE_PATH;
   }
   try {
     const { path: probePath } = require('@ffprobe-installer/ffprobe') as { path: string };

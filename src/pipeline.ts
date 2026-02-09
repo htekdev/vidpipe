@@ -15,6 +15,7 @@ import { commitAndPush } from './services/gitOperations'
 import { removeDeadSilence } from './agents/SilenceRemovalAgent'
 import { burnCaptions } from './tools/ffmpeg/captionBurning'
 import { singlePassEditAndCaption } from './tools/ffmpeg/singlePassEdit'
+import { getModelForAgent } from './config/modelConfig.js'
 import { costTracker } from './services/costTracker.js'
 import type { CostReport } from './services/costTracker.js'
 import type {
@@ -169,7 +170,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   let silenceKeepSegments: { start: number; end: number }[] | undefined
 
   if (transcript && !cfg.SKIP_SILENCE_REMOVAL) {
-    const result = await runStage<SilenceRemovalResult>(Stage.SilenceRemoval, () => removeDeadSilence(video, transcript!), stageResults)
+    const result = await runStage<SilenceRemovalResult>(Stage.SilenceRemoval, () => removeDeadSilence(video, transcript!, getModelForAgent('SilenceRemovalAgent')), stageResults)
     if (result && result.wasEdited) {
       editedVideoPath = result.editedPath
       silenceRemovals = result.removals
@@ -227,27 +228,27 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   // 6. Shorts — use ORIGINAL transcript (shorts reference original video timestamps)
   let shorts: ShortClip[] = []
   if (transcript && !cfg.SKIP_SHORTS) {
-    const result = await runStage<ShortClip[]>(Stage.Shorts, () => generateShorts(video, transcript), stageResults)
+    const result = await runStage<ShortClip[]>(Stage.Shorts, () => generateShorts(video, transcript, getModelForAgent('ShortsAgent')), stageResults)
     if (result) shorts = result
   }
 
   // 7. Medium Clips — use ORIGINAL transcript (medium clips reference original video timestamps)
   let mediumClips: MediumClip[] = []
   if (transcript && !cfg.SKIP_MEDIUM_CLIPS) {
-    const result = await runStage<MediumClip[]>(Stage.MediumClips, () => generateMediumClips(video, transcript), stageResults)
+    const result = await runStage<MediumClip[]>(Stage.MediumClips, () => generateMediumClips(video, transcript, getModelForAgent('MediumVideoAgent')), stageResults)
     if (result) mediumClips = result
   }
 
   // 8. Chapters — analyse transcript for topic boundaries
   let chapters: Chapter[] | undefined
   if (transcript) {
-    chapters = await runStage<Chapter[]>(Stage.Chapters, () => generateChapters(video, transcript), stageResults)
+    chapters = await runStage<Chapter[]>(Stage.Chapters, () => generateChapters(video, transcript, getModelForAgent('ChapterAgent')), stageResults)
   }
 
   // 9. Summary (after shorts, medium clips, and chapters so the README can reference them)
   let summary: VideoSummary | undefined
   if (transcript) {
-    summary = await runStage<VideoSummary>(Stage.Summary, () => generateSummary(video, transcript, shorts, chapters), stageResults)
+    summary = await runStage<VideoSummary>(Stage.Summary, () => generateSummary(video, transcript, shorts, chapters, getModelForAgent('SummaryAgent')), stageResults)
   }
 
   // 10. Social Media
@@ -255,7 +256,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   if (transcript && summary && !cfg.SKIP_SOCIAL) {
     const result = await runStage<SocialPost[]>(
       Stage.SocialMedia,
-      () => generateSocialPosts(video, transcript, summary, path.join(video.videoDir, 'social-posts')),
+      () => generateSocialPosts(video, transcript, summary, path.join(video.videoDir, 'social-posts'), getModelForAgent('SocialMediaAgent')),
       stageResults,
     )
     if (result) socialPosts = result
@@ -267,7 +268,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
       Stage.ShortPosts,
       async () => {
         for (const short of shorts) {
-          const posts = await generateShortPosts(video, short, transcript)
+          const posts = await generateShortPosts(video, short, transcript, getModelForAgent('ShortPostsAgent'))
           socialPosts.push(...posts)
         }
       },
@@ -292,7 +293,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
             description: clip.description,
             tags: clip.tags,
           }
-          const posts = await generateShortPosts(video, asShortClip, transcript)
+          const posts = await generateShortPosts(video, asShortClip, transcript, getModelForAgent('MediumClipPostsAgent'))
           // Move posts to medium-clips/{slug}/posts/
           const clipsDir = path.join(path.dirname(video.repoPath), 'medium-clips')
           const postsDir = path.join(clipsDir, clip.slug, 'posts')
@@ -315,7 +316,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   if (transcript && summary) {
     blogPost = await runStage<string>(
       Stage.Blog,
-      () => generateBlogPost(video, transcript, summary),
+      () => generateBlogPost(video, transcript, summary, getModelForAgent('BlogAgent')),
       stageResults,
     )
   }
@@ -363,7 +364,9 @@ function generateCostMarkdown(report: CostReport): string {
   if (report.totalPRUs > 0) md += `| Total PRUs | ${report.totalPRUs} |\n`
   md += `| Input Tokens | ${report.totalTokens.input.toLocaleString()} |\n`
   md += `| Output Tokens | ${report.totalTokens.output.toLocaleString()} |\n`
-  md += `| LLM Calls | ${report.records.length} |\n\n`
+  md += `| LLM Calls | ${report.records.length} |\n`
+  if (report.totalServiceCostUSD > 0) md += `| Service Costs | $${report.totalServiceCostUSD.toFixed(4)} USD |\n`
+  md += '\n'
 
   if (Object.keys(report.byAgent).length > 0) {
     md += '## By Agent\n\n| Agent | Cost | PRUs | Calls |\n|-------|------|------|-------|\n'
@@ -377,6 +380,14 @@ function generateCostMarkdown(report: CostReport): string {
     md += '## By Model\n\n| Model | Cost | PRUs | Calls |\n|-------|------|------|-------|\n'
     for (const [model, data] of Object.entries(report.byModel)) {
       md += `| ${model} | $${data.costUSD.toFixed(4)} | ${data.prus} | ${data.calls} |\n`
+    }
+    md += '\n'
+  }
+
+  if (Object.keys(report.byService).length > 0) {
+    md += '## By Service\n\n| Service | Cost | Calls |\n|---------|------|-------|\n'
+    for (const [service, data] of Object.entries(report.byService)) {
+      md += `| ${service} | $${data.costUSD.toFixed(4)} | ${data.calls} |\n`
     }
     md += '\n'
   }
