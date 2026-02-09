@@ -23,6 +23,7 @@ export interface QueueItemMetadata {
   createdAt: string
   reviewedAt: string | null
   publishedAt: string | null
+  textOnly?: boolean
   platformSpecificData?: Record<string, unknown>
 }
 
@@ -180,12 +181,15 @@ export async function updateItem(
 
 export async function approveItem(
   id: string,
-  publishData: { latePostId: string; scheduledFor: string; publishedUrl?: string },
+  publishData: { latePostId: string; scheduledFor: string; publishedUrl?: string; accountId?: string },
 ): Promise<void> {
   const item = await getItem(id)
   if (!item) return
 
   const now = new Date().toISOString()
+  if (publishData.accountId) {
+    item.metadata.accountId = publishData.accountId
+  }
   item.metadata.status = 'published'
   item.metadata.latePostId = publishData.latePostId
   item.metadata.scheduledFor = publishData.scheduledFor

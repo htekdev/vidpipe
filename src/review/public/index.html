@@ -136,10 +136,13 @@
               <video id="video-player" class="w-full h-full object-contain" controls autoplay muted loop playsinline>
                 <source id="video-source" src="" type="video/mp4">
               </video>
-              <div id="video-placeholder" class="hidden absolute inset-0 flex items-center justify-center bg-black/60">
-                <div class="text-center text-gray-500">
-                  <div class="text-4xl mb-2">🎞️</div>
-                  <div class="text-sm">No media preview</div>
+              <div id="video-placeholder" class="hidden absolute inset-0 flex items-center justify-center bg-gradient-to-br from-purple-500/10 to-blue-500/10">
+                <div class="text-center">
+                  <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 border border-white/10 mb-2">
+                    <span class="text-lg">📝</span>
+                    <span class="text-sm font-semibold text-gray-300">Text Only</span>
+                  </div>
+                  <div class="text-xs text-gray-500">No media attachment needed</div>
                 </div>
               </div>
             </div>

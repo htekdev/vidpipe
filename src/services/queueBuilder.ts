@@ -184,6 +184,7 @@ export async function buildPublishQueue(
         createdAt: new Date().toISOString(),
         reviewedAt: null,
         publishedAt: null,
+        ...(mediaPath == null && { textOnly: true }),
       }
 
       // Use raw post content (strip frontmatter if the content includes it)

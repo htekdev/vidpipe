@@ -57,11 +57,12 @@ export function createRouter(): Router {
         platformSpecificData: item.metadata.platformSpecificData,
       })
 
-      // 5. Move to published
+      // 5. Move to published (persist resolved accountId to metadata)
       await approveItem(req.params.id, {
         latePostId: latePost._id,
         scheduledFor: slot,
         publishedUrl: undefined,
+        accountId,
       })
 
       res.json({ success: true, scheduledFor: slot, latePostId: latePost._id })
