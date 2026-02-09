@@ -242,6 +242,7 @@
     let isEditing = false;
     let isBusy = false;
     let stats = { approved: 0, rejected: 0, skipped: 0 };
+    let connectedAccounts = {}; // platform → account object
 
     // ── Init ──
     document.addEventListener('DOMContentLoaded', init);
@@ -256,6 +257,29 @@
         showToast(`Failed to load posts: ${err.message}`, 'error');
         allItems = [];
       }
+
+      // Fetch connected Late accounts (non-blocking)
+      try {
+        const acctRes = await fetch('/api/accounts');
+        if (acctRes.ok) {
+          const acctData = await acctRes.json();
+          for (const acct of (acctData.accounts || [])) {
+            if (acct.platform) connectedAccounts[acct.platform] = acct;
+          }
+        }
+      } catch { /* gracefully degrade — no connection status shown */ }
+
+      // Fetch profile info for header
+      try {
+        const profRes = await fetch('/api/profile');
+        if (profRes.ok) {
+          const profData = await profRes.json();
+          if (profData.profile && profData.profile.name) {
+            document.querySelector('#app header .text-gray-500.text-sm').textContent = `Review Queue — ${profData.profile.name}`;
+          }
+        }
+      } catch { /* ignore */ }
+
       renderTabs();
       applyFilter('all');
     }
@@ -344,7 +368,19 @@
       const nameEl = document.getElementById('platform-name');
       nameEl.textContent = cfg.name;
       nameEl.style.color = cfg.color;
-      document.getElementById('account-name').textContent = item.metadata.accountId ? `@${item.metadata.accountId}` : '';
+      // Connection status + account name
+      const accountNameEl = document.getElementById('account-name');
+      const connAcct = connectedAccounts[platform];
+      if (connAcct) {
+        const displayUser = connAcct.username || connAcct.displayName || connAcct._id;
+        accountNameEl.innerHTML = `<span class="text-xs text-gray-500">@${escapeHtml(displayUser)}</span>`;
+      } else if (Object.keys(connectedAccounts).length > 0) {
+        // We have accounts loaded but none for this platform
+        accountNameEl.innerHTML = '<span class="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">⚠ Not connected</span>';
+      } else {
+        // No accounts loaded (API key not set) — show accountId fallback
+        accountNameEl.textContent = item.metadata.accountId ? `@${item.metadata.accountId}` : '';
+      }
 
       // Clip type
       const clipBadge = document.getElementById('clip-type-badge');

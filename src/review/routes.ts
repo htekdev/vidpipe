@@ -119,5 +119,27 @@ export function createRouter(): Router {
     }
   })
 
+  // GET /api/accounts — list connected Late accounts
+  router.get('/api/accounts', async (req, res) => {
+    try {
+      const client = new LateApiClient()
+      const accounts = await client.listAccounts()
+      res.json({ accounts })
+    } catch (err) {
+      res.json({ accounts: [], error: err instanceof Error ? err.message : 'Failed to fetch accounts' })
+    }
+  })
+
+  // GET /api/profile — get Late profile info
+  router.get('/api/profile', async (req, res) => {
+    try {
+      const client = new LateApiClient()
+      const profiles = await client.listProfiles()
+      res.json({ profile: profiles[0] || null })
+    } catch (err) {
+      res.json({ profile: null, error: err instanceof Error ? err.message : 'Failed to fetch profile' })
+    }
+  })
+
   return router
 }

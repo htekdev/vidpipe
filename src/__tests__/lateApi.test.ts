@@ -56,7 +56,7 @@ describe('LateApiClient', () => {
   describe('listProfiles', () => {
     it('returns profiles from API', async () => {
       const profiles = [{ _id: 'p1', name: 'My Profile' }]
-      mockFetch.mockResolvedValueOnce(jsonResponse(profiles))
+      mockFetch.mockResolvedValueOnce(jsonResponse({ profiles }))
 
       const result = await client.listProfiles()
       expect(result).toEqual(profiles)
@@ -121,7 +121,7 @@ describe('LateApiClient', () => {
     it('retries on rate limit and succeeds', async () => {
       mockFetch
         .mockResolvedValueOnce(errorResponse(429))
-        .mockResolvedValueOnce(jsonResponse([{ _id: 'p1', name: 'Profile' }]))
+        .mockResolvedValueOnce(jsonResponse({ profiles: [{ _id: 'p1', name: 'Profile' }] }))
 
       const result = await client.listProfiles()
       expect(result).toHaveLength(1)
@@ -146,7 +146,7 @@ describe('LateApiClient', () => {
   describe('validateConnection', () => {
     it('returns valid when profiles available', async () => {
       mockFetch.mockResolvedValueOnce(
-        jsonResponse([{ _id: 'p1', name: 'My Profile' }]),
+        jsonResponse({ profiles: [{ _id: 'p1', name: 'My Profile' }] }),
       )
 
       const result = await client.validateConnection()

@@ -26,8 +26,8 @@ function accountsResponse(accounts: Array<Record<string, unknown>>) {
   return {
     ok: true,
     status: 200,
-    json: () => Promise.resolve(accounts),
-    text: () => Promise.resolve(JSON.stringify(accounts)),
+    json: () => Promise.resolve({ accounts }),
+    text: () => Promise.resolve(JSON.stringify({ accounts })),
     headers: new Map(),
   }
 }

@@ -136,11 +136,13 @@ export class LateApiClient {
   // ── Core methods ─────────────────────────────────────────────────────
 
   async listProfiles(): Promise<LateProfile[]> {
-    return this.request<LateProfile[]>('/profiles')
+    const data = await this.request<{ profiles: LateProfile[] }>('/profiles')
+    return data.profiles ?? []
   }
 
   async listAccounts(): Promise<LateAccount[]> {
-    return this.request<LateAccount[]>('/accounts')
+    const data = await this.request<{ accounts: LateAccount[] }>('/accounts')
+    return data.accounts ?? []
   }
 
   async getScheduledPosts(platform?: string): Promise<LatePost[]> {
