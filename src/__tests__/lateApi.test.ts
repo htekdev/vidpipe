@@ -79,7 +79,7 @@ describe('LateApiClient', () => {
         createdAt: '2025-01-01T00:00:00Z',
         updatedAt: '2025-01-01T00:00:00Z',
       }
-      mockFetch.mockResolvedValueOnce(jsonResponse(newPost))
+      mockFetch.mockResolvedValueOnce(jsonResponse({ post: newPost }))
 
       const params = {
         content: 'Hello',
