@@ -28,9 +28,9 @@ npm install -g vidpipe
 
 ## ✨ Features
 
-<div align="center">
+<p align="center">
   <img src="assets/features-infographic.png" alt="VidPipe Features — Input → AI Processing → Outputs" width="900" />
-</div>
+</p>
 
 <br />
 
