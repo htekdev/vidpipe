@@ -30,7 +30,7 @@ vi.mock('../config/environment.js', () => ({
   getConfig: () => ({ LATE_API_KEY: 'test-key' }),
 }))
 
-import { findNextSlot } from '../services/scheduler.js'
+import { findNextSlot, getScheduleCalendar } from '../services/scheduler.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -233,5 +233,168 @@ describe('scheduler', () => {
     expect(slot).toMatch(/T20:00:00/)
 
     vi.useRealTimers()
+  })
+
+  it('handles Late API returning non-Error rejection', async () => {
+    mockLoadScheduleConfig.mockResolvedValue(makeScheduleConfig())
+    mockGetScheduledPosts.mockRejectedValue('string error')
+
+    const slot = await findNextSlot('twitter')
+    expect(slot).toBeTruthy()
+  })
+
+  it('skips Late posts without scheduledFor', async () => {
+    mockLoadScheduleConfig.mockResolvedValue(makeScheduleConfig())
+    mockGetScheduledPosts.mockResolvedValue([
+      { _id: 'no-schedule', content: 'test', status: 'draft', platforms: [{ platform: 'twitter', accountId: 'acct-1' }], createdAt: '2025-01-01T00:00:00Z', updatedAt: '2025-01-01T00:00:00Z' },
+    ])
+
+    const slot = await findNextSlot('twitter')
+    expect(slot).toBeTruthy()
+  })
+
+  it('skips published items without scheduledFor', async () => {
+    mockLoadScheduleConfig.mockResolvedValue(makeScheduleConfig())
+    mockGetPublishedItems.mockResolvedValue([
+      { id: 'item-1', metadata: { platform: 'twitter' } },
+    ])
+
+    const slot = await findNextSlot('twitter')
+    expect(slot).toBeTruthy()
+  })
+
+  it('filters booked slots by platform', async () => {
+    mockLoadScheduleConfig.mockResolvedValue(makeScheduleConfig())
+
+    const firstSlot = await findNextSlot('twitter')
+    expect(firstSlot).toBeTruthy()
+
+    // Book that slot on a DIFFERENT platform — should not affect twitter
+    vi.clearAllMocks()
+    mockGetPublishedItems.mockResolvedValue([])
+    mockLoadScheduleConfig.mockResolvedValue(makeScheduleConfig())
+    mockGetScheduledPosts.mockResolvedValue([
+      {
+        _id: 'other-platform',
+        content: 'booked',
+        status: 'scheduled',
+        platforms: [{ platform: 'instagram', accountId: 'acct-2' }],
+        scheduledFor: firstSlot,
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      },
+    ])
+
+    const sameSlot = await findNextSlot('twitter')
+    expect(sameSlot).toBe(firstSlot)
+  })
+})
+
+describe('getScheduleCalendar', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetPublishedItems.mockResolvedValue([])
+    mockGetScheduledPosts.mockResolvedValue([])
+  })
+
+  it('returns empty array when no booked slots', async () => {
+    const calendar = await getScheduleCalendar()
+    expect(calendar).toEqual([])
+  })
+
+  it('returns booked slots sorted by datetime', async () => {
+    mockGetScheduledPosts.mockResolvedValue([
+      {
+        _id: 'post-2',
+        content: 'second',
+        status: 'scheduled',
+        platforms: [{ platform: 'twitter', accountId: 'a1' }],
+        scheduledFor: '2025-06-15T17:00:00+00:00',
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      },
+      {
+        _id: 'post-1',
+        content: 'first',
+        status: 'scheduled',
+        platforms: [{ platform: 'tiktok', accountId: 'a2' }],
+        scheduledFor: '2025-06-14T08:30:00+00:00',
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      },
+    ])
+
+    const calendar = await getScheduleCalendar()
+    expect(calendar).toHaveLength(2)
+    expect(calendar[0].platform).toBe('tiktok')
+    expect(calendar[1].platform).toBe('twitter')
+  })
+
+  it('filters by startDate', async () => {
+    mockGetScheduledPosts.mockResolvedValue([
+      {
+        _id: 'old',
+        content: 'old',
+        status: 'scheduled',
+        platforms: [{ platform: 'twitter', accountId: 'a1' }],
+        scheduledFor: '2025-01-01T08:00:00+00:00',
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      },
+      {
+        _id: 'new',
+        content: 'new',
+        status: 'scheduled',
+        platforms: [{ platform: 'twitter', accountId: 'a1' }],
+        scheduledFor: '2025-12-01T08:00:00+00:00',
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      },
+    ])
+
+    const calendar = await getScheduleCalendar(new Date('2025-06-01'))
+    expect(calendar).toHaveLength(1)
+    expect(calendar[0].postId).toBe('new')
+  })
+
+  it('filters by endDate', async () => {
+    mockGetScheduledPosts.mockResolvedValue([
+      {
+        _id: 'early',
+        content: 'early',
+        status: 'scheduled',
+        platforms: [{ platform: 'twitter', accountId: 'a1' }],
+        scheduledFor: '2025-01-01T08:00:00+00:00',
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      },
+      {
+        _id: 'late',
+        content: 'late',
+        status: 'scheduled',
+        platforms: [{ platform: 'twitter', accountId: 'a1' }],
+        scheduledFor: '2025-12-01T08:00:00+00:00',
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      },
+    ])
+
+    const calendar = await getScheduleCalendar(undefined, new Date('2025-06-01'))
+    expect(calendar).toHaveLength(1)
+    expect(calendar[0].postId).toBe('early')
+  })
+
+  it('includes local published items with scheduledFor', async () => {
+    mockGetPublishedItems.mockResolvedValue([
+      {
+        id: 'local-1',
+        metadata: { platform: 'tiktok', scheduledFor: '2025-06-15T10:00:00+00:00' },
+      },
+    ])
+
+    const calendar = await getScheduleCalendar()
+    expect(calendar).toHaveLength(1)
+    expect(calendar[0].source).toBe('local')
+    expect(calendar[0].itemId).toBe('local-1')
   })
 })

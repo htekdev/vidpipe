@@ -714,6 +714,64 @@ describe('socialPosting', () => {
 
     expect(results.size).toBe(0)
   })
+
+  it('getPlatformClient returns placeholder for unknown platform', async () => {
+    const { getPlatformClient, PlaceholderPlatformClient } = await import('../services/socialPosting.js')
+    const client = getPlatformClient('unknown-platform' as Platform)
+    expect(client).toBeInstanceOf(PlaceholderPlatformClient)
+  })
+
+  it('publishToAllPlatforms catches Error throws from client', async () => {
+    const { publishToAllPlatforms, PlaceholderPlatformClient } = await import('../services/socialPosting.js')
+
+    // Make the placeholder's post method throw
+    const origPost = PlaceholderPlatformClient.prototype.post
+    PlaceholderPlatformClient.prototype.post = async () => { throw new Error('API error') }
+
+    const posts: SocialPost[] = [
+      {
+        platform: Platform.TikTok,
+        content: 'test',
+        hashtags: [],
+        links: [],
+        characterCount: 4,
+        outputPath: '/tmp/test.md',
+      },
+    ]
+
+    const results = await publishToAllPlatforms(posts)
+    expect(results.get(Platform.TikTok)?.success).toBe(false)
+    expect(results.get(Platform.TikTok)?.error).toBe('API error')
+
+    // Restore
+    PlaceholderPlatformClient.prototype.post = origPost
+  })
+
+  it('publishToAllPlatforms catches non-Error throws from client', async () => {
+    const { publishToAllPlatforms, PlaceholderPlatformClient } = await import('../services/socialPosting.js')
+
+    // Make the placeholder's post method throw a string
+    const origPost = PlaceholderPlatformClient.prototype.post
+    PlaceholderPlatformClient.prototype.post = async () => { throw 'string error' }
+
+    const posts: SocialPost[] = [
+      {
+        platform: Platform.TikTok,
+        content: 'test',
+        hashtags: [],
+        links: [],
+        characterCount: 4,
+        outputPath: '/tmp/test.md',
+      },
+    ]
+
+    const results = await publishToAllPlatforms(posts)
+    expect(results.get(Platform.TikTok)?.success).toBe(false)
+    expect(results.get(Platform.TikTok)?.error).toBe('string error')
+
+    // Restore
+    PlaceholderPlatformClient.prototype.post = origPost
+  })
 })
 
 // ============================================================================

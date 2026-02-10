@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   calculateTokenCost,
   calculatePRUCost,
@@ -9,6 +9,7 @@ import { costTracker } from '../services/costTracker.js';
 import { getProvider, getProviderName, resetProvider } from '../providers/index.js';
 import { CopilotProvider } from '../providers/CopilotProvider.js';
 import { initConfig } from '../config/environment.js';
+import { Platform, toLateplatform, fromLatePlatform } from '../types/index.js';
 
 // ─── pricing.ts ───────────────────────────────────────────────
 
@@ -350,6 +351,26 @@ describe('providers/index', () => {
     expect(() => getProvider('nonexistent' as any)).toThrow('Unknown LLM provider');
   });
 
+  it('getProvider falls back to copilot when provider is not available', async () => {
+    // OpenAI without OPENAI_API_KEY → isAvailable() returns false → fallback to copilot
+    delete process.env.OPENAI_API_KEY;
+    initConfig();
+    await resetProvider();
+    const provider = getProvider('openai');
+    expect(provider).toBeInstanceOf(CopilotProvider);
+  });
+
+  it('getProvider closes old provider when switching', async () => {
+    const first = getProvider('copilot');
+    const closeSpy = vi.fn().mockResolvedValue(undefined);
+    first.close = closeSpy;
+    await resetProvider();
+    // Switch to a new provider
+    getProvider('copilot');
+    // resetProvider calls close
+    expect(closeSpy).toHaveBeenCalled();
+  });
+
   it('getProviderName reads LLM_PROVIDER env var', async () => {
     process.env.LLM_PROVIDER = 'openai';
     initConfig();
@@ -377,5 +398,31 @@ describe('providers/index', () => {
 
     // Restore
     provider.close = originalClose;
+  });
+});
+
+// ─── toLateplatform / fromLatePlatform ─────────────────────────
+
+describe('toLateplatform', () => {
+  it('maps Platform.X to twitter', () => {
+    expect(toLateplatform(Platform.X)).toBe('twitter');
+  });
+
+  it('passes other platforms through unchanged', () => {
+    expect(toLateplatform(Platform.YouTube)).toBe('youtube');
+    expect(toLateplatform(Platform.TikTok)).toBe('tiktok');
+    expect(toLateplatform(Platform.Instagram)).toBe('instagram');
+    expect(toLateplatform(Platform.LinkedIn)).toBe('linkedin');
+  });
+});
+
+describe('fromLatePlatform', () => {
+  it('maps twitter to Platform.X', () => {
+    expect(fromLatePlatform('twitter')).toBe(Platform.X);
+  });
+
+  it('passes other platform strings through as-is', () => {
+    expect(fromLatePlatform('youtube')).toBe(Platform.YouTube);
+    expect(fromLatePlatform('tiktok')).toBe(Platform.TikTok);
   });
 });

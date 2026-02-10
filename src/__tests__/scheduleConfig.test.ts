@@ -12,6 +12,7 @@ import {
   validateScheduleConfig,
   loadScheduleConfig,
   clearScheduleCache,
+  getPlatformSchedule,
 } from '../services/scheduleConfig.js'
 
 const tmpDir = path.join(os.tmpdir(), `vidpipe-schedule-${Date.now()}`)
@@ -93,6 +94,73 @@ describe('scheduleConfig', () => {
     it('rejects missing timezone', () => {
       expect(() => validateScheduleConfig({ platforms: {} })).toThrow(/timezone/)
     })
+
+    it('rejects empty timezone string', () => {
+      expect(() => validateScheduleConfig({ timezone: '  ', platforms: {} })).toThrow(/timezone/)
+    })
+
+    it('rejects platforms that is an array', () => {
+      expect(() => validateScheduleConfig({ timezone: 'UTC', platforms: [] })).toThrow(/platforms/)
+    })
+
+    it('rejects missing platforms key', () => {
+      expect(() => validateScheduleConfig({ timezone: 'UTC' })).toThrow(/platforms/)
+    })
+
+    it('rejects platform value that is not an object', () => {
+      expect(() => validateScheduleConfig({ timezone: 'UTC', platforms: { test: 'bad' } })).toThrow(/must be an object/)
+    })
+
+    it('rejects platform value that is an array', () => {
+      expect(() => validateScheduleConfig({ timezone: 'UTC', platforms: { test: [] } })).toThrow(/must be an object/)
+    })
+
+    it('rejects platform missing slots array', () => {
+      expect(() => validateScheduleConfig({ timezone: 'UTC', platforms: { test: { avoidDays: [] } } })).toThrow(/slots/)
+    })
+
+    it('rejects platform missing avoidDays array', () => {
+      expect(() => validateScheduleConfig({ timezone: 'UTC', platforms: { test: { slots: [] } } })).toThrow(/avoidDays/)
+    })
+
+    it('rejects slot with empty days array', () => {
+      const config = {
+        timezone: 'UTC',
+        platforms: {
+          test: {
+            slots: [{ days: [], time: '08:00', label: 'Empty days' }],
+            avoidDays: [],
+          },
+        },
+      }
+      expect(() => validateScheduleConfig(config)).toThrow(/non-empty "days"/)
+    })
+
+    it('rejects slot with empty label', () => {
+      const config = {
+        timezone: 'UTC',
+        platforms: {
+          test: {
+            slots: [{ days: ['mon'], time: '08:00', label: '' }],
+            avoidDays: [],
+          },
+        },
+      }
+      expect(() => validateScheduleConfig(config)).toThrow(/non-empty "label"/)
+    })
+
+    it('rejects slot with missing label', () => {
+      const config = {
+        timezone: 'UTC',
+        platforms: {
+          test: {
+            slots: [{ days: ['mon'], time: '08:00' }],
+            avoidDays: [],
+          },
+        },
+      }
+      expect(() => validateScheduleConfig(config)).toThrow(/non-empty "label"/)
+    })
   })
 
   describe('loadScheduleConfig', () => {
@@ -145,6 +213,27 @@ describe('scheduleConfig', () => {
       // Now reloads
       const config2 = await loadScheduleConfig(filePath)
       expect(config2.timezone).toBe('Asia/Tokyo')
+    })
+  })
+
+  describe('getPlatformSchedule', () => {
+    it('returns null when cache is empty', () => {
+      clearScheduleCache()
+      expect(getPlatformSchedule('twitter')).toBeNull()
+    })
+
+    it('returns schedule for known platform after load', async () => {
+      const filePath = path.join(tmpDir, 'schedule-for-get.json')
+      await loadScheduleConfig(filePath)
+      const schedule = getPlatformSchedule('twitter')
+      expect(schedule).toBeDefined()
+      expect(schedule!.slots.length).toBeGreaterThan(0)
+    })
+
+    it('returns null for unknown platform after load', async () => {
+      const filePath = path.join(tmpDir, 'schedule-for-unknown.json')
+      await loadScheduleConfig(filePath)
+      expect(getPlatformSchedule('nonexistent')).toBeNull()
     })
   })
 })
