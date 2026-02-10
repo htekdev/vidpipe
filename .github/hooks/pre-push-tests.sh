@@ -21,7 +21,7 @@ fi
 echo "🧪 Pre-push hook: Running tests with coverage..." >&2
 
 # Run tests with coverage
-npm test 2>&1
+npm run test:coverage 2>&1
 TEST_EXIT=$?
 
 if [ $TEST_EXIT -ne 0 ]; then

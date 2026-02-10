@@ -27,7 +27,7 @@ try {
 
     # Run tests with coverage — capture all output, don't let stderr throw
     $ErrorActionPreference = "Continue"
-    $testOutput = & npm test 2>&1
+    $testOutput = & npm run test:coverage 2>&1
     $testExitCode = $LASTEXITCODE
     $ErrorActionPreference = "Stop"
 
