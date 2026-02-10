@@ -649,6 +649,28 @@ describe('socialPosting', () => {
     expect(client.validate(post)).toBe(true)
   })
 
+  it('getPlatformClient handles Facebook platform', async () => {
+    const { getPlatformClient } = await import('../services/socialPosting.js')
+    const client = getPlatformClient(Platform.Facebook)
+
+    expect(client).toBeDefined()
+    expect(client.post).toBeInstanceOf(Function)
+    expect(client.validate).toBeInstanceOf(Function)
+
+    const post: SocialPost = {
+      platform: Platform.Facebook,
+      content: 'Facebook post with community focus',
+      hashtags: ['#TechCommunity', '#Innovation'],
+      links: ['https://example.com'],
+      characterCount: 38,
+      outputPath: '/tmp/facebook.md',
+    }
+
+    const result = await client.post(post)
+    expect(result.success).toBe(true)
+    expect(client.validate(post)).toBe(true)
+  })
+
   it('publishToAllPlatforms publishes each post', async () => {
     const { publishToAllPlatforms } = await import('../services/socialPosting.js')
 
