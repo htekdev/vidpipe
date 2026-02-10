@@ -18,10 +18,22 @@ if ! echo "$COMMAND" | grep -q "git push"; then
   exit 0
 fi
 
+echo "🔍 Pre-push hook: Running TypeScript typecheck..." >&2
+
+# Run typecheck
+npx tsc --noEmit >&2 2>&1
+TSC_EXIT=$?
+
+if [ $TSC_EXIT -ne 0 ]; then
+  echo '{"permissionDecision":"deny","permissionDecisionReason":"TypeScript typecheck failed"}' | jq -c
+  exit 0
+fi
+
+echo "✅ TypeScript typecheck passed." >&2
 echo "🧪 Pre-push hook: Running tests with coverage..." >&2
 
 # Run tests with coverage
-npm run test:coverage 2>&1
+npm run test:coverage >&2 2>&1
 TEST_EXIT=$?
 
 if [ $TEST_EXIT -ne 0 ]; then

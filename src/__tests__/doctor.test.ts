@@ -66,7 +66,7 @@ describe('runDoctor', () => {
     mockProcessExit = vi.fn().mockImplementation(() => { throw new Error('process.exit'); });
     mockConsoleLog = vi.fn();
     vi.spyOn(process, 'exit').mockImplementation(mockProcessExit as any);
-    vi.spyOn(console, 'log').mockImplementation(mockConsoleLog);
+    vi.spyOn(console, 'log').mockImplementation(mockConsoleLog as (...args: any[]) => void);
 
     // Default: all checks pass
     mockGetConfig.mockReturnValue({

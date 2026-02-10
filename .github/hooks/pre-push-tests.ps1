@@ -23,6 +23,25 @@ try {
         exit 0
     }
 
+    [Console]::Error.WriteLine("🔍 Pre-push hook: Running TypeScript typecheck...")
+
+    # Run typecheck — capture all output, don't let stderr throw
+    $ErrorActionPreference = "Continue"
+    $tscOutput = & npx tsc --noEmit 2>&1
+    $tscExitCode = $LASTEXITCODE
+    $ErrorActionPreference = "Stop"
+
+    if ($tscExitCode -ne 0) {
+        [Console]::Error.WriteLine("❌ TypeScript typecheck failed. Blocking push.")
+        $output = @{
+            permissionDecision = "deny"
+            permissionDecisionReason = "TypeScript typecheck failed"
+        }
+        $output | ConvertTo-Json -Compress
+        exit 0
+    }
+
+    [Console]::Error.WriteLine("✅ TypeScript typecheck passed.")
     [Console]::Error.WriteLine("🧪 Pre-push hook: Running tests with coverage...")
 
     # Run tests with coverage — capture all output, don't let stderr throw
