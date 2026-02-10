@@ -3,8 +3,6 @@ import {
   getModelForAgent,
   AGENT_MODEL_MAP,
   PREMIUM_MODEL,
-  STANDARD_MODEL,
-  FREE_MODEL,
 } from '../config/modelConfig.js'
 import { initConfig } from '../config/environment.js'
 
@@ -16,8 +14,8 @@ afterEach(() => {
 describe('getModelForAgent', () => {
   it('returns correct model for each tier', () => {
     expect(getModelForAgent('ShortsAgent')).toBe('claude-opus-4.5')
-    expect(getModelForAgent('BlogAgent')).toBe('claude-sonnet-4.5')
-    expect(getModelForAgent('ChapterAgent')).toBe('gpt-4.1')
+    expect(getModelForAgent('BlogAgent')).toBe('claude-opus-4.5')
+    expect(getModelForAgent('ChapterAgent')).toBe('claude-opus-4.5')
   })
 
   it('returns undefined for unknown agents', () => {
@@ -38,25 +36,15 @@ describe('getModelForAgent', () => {
 })
 
 describe('AGENT_MODEL_MAP tier assignments', () => {
-  const premiumAgents = ['SilenceRemovalAgent', 'ShortsAgent', 'MediumVideoAgent']
-  const standardAgents = ['SocialMediaAgent', 'BlogAgent']
-  const freeAgents = ['SummaryAgent', 'ChapterAgent', 'ShortPostsAgent', 'MediumClipPostsAgent']
+  const premiumAgents = [
+    'SilenceRemovalAgent', 'ShortsAgent', 'MediumVideoAgent',
+    'SocialMediaAgent', 'BlogAgent',
+    'SummaryAgent', 'ChapterAgent', 'ShortPostsAgent', 'MediumClipPostsAgent',
+  ]
 
-  it('all premium agents map to PREMIUM_MODEL', () => {
+  it('all agents map to PREMIUM_MODEL', () => {
     for (const agent of premiumAgents) {
       expect(AGENT_MODEL_MAP[agent], `${agent} should be premium`).toBe(PREMIUM_MODEL)
-    }
-  })
-
-  it('all standard agents map to STANDARD_MODEL', () => {
-    for (const agent of standardAgents) {
-      expect(AGENT_MODEL_MAP[agent], `${agent} should be standard`).toBe(STANDARD_MODEL)
-    }
-  })
-
-  it('all free agents map to FREE_MODEL', () => {
-    for (const agent of freeAgents) {
-      expect(AGENT_MODEL_MAP[agent], `${agent} should be free`).toBe(FREE_MODEL)
     }
   })
 })
