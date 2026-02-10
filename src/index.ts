@@ -52,6 +52,10 @@ program
 
     const shutdown = async () => {
       console.log('\nShutting down...')
+      // Restore terminal to normal mode on Windows
+      if (process.platform === 'win32' && process.stdin.setRawMode) {
+        process.stdin.setRawMode(false)
+      }
       await close()
       process.exit(0)
     }

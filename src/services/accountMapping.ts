@@ -31,7 +31,14 @@ function cachePath(): string {
 }
 
 function isCacheValid(cache: AccountCache): boolean {
-  const age = Date.now() - new Date(cache.fetchedAt).getTime()
+  const fetchedAtTime = new Date(cache.fetchedAt).getTime()
+  if (Number.isNaN(fetchedAtTime)) {
+    logger.warn('Invalid fetchedAt in account cache; treating as stale', {
+      fetchedAt: cache.fetchedAt,
+    })
+    return false
+  }
+  const age = Date.now() - fetchedAtTime
   return age < CACHE_TTL_MS
 }
 

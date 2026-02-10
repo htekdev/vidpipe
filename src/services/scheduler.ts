@@ -33,6 +33,10 @@ function getTimezoneOffset(timezone: string, date: Date): string {
   if (match) return match[1]
   // GMT with no offset means UTC
   if (tzPart?.value === 'GMT') return '+00:00'
+  logger.warn(
+    `Could not parse timezone offset for timezone "${timezone}" on date "${date.toISOString()}". ` +
+    `Raw timeZoneName part: "${tzPart?.value ?? 'undefined'}". Falling back to UTC (+00:00).`,
+  )
   return '+00:00'
 }
 
@@ -40,9 +44,21 @@ function getTimezoneOffset(timezone: string, date: Date): string {
  * Build an ISO datetime string with timezone offset for a given date and time.
  */
 function buildSlotDatetime(date: Date, time: string, timezone: string): string {
-  const year = date.getFullYear()
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
+  // Derive calendar date parts in the target timezone to avoid host-timezone skew
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  })
+  const parts = formatter.formatToParts(date)
+  const yearPart = parts.find(p => p.type === 'year')?.value
+  const monthPart = parts.find(p => p.type === 'month')?.value
+  const dayPart = parts.find(p => p.type === 'day')?.value
+
+  const year = yearPart ?? String(date.getFullYear())
+  const month = (monthPart ?? String(date.getMonth() + 1)).padStart(2, '0')
+  const day = (dayPart ?? String(date.getDate())).padStart(2, '0')
   const offset = getTimezoneOffset(timezone, date)
   return `${year}-${month}-${day}T${time}:00${offset}`
 }
@@ -161,7 +177,7 @@ export async function findNextSlot(platform: string): Promise<string | null> {
       }
     }
 
-    candidates.sort()
+    candidates.sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
 
     const available = candidates.find(c => !bookedDatetimes.has(c))
     if (available) {

@@ -1,0 +1,164 @@
+[
+  {
+    "Index": 1,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0HSR",
+    "File": "src/tools/ffmpeg/faceDetection.ts:18",
+    "Body": "The variable `__dirname_local` is ambiguous. Rename to `__dirname` for consistency with other files (singlePassEdit.ts, captionBurning.ts) that use the same pattern.\n```suggestion\nconst __dirname = path.dirname(new URL(import.meta.url).pathname.replace(/^\\/([A-Z]:)/, '$1'))\nconst MODEL_PATH = existsSync(path.join(__dirname, 'models', 'ultraface-320.onnx'))\n  ? path.join(__dirname, 'models', 'ultraface-320.onnx')\n  : path.resolve(__dirname, '..', '..', '..', 'assets', 'models', 'ultraface-320.onnx')\n```"
+  },
+  {
+    "Index": 2,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0HSo",
+    "File": "src/services/scheduler.ts:35",
+    "Body": "The function returns '+00:00' as a fallback when the timezone offset cannot be parsed (line 36). This could mask invalid timezone names. Consider logging a warning or throwing an error when the offset cannot be determined, rather than silently returning UTC.\n```suggestion\n  if (tzPart?.value === 'GMT') return '+00:00'\n  logger.warn(\n    `Could not parse timezone offset for timezone \"${timezone}\" on date \"${date.toISOString()}\". ` +\n    `Raw timeZoneName part: \"${tzPart?.value ?? 'undefined'}\". Falling back to UTC (+00:00).`,\n  )\n```"
+  },
+  {
+    "Index": 3,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0HS9",
+    "File": "src/services/accountMapping.ts:34",
+    "Body": "If `cache.fetchedAt` contains an invalid date string, `new Date(cache.fetchedAt).getTime()` will return `NaN`, causing `age` to be `NaN`. This will make `isCacheValid()` return `false` (since `NaN < CACHE_TTL_MS` is false), which is the safe behavior, but consider explicitly checking for invalid dates to avoid potential issues.\n```suggestion\n  const fetchedAtTime = new Date(cache.fetchedAt).getTime()\n  if (Number.isNaN(fetchedAtTime)) {\n    logger.warn('Invalid fetchedAt in account cache; treating as stale', {\n      fetchedAt: cache.fetchedAt,\n    })\n    return false\n  }\n  const age = Date.now() - fetchedAtTime\n```"
+  },
+  {
+    "Index": 4,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0HTX",
+    "File": "src/review/routes.ts:86",
+    "Body": "The `normalizePlatform` function is defined locally in routes.ts but duplicates logic from `toLateplatform` in types/index.ts. Consider consolidating these functions to avoid duplication."
+  },
+  {
+    "Index": 5,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0HTp",
+    "File": "src/index.ts:64",
+    "Body": "Calling `setRawMode(true)` without restoring it to `false` on exit can leave the terminal in an unusable state if the process crashes. Add cleanup in the shutdown handler or use `process.stdin.setRawMode(false)` before calling `process.exit(0)`."
+  },
+  {
+    "Index": 6,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0Op0",
+    "File": "src/services/scheduler.ts:45",
+    "Body": "`buildSlotDatetime()` uses the host machine’s local date parts (`getFullYear/getMonth/getDate`) while separately computing an offset for `timezone`. If the machine timezone differs from the configured schedule timezone (or near midnight boundary), this can produce slot strings with the wrong calendar date for the target timezone. Consider deriving `{year, month, day}` in the configured timezone via `Intl.DateTimeFormat(...).formatToParts()` (similar to `getDayOfWeekInTimezone`) and using those parts when building the ISO string.\n```suggestion\n  // Derive calendar date parts in the target timezone to avoid host-timezone skew\n  const formatter = new Intl.DateTimeFormat('en-US', {\n    timeZone: timezone,\n    year: 'numeric',\n    month: '2-digit',\n    day: '2-digit',\n  })\n  const parts = formatter.formatToParts(date)\n  const yearPart = parts.find(p => p.type === 'year')?.value\n  const monthPart = parts.find(p => p.type === 'month')?.value\n  const dayPart = parts.find(p => p.type === 'day')?.value\n\n  const year = yearPart ?? String(date.getFullYear())\n  const month = (monthPart ?? String(date.getMonth() + 1)).padStart(2, '0')\n  const day = (dayPart ?? String(date.getDate())).padStart(2, '0')\n```"
+  },
+  {
+    "Index": 7,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0OqV",
+    "File": "src/services/scheduler.ts:166",
+    "Body": "`candidates.sort()` sorts ISO strings lexicographically. This can mis-order candidates across DST boundaries because the offset portion (`-05:00` vs `-06:00`) affects string ordering even when the actual instant ordering differs. Sorting by `new Date(candidate).getTime()` (or by comparing parsed timestamps) would make the “next slot” selection correct across offset changes."
+  },
+  {
+    "Index": 8,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0Oqj",
+    "File": "src/review/routes.ts:61",
+    "Body": "`getCached()` uses `null` to mean “cache miss/expired”, but this endpoint also intentionally caches `null` when no profile exists. As written, a cached `null` will be treated as a miss and re-fetch on every request. Consider changing `getCached` to return `undefined` for misses (and allow `null` as a valid cached value), or track cache presence separately (e.g., `cache.has(key)`)."
+  },
+  {
+    "Index": 9,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0Oqz",
+    "File": "src/review/routes.ts:90",
+    "Body": "The 409 error message says “within 14 days”, but `findNextSlot()` currently searches up to `MAX_LOOKAHEAD_DAYS = 730` (in 14-day chunks). This will be misleading for users and makes debugging harder; update the message to reflect actual lookahead behavior (or align the scheduler’s max lookahead to 14 days if that’s intended).\n```suggestion\n      if (!slot) return res.status(409).json({ error: 'No available schedule slots in the current scheduling window' })\n```"
+  },
+  {
+    "Index": 10,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0Oq9",
+    "File": "src/review/routes.ts:210",
+    "Body": "On failure, this endpoint returns HTTP 200 with an `error` field, while most other endpoints return 500 for failures. For consistency and easier client-side handling, consider returning `res.status(500).json(...)` here (and similarly for `/api/profile` which behaves the same way)."
+  },
+  {
+    "Index": 11,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0OrO",
+    "File": "src/review/server.ts:63",
+    "Body": "This `close()` promise can resolve before `server.close()` completes (if the timeout fires first), and it attempts to resolve twice. Consider guarding with a `let done = false`, clearing the timeout once `server.close` completes, and resolving exactly once after either (a) close completes, or (b) timeout triggers as a fallback.\n```suggestion\n            let done = false\n\n            const finish = () => {\n              if (done) return\n              done = true\n              res()\n            }\n\n            for (const conn of connections) conn.destroy()\n\n            const timeout = setTimeout(() => {\n              logger.warn('Timed out waiting for review server to close, forcing shutdown')\n              finish()\n            }, 2000)\n\n            // Allow process to exit naturally even if timeout is pending\n            timeout.unref()\n\n            server.close(() => {\n              clearTimeout(timeout)\n              finish()\n            })\n```"
+  },
+  {
+    "Index": 12,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0Orh",
+    "File": "src/types/index.ts:403",
+    "Body": "The function name `toLateplatform` has inconsistent casing (lowercase “p”), while the inverse is `fromLatePlatform`. Renaming to `toLatePlatform` (and updating imports such as `src/services/queueBuilder.ts`) would improve readability and reduce typo risk.\n```suggestion\nexport function toLatePlatform(platform: Platform): string {\n  return platform === Platform.X ? 'twitter' : platform\n}\n\n/**\n * @deprecated Use {@link toLatePlatform} instead. This alias exists for backward compatibility.\n */\nexport function toLateplatform(platform: Platform): string {\n  return toLatePlatform(platform)\n}\n\n/**\n```"
+  },
+  {
+    "Index": 13,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0Or0",
+    "File": "docs/social-publishing.md:106",
+    "Body": "These shortcuts don’t match the implemented UI handler in `src/review/public/index.html` (which handles `ArrowLeft`, `ArrowRight`, `E`, and `Space`, but not `A`/`R`). Updating the docs to match the actual keybindings will prevent user confusion.\n```suggestion\n- `→` (Right Arrow) = Approve\n- `←` (Left Arrow) = Reject\n```"
+  },
+  {
+    "Index": 14,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0OsW",
+    "File": "src/services/queueBuilder.ts:141",
+    "Body": "`buildPublishQueue()` introduces substantial new behavior (frontmatter parsing, media variant selection, idempotency, platform mapping, and filesystem writes) but there’s no corresponding unit test file in this PR. Adding focused tests for media resolution (variants + fallbacks), frontmatter stripping, and idempotency (`itemExists` interactions) would help prevent regressions as the publishing matrix evolves."
+  },
+  {
+    "Index": 15,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0TXQ",
+    "File": "src/tools/ffmpeg/captionBurning.ts:15",
+    "Body": "The bundled-path detection for fonts is incorrect relative to where `tsup` copies fonts. In the bundle, `__dirname` for this module will be `dist/tools/ffmpeg/`, but the build copies fonts to `dist/fonts/`, so `existsSync(pathMod.join(__dirname, 'fonts'))` will be false and the fallback points to `assets/fonts` (which won’t exist in the bundled dist). Update the resolution to check `dist/fonts` relative to this module (e.g., `pathMod.resolve(__dirname, '..', '..', 'fonts')`) and then fall back to `assets/fonts` for dev.\n```suggestion\n// In tsup bundle: __dirname = dist/tools/ffmpeg/, fonts copied to dist/fonts/\n// In dev (tsx): __dirname = src/tools/ffmpeg/, fonts at ../../../assets/fonts/\nconst bundledFontsDir = pathMod.resolve(__dirname, '..', '..', 'fonts')\nconst FONTS_DIR = existsSync(bundledFontsDir)\n  ? bundledFontsDir\n```"
+  },
+  {
+    "Index": 16,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0TXu",
+    "File": "src/tools/ffmpeg/singlePassEdit.ts:16",
+    "Body": "Same issue as captionBurning: `__dirname` will resolve to `dist/tools/ffmpeg/` after bundling, but fonts are copied to `dist/fonts/`. As written, bundled runs will likely fall back to `assets/fonts` (missing) and break caption rendering. Resolve the bundled fonts directory relative to the dist root (e.g., `path.resolve(__dirname, '..', '..', 'fonts')`) before falling back to the dev `assets/fonts` path.\n```suggestion\n// In tsup bundle: __dirname = dist/tools/ffmpeg/, fonts copied to dist/fonts/\n// In dev (tsx): __dirname = src/tools/ffmpeg/, fonts at ../../../assets/fonts/\nconst DIST_FONTS_DIR = path.resolve(__dirname, '..', '..', 'fonts')\nconst DEV_FONTS_DIR = path.resolve(__dirname, '..', '..', '..', 'assets', 'fonts')\nconst FONTS_DIR = existsSync(DIST_FONTS_DIR) ? DIST_FONTS_DIR : DEV_FONTS_DIR\n```"
+  },
+  {
+    "Index": 17,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0TX_",
+    "File": "src/tools/ffmpeg/faceDetection.ts:19",
+    "Body": "The production model path check is likely wrong in the bundled layout. With bundling, this module will be under `dist/tools/ffmpeg/`, but `tsup.config.ts` copies models to `dist/models/`, not `dist/tools/ffmpeg/models/`. As a result `existsSync(path.join(__dirname_local, 'models', ...))` will fail and the fallback points to `assets/models` (which won’t exist in dist). Also, the manual `new URL(...).pathname.replace(...)` is brittle with URL-encoding (e.g., spaces) and is better handled by `fileURLToPath(import.meta.url)`. Suggest resolving `MODEL_PATH` against `dist/models` relative to this module (e.g., `path.resolve(__dirname_local, '..', '..', 'models', 'ultraface-320.onnx')`) and using `fileURLToPath`.\n```suggestion\nimport { fileURLToPath } from 'url'\n\nconst ffmpegPath = getFFmpegPath()\nconst ffprobePath = getFFprobePath()\n\n// Resolve model path: dist/models/ (production) or assets/models/ (dev)\nconst __filename_local = fileURLToPath(import.meta.url)\nconst __dirname_local = path.dirname(__filename_local)\n\nconst PROD_MODEL_PATH = path.resolve(__dirname_local, '..', '..', 'models', 'ultraface-320.onnx')\nconst DEV_MODEL_PATH = path.resolve(\n  __dirname_local,\n  '..',\n  '..',\n  '..',\n  'assets',\n  'models',\n  'ultraface-320.onnx',\n)\n\nconst MODEL_PATH = existsSync(PROD_MODEL_PATH) ? PROD_MODEL_PATH : DEV_MODEL_PATH\n```"
+  },
+  {
+    "Index": 18,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0TYW",
+    "File": "src/review/routes.ts:20",
+    "Body": "This cache implementation can’t represent a cached `null` value because `getCached` returns `null` for both “missing/expired” and “cached value is null”. As a result, the `profile` endpoint will refetch on every call whenever the profile is actually null (or intentionally cached as null). Use `undefined` (or a discriminated wrapper like `{ hit: boolean; value: T }`) to represent a cache miss so `null` can be cached as a legitimate value."
+  },
+  {
+    "Index": 19,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0TYn",
+    "File": "src/review/routes.ts:56",
+    "Body": "This cache implementation can’t represent a cached `null` value because `getCached` returns `null` for both “missing/expired” and “cached value is null”. As a result, the `profile` endpoint will refetch on every call whenever the profile is actually null (or intentionally cached as null). Use `undefined` (or a discriminated wrapper like `{ hit: boolean; value: T }`) to represent a cache miss so `null` can be cached as a legitimate value."
+  },
+  {
+    "Index": 20,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0TY7",
+    "File": "src/review/server.ts:42",
+    "Body": "The SPA fallback route pattern `/{*splat}` is not a standard Express route pattern and is likely not matched (or may throw) under Express routing/path-to-regexp behavior. For Express, a safer approach is to use a catch-all like `app.get('/*', ...)` (Express 5-safe) or `app.use((req,res,next)=>...)` to serve `index.html` when the path isn’t `/api` or `/media`.\n```suggestion\n  app.get('/*', (req, res, next) => {\n    if (!req.path.startsWith('/api/') && !req.path.startsWith('/media/')) {\n      res.sendFile(path.join(publicDir, 'index.html'))\n      return\n    }\n    next()\n```"
+  },
+  {
+    "Index": 21,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0TZL",
+    "File": "src/review/server.ts:49",
+    "Body": "`app.listen(p)` binds to all interfaces by default, which can expose the review UI and the `/media/*` static file serving to other machines on the network (and allows approving/scheduling posts remotely). Since this is intended as a local review tool, bind explicitly to localhost (e.g., `127.0.0.1`) by default, and optionally allow an explicit `--host` flag to override when desired."
+  },
+  {
+    "Index": 22,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0TZg",
+    "File": "src/__tests__/pipeline.test.ts:301",
+    "Body": "`buildPublishQueue()` is typed to return `QueueBuildResult` (`{ itemsCreated, itemsSkipped, errors }`), but this mock resolves to a different shape (`{ queueDir, items }`). This can cause typechecking failures (or hide regressions if the test suite is not typechecked) and makes assertions about pipeline stage behavior unreliable. Update the mock return value to match `QueueBuildResult`.\n```suggestion\n    mockBuildPublishQueue.mockResolvedValue({ itemsCreated: 0, itemsSkipped: 0, errors: [] })\n```"
+  },
+  {
+    "Index": 23,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0dLS",
+    "File": "src/services/scheduler.ts:11",
+    "Body": "The chunking approach (14-day chunks up to 730 days) could lead to performance issues if the first several chunks are fully booked. Consider adding early termination logic or reducing MAX_LOOKAHEAD_DAYS if the schedule is consistently full.\n```suggestion\nconst MAX_LOOKAHEAD_DAYS = Math.min(\n  730, // absolute hard ceiling (~2 years) to avoid unbounded iteration\n  Number.isFinite(Number(process.env.SCHEDULER_MAX_LOOKAHEAD_DAYS))\n    && Number(process.env.SCHEDULER_MAX_LOOKAHEAD_DAYS) > 0\n    ? Number(process.env.SCHEDULER_MAX_LOOKAHEAD_DAYS)\n    : 180 // safer default (~6 months) to reduce worst-case work\n)\n```"
+  },
+  {
+    "Index": 24,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0dLz",
+    "File": "src/services/lateApi.ts:224",
+    "Body": "The `duplex: 'half'` property is a Node.js-specific extension that's not in the standard RequestInit type, requiring a cast. Consider adding a type assertion comment or defining a custom type that extends RequestInit with this property to make the cast more explicit."
+  },
+  {
+    "Index": 25,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0dMD",
+    "File": "src/config/modelConfig.ts:23",
+    "Body": "All agents now use PREMIUM_MODEL, which may significantly increase API costs compared to the previous tiered approach (FREE_MODEL for summary/chapters, STANDARD_MODEL for social/blog). Consider documenting this cost impact in the PR description or reverting agents that don't require premium capabilities."
+  },
+  {
+    "Index": 26,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0dMQ",
+    "File": "src/services/postStore.ts:215",
+    "Body": "The type assertion assumes `renameErr` is a `NodeJS.ErrnoException`, but this isn't guaranteed. If the error doesn't have a `code` property, accessing it will be undefined and the fallback won't trigger. Add a type guard or check for the property's existence before accessing it."
+  },
+  {
+    "Index": 27,
+    "ThreadID": "PRRT_kwDORK3Ahc5t0dMW",
+    "File": "src/services/queueBuilder.ts:220",
+    "Body": "The fallback `|| post.content` means if `stripFrontmatter()` returns an empty string, it falls back to the original content (which may still contain frontmatter). This could result in frontmatter being sent to social platforms. Consider checking for empty string explicitly or documenting why this fallback is safe.\n```suggestion\n      const stripped = stripFrontmatter(post.content)\n      const postContent = stripped === '' ? '' : (stripped ?? post.content)\n```"
+  }
+]

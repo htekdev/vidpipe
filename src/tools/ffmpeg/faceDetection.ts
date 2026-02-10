@@ -5,6 +5,7 @@ import path from 'path'
 import os from 'os'
 import sharp from 'sharp'
 import * as ort from 'onnxruntime-node'
+import { fileURLToPath } from 'url'
 import logger from '../../config/logger'
 import { getFFmpegPath, getFFprobePath } from '../../config/ffmpegResolver.js'
 
@@ -12,10 +13,21 @@ const ffmpegPath = getFFmpegPath()
 const ffprobePath = getFFprobePath()
 
 // Resolve model path: dist/models/ (production) or assets/models/ (dev)
-const __dirname_local = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Z]:)/, '$1'))
-const MODEL_PATH = existsSync(path.join(__dirname_local, 'models', 'ultraface-320.onnx'))
-  ? path.join(__dirname_local, 'models', 'ultraface-320.onnx')
-  : path.resolve(__dirname_local, '..', '..', '..', 'assets', 'models', 'ultraface-320.onnx')
+const __filename_local = fileURLToPath(import.meta.url)
+const __dirname_local = path.dirname(__filename_local)
+
+const PROD_MODEL_PATH = path.resolve(__dirname_local, '..', '..', 'models', 'ultraface-320.onnx')
+const DEV_MODEL_PATH = path.resolve(
+  __dirname_local,
+  '..',
+  '..',
+  '..',
+  'assets',
+  'models',
+  'ultraface-320.onnx',
+)
+
+const MODEL_PATH = existsSync(PROD_MODEL_PATH) ? PROD_MODEL_PATH : DEV_MODEL_PATH
 
 /** Cached ONNX session — loaded once, reused across calls. */
 let cachedSession: ort.InferenceSession | null = null

@@ -45,7 +45,7 @@ export async function startReviewServer(options: ReviewServerOptions = {}): Prom
   // Start server with port retry logic
   return new Promise((resolve, reject) => {
     const tryPort = (p: number, attempts: number) => {
-      const server = app.listen(p, () => {
+      const server = app.listen(p, '127.0.0.1', () => {
         logger.info(`Review server running at http://localhost:${p}`)
 
         // Track open connections so we can destroy them on shutdown
@@ -58,9 +58,28 @@ export async function startReviewServer(options: ReviewServerOptions = {}): Prom
         resolve({
           port: p,
           close: () => new Promise<void>((res) => {
+            let done = false
+
+            const finish = () => {
+              if (done) return
+              done = true
+              res()
+            }
+
             for (const conn of connections) conn.destroy()
-            server.close(() => res())
-            setTimeout(() => res(), 2000).unref()
+
+            const timeout = setTimeout(() => {
+              logger.warn('Timed out waiting for review server to close, forcing shutdown')
+              finish()
+            }, 2000)
+
+            // Allow process to exit naturally even if timeout is pending
+            timeout.unref()
+
+            server.close(() => {
+              clearTimeout(timeout)
+              finish()
+            })
           }),
         })
       })

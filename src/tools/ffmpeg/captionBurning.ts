@@ -9,10 +9,11 @@ import { getFFmpegPath } from '../../config/ffmpegResolver.js'
 const ffmpegPath = getFFmpegPath()
 const __dirname = pathMod.dirname(fileURLToPath(import.meta.url))
 
-// In tsup bundle: __dirname = dist/, fonts copied to dist/fonts/
+// In tsup bundle: __dirname = dist/tools/ffmpeg/, fonts copied to dist/fonts/
 // In dev (tsx): __dirname = src/tools/ffmpeg/, fonts at ../../../assets/fonts/
-const FONTS_DIR = existsSync(pathMod.join(__dirname, 'fonts'))
-  ? pathMod.join(__dirname, 'fonts')
+const bundledFontsDir = pathMod.resolve(__dirname, '..', '..', 'fonts')
+const FONTS_DIR = existsSync(bundledFontsDir)
+  ? bundledFontsDir
   : pathMod.resolve(__dirname, '..', '..', '..', 'assets', 'fonts')
 
 /**

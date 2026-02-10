@@ -9,10 +9,11 @@ import { getFFmpegPath } from '../../config/ffmpegResolver.js'
 const ffmpegPath = getFFmpegPath()
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
-// In tsup bundle: __dirname = dist/, fonts copied to dist/fonts/
+// In tsup bundle: __dirname = dist/tools/ffmpeg/, fonts copied to dist/fonts/
 // In dev (tsx): __dirname = src/tools/ffmpeg/, fonts at ../../../assets/fonts/
-const FONTS_DIR = existsSync(path.join(__dirname, 'fonts'))
-  ? path.join(__dirname, 'fonts')
+const bundledFontsDir = path.resolve(__dirname, '..', '..', 'fonts')
+const FONTS_DIR = existsSync(bundledFontsDir)
+  ? bundledFontsDir
   : path.resolve(__dirname, '..', '..', '..', 'assets', 'fonts')
 
 export interface KeepSegment {

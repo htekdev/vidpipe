@@ -298,7 +298,7 @@ describe('processVideo', () => {
     mockGenerateShortPosts.mockResolvedValue([])
     mockGenerateBlogPost.mockResolvedValue('# Blog')
     mockCommitAndPush.mockResolvedValue(undefined)
-    mockBuildPublishQueue.mockResolvedValue({ queueDir: '/queue', items: [] })
+    mockBuildPublishQueue.mockResolvedValue({ itemsCreated: 0, itemsSkipped: 0, errors: [] })
   })
 
   it('returns a PipelineResult with all stages recorded', async () => {

@@ -217,7 +217,8 @@ export async function buildPublishQueue(
       }
 
       // Use raw post content (strip frontmatter if the content includes it)
-      const postContent = stripFrontmatter(post.content) || post.content
+      const stripped = stripFrontmatter(post.content)
+      const postContent = stripped.length > 0 ? stripped : post.content
 
       await createItem(itemId, metadata, postContent, mediaPath ?? undefined)
       result.itemsCreated++

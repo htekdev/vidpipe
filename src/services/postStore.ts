@@ -212,7 +212,8 @@ export async function approveItem(
   } catch (renameErr: unknown) {
     // On Windows, rename can fail with EPERM if a file handle is still releasing.
     // Fall back to recursive copy + delete.
-    if ((renameErr as NodeJS.ErrnoException).code === 'EPERM') {
+    const errCode = (renameErr as NodeJS.ErrnoException | null)?.code
+    if (errCode === 'EPERM') {
       logger.warn(`rename failed (EPERM) for ${id}, falling back to copy+delete`)
       await fs.cp(item.folderPath, destPath, { recursive: true })
       await fs.rm(item.folderPath, { recursive: true, force: true })

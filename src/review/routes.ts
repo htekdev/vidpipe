@@ -12,11 +12,11 @@ import logger from '../config/logger'
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
 const cache = new Map<string, { data: unknown; expiry: number }>()
 
-function getCached<T>(key: string): T | null {
+function getCached<T>(key: string): T | undefined {
   const entry = cache.get(key)
   if (entry && entry.expiry > Date.now()) return entry.data as T
   cache.delete(key)
-  return null
+  return undefined
 }
 
 function setCache(key: string, data: unknown, ttl = CACHE_TTL_MS): void {
@@ -53,7 +53,7 @@ export function createRouter(): Router {
       })(),
       (async () => {
         const cached = getCached<LateProfile | null>('profile')
-        if (cached !== null) return cached
+        if (cached !== undefined) return cached
         const client = new LateApiClient()
         const profiles = await client.listProfiles()
         const profile = profiles[0] || null
@@ -87,7 +87,7 @@ export function createRouter(): Router {
 
       // 1. Find next available slot
       const slot = await findNextSlot(latePlatform)
-      if (!slot) return res.status(409).json({ error: 'No available schedule slots within 14 days' })
+      if (!slot) return res.status(409).json({ error: 'No available schedule slots in the current scheduling window' })
 
       // 2. Resolve account ID
       const platform = fromLatePlatform(latePlatform)
@@ -205,7 +205,7 @@ export function createRouter(): Router {
       setCache('accounts', accounts)
       res.json({ accounts })
     } catch (err) {
-      res.json({ accounts: [], error: err instanceof Error ? err.message : 'Failed to fetch accounts' })
+      res.status(500).json({ accounts: [], error: err instanceof Error ? err.message : 'Failed to fetch accounts' })
     }
   })
 
@@ -213,7 +213,7 @@ export function createRouter(): Router {
   router.get('/api/profile', async (req, res) => {
     try {
       const cached = getCached<LateProfile | null>('profile')
-      if (cached !== null) return res.json({ profile: cached })
+      if (cached !== undefined) return res.json({ profile: cached })
 
       const client = new LateApiClient()
       const profiles = await client.listProfiles()
@@ -221,7 +221,7 @@ export function createRouter(): Router {
       setCache('profile', profile)
       res.json({ profile })
     } catch (err) {
-      res.json({ profile: null, error: err instanceof Error ? err.message : 'Failed to fetch profile' })
+      res.status(500).json({ profile: null, error: err instanceof Error ? err.message : 'Failed to fetch profile' })
     }
   })
 
