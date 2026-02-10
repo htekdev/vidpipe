@@ -7,7 +7,8 @@ const DAY_MAP: Record<DayOfWeek, number> = {
   sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
 }
 
-const MAX_LOOKAHEAD_DAYS = 14
+const CHUNK_DAYS = 14        // generate candidates in 14-day chunks
+const MAX_LOOKAHEAD_DAYS = 730  // hard ceiling (~2 years)
 
 interface BookedSlot {
   scheduledFor: string
@@ -124,8 +125,8 @@ async function buildBookedSlots(platform?: string): Promise<BookedSlot[]> {
  * Algorithm (generate-sort-filter):
  * 1. Load platform schedule config from schedule.json
  * 2. Build set of already-booked datetimes from Late API + local published items
- * 3. Generate ALL candidate slot datetimes for the next MAX_LOOKAHEAD_DAYS days
- * 4. Sort candidates chronologically
+ * 3. In 14-day chunks, generate candidate slot datetimes, sort, and check availability
+ * 4. If no available slot in the current chunk, expand to the next chunk (up to ~2 years)
  * 5. Return the first candidate not already booked, or null if none found
  */
 export async function findNextSlot(platform: string): Promise<string | null> {
@@ -138,36 +139,37 @@ export async function findNextSlot(platform: string): Promise<string | null> {
 
   const { timezone } = config
   const bookedSlots = await buildBookedSlots(platform)
-
-  // Build a set of booked datetime strings for quick lookup
   const bookedDatetimes = new Set(bookedSlots.map(s => s.scheduledFor))
 
   const now = new Date()
+  let startOffset = 1
 
-  // Generate all candidate slot datetimes across the lookahead window
-  const candidates: string[] = []
-  for (let dayOffset = 1; dayOffset <= MAX_LOOKAHEAD_DAYS; dayOffset++) {
-    const candidateDate = new Date(now)
-    candidateDate.setDate(candidateDate.getDate() + dayOffset)
+  while (startOffset <= MAX_LOOKAHEAD_DAYS) {
+    const endOffset = Math.min(startOffset + CHUNK_DAYS - 1, MAX_LOOKAHEAD_DAYS)
+    const candidates: string[] = []
 
-    const dayOfWeek = getDayOfWeekInTimezone(candidateDate, timezone)
+    for (let dayOffset = startOffset; dayOffset <= endOffset; dayOffset++) {
+      const candidateDate = new Date(now)
+      candidateDate.setDate(candidateDate.getDate() + dayOffset)
 
-    if (platformConfig.avoidDays.includes(dayOfWeek)) continue
+      const dayOfWeek = getDayOfWeekInTimezone(candidateDate, timezone)
+      if (platformConfig.avoidDays.includes(dayOfWeek)) continue
 
-    for (const slot of platformConfig.slots) {
-      if (!slot.days.includes(dayOfWeek)) continue
-      candidates.push(buildSlotDatetime(candidateDate, slot.time, timezone))
+      for (const slot of platformConfig.slots) {
+        if (!slot.days.includes(dayOfWeek)) continue
+        candidates.push(buildSlotDatetime(candidateDate, slot.time, timezone))
+      }
     }
-  }
 
-  // Sort chronologically (ISO format strings sort correctly)
-  candidates.sort()
+    candidates.sort()
 
-  // Return first available (not booked) candidate
-  const available = candidates.find(c => !bookedDatetimes.has(c))
-  if (available) {
-    logger.debug(`Found available slot for ${platform}: ${available}`)
-    return available
+    const available = candidates.find(c => !bookedDatetimes.has(c))
+    if (available) {
+      logger.debug(`Found available slot for ${platform}: ${available}`)
+      return available
+    }
+
+    startOffset = endOffset + 1
   }
 
   logger.warn(`No available slot found for "${platform}" within ${MAX_LOOKAHEAD_DAYS} days`)

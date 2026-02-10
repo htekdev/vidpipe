@@ -184,6 +184,14 @@ export class LateApiClient {
     })
   }
 
+  async updatePost(postId: string, updates: Record<string, unknown>): Promise<LatePost> {
+    const data = await this.request<{ post: LatePost }>(`/posts/${encodeURIComponent(postId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(updates),
+    })
+    return data.post
+  }
+
   async uploadMedia(filePath: string): Promise<LateMediaUploadResult> {
     const fileStats = await fs.stat(filePath)
     const fileName = path.basename(filePath)
