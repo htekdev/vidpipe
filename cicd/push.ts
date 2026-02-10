@@ -125,59 +125,97 @@ const POLL_INTERVAL = 15_000;
 
 let codeqlCompleted = false;
 let codeqlConclusion = '';
-let copilotReviewFound = false;
+let copilotReviewDone = false;
 let copilotReviewCommit = '';
+let copilotReviewPending = false;
+
+// Pre-check: is Copilot review pending? (requested_reviewers tells us)
+const rrResult = tryRun(`gh api repos/${owner}/${repo}/pulls/${prNumber}/requested_reviewers`);
+if (rrResult.ok && rrResult.stdout) {
+  try {
+    const rr = JSON.parse(rrResult.stdout);
+    const users: any[] = rr.users ?? [];
+    copilotReviewPending = users.some((u: any) => u.login === 'Copilot' || u.login?.startsWith('copilot-pull-request-reviewer'));
+  } catch { /* ignore */ }
+}
+
+// If Copilot is not pending and has existing reviews, skip polling for it
+if (!copilotReviewPending) {
+  const existingResult = tryRun(`gh api repos/${owner}/${repo}/pulls/${prNumber}/reviews`);
+  if (existingResult.ok && existingResult.stdout) {
+    try {
+      const reviews: any[] = JSON.parse(existingResult.stdout);
+      const copilotReviews = reviews.filter(
+        (r: any) => r.user?.login?.startsWith('copilot-pull-request-reviewer')
+      );
+      if (copilotReviews.length > 0) {
+        copilotReviewDone = true;
+        const latest = copilotReviews[copilotReviews.length - 1];
+        copilotReviewCommit = latest.commit_id ?? '';
+        console.log(`  Copilot Review: Already complete (reviewed ${copilotReviewCommit.slice(0, 7)})`);
+      } else {
+        // No reviews and not pending — Copilot review not configured, skip
+        copilotReviewDone = true;
+        copilotReviewCommit = '';
+        console.log('  Copilot Review: Not configured for this PR — skipping');
+      }
+    } catch { /* will fall through to polling */ }
+  }
+} else {
+  console.log('  Copilot Review: In progress — will poll until complete');
+}
 
 for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-  const done = codeqlCompleted && copilotReviewFound;
+  const done = codeqlCompleted && copilotReviewDone;
   if (done) break;
 
   if (attempt > 1) await sleep(POLL_INTERVAL);
 
   const pending: string[] = [];
   if (!codeqlCompleted) pending.push('CodeQL');
-  if (!copilotReviewFound) pending.push('Copilot Review');
+  if (!copilotReviewDone) pending.push('Copilot Review');
   console.log(`⏳ Still waiting for ${pending.join(', ')}... (attempt ${attempt}/${MAX_ATTEMPTS})`);
 
   // Check CodeQL
   if (!codeqlCompleted) {
-    const checksResult = tryRun(
-      `gh api repos/${owner}/${repo}/commits/${sha}/check-runs --jq ".check_runs[]"`
+    const fullResult = tryRun(
+      `gh api repos/${owner}/${repo}/commits/${sha}/check-runs`
     );
-    if (checksResult.ok && checksResult.stdout) {
-      // Parse the full JSON response instead of using jq array expansion
-      const fullResult = tryRun(
-        `gh api repos/${owner}/${repo}/commits/${sha}/check-runs`
-      );
-      if (fullResult.ok) {
-        try {
-          const checksData = JSON.parse(fullResult.stdout);
-          const checkRuns: any[] = checksData.check_runs ?? [];
-          const codeql = checkRuns.find((c: any) => c.name === 'CodeQL');
-          if (codeql && codeql.status === 'completed') {
-            codeqlCompleted = true;
-            codeqlConclusion = codeql.conclusion;
-          }
-        } catch { /* parse error — retry next attempt */ }
-      }
+    if (fullResult.ok && fullResult.stdout) {
+      try {
+        const checksData = JSON.parse(fullResult.stdout);
+        const checkRuns: any[] = checksData.check_runs ?? [];
+        const codeql = checkRuns.find((c: any) => c.name === 'CodeQL');
+        if (codeql && codeql.status === 'completed') {
+          codeqlCompleted = true;
+          codeqlConclusion = codeql.conclusion;
+        }
+      } catch { /* parse error — retry next attempt */ }
     }
   }
 
-  // Check Copilot Review — accept latest review (threads are cumulative across PR)
-  if (!copilotReviewFound) {
-    const reviewsResult = tryRun(
-      `gh api repos/${owner}/${repo}/pulls/${prNumber}/reviews`
-    );
-    if (reviewsResult.ok && reviewsResult.stdout) {
+  // Poll Copilot Review — check if still in requested_reviewers
+  if (!copilotReviewDone) {
+    const pendingResult = tryRun(`gh api repos/${owner}/${repo}/pulls/${prNumber}/requested_reviewers`);
+    if (pendingResult.ok && pendingResult.stdout) {
       try {
-        const reviews: any[] = JSON.parse(reviewsResult.stdout);
-        const copilotReviews = reviews.filter(
-          (r: any) => r.user?.login?.startsWith('copilot-pull-request-reviewer')
-        );
-        if (copilotReviews.length > 0) {
-          copilotReviewFound = true;
-          const latest = copilotReviews[copilotReviews.length - 1];
-          copilotReviewCommit = latest.commit_id ?? '';
+        const rr = JSON.parse(pendingResult.stdout);
+        const users: any[] = rr.users ?? [];
+        const stillPending = users.some((u: any) => u.login === 'Copilot' || u.login?.startsWith('copilot-pull-request-reviewer'));
+        if (!stillPending) {
+          // Copilot finished — grab the latest review
+          const revResult = tryRun(`gh api repos/${owner}/${repo}/pulls/${prNumber}/reviews`);
+          if (revResult.ok && revResult.stdout) {
+            const reviews: any[] = JSON.parse(revResult.stdout);
+            const copilotReviews = reviews.filter(
+              (r: any) => r.user?.login?.startsWith('copilot-pull-request-reviewer')
+            );
+            if (copilotReviews.length > 0) {
+              copilotReviewDone = true;
+              const latest = copilotReviews[copilotReviews.length - 1];
+              copilotReviewCommit = latest.commit_id ?? '';
+            }
+          }
         }
       } catch { /* parse error — retry next attempt */ }
     }
@@ -258,9 +296,11 @@ Run the **security-fixer** agent to remediate these alerts, then run \`npm run p
 }
 
 // Copilot Review result
-if (!copilotReviewFound) {
-  console.log('⏰ Copilot Review: No reviews found. Re-run `npm run push` later to check.');
+if (!copilotReviewDone) {
+  console.log('⏰ Copilot Review: Did not complete within 5 minutes. Re-run `npm run push` later to check.');
   allPassed = false;
+} else if (!copilotReviewCommit) {
+  // Not configured — already logged, nothing to check
 } else {
   if (copilotReviewCommit === sha) {
     console.log(`✅ Copilot Review: Reviewed commit ${sha.slice(0, 7)}`);
