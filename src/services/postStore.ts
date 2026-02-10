@@ -1,5 +1,5 @@
 import { getConfig } from '../config/environment'
-import logger from '../config/logger'
+import logger, { sanitizeForLog } from '../config/logger'
 import { promises as fs } from 'fs'
 import path from 'path'
 
@@ -36,6 +36,13 @@ export interface QueueItem {
   folderPath: string
 }
 
+function validateId(id: string): void {
+  // Prevent path traversal by ensuring id contains only safe characters
+  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+    throw new Error(`Invalid ID format: ${id}`)
+  }
+}
+
 function getQueueDir(): string {
   const { OUTPUT_DIR } = getConfig()
   return path.join(OUTPUT_DIR, 'publish-queue')
@@ -54,7 +61,7 @@ async function readQueueItem(folderPath: string, id: string): Promise<QueueItem 
   try {
     await fs.access(metadataPath)
   } catch {
-    logger.debug(`Skipping ${id}: no metadata.json found`)
+    logger.debug(`Skipping ${sanitizeForLog(id)}: no metadata.json found`)
     return null
   }
 
@@ -66,12 +73,13 @@ async function readQueueItem(folderPath: string, id: string): Promise<QueueItem 
     try {
       postContent = await fs.readFile(postPath, 'utf-8')
     } catch {
-      logger.debug(`No post.md found for ${id}`)
+      logger.debug(`No post.md found for ${sanitizeForLog(id)}`)
     }
 
     let hasMedia = false
+    const mediaFilePath = path.join(folderPath, 'media.mp4')
     try {
-      await fs.access(mediaPath)
+      await fs.access(mediaFilePath)
       hasMedia = true
     } catch {
       // no media file
@@ -82,11 +90,11 @@ async function readQueueItem(folderPath: string, id: string): Promise<QueueItem 
       metadata,
       postContent,
       hasMedia,
-      mediaPath: hasMedia ? mediaPath : null,
+      mediaPath: hasMedia ? mediaFilePath : null,
       folderPath,
     }
   } catch (err) {
-    logger.debug(`Failed to read queue item ${id}: ${err}`)
+    logger.debug(`Failed to read queue item ${sanitizeForLog(id)}: ${sanitizeForLog(err)}`)
     return null
   }
 }
@@ -118,6 +126,7 @@ export async function getPendingItems(): Promise<QueueItem[]> {
 }
 
 export async function getItem(id: string): Promise<QueueItem | null> {
+  validateId(id)
   const folderPath = path.join(getQueueDir(), id)
   return readQueueItem(folderPath, id)
 }
@@ -128,6 +137,7 @@ export async function createItem(
   postContent: string,
   mediaSourcePath?: string,
 ): Promise<QueueItem> {
+  validateId(id)
   const folderPath = path.join(getQueueDir(), id)
   await fs.mkdir(folderPath, { recursive: true })
 
@@ -142,7 +152,7 @@ export async function createItem(
     hasMedia = true
   }
 
-  logger.debug(`Created queue item: ${id}`)
+  logger.debug(`Created queue item: ${sanitizeForLog(id)}`)
 
   return {
     id,
@@ -158,6 +168,7 @@ export async function updateItem(
   id: string,
   updates: { postContent?: string; metadata?: Partial<QueueItemMetadata> },
 ): Promise<QueueItem | null> {
+  validateId(id)
   const existing = await getItem(id)
   if (!existing) return null
 
@@ -175,7 +186,7 @@ export async function updateItem(
     await fs.writeFile(path.join(existing.folderPath, 'post.md'), updates.postContent, 'utf-8')
   }
 
-  logger.debug(`Updated queue item: ${id}`)
+  logger.debug(`Updated queue item: ${sanitizeForLog(id)}`)
   return existing
 }
 
@@ -183,6 +194,7 @@ export async function approveItem(
   id: string,
   publishData: { latePostId: string; scheduledFor: string; publishedUrl?: string; accountId?: string },
 ): Promise<void> {
+  validateId(id)
   const item = await getItem(id)
   if (!item) return
 
@@ -204,8 +216,15 @@ export async function approveItem(
   )
 
   const publishedDir = getPublishedDir()
-  const destPath = path.join(publishedDir, id)
   await fs.mkdir(publishedDir, { recursive: true })
+  
+  // Validate destination path to prevent path traversal
+  const destPath = path.join(publishedDir, path.basename(id))
+  const resolvedDest = path.resolve(destPath)
+  const resolvedPublishedDir = path.resolve(publishedDir)
+  if (!resolvedDest.startsWith(resolvedPublishedDir + path.sep) && resolvedDest !== resolvedPublishedDir) {
+    throw new Error(`Invalid destination path for item ${id}`)
+  }
 
   try {
     await fs.rename(item.folderPath, destPath)
@@ -214,7 +233,7 @@ export async function approveItem(
     // Fall back to recursive copy + delete.
     const errCode = (renameErr as NodeJS.ErrnoException | null)?.code
     if (errCode === 'EPERM') {
-      logger.warn(`rename failed (EPERM) for ${id}, falling back to copy+delete`)
+      logger.warn(`rename failed (EPERM) for ${sanitizeForLog(id)}, falling back to copy+delete`)
       await fs.cp(item.folderPath, destPath, { recursive: true })
       await fs.rm(item.folderPath, { recursive: true, force: true })
     } else {
@@ -222,16 +241,17 @@ export async function approveItem(
     }
   }
 
-  logger.debug(`Approved and moved queue item: ${id}`)
+  logger.debug(`Approved and moved queue item: ${sanitizeForLog(id)}`)
 }
 
 export async function rejectItem(id: string): Promise<void> {
+  validateId(id)
   const folderPath = path.join(getQueueDir(), id)
   try {
     await fs.rm(folderPath, { recursive: true })
-    logger.debug(`Rejected and deleted queue item: ${id}`)
+    logger.debug(`Rejected and deleted queue item: ${sanitizeForLog(id)}`)
   } catch (err) {
-    logger.debug(`Failed to reject queue item ${id}: ${err}`)
+    logger.debug(`Failed to reject queue item ${sanitizeForLog(id)}: ${sanitizeForLog(err)}`)
   }
 }
 
@@ -258,6 +278,7 @@ export async function getPublishedItems(): Promise<QueueItem[]> {
 }
 
 export async function itemExists(id: string): Promise<'pending' | 'published' | null> {
+  validateId(id)
   try {
     await fs.access(path.join(getQueueDir(), id))
     return 'pending'

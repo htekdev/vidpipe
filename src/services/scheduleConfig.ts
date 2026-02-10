@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs'
 import path from 'path'
 import logger from '../config/logger'
+import { randomUUID } from 'crypto'
 
 export type DayOfWeek = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
 
@@ -158,9 +159,11 @@ export async function loadScheduleConfig(configPath?: string): Promise<ScheduleC
   try {
     raw = await fs.readFile(filePath, 'utf-8')
   } catch {
+    const tempPath = `${filePath}.tmp-${randomUUID()}`
     logger.info(`No schedule.json found at ${filePath}, creating with defaults`)
     const defaults = getDefaultScheduleConfig()
-    await fs.writeFile(filePath, JSON.stringify(defaults, null, 2), 'utf-8')
+    await fs.writeFile(tempPath, JSON.stringify(defaults, null, 2), 'utf-8')
+    await fs.rename(tempPath, filePath)
     cachedConfig = defaults
     return defaults
   }

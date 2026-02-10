@@ -9,7 +9,7 @@ import { costTracker } from '../services/costTracker.js';
 import { getProvider, getProviderName, resetProvider } from '../providers/index.js';
 import { CopilotProvider } from '../providers/CopilotProvider.js';
 import { initConfig } from '../config/environment.js';
-import { Platform, toLateplatform, fromLatePlatform } from '../types/index.js';
+import { Platform, toLatePlatform, fromLatePlatform } from '../types/index.js';
 
 // ─── pricing.ts ───────────────────────────────────────────────
 
@@ -401,18 +401,18 @@ describe('providers/index', () => {
   });
 });
 
-// ─── toLateplatform / fromLatePlatform ─────────────────────────
+// ─── toLatePlatform / fromLatePlatform ─────────────────────────
 
-describe('toLateplatform', () => {
+describe('toLatePlatform', () => {
   it('maps Platform.X to twitter', () => {
-    expect(toLateplatform(Platform.X)).toBe('twitter');
+    expect(toLatePlatform(Platform.X)).toBe('twitter');
   });
 
   it('passes other platforms through unchanged', () => {
-    expect(toLateplatform(Platform.YouTube)).toBe('youtube');
-    expect(toLateplatform(Platform.TikTok)).toBe('tiktok');
-    expect(toLateplatform(Platform.Instagram)).toBe('instagram');
-    expect(toLateplatform(Platform.LinkedIn)).toBe('linkedin');
+    expect(toLatePlatform(Platform.YouTube)).toBe('youtube');
+    expect(toLatePlatform(Platform.TikTok)).toBe('tiktok');
+    expect(toLatePlatform(Platform.Instagram)).toBe('instagram');
+    expect(toLatePlatform(Platform.LinkedIn)).toBe('linkedin');
   });
 });
 

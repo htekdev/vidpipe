@@ -2,13 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
+import { randomUUID } from 'crypto'
 
 // ── Mock setup ─────────────────────────────────────────────────────────
 
-const tmpDir = path.join(os.tmpdir(), `vidpipe-poststore-${Date.now()}`)
+const tmpDir = path.join(os.tmpdir(), `vidpipe-poststore-${randomUUID()}`)
 
 vi.mock('../config/logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  sanitizeForLog: vi.fn((v) => String(v)),
 }))
 
 vi.mock('../config/environment.js', () => ({

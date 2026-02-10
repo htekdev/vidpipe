@@ -1,7 +1,15 @@
 import { LateApiClient, type LatePost } from './lateApi'
-import { loadScheduleConfig, type PlatformSchedule, type DayOfWeek } from './scheduleConfig'
-import { getPublishedItems, type QueueItem } from './postStore'
-import logger from '../config/logger'
+import { loadScheduleConfig, type DayOfWeek } from './scheduleConfig'
+import { getPublishedItems } from './postStore'
+import logger, { sanitizeForLog } from '../config/logger'
+
+/**
+ * Normalize ISO datetime to milliseconds since epoch for collision detection.
+ * Handles different ISO formats from Late API vs local queue.
+ */
+function normalizeDateTime(isoString: string): number {
+  return new Date(isoString).getTime()
+}
 
 const DAY_MAP: Record<DayOfWeek, number> = {
   sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
@@ -155,7 +163,7 @@ export async function findNextSlot(platform: string): Promise<string | null> {
 
   const { timezone } = config
   const bookedSlots = await buildBookedSlots(platform)
-  const bookedDatetimes = new Set(bookedSlots.map(s => s.scheduledFor))
+  const bookedDatetimes = new Set(bookedSlots.map(s => normalizeDateTime(s.scheduledFor)))
 
   const now = new Date()
   let startOffset = 1
@@ -179,16 +187,16 @@ export async function findNextSlot(platform: string): Promise<string | null> {
 
     candidates.sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
 
-    const available = candidates.find(c => !bookedDatetimes.has(c))
+    const available = candidates.find(c => !bookedDatetimes.has(normalizeDateTime(c)))
     if (available) {
-      logger.debug(`Found available slot for ${platform}: ${available}`)
+      logger.debug(`Found available slot for ${sanitizeForLog(platform)}: ${sanitizeForLog(available)}`)
       return available
     }
 
     startOffset = endOffset + 1
   }
 
-  logger.warn(`No available slot found for "${platform}" within ${MAX_LOOKAHEAD_DAYS} days`)
+  logger.warn(`No available slot found for "${sanitizeForLog(platform)}" within ${MAX_LOOKAHEAD_DAYS} days`)
   return null
 }
 
@@ -225,6 +233,6 @@ export async function getScheduleCalendar(
     filtered = filtered.filter(s => new Date(s.scheduledFor).getTime() <= endMs)
   }
 
-  filtered.sort((a, b) => a.scheduledFor.localeCompare(b.scheduledFor))
+  filtered.sort((a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime())
   return filtered
 }

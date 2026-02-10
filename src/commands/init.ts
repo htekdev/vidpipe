@@ -123,10 +123,10 @@ export async function runInit(): Promise<void> {
       const createSchedule = await ask('  ? Create default schedule.json? [Y/n]: ')
       if (createSchedule.toLowerCase() !== 'n') {
         const schedulePath = path.join(process.cwd(), 'schedule.json')
-        const exists = await fs.access(schedulePath).then(() => true).catch(() => false)
-        if (exists) {
+        try {
+          await fs.access(schedulePath)
           console.log('  ✅ schedule.json already exists')
-        } else {
+        } catch {
           await fs.writeFile(schedulePath, JSON.stringify(getDefaultScheduleConfig(), null, 2))
           console.log('  ✅ schedule.json created with optimal posting times')
         }

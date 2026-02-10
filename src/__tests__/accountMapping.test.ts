@@ -6,6 +6,7 @@ import path from 'path'
 
 vi.mock('../config/logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  sanitizeForLog: vi.fn((v) => String(v)),
 }))
 
 vi.mock('../config/environment.js', () => ({

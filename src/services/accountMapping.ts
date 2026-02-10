@@ -1,7 +1,7 @@
 import { Platform } from '../types/index.js'
 import { LateApiClient } from './lateApi.js'
 import type { LateAccount } from './lateApi.js'
-import logger from '../config/logger.js'
+import logger, { sanitizeForLog } from '../config/logger.js'
 import { promises as fs } from 'fs'
 import path from 'path'
 

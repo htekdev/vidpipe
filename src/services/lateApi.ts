@@ -12,7 +12,7 @@
  * - No confirmation step is needed after uploading to the presigned URL.
  */
 import { getConfig } from '../config/environment.js'
-import logger from '../config/logger.js'
+import logger, { sanitizeForLog } from '../config/logger.js'
 import { promises as fs, createReadStream } from 'fs'
 import { Readable } from 'stream'
 import path from 'path'
@@ -199,14 +199,14 @@ export class LateApiClient {
     const contentType =
       ext === '.mp4' ? 'video/mp4' : ext === '.webm' ? 'video/webm' : ext === '.mov' ? 'video/quicktime' : 'video/mp4'
 
-    logger.info(`Late API uploading ${fileName} (${(fileStats.size / 1024 / 1024).toFixed(1)} MB)`)
+    logger.info(`Late API uploading ${sanitizeForLog(fileName)} (${(fileStats.size / 1024 / 1024).toFixed(1)} MB)`)
 
     // Step 1: Get presigned upload URL
     const presign = await this.request<LateMediaPresignResult>('/media/presign', {
       method: 'POST',
       body: JSON.stringify({ filename: fileName, contentType }),
     })
-    logger.debug(`Late API presigned URL obtained for ${fileName} (expires in ${presign.expiresIn}s)`)
+    logger.debug(`Late API presigned URL obtained for ${sanitizeForLog(fileName)} (expires in ${presign.expiresIn}s)`)
 
     // Step 2: Stream file to presigned URL (avoids loading entire file into memory)
     const nodeStream = createReadStream(filePath)

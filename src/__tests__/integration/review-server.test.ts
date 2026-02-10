@@ -2,13 +2,15 @@ import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vites
 import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
+import { randomUUID } from 'crypto'
 
 // ── Mock setup ─────────────────────────────────────────────────────────
 
-const tmpDir = path.join(os.tmpdir(), `vidpipe-review-test-${Date.now()}`)
+const tmpDir = path.join(os.tmpdir(), `vidpipe-review-test-${randomUUID()}`)
 
 vi.mock('../../config/logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+  sanitizeForLog: vi.fn((v) => String(v)),
 }))
 
 vi.mock('../../config/environment.js', () => ({
@@ -18,7 +20,7 @@ vi.mock('../../config/environment.js', () => ({
 
 vi.mock('../../services/lateApi.js', () => ({
   LateApiClient: class {
-    async uploadMedia() { return { url: 'https://test.com/media.mp4' } }
+    async uploadMedia() { return { url: 'https://test.com/media.mp4', type: 'video' } }
     async createPost() { return { _id: 'test-post-id', status: 'scheduled' } }
     async getScheduledPosts() { return [] }
     async listAccounts() { return [] }

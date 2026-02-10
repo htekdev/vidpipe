@@ -1,5 +1,23 @@
 import winston from 'winston'
 
+/**
+ * Sanitize user input for logging to prevent log injection attacks.
+ * Removes or escapes newlines, carriage returns, and other control characters.
+ */
+export function sanitizeForLog(value: unknown): string {
+  if (value === null || value === undefined) return String(value)
+  const str = String(value)
+  // Replace newlines, carriage returns, and other control chars with escaped versions
+  return str.replace(/[\r\n\t]/g, (c) => {
+    switch (c) {
+      case '\r': return '\\r'
+      case '\n': return '\\n'
+      case '\t': return '\\t'
+      default: return c
+    }
+  })
+}
+
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
