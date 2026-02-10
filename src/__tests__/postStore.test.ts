@@ -263,4 +263,22 @@ describe('postStore', () => {
       expect(await itemExists('nonexistent')).toBeNull()
     })
   })
+
+  describe('validateId (via exported functions)', () => {
+    it('rejects path traversal characters', async () => {
+      await expect(getItem('../etc/passwd')).rejects.toThrow('Invalid ID format')
+    })
+
+    it('rejects empty string', async () => {
+      await expect(getItem('')).rejects.toThrow('Invalid ID format')
+    })
+
+    it('rejects IDs with dots', async () => {
+      await expect(getItem('foo.bar')).rejects.toThrow('Invalid ID format')
+    })
+
+    it('rejects IDs with slashes', async () => {
+      await expect(getItem('foo/bar')).rejects.toThrow('Invalid ID format')
+    })
+  })
 })
