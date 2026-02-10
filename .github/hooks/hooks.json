@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "hooks": {
+    "preToolUse": [
+      {
+        "type": "command",
+        "bash": ".github/hooks/pre-push-tests.sh",
+        "powershell": ".github/hooks/pre-push-tests.ps1",
+        "cwd": ".",
+        "timeoutSec": 120,
+        "comment": "Run tests and coverage checks before git push"
+      }
+    ]
+  }
+}
