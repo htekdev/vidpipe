@@ -17,6 +17,7 @@ An AI-powered CLI pipeline that watches for new video recordings and transforms 
 [![npm version](https://img.shields.io/npm/v/vidpipe)](https://www.npmjs.com/package/vidpipe)
 [![Node.js 20+](https://img.shields.io/badge/node-20%2B-brightgreen)](https://nodejs.org/)
 [![License: ISC](https://img.shields.io/badge/license-ISC-blue)](./LICENSE)
+[![Docs](https://img.shields.io/badge/docs-vidpipe-a78bfa)](https://htekdev.github.io/vidpipe/)
 
 </div>
 
