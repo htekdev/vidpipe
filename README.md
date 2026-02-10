@@ -28,25 +28,38 @@ npm install -g vidpipe
 
 ## ✨ Features
 
-- 🎬 **14-Stage Automated Pipeline** — Drop a video and walk away; everything runs end-to-end
-- 🎙️ **Whisper Transcription** — Word-level timestamps via OpenAI Whisper API
-- 🔇 **AI-Driven Silence Removal** — Conservative, context-aware dead-air detection (capped at 20% removal)
-- 📐 **Smart Split-Screen Layouts** — Webcam + screen content for 3 aspect ratios: portrait (9:16), square (1:1), and feed (4:5)
-- 🔍 **Edge-Based Webcam Detection** — Detects webcam overlay position via skin-tone analysis and inter-frame edge refinement (no hardcoded margins)
-- 🎯 **Face-Aware AR-Matched Cropping** — Webcam region is aspect-ratio-matched and center-cropped to fill each layout with no black bars
-- 💬 **Karaoke Captions** — Opus Clips-style word-by-word highlighting with green active word on portrait, yellow on landscape
-- 🪝 **Hook Overlays** — Animated title text burned into portrait short clips
-- ✂️ **Short Clips** — AI identifies the best 15–60s moments, supports composite (multi-segment) shorts
-- 🎞️ **Medium Clips** — 1–3 min standalone segments for deeper content with crossfade transitions
-- 📑 **Chapter Detection** — AI-identified topic boundaries in 4 formats (JSON, Markdown, FFmetadata, YouTube timestamps)
-- 📱 **Social Media Posts** — Platform-tailored content for TikTok, YouTube, Instagram, LinkedIn, and X
-- 📰 **Dev.to Blog Post** — Long-form technical blog post with frontmatter and web-sourced links
-- 🔗 **Web Search Integration** — Finds relevant links for social posts and blog content via Exa
-- 📱 **Social Media Publishing** — Review, schedule, and publish posts to TikTok, YouTube, Instagram, LinkedIn, and X via Late API
-- 🔄 **Git Automation** — Auto-commits and pushes all generated content after each video
-- 🎨 **Brand Voice** — Customize AI tone, vocabulary, hashtags, and content style via `brand.json`
-- 👁️ **Watch Mode** — Monitors a folder and processes new `.mp4` files on arrival
-- 🧠 **Agent Architecture** — Powered by GitHub Copilot SDK with tool-calling agents
+<div align="center">
+  <img src="assets/features-infographic.png" alt="VidPipe Features — Input → AI Processing → Outputs" width="900" />
+</div>
+
+<br />
+
+<table>
+  <tr>
+    <td>🎙️ <b>Whisper Transcription</b> — Word-level timestamps</td>
+    <td>📐 <b>Split-Screen Layouts</b> — Portrait, square, and feed</td>
+  </tr>
+  <tr>
+    <td>🔇 <b>AI Silence Removal</b> — Context-aware, capped at 20%</td>
+    <td>💬 <b>Karaoke Captions</b> — Word-by-word highlighting</td>
+  </tr>
+  <tr>
+    <td>✂️ <b>Short Clips</b> — Best 15–60s moments, multi-segment</td>
+    <td>🎞️ <b>Medium Clips</b> — 1–3 min with crossfade transitions</td>
+  </tr>
+  <tr>
+    <td>📑 <b>Chapter Detection</b> — JSON, Markdown, YouTube, FFmeta</td>
+    <td>📱 <b>Social Posts</b> — TikTok, YouTube, Instagram, LinkedIn, X</td>
+  </tr>
+  <tr>
+    <td>📰 <b>Blog Post</b> — Dev.to style with web-sourced links</td>
+    <td>🎨 <b>Brand Voice</b> — Custom tone, hashtags via brand.json</td>
+  </tr>
+  <tr>
+    <td>🔍 <b>Face Detection</b> — ONNX-based webcam cropping</td>
+    <td>🔄 <b>Git Automation</b> — Auto-commit and push after each video</td>
+  </tr>
+</table>
 
 ---
 
