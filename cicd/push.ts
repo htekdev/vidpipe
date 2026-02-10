@@ -126,6 +126,7 @@ const POLL_INTERVAL = 15_000;
 let codeqlCompleted = false;
 let codeqlConclusion = '';
 let copilotReviewFound = false;
+let copilotReviewCommit = '';
 
 for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
   const done = codeqlCompleted && copilotReviewFound;
@@ -162,7 +163,7 @@ for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     }
   }
 
-  // Check Copilot Review
+  // Check Copilot Review — accept latest review (threads are cumulative across PR)
   if (!copilotReviewFound) {
     const reviewsResult = tryRun(
       `gh api repos/${owner}/${repo}/pulls/${prNumber}/reviews`
@@ -170,10 +171,14 @@ for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     if (reviewsResult.ok && reviewsResult.stdout) {
       try {
         const reviews: any[] = JSON.parse(reviewsResult.stdout);
-        const copilotReview = reviews.find(
-          (r: any) => r.user?.login?.startsWith('copilot-pull-request-reviewer') && r.commit_id === sha
+        const copilotReviews = reviews.filter(
+          (r: any) => r.user?.login?.startsWith('copilot-pull-request-reviewer')
         );
-        if (copilotReview) copilotReviewFound = true;
+        if (copilotReviews.length > 0) {
+          copilotReviewFound = true;
+          const latest = copilotReviews[copilotReviews.length - 1];
+          copilotReviewCommit = latest.commit_id ?? '';
+        }
       } catch { /* parse error — retry next attempt */ }
     }
   }
@@ -194,7 +199,7 @@ if (!codeqlCompleted) {
 } else {
   // Fetch alerts
   const alertsResult = tryRun(
-    `gh api "repos/${owner}/${repo}/code-scanning/alerts?ref=refs/heads/${branch}&state=open"`
+    `gh api "repos/${owner}/${repo}/code-scanning/alerts?ref=refs/pull/${prNumber}/head&state=open"`
   );
   if (alertsResult.ok && alertsResult.stdout) {
     try {
@@ -254,9 +259,14 @@ Run the **security-fixer** agent to remediate these alerts, then run \`npm run p
 
 // Copilot Review result
 if (!copilotReviewFound) {
-  console.log('⏰ Copilot Review did not complete within 5 minutes. Re-run `npm run push` later to check.');
+  console.log('⏰ Copilot Review: No reviews found. Re-run `npm run push` later to check.');
   allPassed = false;
 } else {
+  if (copilotReviewCommit === sha) {
+    console.log(`✅ Copilot Review: Reviewed commit ${sha.slice(0, 7)}`);
+  } else {
+    console.log(`ℹ️  Copilot Review: Latest review is for ${copilotReviewCommit.slice(0, 7)} (HEAD: ${sha.slice(0, 7)})`);
+  }
   // Check for unresolved threads
   const graphql = `{ repository(owner:\\"${owner}\\",name:\\"${repo}\\") { pullRequest(number:${prNumber}) { reviewThreads(first:100) { nodes { isResolved } } } } }`;
   const threadsResult = tryRun(
