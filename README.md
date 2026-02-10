@@ -378,3 +378,4 @@ Run `vidpipe doctor` to verify your setup.
 ## 📄 License
 
 ISC © [htekdev](https://github.com/htekdev)
+
