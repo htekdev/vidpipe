@@ -23,7 +23,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:integration": "vitest run --testPathPattern=integration",
-    "test:unit": "vitest run --testPathPattern='__tests__/(?!integration)'"
+    "test:unit": "vitest run --testPathPattern='__tests__/(?!integration)'",
+    "analyze:prompts": "tsx src/tools/analysis/runAnalysis.ts"
   },
   "keywords": [
     "video",
