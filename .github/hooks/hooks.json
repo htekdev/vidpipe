@@ -9,6 +9,14 @@
         "cwd": ".",
         "timeoutSec": 120,
         "comment": "Run tests and coverage checks before git push"
+      },
+      {
+        "type": "command",
+        "bash": ".github/hooks/pre-push-review-check.sh",
+        "powershell": ".github/hooks/pre-push-review-check.ps1",
+        "cwd": ".",
+        "timeoutSec": 10,
+        "comment": "Ensure code has been reviewed before git push (checks .github/review.json)"
       }
     ],
     "postToolUse": [

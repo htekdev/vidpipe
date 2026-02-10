@@ -31,6 +31,33 @@ You are a code reviewer for the **vidpipe** project — an automated video proce
 11. **README/docs**: If adding a user-facing feature, check that README.md or docs/ are updated.
 12. **Copilot instructions**: If changing architecture, check `.github/copilot-instructions.md` is updated.
 
+## Review Tracking
+
+After completing your review, you MUST update `.github/review.json` to record the review. This file is checked by a pre-push hook — if it's not updated, pushes will be blocked.
+
+**Steps:**
+1. Get the current HEAD commit SHA: `git rev-parse HEAD`
+2. Update `.github/review.json` with:
+   - `lastReviewedCommit`: current HEAD SHA
+   - `reviewedAt`: current ISO timestamp
+   - `reviewedBy`: "code-reviewer"
+   - `findings.total`: total number of issues found
+   - `findings.fixed`: number of issues you fixed
+   - `findings.acknowledged`: number of issues noted but not fixed
+   - `findings.items`: array of finding objects with `{ "file", "line", "severity", "message", "status" }` where status is "fixed" or "acknowledged"
+
+3. If you made fixes during the review, commit the fixes AND the updated review.json together:
+   ```
+   git add -A && git commit -m "fix: address code review findings"
+   ```
+
+4. If no fixes were needed, just update and commit review.json:
+   ```
+   git add .github/review.json && git commit -m "chore: record code review (no issues found)"
+   ```
+
+**Important:** The `lastReviewedCommit` must match the HEAD commit AFTER any fixes are committed. If you commit fixes, update review.json again with the new HEAD SHA.
+
 **Output**: Post a structured review as a PR comment using the GitHub tools. Use this format:
 
 ```
