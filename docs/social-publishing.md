@@ -49,7 +49,6 @@ This walks you through:
            { "days": ["tue", "wed"], "time": "08:00", "label": "Morning thought leadership" },
            { "days": ["tue", "wed", "thu"], "time": "12:00", "label": "Lunch break engagement" }
          ],
-         "maxPerDay": 1,
          "avoidDays": ["sat", "sun"]
        },
        "tiktok": {
@@ -57,7 +56,6 @@ This walks you through:
            { "days": ["tue", "wed", "thu"], "time": "19:00", "label": "Prime entertainment hours" },
            { "days": ["fri", "sat"], "time": "21:00", "label": "Weekend evening" }
          ],
-         "maxPerDay": 2,
          "avoidDays": []
        },
        "instagram": {
@@ -65,7 +63,6 @@ This walks you through:
            { "days": ["tue", "wed", "thu"], "time": "10:00", "label": "Morning scroll" },
            { "days": ["wed", "thu", "fri"], "time": "19:30", "label": "Evening couch time" }
          ],
-         "maxPerDay": 2,
          "avoidDays": []
        },
        "youtube": {
@@ -73,7 +70,6 @@ This walks you through:
            { "days": ["fri"], "time": "15:00", "label": "Afternoon pre-weekend" },
            { "days": ["thu", "fri"], "time": "20:00", "label": "Prime evening viewing" }
          ],
-         "maxPerDay": 1,
          "avoidDays": ["mon"]
        },
        "twitter": {
@@ -82,7 +78,6 @@ This walks you through:
            { "days": ["tue", "wed", "thu"], "time": "12:00", "label": "Lunch scroll" },
            { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "17:00", "label": "Commute home" }
          ],
-         "maxPerDay": 3,
          "avoidDays": []
        }
      }
@@ -125,7 +120,6 @@ This opens a web app at `http://localhost:3847` with a card-based review interfa
         { "days": ["tue", "wed"], "time": "08:00", "label": "Morning thought leadership" },
         { "days": ["tue", "wed", "thu"], "time": "12:00", "label": "Lunch break engagement" }
       ],
-      "maxPerDay": 1,
       "avoidDays": ["sat", "sun"]
     }
   }
@@ -140,7 +134,6 @@ This opens a web app at `http://localhost:3847` with a card-based review interfa
 | `slots[].days` | Days of the week to post (mon-sun) |
 | `slots[].time` | Time in HH:MM format |
 | `slots[].label` | Human-readable description of the time slot |
-| `maxPerDay` | Maximum posts per day for this platform |
 | `avoidDays` | Days to never post |
 
 ### Default Times (Research-Backed)
@@ -183,7 +176,7 @@ Run `vidpipe init` or add `LATE_API_KEY=...` to `.env`
 Log into [getlate.dev](https://getlate.dev) and connect your social accounts
 
 ### "No available schedule slots"
-Your `schedule.json` may be too restrictive. Add more time slots or increase `maxPerDay`.
+Your `schedule.json` may be too restrictive. Add more time slots.
 
 ### "Upload failed"
 Check your internet connection. Late API requires network access to upload media.

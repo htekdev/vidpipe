@@ -61,7 +61,7 @@
   </style>
 </head>
 <body class="h-full text-gray-100 overflow-hidden">
-  <div id="app"></div>
+  <div id="app" role="main" aria-label="Social media post review application"></div>
 
   <script type="module">
     import { h, render } from 'https://esm.sh/preact@10'
@@ -153,7 +153,7 @@
               <span class="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">vidpipe</span>
               <span class="text-gray-500 text-sm">${subtitle}</span>
             </div>
-            <div class="flex items-center gap-2 text-xs text-gray-500">
+            <div class="flex items-center gap-2 text-xs text-gray-500" aria-label="Keyboard shortcuts: Left arrow to reject, Right arrow to approve, E to edit, Space to skip">
               <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">←</kbd> Reject
               <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">→</kbd> Approve
               <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">E</kbd> Edit

@@ -219,6 +219,7 @@ export class LateApiClient {
           'Content-Length': String(fileStats.size),
         },
         body: webStream,
+        // Node.js-specific property for streaming request bodies (not in standard RequestInit type)
         duplex: 'half',
       } as RequestInit)
       if (!uploadResp.ok) {
