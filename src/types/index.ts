@@ -396,7 +396,7 @@ export const PLATFORM_CHAR_LIMITS: Record<string, number> = {
  * Maps vidpipe Platform enum values to Late API platform strings.
  * Platform.X = 'x' but Late API expects 'twitter'.
  */
-export function toLateplatform(platform: Platform): string {
+export function toLatePlatform(platform: Platform): string {
   return platform === Platform.X ? 'twitter' : platform
 }
 

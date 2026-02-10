@@ -1,7 +1,6 @@
 import { getScheduleCalendar } from '../services/scheduler'
 import { loadScheduleConfig } from '../services/scheduleConfig'
 import { initConfig } from '../config/environment'
-import logger from '../config/logger'
 
 export interface ScheduleCommandOptions {
   platform?: string

@@ -86,7 +86,7 @@ program
   .command('doctor')
   .description('Check all prerequisites and dependencies')
   .action(async () => {
-    runDoctor()
+    await runDoctor()
   })
 
 // --- Default command (process video or watch) ---

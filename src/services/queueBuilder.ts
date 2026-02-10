@@ -1,7 +1,7 @@
 import { promises as fs } from 'fs'
 import path from 'path'
 import logger from '../config/logger'
-import { PLATFORM_CHAR_LIMITS, toLateplatform } from '../types'
+import { PLATFORM_CHAR_LIMITS, toLatePlatform } from '../types'
 import { Platform } from '../types'
 import type { VideoFile, ShortClip, MediumClip, SocialPost } from '../types'
 import { getMediaRule, platformAcceptsMedia } from './platformContentStrategy'
@@ -83,7 +83,8 @@ function resolveVideoMedia(
 
 /**
  * Parse YAML frontmatter from a post markdown file.
- * Handles simple key: value and key: [array] patterns — no yaml library needed.
+ * Handles simple key: value patterns. Arrays are stored as raw strings (e.g., "[foo, bar]").
+ * For complex YAML parsing, consider adding a yaml library.
  */
 async function parsePostFrontmatter(postPath: string): Promise<Record<string, string>> {
   let content: string
@@ -143,7 +144,7 @@ export async function buildPublishQueue(
 
   for (const post of socialPosts) {
     try {
-      const latePlatform = toLateplatform(post.platform)
+      const latePlatform = toLatePlatform(post.platform)
       const frontmatter = await parsePostFrontmatter(post.outputPath)
 
       let clipSlug: string
@@ -218,7 +219,12 @@ export async function buildPublishQueue(
 
       // Use raw post content (strip frontmatter if the content includes it)
       const stripped = stripFrontmatter(post.content)
-      const postContent = stripped.length > 0 ? stripped : post.content
+      const postContent = stripped.trim().length > 0 ? stripped : post.content
+      
+      // Validate content exists after stripping frontmatter
+      if (postContent.trim().length === 0) {
+        throw new Error('Post content is empty after stripping frontmatter')
+      }
 
       await createItem(itemId, metadata, postContent, mediaPath ?? undefined)
       result.itemsCreated++
