@@ -1,13 +1,24 @@
+<div align="center">
+
+```
+ ██╗   ██╗██╗██████╗ ██████╗ ██╗██████╗ ███████╗
+ ██║   ██║██║██╔══██╗██╔══██╗██║██╔══██╗██╔════╝
+ ██║   ██║██║██║  ██║██████╔╝██║██████╔╝█████╗  
+ ╚██╗ ██╔╝██║██║  ██║██╔═══╝ ██║██╔═══╝ ██╔══╝  
+  ╚████╔╝ ██║██████╔╝██║     ██║██║     ███████╗
+   ╚═══╝  ╚═╝╚═════╝ ╚═╝     ╚═╝╚═╝     ╚══════╝
+```
+
+**Drop a video. Get transcripts, summaries, short clips, captions, blog posts, and social media posts — automatically.**
+
+An AI-powered CLI pipeline that watches for new video recordings and transforms them into rich, structured content using [GitHub Copilot SDK](https://github.com/github/copilot-sdk) agents and OpenAI Whisper.
+
 [![CI](https://github.com/htekdev/vidpipe/actions/workflows/ci.yml/badge.svg)](https://github.com/htekdev/vidpipe/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/vidpipe)](https://www.npmjs.com/package/vidpipe)
 [![Node.js 20+](https://img.shields.io/badge/node-20%2B-brightgreen)](https://nodejs.org/)
 [![License: ISC](https://img.shields.io/badge/license-ISC-blue)](./LICENSE)
 
-# 🎬 VidPipe
-
-**Drop a video. Get transcripts, summaries, short clips, captions, blog posts, and social media posts — automatically.**
-
-An AI-powered CLI pipeline that watches for new video recordings and transforms them into rich, structured content using [GitHub Copilot SDK](https://github.com/github/copilot-sdk) agents and OpenAI Whisper.
+</div>
 
 ```bash
 npm install -g vidpipe
@@ -160,10 +171,51 @@ recordings/
 
 ---
 
+## 📺 Review App
+
+VidPipe includes a built-in web app for reviewing, editing, and scheduling social media posts before publishing.
+
+<div align="center">
+  <img src="assets/review-ui.png" alt="VidPipe Review UI" width="800" />
+  <br />
+  <em>Review and approve posts across YouTube, TikTok, Instagram, LinkedIn, and X/Twitter</em>
+</div>
+
+```bash
+# Launch the review app
+vidpipe review
+```
+
+- **Platform tabs** — Filter posts by platform (YouTube, TikTok, Instagram, LinkedIn, X)
+- **Video preview** — See the video thumbnail and content before approving
+- **Keyboard shortcuts** — Arrow keys to navigate, Enter to approve, Backspace to reject
+- **Smart scheduling** — Posts are queued with optimal timing per platform
+
+---
+
 ## 🔄 Pipeline
 
-```
-Ingest → Transcribe → Silence Removal → Captions → Caption Burn → Shorts → Medium Clips → Chapters → Summary → Social Media → Short Posts → Medium Clip Posts → Blog → Git Push
+```mermaid
+graph LR
+    A[📥 Ingest] --> B[🎙️ Transcribe]
+    B --> C[🔇 Silence Removal]
+    C --> D[💬 Captions]
+    D --> E[🔥 Caption Burn]
+    E --> F[✂️ Shorts]
+    F --> G[🎞️ Medium Clips]
+    G --> H[📑 Chapters]
+    H --> I[📝 Summary]
+    I --> J[📱 Social Media]
+    J --> K[📱 Short Posts]
+    K --> L[📱 Medium Posts]
+    L --> M[📰 Blog]
+    M --> N[🔄 Git Push]
+
+    style A fill:#2d5a27,stroke:#4ade80
+    style B fill:#1e3a5f,stroke:#60a5fa
+    style E fill:#5a2d27,stroke:#f87171
+    style F fill:#5a4d27,stroke:#fbbf24
+    style N fill:#2d5a27,stroke:#4ade80
 ```
 
 | # | Stage | Description |
@@ -239,15 +291,25 @@ Social media publishing is configured via `schedule.json` and the Late API. See 
 
 Agent-based architecture built on the [GitHub Copilot SDK](https://github.com/github/copilot-sdk):
 
-```
-BaseAgent (abstract)
-├── SilenceRemovalAgent → detect_silence, decide_removals
-├── SummaryAgent        → capture_frame, write_summary
-├── ShortsAgent         → plan_shorts
-├── MediumVideoAgent    → plan_medium_clips
-├── ChapterAgent        → generate_chapters
-├── SocialMediaAgent    → search_links, create_posts
-└── BlogAgent           → search_web, write_blog
+```mermaid
+graph TD
+    BP[🧠 BaseAgent] --> SRA[SilenceRemovalAgent]
+    BP --> SA[SummaryAgent]
+    BP --> SHA[ShortsAgent]
+    BP --> MVA[MediumVideoAgent]
+    BP --> CA[ChapterAgent]
+    BP --> SMA[SocialMediaAgent]
+    BP --> BA[BlogAgent]
+
+    SRA -->|tools| T1[detect_silence, decide_removals]
+    SHA -->|tools| T2[plan_shorts]
+    MVA -->|tools| T3[plan_medium_clips]
+    CA -->|tools| T4[generate_chapters]
+    SA -->|tools| T5[capture_frame, write_summary]
+    SMA -->|tools| T6[search_links, create_posts]
+    BA -->|tools| T7[search_web, write_blog]
+
+    style BP fill:#1e3a5f,stroke:#60a5fa,color:#fff
 ```
 
 Each agent communicates with the LLM through structured tool calls, ensuring reliable, parseable outputs.
