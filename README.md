@@ -224,13 +224,14 @@ graph LR
     J --> K[📱 Short Posts]
     K --> L[📱 Medium Posts]
     L --> M[📰 Blog]
-    M --> N[🔄 Git Push]
+    M --> N[📦 Queue Build]
+    N --> O[🔄 Git Push]
 
     style A fill:#2d5a27,stroke:#4ade80
     style B fill:#1e3a5f,stroke:#60a5fa
     style E fill:#5a2d27,stroke:#f87171
     style F fill:#5a4d27,stroke:#fbbf24
-    style N fill:#2d5a27,stroke:#4ade80
+    style O fill:#2d5a27,stroke:#4ade80
 ```
 
 | # | Stage | Description |
@@ -248,7 +249,8 @@ graph LR
 | 11 | **Short Posts** | Per-short social media posts for all 5 platforms |
 | 12 | **Medium Clip Posts** | Per-medium-clip social media posts for all 5 platforms |
 | 13 | **Blog** | Dev.to blog post with frontmatter, web-sourced links via Exa |
-| 14 | **Git Push** | Auto-commits and pushes to `origin main` |
+| 14 | **Queue Build** | Builds publish queue from social posts with scheduled slots |
+| 15 | **Git Push** | Auto-commits and pushes to `origin main` |
 
 Each stage can be independently skipped with `--no-*` flags. A stage failure does not abort the pipeline — subsequent stages proceed with whatever data is available.
 

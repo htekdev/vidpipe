@@ -212,7 +212,8 @@ recordings/
 | 11 | **Short Posts** | AI generates social posts for each short clip |
 | 12 | **Medium Clip Posts** | AI generates social posts for each medium clip |
 | 13 | **Blog Post** | AI writes a long-form blog post from the transcript |
-| 14 | **Git Push** | Auto-commits and pushes all output to your repo |
+| 14 | **Queue Build** | Builds publish queue from social posts with scheduled slots |
+| 15 | **Git Push** | Auto-commits and pushes all output to your repo |
 
 ---
 

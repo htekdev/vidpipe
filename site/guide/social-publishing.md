@@ -106,8 +106,8 @@ This opens a web app at `http://localhost:3847` with a card-based review interfa
 - **⏭️ Skip** — Leave for later review
 
 **Keyboard shortcuts:**
-- `→` or `A` = Approve
-- `←` or `R` = Reject
+- `→` (Right Arrow) = Approve
+- `←` (Left Arrow) = Reject
 - `E` = Edit
 - `Space` = Skip
 
