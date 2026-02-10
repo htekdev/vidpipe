@@ -57,7 +57,7 @@ npm install -g vidpipe
   </tr>
   <tr>
     <td>🔍 <b>Face Detection</b> — ONNX-based webcam cropping</td>
-    <td>🔄 <b>Git Automation</b> — Auto-commit and push after each video</td>
+    <td>🚀 <b>Auto-Publish</b> — Scheduled posting to TikTok, YouTube, Instagram, LinkedIn, X</td>
   </tr>
 </table>
 
