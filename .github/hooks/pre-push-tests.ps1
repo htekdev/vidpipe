@@ -25,20 +25,22 @@ try {
 
     Write-Host "🧪 Pre-push hook: Running tests with coverage..." -ForegroundColor Cyan
 
-    # Run tests with coverage
-    $testResult = & npm test 2>&1
+    # Run tests with coverage — capture all output, don't let stderr throw
+    $ErrorActionPreference = "Continue"
+    $testOutput = & npm test 2>&1
     $testExitCode = $LASTEXITCODE
+    $ErrorActionPreference = "Stop"
 
     if ($testExitCode -ne 0) {
         $output = @{
             permissionDecision = "deny"
-            permissionDecisionReason = "❌ Tests failed. Fix failing tests before pushing."
+            permissionDecisionReason = "Tests failed. Fix failing tests before pushing."
         }
         $output | ConvertTo-Json -Compress
         exit 0
     }
 
-    Write-Host "✅ All tests passed with coverage thresholds met." -ForegroundColor Green
+    Write-Host "All tests passed with coverage thresholds met." -ForegroundColor Green
 
     $output = @{
         permissionDecision = "allow"
