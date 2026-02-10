@@ -88,6 +88,13 @@ export function getPlatformClient(platform: Platform): SocialPlatformClient {
       logger.warn('[X] Using placeholder client — X API v2 not yet integrated')
       return new PlaceholderPlatformClient(platform)
 
+    case Platform.Facebook:
+      // TODO: Replace with FacebookClient once Facebook Graph API integration is implemented
+      // Expected: Facebook Graph API (OAuth 2.0, video upload + post creation)
+      // Docs: https://developers.facebook.com/docs/graph-api/reference/page/videos
+      logger.warn('[Facebook] Using placeholder client — Facebook Graph API not yet integrated')
+      return new PlaceholderPlatformClient(platform)
+
     default:
       logger.warn(`Unknown platform: ${platform}, using placeholder client`)
       return new PlaceholderPlatformClient(platform)
