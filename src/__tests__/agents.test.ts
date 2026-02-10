@@ -501,6 +501,77 @@ describe('Real BlogAgent', () => {
 
     expect(writeResult).toContain('success');
   });
+
+  it('write_blog handler validates required frontmatter fields', async () => {
+    const { generateBlogPost } = await import('../agents/BlogAgent.js');
+
+    try {
+      await generateBlogPost(mockVideo, mockTranscript, mockSummary);
+    } catch {
+      // Expected: "BlogAgent did not produce any blog content"
+    }
+
+    const writeTool = findCapturedTool('write_blog');
+    
+    // Verify schema has required fields
+    const schema = writeTool.parameters as any;
+    expect(schema.properties.frontmatter.required).toEqual(
+      expect.arrayContaining(['title', 'description', 'tags']),
+    );
+    expect(schema.required).toEqual(
+      expect.arrayContaining(['frontmatter', 'body']),
+    );
+  });
+
+  it('write_blog handler accepts and stores comprehensive blog content', async () => {
+    const { generateBlogPost } = await import('../agents/BlogAgent.js');
+
+    try {
+      await generateBlogPost(mockVideo, mockTranscript, mockSummary);
+    } catch {
+      // Expected: "BlogAgent did not produce any blog content"
+    }
+
+    const writeTool = findCapturedTool('write_blog');
+
+    // Test with comprehensive, structured content
+    const comprehensiveContent = {
+      frontmatter: {
+        title: 'Building Better Software with GitHub Copilot',
+        description: 'Learn how GitHub Copilot can accelerate your development workflow',
+        tags: ['github', 'copilot', 'ai', 'productivity'],
+        cover_image: 'https://example.com/cover.png',
+      },
+      body: `# Introduction
+
+Hook: Ever spent hours debugging code that could have been caught earlier?
+
+## The Problem
+
+Developers face constant challenges...
+
+## The Solution
+
+GitHub Copilot helps by...
+
+## Key Takeaways
+
+- Point 1
+- Point 2
+- Point 3
+
+## Conclusion
+
+In this post, we explored...
+
+---
+*This post is based on my video walkthrough.*`,
+    };
+
+    const writeResult = await writeTool.handler!(comprehensiveContent, mockInvocation);
+
+    expect(writeResult).toContain('success');
+  });
 });
 
 // ── SocialMediaAgent (REAL) ─────────────────────────────────────────────────
