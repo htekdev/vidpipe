@@ -35,22 +35,81 @@ Content guidelines: ${brand.contentGuidelines.blogFocus}
 
 Your task is to generate a full dev.to-style technical blog post (800-1500 words) based on a video transcript and summary.
 
-The blog post MUST include:
-1. dev.to frontmatter (title, published: false, description, tags, cover_image placeholder)
-2. An engaging introduction with a hook
-3. Clear sections covering the main content (e.g. The Problem, The Solution, How It Works)
-4. Code snippets where the video content discusses code — use fenced code blocks with language tags
-5. Key Takeaways section
-6. A conclusion
-7. A footer referencing the original video
+## Quality Requirements
 
-Workflow:
-1. First use the "web_search_exa" tool to search for relevant articles and resources to link to. Search for key topics from the video.
-2. Then call "write_blog" with the complete blog post including frontmatter and body.
-   - Weave the search result links organically into the post text (don't dump them at the end).
-   - Reference the video and any shorts naturally.
+Your blog post MUST be:
+- **Coherent**: Ideas flow logically from one to the next with smooth transitions
+- **Comprehensive**: Cover all major points from the video, not just surface-level mentions
+- **Engaging**: Start with a compelling hook that makes the reader want to continue
+- **Educational**: Explain concepts clearly with examples where appropriate
+- **Well-structured**: Use clear headings, short paragraphs, and logical organization
+- **Technically accurate**: When discussing code or technical concepts, be precise
+- **Contextual**: Provide enough background so readers unfamiliar with the topic can follow along
 
-Always call "write_blog" exactly once with the complete post.`
+## Required Structure
+
+The blog post MUST include these sections in order:
+
+1. **dev.to frontmatter** (title, published: false, description, tags, cover_image placeholder)
+   - Title should be compelling and descriptive (not generic)
+   - Description should summarize the value proposition (what will readers learn?)
+   - Tags should be relevant and specific (4-5 tags)
+
+2. **Introduction** (2-3 paragraphs)
+   - Start with a relatable hook that captures attention
+   - Explain what problem or topic you're addressing
+   - Preview what the reader will learn
+
+3. **Main Content** (3-5 sections with descriptive headings)
+   - Use clear, descriptive section headings (not generic like "Section 1")
+   - Each section should focus on one key concept or point
+   - Use subheadings where appropriate to break up long sections
+   - Include code snippets with proper language tags when discussing code
+   - Use bullet points or numbered lists to organize complex information
+   - Add relevant links from web search results naturally within the text
+
+4. **Key Takeaways** (bullet list of 3-5 main points)
+   - Summarize the most important lessons or insights
+   - Make each point actionable or memorable
+
+5. **Conclusion** (1-2 paragraphs)
+   - Recap the main value delivered
+   - Encourage reader action or further exploration
+   - End with an engaging question or call-to-action
+
+6. **Video Reference Footer**
+   - Natural reference to the original video
+   - Brief mention that this content is based on the video
+
+## Content Development Process
+
+1. **First, use "web_search_exa" to gather context:**
+   - Search for the main technical topics mentioned in the video
+   - Look for relevant articles, documentation, or tutorials
+   - Aim for 2-4 high-quality searches on different aspects
+
+2. **Then, write the complete blog post:**
+   - Synthesize information from the transcript, summary, and search results
+   - Weave external links organically into the narrative (don't dump them at the end)
+   - Ensure smooth transitions between sections
+   - Maintain the author's voice throughout
+   - Double-check that all major points from the video are covered
+
+3. **Finally, call "write_blog" exactly once with:**
+   - Complete frontmatter object
+   - Full markdown body including all sections
+
+## Writing Guidelines
+
+- **Paragraphs**: Keep them short (2-4 sentences max)
+- **Sentences**: Vary length but prefer clear, direct statements
+- **Technical terms**: Explain on first use, link to references
+- **Code blocks**: Always include language tags (\`\`\`typescript, \`\`\`python, etc.)
+- **Examples**: Use concrete examples to illustrate abstract concepts
+- **Transitions**: Use connecting phrases between sections ("Now that we've...", "Building on this...", "Let's explore...")
+- **Tone**: ${brand.voice.tone} throughout — authentic enthusiasm, not forced hype
+
+Remember: Your goal is to create a blog post that someone would genuinely want to read and share, not just a mechanical transcript conversion.`
 }
 
 // ── Agent ────────────────────────────────────────────────────────────────────
@@ -169,8 +228,8 @@ export async function generateBlogPost(
       '## Key Topics',
       summary.keyTopics.map((t) => `- ${t}`).join('\n'),
       '',
-      '## Transcript (first 6000 chars)',
-      transcript.text.slice(0, 6000),
+      '## Transcript (first 12000 chars)',
+      transcript.text.slice(0, 12000),
     ].join('\n')
 
     await agent.run(userMessage)

@@ -16,7 +16,7 @@ export const AGENT_MODEL_MAP: Record<string, string> = {
   ShortsAgent: PREMIUM_MODEL,
   MediumVideoAgent: PREMIUM_MODEL,
   SocialMediaAgent: STANDARD_MODEL,
-  BlogAgent: STANDARD_MODEL,
+  BlogAgent: PREMIUM_MODEL,
   SummaryAgent: FREE_MODEL,
   ChapterAgent: FREE_MODEL,
   ShortPostsAgent: FREE_MODEL,

@@ -16,7 +16,7 @@ afterEach(() => {
 describe('getModelForAgent', () => {
   it('returns correct model for each tier', () => {
     expect(getModelForAgent('ShortsAgent')).toBe('claude-opus-4.5')
-    expect(getModelForAgent('BlogAgent')).toBe('claude-sonnet-4.5')
+    expect(getModelForAgent('BlogAgent')).toBe('claude-opus-4.5')
     expect(getModelForAgent('ChapterAgent')).toBe('gpt-4.1')
   })
 
@@ -38,8 +38,8 @@ describe('getModelForAgent', () => {
 })
 
 describe('AGENT_MODEL_MAP tier assignments', () => {
-  const premiumAgents = ['SilenceRemovalAgent', 'ShortsAgent', 'MediumVideoAgent']
-  const standardAgents = ['SocialMediaAgent', 'BlogAgent']
+  const premiumAgents = ['SilenceRemovalAgent', 'ShortsAgent', 'MediumVideoAgent', 'BlogAgent']
+  const standardAgents = ['SocialMediaAgent']
   const freeAgents = ['SummaryAgent', 'ChapterAgent', 'ShortPostsAgent', 'MediumClipPostsAgent']
 
   it('all premium agents map to PREMIUM_MODEL', () => {
