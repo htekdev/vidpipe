@@ -33,30 +33,86 @@ You are a code reviewer for the **vidpipe** project — an automated video proce
 
 ## Review Tracking
 
-After completing your review, you MUST update `.github/review.json` to record the review. This file is checked by a pre-push hook — if it's not updated, pushes will be blocked.
+After completing your review, you MUST create/update these files. A pre-push hook checks for `reviewed.md` — pushes are blocked without it.
 
-**Steps:**
-1. Get the current HEAD commit SHA: `git rev-parse HEAD`
-2. Update `.github/review.json` with:
-   - `lastReviewedCommit`: current HEAD SHA
-   - `reviewedAt`: current ISO timestamp
-   - `reviewedBy`: "code-reviewer"
-   - `findings.total`: total number of issues found
-   - `findings.fixed`: number of issues you fixed
-   - `findings.acknowledged`: number of issues noted but not fixed
-   - `findings.items`: array of finding objects with `{ "file", "line", "severity", "message", "status" }` where status is "fixed" or "acknowledged"
+### 1. Create `.github/reviewed.md`
 
-3. If you made fixes during the review, commit the fixes AND the updated review.json together:
-   ```
-   git add -A && git commit -m "fix: address code review findings"
-   ```
+This file is your review certificate. It gets **automatically deleted** whenever code is edited (via a postToolUse hook), forcing a new review before the next push.
 
-4. If no fixes were needed, just update and commit review.json:
-   ```
-   git add .github/review.json && git commit -m "chore: record code review (no issues found)"
-   ```
+Write it with this format:
 
-**Important:** The `lastReviewedCommit` must match the HEAD commit AFTER any fixes are committed. If you commit fixes, update review.json again with the new HEAD SHA.
+```markdown
+# Code Review
+
+**Reviewed:** [ISO timestamp]
+**Reviewer:** code-reviewer
+**Branch:** [current branch]
+
+## Files Reviewed
+- [list of files that were changed/reviewed]
+
+## Findings
+
+### Fixed
+- [file:line] [description of what was fixed and why]
+
+### Acknowledged (Tech Debt)
+- [file:line] [description — tracked in debt.md]
+
+### No Issues
+- [list of files that passed review cleanly]
+
+## Summary
+[1-2 sentence summary of review outcome]
+```
+
+### 2. Maintain `.github/debt.md`
+
+This is a **persistent** tech debt backlog that survives across reviews. It is NOT deleted when code changes — it accumulates over time.
+
+- **Add** new tech debt items found during review (with date, file, description, severity)
+- **Mark resolved** any items that have been fixed since the last review
+- **Never delete** the file — only append or update entries
+
+Format:
+
+```markdown
+# Tech Debt Backlog
+
+> Auto-maintained by code-reviewer agent. Do not delete.
+
+## Active Items
+
+| Date | File | Severity | Description | Status |
+|------|------|----------|-------------|--------|
+| 2026-02-10 | src/foo.ts:42 | medium | Missing error handling for edge case | open |
+
+## Resolved
+
+| Date Found | Date Resolved | File | Description |
+|------------|--------------|------|-------------|
+| 2026-02-09 | 2026-02-10 | src/bar.ts:15 | Unused import removed |
+```
+
+### 3. Commit
+
+After creating reviewed.md and updating debt.md:
+
+```bash
+git add .github/reviewed.md .github/debt.md && git commit -m "chore: record code review"
+```
+
+If you also made code fixes during the review:
+
+```bash
+git add -A && git commit -m "fix: address code review findings"
+```
+
+Then create reviewed.md and commit it:
+
+```bash
+git add .github/reviewed.md .github/debt.md && git commit -m "chore: record code review"
+```
 
 **Output**: Post a structured review as a PR comment using the GitHub tools. Use this format:
 

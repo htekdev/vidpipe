@@ -8,7 +8,7 @@
         "powershell": ".github/hooks/pre-push-tests.ps1",
         "cwd": ".",
         "timeoutSec": 120,
-        "comment": "Run tests and coverage checks before git push"
+        "comment": "Run typecheck + tests with coverage before git push"
       },
       {
         "type": "command",
@@ -16,10 +16,18 @@
         "powershell": ".github/hooks/pre-push-review-check.ps1",
         "cwd": ".",
         "timeoutSec": 10,
-        "comment": "Ensure code has been reviewed before git push (checks .github/review.json)"
+        "comment": "Ensure code has been reviewed before git push (checks .github/reviewed.md exists)"
       }
     ],
     "postToolUse": [
+      {
+        "type": "command",
+        "bash": ".github/hooks/post-edit-invalidate.sh",
+        "powershell": ".github/hooks/post-edit-invalidate.ps1",
+        "cwd": ".",
+        "timeoutSec": 5,
+        "comment": "Delete .github/reviewed.md when code is edited/created (invalidates review)"
+      },
       {
         "type": "command",
         "bash": ".github/hooks/post-push-review.sh",
