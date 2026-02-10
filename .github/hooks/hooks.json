@@ -4,19 +4,11 @@
     "preToolUse": [
       {
         "type": "command",
-        "bash": ".github/hooks/pre-push-tests.sh",
-        "powershell": ".github/hooks/pre-push-tests.ps1",
+        "bash": ".github/hooks/pre-push-block.sh",
+        "powershell": ".github/hooks/pre-push-block.ps1",
         "cwd": ".",
-        "timeoutSec": 120,
-        "comment": "Run typecheck + tests with coverage before git push"
-      },
-      {
-        "type": "command",
-        "bash": ".github/hooks/pre-push-review-check.sh",
-        "powershell": ".github/hooks/pre-push-review-check.ps1",
-        "cwd": ".",
-        "timeoutSec": 10,
-        "comment": "Ensure code has been reviewed before git push (checks .github/reviewed.md exists)"
+        "timeoutSec": 5,
+        "comment": "Block git push — must use npm run push instead"
       }
     ],
     "postToolUse": [
@@ -27,14 +19,6 @@
         "cwd": ".",
         "timeoutSec": 5,
         "comment": "Delete .github/reviewed.md when code is edited/created (invalidates review)"
-      },
-      {
-        "type": "command",
-        "bash": ".github/hooks/post-push-review.sh",
-        "powershell": ".github/hooks/post-push-review.ps1",
-        "cwd": ".",
-        "timeoutSec": 300,
-        "comment": "After git push, wait for Copilot code review and prompt review-triage"
       }
     ]
   }
