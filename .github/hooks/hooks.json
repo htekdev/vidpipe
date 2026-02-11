@@ -9,6 +9,22 @@
         "cwd": ".",
         "timeoutSec": 5,
         "comment": "Block git push — must use npm run push instead"
+      },
+      {
+        "type": "command",
+        "bash": ".github/hooks/pre-amend-block.sh",
+        "powershell": ".github/hooks/pre-amend-block.ps1",
+        "cwd": ".",
+        "timeoutSec": 5,
+        "comment": "Block git commit --amend when HEAD is already pushed to remote"
+      },
+      {
+        "type": "command",
+        "bash": ".github/hooks/pre-force-push-block.sh",
+        "powershell": ".github/hooks/pre-force-push-block.ps1",
+        "cwd": ".",
+        "timeoutSec": 5,
+        "comment": "Block git push --force / --force-with-lease"
       }
     ],
     "postToolUse": [
