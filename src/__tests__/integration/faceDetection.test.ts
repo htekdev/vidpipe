@@ -70,13 +70,14 @@ describe.skipIf(!ffmpegOk)('faceDetection integration', { timeout: 60_000 }, () 
     const tmpBase = os.tmpdir()
 
     // Snapshot existing face-detect dirs before running
-    const before = (await fs.readdir(tmpBase)).filter(d => d.startsWith('face-detect-'))
+    const before = new Set((await fs.readdir(tmpBase)).filter(d => d.startsWith('face-detect-')))
 
     await detectWebcamRegion(videoPath)
 
     const after = (await fs.readdir(tmpBase)).filter(d => d.startsWith('face-detect-'))
 
-    // No new face-detect directories should remain
-    expect(after.length).toBeLessThanOrEqual(before.length)
+    // No NEW face-detect directories should remain (ignore pre-existing ones)
+    const newDirs = after.filter(d => !before.has(d))
+    expect(newDirs).toEqual([])
   })
 })
