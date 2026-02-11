@@ -604,6 +604,6 @@ export async function detectWebcamRegion(videoPath: string): Promise<WebcamRegio
     for (const f of files) {
       await removeFile(join(tempDir, f)).catch(() => {})
     }
-    await removeDirectory(tempDir).catch(() => {})
+    await removeDirectory(tempDir, { recursive: true, force: true }).catch(() => {})
   }
 }
