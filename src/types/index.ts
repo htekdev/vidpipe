@@ -402,10 +402,25 @@ export function toLatePlatform(platform: Platform): string {
 
 /**
  * Maps a Late API platform string back to vidpipe Platform enum.
+ * 
+ * Validates the input against known Platform values to avoid admitting
+ * unknown/unsupported platforms via an unchecked cast.
+ * 
+ * @throws {Error} If the platform is not supported
  */
 export function fromLatePlatform(latePlatform: string): Platform {
-  if (latePlatform === 'twitter') return Platform.X
-  return latePlatform as Platform
+  const normalized = normalizePlatformString(latePlatform)
+  
+  if (normalized === 'twitter') {
+    return Platform.X
+  }
+  
+  const platformValues = Object.values(Platform) as string[]
+  if (platformValues.includes(normalized)) {
+    return normalized as Platform
+  }
+  
+  throw new Error(`Unsupported platform from Late API: ${latePlatform}`)
 }
 
 /**

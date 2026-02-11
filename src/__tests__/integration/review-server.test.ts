@@ -108,8 +108,13 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
-  await fs.rm(tmpDir, { recursive: true, force: true })
-  tmpDirObj.removeCallback()
+  // Don't call both fs.rm and removeCallback - they conflict
+  // Use removeCallback to let tmp clean up properly
+  try {
+    tmpDirObj.removeCallback()
+  } catch {
+    // Ignore if already cleaned up
+  }
 })
 
 beforeEach(async () => {

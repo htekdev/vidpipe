@@ -1,6 +1,6 @@
 import ffmpeg from 'fluent-ffmpeg';
 import { execFile } from 'child_process';
-import { promises as fs } from 'fs';
+import { promises as fs, closeSync } from 'fs';
 import pathMod from 'path';
 import tmp from 'tmp';
 
@@ -118,6 +118,7 @@ export async function extractCompositeClip(
   const tempDir = tempDirObj.name;
 
   const tempFiles: string[] = [];
+  let concatListFile: tmp.FileResult | null = null;
 
   try {
     // Extract each segment to a temp file (re-encode for reliable concat)
@@ -143,10 +144,12 @@ export async function extractCompositeClip(
     }
 
     // Build concat list file
-    const concatListFile = tmp.fileSync({ dir: tempDir, postfix: '.txt', prefix: 'concat-' });
+    concatListFile = tmp.fileSync({ dir: tempDir, postfix: '.txt', prefix: 'concat-' });
     const concatListPath = concatListFile.name;
     const listContent = tempFiles.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n');
     await fs.writeFile(concatListPath, listContent);
+    // Close file descriptor to avoid leaks on Windows
+    closeSync(concatListFile.fd);
 
     // Concatenate segments (re-encode for clean joins across buffered segments)
     logger.info(`Concatenating ${segments.length} segments → ${outputPath}`);
@@ -164,8 +167,15 @@ export async function extractCompositeClip(
     logger.info(`Composite clip complete: ${outputPath}`);
     return outputPath;
   } finally {
-    // Clean up temp files
-    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    // Clean up temp files and remove callbacks
+    if (concatListFile) {
+      try {
+        concatListFile.removeCallback();
+      } catch {}
+    }
+    try {
+      tempDirObj.removeCallback();
+    } catch {}
   }
 }
 

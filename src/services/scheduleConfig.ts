@@ -1,7 +1,6 @@
-import { promises as fs, closeSync } from 'node:fs'
+import { promises as fs } from 'node:fs'
 import path from 'node:path'
 import logger from '../config/logger.js'
-import tmp from 'tmp'
 
 export type DayOfWeek = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
 
@@ -159,12 +158,26 @@ export async function loadScheduleConfig(configPath?: string): Promise<ScheduleC
   try {
     raw = await fs.readFile(filePath, 'utf-8')
   } catch {
-    const tempFile = tmp.fileSync({ postfix: '.json', keep: true })
     logger.info(`No schedule.json found at ${filePath}, creating with defaults`)
     const defaults = getDefaultScheduleConfig()
-    await fs.writeFile(tempFile.name, JSON.stringify(defaults, null, 2), 'utf-8')
-    closeSync(tempFile.fd) // Close file descriptor on Windows before rename
-    await fs.rename(tempFile.name, filePath)
+    // Write directly with exclusive create flag for security
+    try {
+      await fs.writeFile(filePath, JSON.stringify(defaults, null, 2), { 
+        encoding: 'utf-8',
+        flag: 'wx',
+        mode: 0o600
+      })
+    } catch (err: any) {
+      // If file was created by another process in a race, read it
+      if (err.code === 'EEXIST') {
+        const raw = await fs.readFile(filePath, 'utf-8')
+        const parsed: unknown = JSON.parse(raw)
+        cachedConfig = validateScheduleConfig(parsed)
+        logger.info(`Loaded schedule config from ${filePath}`)
+        return cachedConfig
+      }
+      throw err
+    }
     cachedConfig = defaults
     return defaults
   }

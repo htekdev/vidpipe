@@ -45,7 +45,12 @@ program
   .option('--port <number>', 'Server port (default: 3847)', '3847')
   .action(async (opts) => {
     initConfig()
-    const { port, close } = await startReviewServer({ port: parseInt(opts.port) })
+    const parsedPort = Number.parseInt(opts.port, 10)
+    if (Number.isNaN(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
+      console.error('Invalid --port value. Must be an integer between 1 and 65535.')
+      process.exit(1)
+    }
+    const { port, close } = await startReviewServer({ port: parsedPort })
     await open(`http://localhost:${port}`)
     console.log(`\nReview app running at http://localhost:${port}`)
     console.log('Press Ctrl+C to stop.\n')
