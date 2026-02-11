@@ -14,8 +14,8 @@ if [[ -z "$FILE_PATH" ]]; then exit 0; fi
 # Normalize path
 NORM_PATH=$(echo "$FILE_PATH" | tr '\\' '/')
 
-# Exempt: core/, __tests__/, cicd/
-if echo "$NORM_PATH" | grep -qE '(src/core/|__tests__/|cicd/)'; then
+# Exempt: core/, __tests__/, cicd/, site/
+if echo "$NORM_PATH" | grep -qE '(src/core/|__tests__/|cicd/|site/)'; then
   exit 0
 fi
 

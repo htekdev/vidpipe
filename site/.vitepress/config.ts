@@ -1,14 +1,11 @@
 import { defineConfig } from 'vitepress'
+import { withMermaid } from 'vitepress-plugin-mermaid'
 
-export default defineConfig({
+export default withMermaid(defineConfig({
   title: 'VidPipe',
   description: 'Automated video processing pipeline — transcription, clips, captions, social publishing',
   base: '/vidpipe/',
   appearance: 'dark',
-
-  markdown: {
-    mermaid: true,
-  },
 
   themeConfig: {
     nav: [
@@ -47,4 +44,4 @@ export default defineConfig({
       { icon: 'github', link: 'https://github.com/htekdev/vidpipe' },
     ],
   },
-})
+}))

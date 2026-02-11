@@ -14,8 +14,8 @@ try {
     # Normalize path separators
     $normalizedPath = $filePath -replace '\\', '/'
 
-    # Exempt: core/, __tests__/, cicd/
-    if ($normalizedPath -match 'src/core/' -or $normalizedPath -match '__tests__/' -or $normalizedPath -match 'cicd/') {
+    # Exempt: core/, __tests__/, cicd/, site/
+    if ($normalizedPath -match 'src/core/' -or $normalizedPath -match '__tests__/' -or $normalizedPath -match 'cicd/' -or $normalizedPath -match 'site/') {
         exit 0
     }
 
