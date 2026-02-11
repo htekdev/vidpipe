@@ -40,7 +40,15 @@ export async function burnCaptions(
   await fs.copyFile(assPath, tempAss)
 
   // Copy bundled fonts so libass can find them via fontsdir=.
-  const fontFiles = await fs.readdir(FONTS_DIR)
+  let fontFiles: string[]
+  try {
+    fontFiles = await fs.readdir(FONTS_DIR)
+  } catch (err: any) {
+    if (err?.code === 'ENOENT') {
+      throw new Error(`Fonts directory not found at ${FONTS_DIR}. Ensure assets/fonts/ exists in the project root.`)
+    }
+    throw err
+  }
   for (const f of fontFiles) {
     if (f.endsWith('.ttf') || f.endsWith('.otf')) {
       await fs.copyFile(pathMod.join(FONTS_DIR, f), pathMod.join(workDir, f))

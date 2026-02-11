@@ -389,4 +389,11 @@ describe('singlePassEditAndCaption', () => {
 
     expect(mockRmdir).toHaveBeenCalled()
   })
+
+  it('throws descriptive error when fonts directory is missing', async () => {
+    mockReaddir.mockRejectedValueOnce(Object.assign(new Error("ENOENT: no such file or directory, scandir '/fonts'"), { code: 'ENOENT' }))
+
+    await expect(singlePassEditAndCaption('/input.mp4', segments, '/captions.ass', '/output.mp4'))
+      .rejects.toThrow('Fonts directory not found')
+  })
 })

@@ -72,7 +72,16 @@ export class FileWatcher extends EventEmitter {
   }
 
   private scanExistingFiles(): void {
-    const files = fs.readdirSync(this.watchFolder)
+    let files: string[]
+    try {
+      files = fs.readdirSync(this.watchFolder)
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        logger.warn(`Watch folder does not exist, skipping scan: ${this.watchFolder}`)
+        return
+      }
+      throw err
+    }
     for (const file of files) {
       if (path.extname(file).toLowerCase() === '.mp4') {
         const filePath = path.join(this.watchFolder, file)

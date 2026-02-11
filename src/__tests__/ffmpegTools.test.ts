@@ -346,6 +346,18 @@ describe('captionBurning', () => {
     expect(mockCopyFile).toHaveBeenCalled();
     expect(result).toBe('/out/burned.mp4');
   });
+
+  it('throws descriptive error when fonts directory is missing', async () => {
+    mockReaddir.mockRejectedValueOnce(Object.assign(new Error("ENOENT: no such file or directory, scandir '/fonts'"), { code: 'ENOENT' }));
+    mockExecFile.mockImplementation(
+      (_cmd: string, _args: string[], _opts: any, cb?: Function) => {
+        if (cb) cb(null, '', '');
+        return { on: vi.fn() };
+      },
+    );
+
+    await expect(burnCaptions('/video.mp4', '/subs.ass', '/out/burned.mp4')).rejects.toThrow('Fonts directory not found');
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════

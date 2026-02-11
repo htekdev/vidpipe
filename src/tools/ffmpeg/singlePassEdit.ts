@@ -121,7 +121,15 @@ export async function singlePassEditAndCaption(
   const tempAss = path.join(tempDir, 'captions.ass')
   await fs.copyFile(assPath, tempAss)
 
-  const fontFiles = await fs.readdir(FONTS_DIR)
+  let fontFiles: string[]
+  try {
+    fontFiles = await fs.readdir(FONTS_DIR)
+  } catch (err: any) {
+    if (err?.code === 'ENOENT') {
+      throw new Error(`Fonts directory not found at ${FONTS_DIR}. Ensure assets/fonts/ exists in the project root.`)
+    }
+    throw err
+  }
   for (const f of fontFiles) {
     if (f.endsWith('.ttf') || f.endsWith('.otf')) {
       await fs.copyFile(path.join(FONTS_DIR, f), path.join(tempDir, f))
