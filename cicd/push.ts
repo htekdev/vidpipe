@@ -227,6 +227,7 @@ for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
 console.log('\n📊 Step 5: Results\n');
 
 let allPassed = true;
+let openScanningAlerts = -1; // -1 = unknown, 0+ = actual count
 
 // CodeQL result
 if (!codeqlCompleted) {
@@ -234,6 +235,7 @@ if (!codeqlCompleted) {
   allPassed = false;
 } else if (codeqlConclusion === 'success') {
   console.log('✅ CodeQL: No security issues found');
+  openScanningAlerts = 0;
 } else {
   // Fetch alerts
   const alertsResult = tryRun(
@@ -242,6 +244,7 @@ if (!codeqlCompleted) {
   if (alertsResult.ok && alertsResult.stdout) {
     try {
       const alerts: any[] = JSON.parse(alertsResult.stdout);
+      openScanningAlerts = alerts.length;
       if (alerts.length === 0) {
         console.log('✅ CodeQL: No security alerts on this branch');
       } else {
@@ -308,37 +311,59 @@ if (!copilotReviewDone) {
     console.log(`ℹ️  Copilot Review: Latest review is for ${copilotReviewCommit.slice(0, 7)} (HEAD: ${sha.slice(0, 7)})`);
   }
   // Check for unresolved threads (exclude code scanning bot threads that can't be resolved via API)
-  const graphql = `{ repository(owner:\\"${owner}\\",name:\\"${repo}\\") { pullRequest(number:${prNumber}) { reviewThreads(first:100) { nodes { isResolved comments(first:1) { nodes { author { login } } } } } } } }`;
-  const threadsResult = tryRun(
-    `gh api graphql -f query="${graphql}"`
-  );
-  if (threadsResult.ok && threadsResult.stdout) {
+  // Paginate to fetch ALL review threads (PRs can have >100)
+  let allThreads: any[] = []
+  let hasNextPage = true
+  let afterCursor = ''
+  let threadsFetchOk = true
+
+  while (hasNextPage) {
+    const afterArg = afterCursor ? `,after:\\"${afterCursor}\\"` : ''
+    const graphql = `{ repository(owner:\\"${owner}\\",name:\\"${repo}\\") { pullRequest(number:${prNumber}) { reviewThreads(first:100${afterArg}) { pageInfo { hasNextPage endCursor } nodes { isResolved comments(first:1) { nodes { author { login } } } } } } } }`
+    const threadsResult = tryRun(
+      `gh api graphql -f query="${graphql}"`
+    )
+    if (!threadsResult.ok || !threadsResult.stdout) {
+      threadsFetchOk = false
+      break
+    }
     try {
-      const data = JSON.parse(threadsResult.stdout);
-      const threads: any[] = data.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
-      const codeScanningBots = new Set(['github-code-scanning', 'github-advanced-security']);
-      const unresolvedAll = threads.filter((t: any) => !t.isResolved);
-      const unresolvedHuman = unresolvedAll.filter((t: any) => {
-        const author = t.comments?.nodes?.[0]?.author?.login ?? '';
-        return !codeScanningBots.has(author);
-      });
-      const scanningCount = unresolvedAll.length - unresolvedHuman.length;
-      if (unresolvedHuman.length > 0) {
-        console.log(`⚠️ Copilot Code Review: ${unresolvedHuman.length} unresolved threads on PR #${prNumber}. Run the review-triage agent.`);
-        allPassed = false;
-      } else {
-        console.log('✅ Copilot Review: All threads resolved');
-      }
-      if (scanningCount > 0) {
-        console.log(`ℹ️  Code Scanning: ${scanningCount} code scanning threads (auto-resolve when alerts are dismissed)`);
-      }
+      const data = JSON.parse(threadsResult.stdout)
+      const page = data.data?.repository?.pullRequest?.reviewThreads
+      const nodes: any[] = page?.nodes ?? []
+      allThreads = allThreads.concat(nodes)
+      hasNextPage = page?.pageInfo?.hasNextPage ?? false
+      afterCursor = page?.pageInfo?.endCursor ?? ''
     } catch {
-      console.log('⚠️ Copilot Review: Could not parse review threads.');
-      allPassed = false;
+      threadsFetchOk = false
+      break
+    }
+  }
+
+  if (threadsFetchOk) {
+    const codeScanningBots = new Set(['github-code-scanning', 'github-advanced-security'])
+    const unresolvedAll = allThreads.filter((t: any) => !t.isResolved)
+    const unresolvedHuman = unresolvedAll.filter((t: any) => {
+      const author = t.comments?.nodes?.[0]?.author?.login ?? ''
+      return !codeScanningBots.has(author)
+    })
+    const scanningCount = unresolvedAll.length - unresolvedHuman.length
+    if (unresolvedHuman.length > 0) {
+      console.log(`⚠️ Copilot Code Review: ${unresolvedHuman.length} unresolved threads on PR #${prNumber}. Run the review-triage agent.`)
+      allPassed = false
+    } else {
+      console.log('✅ Copilot Review: All threads resolved')
+    }
+    if (scanningCount > 0) {
+      if (openScanningAlerts === 0) {
+        console.log(`ℹ️  Code Scanning: ${scanningCount} stale code scanning threads (all alerts resolved)`)
+      } else {
+        console.log(`ℹ️  Code Scanning: ${scanningCount} code scanning threads (auto-resolve when alerts are dismissed)`)
+      }
     }
   } else {
-    console.log('⚠️ Copilot Review: Could not fetch review threads.');
-    allPassed = false;
+    console.log('⚠️ Copilot Review: Could not fetch review threads.')
+    allPassed = false
   }
 }
 
