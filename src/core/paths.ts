@@ -7,14 +7,31 @@ import pathMod from 'path'
 export { pathMod }
 
 import { existsSync } from 'fs'
-import { join, resolve, dirname } from 'path'
+import { join, resolve, dirname, parse } from 'path'
 import { fileURLToPath } from 'url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
+/**
+ * Walk up from `startDir` until a directory containing `package.json` is found.
+ * Throws if the filesystem root is reached without finding one.
+ */
+export function findRoot(startDir: string): string {
+  let dir = resolve(startDir)
+  while (true) {
+    if (existsSync(join(dir, 'package.json'))) return dir
+    const parent = dirname(dir)
+    if (parent === dir) throw new Error(`Could not find project root from ${startDir}`)
+    dir = parent
+  }
+}
+
+let _cachedRoot: string | undefined
+
 /** Get the project root directory. */
 export function projectRoot(): string {
-  return resolve(__dirname, '..', '..')
+  if (!_cachedRoot) _cachedRoot = findRoot(__dirname)
+  return _cachedRoot
 }
 
 /** Get path within the assets directory. */
