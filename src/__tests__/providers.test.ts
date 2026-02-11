@@ -9,7 +9,7 @@ import { costTracker } from '../services/costTracker.js';
 import { getProvider, getProviderName, resetProvider } from '../providers/index.js';
 import { CopilotProvider } from '../providers/CopilotProvider.js';
 import { initConfig } from '../config/environment.js';
-import { Platform, toLatePlatform, fromLatePlatform } from '../types/index.js';
+import { Platform, toLatePlatform, fromLatePlatform, normalizePlatformString } from '../types/index.js';
 
 // ─── pricing.ts ───────────────────────────────────────────────
 
@@ -424,5 +424,28 @@ describe('fromLatePlatform', () => {
   it('passes other platform strings through as-is', () => {
     expect(fromLatePlatform('youtube')).toBe(Platform.YouTube);
     expect(fromLatePlatform('tiktok')).toBe(Platform.TikTok);
+  });
+});
+
+describe('normalizePlatformString', () => {
+  it('normalizes X variants to twitter', () => {
+    expect(normalizePlatformString('X')).toBe('twitter');
+    expect(normalizePlatformString('x')).toBe('twitter');
+    expect(normalizePlatformString('X (Twitter)')).toBe('twitter');
+    expect(normalizePlatformString('x (twitter)')).toBe('twitter');
+    expect(normalizePlatformString('X/Twitter')).toBe('twitter');
+    expect(normalizePlatformString('x/twitter')).toBe('twitter');
+  });
+
+  it('normalizes other platform names to lowercase', () => {
+    expect(normalizePlatformString('YouTube')).toBe('youtube');
+    expect(normalizePlatformString('TIKTOK')).toBe('tiktok');
+    expect(normalizePlatformString('Instagram')).toBe('instagram');
+    expect(normalizePlatformString('LinkedIn')).toBe('linkedin');
+  });
+
+  it('handles whitespace', () => {
+    expect(normalizePlatformString(' youtube ')).toBe('youtube');
+    expect(normalizePlatformString('  x  ')).toBe('twitter');
   });
 });

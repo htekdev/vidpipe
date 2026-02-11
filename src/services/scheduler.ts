@@ -11,10 +11,6 @@ function normalizeDateTime(isoString: string): number {
   return new Date(isoString).getTime()
 }
 
-const DAY_MAP: Record<DayOfWeek, number> = {
-  sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
-}
-
 const CHUNK_DAYS = 14        // generate candidates in 14-day chunks
 const MAX_LOOKAHEAD_DAYS = 730  // hard ceiling (~2 years)
 

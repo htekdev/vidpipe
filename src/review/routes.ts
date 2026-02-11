@@ -5,7 +5,7 @@ import { findNextSlot, getScheduleCalendar } from '../services/scheduler'
 import { getAccountId } from '../services/accountMapping'
 import { LateApiClient, type LateAccount, type LateProfile } from '../services/lateApi'
 import { loadScheduleConfig } from '../services/scheduleConfig'
-import { fromLatePlatform } from '../types'
+import { fromLatePlatform, normalizePlatformString } from '../types'
 import logger, { sanitizeForLog } from '../config/logger'
 
 // ── Simple in-memory cache (avoids repeated Late API calls) ────────────
@@ -21,13 +21,6 @@ function getCached<T>(key: string): T | undefined {
 
 function setCache(key: string, data: unknown, ttl = CACHE_TTL_MS): void {
   cache.set(key, { data, expiry: Date.now() + ttl })
-}
-
-/** Normalize platform names to Late API values (schedule.json keys). */
-function normalizePlatform(raw: string): string {
-  const lower = raw.toLowerCase().trim()
-  if (lower === 'x' || lower === 'x (twitter)' || lower === 'x/twitter') return 'twitter'
-  return lower
 }
 
 export function createRouter(): Router {
@@ -83,7 +76,7 @@ export function createRouter(): Router {
       if (!item) return res.status(404).json({ error: 'Item not found' })
 
       // Normalize platform — LLM may output "x (twitter)" but Late API and schedule use "twitter"
-      const latePlatform = normalizePlatform(item.metadata.platform)
+      const latePlatform = normalizePlatformString(item.metadata.platform)
 
       // 1. Find next available slot
       const slot = await findNextSlot(latePlatform)
@@ -185,7 +178,7 @@ export function createRouter(): Router {
   // GET /api/schedule/next-slot/:platform — calculate next available slot
   router.get('/api/schedule/next-slot/:platform', async (req, res) => {
     try {
-      const normalized = normalizePlatform(req.params.platform)
+      const normalized = normalizePlatformString(req.params.platform)
       const slot = await findNextSlot(normalized)
       res.json({ platform: normalized, nextSlot: slot })
     } catch (err) {

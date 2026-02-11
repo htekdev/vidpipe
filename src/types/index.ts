@@ -408,6 +408,23 @@ export function fromLatePlatform(latePlatform: string): Platform {
   return latePlatform as Platform
 }
 
+/**
+ * Normalizes raw platform strings (e.g., from user input or API responses)
+ * to Late API platform names. Handles X/Twitter variants and case-insensitivity.
+ * 
+ * @example
+ * normalizePlatformString('X') // 'twitter'
+ * normalizePlatformString('x (twitter)') // 'twitter'
+ * normalizePlatformString('YouTube') // 'youtube'
+ */
+export function normalizePlatformString(raw: string): string {
+  const lower = raw.toLowerCase().trim()
+  if (lower === 'x' || lower === 'x (twitter)' || lower === 'x/twitter') {
+    return 'twitter'
+  }
+  return lower
+}
+
 /** Schedule time slot for a platform */
 export interface ScheduleSlot {
   platform: string

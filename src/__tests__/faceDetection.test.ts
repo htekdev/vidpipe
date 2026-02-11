@@ -83,7 +83,7 @@ describe('calculateCornerConfidence', () => {
 
   it('returns high confidence for consistently high scores', () => {
     const confidence = calculateCornerConfidence([0.5, 0.6, 0.7, 0.5, 0.6])
-    // All non-zero → consistency=1, avgScore=0.58 → conf=0.58
+    // All non-zero → consistency=1.0, avgScore=0.58 → conf = consistency * avgScore = 1.0 * 0.58 = 0.58
     expect(confidence).toBeCloseTo(0.58, 1)
   })
 
