@@ -1,5 +1,5 @@
-import { promises as fs } from 'fs'
-import path from 'path'
+import { readTextFile } from '../core/fileSystem.js'
+import { join, dirname } from '../core/paths.js'
 import logger from '../config/logger'
 import { PLATFORM_CHAR_LIMITS, toLatePlatform } from '../types'
 import { Platform } from '../types'
@@ -73,8 +73,8 @@ function resolveVideoMedia(
   if (!rule) return null // platform doesn't accept main-video media
 
   return rule.captions
-    ? (captionedVideoPath ?? path.join(video.videoDir, video.filename))
-    : path.join(video.videoDir, video.filename)
+    ? (captionedVideoPath ?? join(video.videoDir, video.filename))
+    : join(video.videoDir, video.filename)
 }
 
 // ============================================================================
@@ -89,7 +89,7 @@ function resolveVideoMedia(
 async function parsePostFrontmatter(postPath: string): Promise<Record<string, string>> {
   let content: string
   try {
-    content = await fs.readFile(postPath, 'utf-8')
+    content = await readTextFile(postPath)
   } catch {
     return {}
   }
@@ -160,12 +160,12 @@ export async function buildPublishQueue(
         if (short) {
           clipSlug = short.slug
           clipType = 'short'
-          sourceClip = path.dirname(short.outputPath)
+          sourceClip = dirname(short.outputPath)
           mediaPath = resolveShortMedia(short, post.platform)
         } else if (medium) {
           clipSlug = medium.slug
           clipType = 'medium-clip'
-          sourceClip = path.dirname(medium.outputPath)
+          sourceClip = dirname(medium.outputPath)
           mediaPath = resolveMediumMedia(medium, post.platform)
         } else {
           clipSlug = frontmatter.shortSlug

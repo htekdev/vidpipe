@@ -1,6 +1,6 @@
-import fs from 'node:fs/promises'
-import { Router } from 'express'
-import rateLimit from 'express-rate-limit'
+import { fileExists } from '../core/fileSystem.js'
+import { Router } from '../core/http.js'
+import { rateLimit } from '../core/http.js'
 import { getPendingItems, getItem, updateItem, approveItem, rejectItem } from '../services/postStore'
 import { findNextSlot, getScheduleCalendar } from '../services/scheduler'
 import { getAccountId } from '../services/accountMapping'
@@ -95,7 +95,7 @@ export function createRouter(): Router {
       let mediaItems: Array<{ type: 'image' | 'video'; url: string }> | undefined
       const effectiveMediaPath = item.mediaPath ?? item.metadata.sourceMediaPath
       if (effectiveMediaPath) {
-        const mediaExists = await fs.access(effectiveMediaPath).then(() => true, () => false)
+        const mediaExists = await fileExists(effectiveMediaPath)
         if (mediaExists) {
           if (!item.mediaPath && item.metadata.sourceMediaPath) {
             logger.info(`Using source media fallback for ${String(item.id).replace(/[\r\n]/g, '')}: ${String(item.metadata.sourceMediaPath).replace(/[\r\n]/g, '')}`)

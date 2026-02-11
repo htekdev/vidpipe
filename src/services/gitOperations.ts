@@ -1,4 +1,4 @@
-import { execSync } from 'child_process'
+import { execCommandSync } from '../core/process.js'
 import { getConfig } from '../config/environment'
 import logger from '../config/logger'
 
@@ -8,16 +8,14 @@ export async function commitAndPush(videoSlug: string, message?: string): Promis
 
   try {
     logger.info(`Staging all changes in ${REPO_ROOT}`)
-    execSync('git add -A', { cwd: REPO_ROOT, stdio: 'pipe' })
+    execCommandSync('git add -A', { cwd: REPO_ROOT, stdio: 'pipe' })
 
     logger.info(`Committing: ${commitMessage}`)
-    execSync(`git commit -m "${commitMessage}"`, { cwd: REPO_ROOT, stdio: 'pipe' })
+    execCommandSync(`git commit -m "${commitMessage}"`, { cwd: REPO_ROOT, stdio: 'pipe' })
 
-    const branch = execSync('git rev-parse --abbrev-ref HEAD', { cwd: REPO_ROOT, stdio: 'pipe' })
-      .toString()
-      .trim()
+    const branch = execCommandSync('git rev-parse --abbrev-ref HEAD', { cwd: REPO_ROOT, stdio: 'pipe' })
     logger.info(`Pushing to origin ${branch}`)
-    execSync(`git push origin ${branch}`, { cwd: REPO_ROOT, stdio: 'pipe' })
+    execCommandSync(`git push origin ${branch}`, { cwd: REPO_ROOT, stdio: 'pipe' })
 
     logger.info('Git commit and push completed successfully')
   } catch (error: unknown) {
@@ -37,7 +35,7 @@ export async function stageFiles(patterns: string[]): Promise<void> {
   for (const pattern of patterns) {
     try {
       logger.info(`Staging files matching: ${pattern}`)
-      execSync(`git add ${pattern}`, { cwd: REPO_ROOT, stdio: 'pipe' })
+      execCommandSync(`git add ${pattern}`, { cwd: REPO_ROOT, stdio: 'pipe' })
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error)
       logger.error(`Failed to stage pattern "${pattern}": ${msg}`)

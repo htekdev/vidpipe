@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import path from 'path'
 import { EventEmitter } from 'events'
 import { Platform } from '../types/index.js'
 import type { VideoFile, Transcript, SocialPost } from '../types/index.js'
@@ -93,70 +92,45 @@ function makeTranscript(overrides: Partial<Transcript> = {}): Transcript {
 // 1. videoIngestion.ts
 // ============================================================================
 
-// Mock fs and fs/promises before importing the module
-vi.mock('fs', async (importOriginal) => {
-  const orig = (await importOriginal()) as any
-  const mockReadStream = new EventEmitter()
-  const mockWriteStream = new EventEmitter()
-  // Simulate pipe: when pipe is called, emit 'finish' on writeStream
-  ;(mockReadStream as any).pipe = vi.fn(() => {
-    setTimeout(() => mockWriteStream.emit('finish'), 0)
-    return mockWriteStream
-  })
-  return {
-    ...orig,
-    default: {
-      ...orig,
-      createReadStream: vi.fn(() => mockReadStream),
-      createWriteStream: vi.fn(() => mockWriteStream),
-      existsSync: vi.fn().mockReturnValue(true),
-      statSync: vi.fn().mockReturnValue({ size: 2_000_000 }),
-      readdirSync: vi.fn().mockReturnValue([]),
-      mkdirSync: vi.fn(),
-    },
-    createReadStream: vi.fn(() => mockReadStream),
-    createWriteStream: vi.fn(() => mockWriteStream),
-    existsSync: vi.fn().mockReturnValue(true),
-    statSync: vi.fn().mockReturnValue({ size: 2_000_000 }),
-    readdirSync: vi.fn().mockReturnValue([]),
-    mkdirSync: vi.fn(),
-  }
+// Mock core/fileSystem.js (replaces old fs/fs-promises mocks)
+const mockReadStream = new EventEmitter()
+const mockWriteStream = new EventEmitter()
+;(mockReadStream as any).pipe = vi.fn(() => {
+  setTimeout(() => mockWriteStream.emit('finish'), 0)
+  return mockWriteStream
 })
 
-vi.mock('fs/promises', () => ({
-  default: {
-    mkdir: vi.fn().mockResolvedValue(undefined),
-    writeFile: vi.fn().mockResolvedValue(undefined),
-    copyFile: vi.fn().mockResolvedValue(undefined),
-    stat: vi.fn().mockResolvedValue({ size: 5_000_000 }),
-    readFile: vi.fn().mockResolvedValue('{}'),
-    unlink: vi.fn().mockResolvedValue(undefined),
-    rm: vi.fn().mockResolvedValue(undefined),
-    readdir: vi.fn().mockResolvedValue([]),
-  },
-  mkdir: vi.fn().mockResolvedValue(undefined),
-  writeFile: vi.fn().mockResolvedValue(undefined),
+vi.mock('../core/fileSystem.js', () => ({
+  fileExistsSync: vi.fn().mockReturnValue(true),
+  ensureDirectory: vi.fn().mockResolvedValue(undefined),
+  ensureDirectorySync: vi.fn(),
   copyFile: vi.fn().mockResolvedValue(undefined),
-  stat: vi.fn().mockResolvedValue({ size: 5_000_000 }),
-  readFile: vi.fn().mockResolvedValue('{}'),
-  unlink: vi.fn().mockResolvedValue(undefined),
-  rm: vi.fn().mockResolvedValue(undefined),
-  readdir: vi.fn().mockResolvedValue([]),
+  getFileStats: vi.fn().mockResolvedValue({ size: 5_000_000 }),
+  getFileStatsSync: vi.fn().mockReturnValue({ size: 2_000_000 }),
+  listDirectory: vi.fn().mockResolvedValue([]),
+  listDirectorySync: vi.fn().mockReturnValue([]),
+  removeDirectory: vi.fn().mockResolvedValue(undefined),
+  removeFile: vi.fn().mockResolvedValue(undefined),
+  openReadStream: vi.fn(() => mockReadStream),
+  openWriteStream: vi.fn(() => mockWriteStream),
+  readTextFile: vi.fn().mockResolvedValue('{}'),
+  writeTextFile: vi.fn().mockResolvedValue(undefined),
+  writeJsonFile: vi.fn().mockResolvedValue(undefined),
+  readJsonFile: vi.fn().mockResolvedValue({}),
 }))
 
-vi.mock('fluent-ffmpeg', () => {
-  const ffprobe = vi.fn((_path: string, cb: (err: Error | null, data: any) => void) => {
-    cb(null, { format: { duration: 120 } })
-  })
-  const ffmpeg: any = vi.fn()
-  ffmpeg.ffprobe = ffprobe
-  ffmpeg.setFfmpegPath = vi.fn()
-  ffmpeg.setFfprobePath = vi.fn()
-  return { default: ffmpeg }
-})
+// Mock core/ffmpeg.js (replaces old fluent-ffmpeg mock)
+vi.mock('../core/ffmpeg.js', () => ({
+  ffprobe: vi.fn().mockResolvedValue({ format: { duration: 120 } }),
+  createFFmpeg: vi.fn(),
+  getFFmpegPath: vi.fn().mockReturnValue('ffmpeg'),
+  getFFprobePath: vi.fn().mockReturnValue('ffprobe'),
+}))
 
-vi.mock('slugify', () => ({
-  default: vi.fn((str: string, _opts?: any) => str.toLowerCase().replace(/\s+/g, '-')),
+// Mock core/text.js (replaces old slugify mock)
+vi.mock('../core/text.js', () => ({
+  slugify: vi.fn((str: string) => str.toLowerCase().replace(/\s+/g, '-')),
+  generateId: vi.fn().mockReturnValue('test-uuid'),
 }))
 
 describe('videoIngestion', () => {
@@ -165,16 +139,15 @@ describe('videoIngestion', () => {
   })
 
   it('ingestVideo creates directories and returns correct VideoFile', async () => {
+    const corefs = await import('../core/fileSystem.js')
     const { ingestVideo } = await import('../services/videoIngestion.js')
-    const fsp = await import('fs/promises')
 
     const result = await ingestVideo('/source/My Cool Video.mp4')
 
     // Directory creation: recordingsDir, thumbnailsDir, shortsDir, socialPostsDir
-    expect(fsp.default.mkdir).toHaveBeenCalledTimes(4)
-    expect(fsp.default.mkdir).toHaveBeenCalledWith(
+    expect(corefs.ensureDirectory).toHaveBeenCalledTimes(4)
+    expect(corefs.ensureDirectory).toHaveBeenCalledWith(
       expect.stringContaining('my-cool-video'),
-      { recursive: true },
     )
 
     // Return value structure
@@ -198,10 +171,8 @@ describe('videoIngestion', () => {
   })
 
   it('ingestVideo handles ffprobe failure gracefully', async () => {
-    const ffmpeg = (await import('fluent-ffmpeg')).default as any
-    ffmpeg.ffprobe.mockImplementationOnce((_p: string, cb: Function) => {
-      cb(new Error('ffprobe not found'), null)
-    })
+    const coreffmpeg = await import('../core/ffmpeg.js')
+    vi.mocked(coreffmpeg.ffprobe).mockRejectedValueOnce(new Error('ffprobe not found'))
 
     const { ingestVideo } = await import('../services/videoIngestion.js')
     const result = await ingestVideo('/source/video.mp4')
@@ -211,37 +182,35 @@ describe('videoIngestion', () => {
   })
 
   it('ingestVideo uses stat to get file size', async () => {
-    const fsp = await import('fs/promises')
+    const corefs = await import('../core/fileSystem.js')
     const { ingestVideo } = await import('../services/videoIngestion.js')
 
     await ingestVideo('/source/video.mp4')
 
-    expect(fsp.default.stat).toHaveBeenCalled()
+    expect(corefs.getFileStats).toHaveBeenCalled()
   })
 
   it('ingestVideo does not clean artifacts when folder is new', async () => {
-    const fsModule = await import('fs')
-    const fsp = await import('fs/promises')
+    const corefs = await import('../core/fileSystem.js')
     const { ingestVideo } = await import('../services/videoIngestion.js')
 
-    vi.mocked(fsModule.default.existsSync).mockReturnValueOnce(false)
+    vi.mocked(corefs.fileExistsSync).mockReturnValueOnce(false)
 
     await ingestVideo('/source/my-video.mp4')
 
-    expect(fsp.default.rm).not.toHaveBeenCalled()
+    expect(corefs.removeDirectory).not.toHaveBeenCalled()
   })
 
   it('ingestVideo cleans stale artifacts when folder already exists', async () => {
-    const fsModule = await import('fs')
-    const fsp = await import('fs/promises')
+    const corefs = await import('../core/fileSystem.js')
     const logger = (await import('../config/logger.js')).default
     const { ingestVideo } = await import('../services/videoIngestion.js')
 
-    vi.mocked(fsModule.default.existsSync).mockReturnValueOnce(true)
-    vi.mocked(fsp.default.readdir).mockResolvedValueOnce([
+    vi.mocked(corefs.fileExistsSync).mockReturnValueOnce(true)
+    vi.mocked(corefs.listDirectory).mockResolvedValueOnce([
       'my-video-edited.mp4',
       'my-video-captioned.mp4',
-    ] as any)
+    ])
 
     await ingestVideo('/source/my-video.mp4')
 
@@ -251,7 +220,7 @@ describe('videoIngestion', () => {
 
     // Subdirectories removed
     for (const sub of ['thumbnails', 'shorts', 'social-posts', 'chapters', 'medium-clips', 'captions']) {
-      expect(fsp.default.rm).toHaveBeenCalledWith(
+      expect(corefs.removeDirectory).toHaveBeenCalledWith(
         expect.stringContaining(sub),
         { recursive: true, force: true },
       )
@@ -259,54 +228,49 @@ describe('videoIngestion', () => {
 
     // Stale files removed
     for (const file of ['transcript.json', 'captions.srt', 'captions.vtt', 'captions.ass', 'summary.md', 'blog-post.md', 'README.md']) {
-      expect(fsp.default.rm).toHaveBeenCalledWith(
+      expect(corefs.removeFile).toHaveBeenCalledWith(
         expect.stringContaining(file),
-        { force: true },
       )
     }
 
     // Edited/captioned videos removed
-    expect(fsp.default.rm).toHaveBeenCalledWith(
+    expect(corefs.removeFile).toHaveBeenCalledWith(
       expect.stringContaining('my-video-edited.mp4'),
-      { force: true },
     )
-    expect(fsp.default.rm).toHaveBeenCalledWith(
+    expect(corefs.removeFile).toHaveBeenCalledWith(
       expect.stringContaining('my-video-captioned.mp4'),
-      { force: true },
     )
   })
 
   it('ingestVideo skips copy when video already exists with same size', async () => {
-    const fsModule = await import('fs')
-    const fsp = await import('fs/promises')
+    const corefs = await import('../core/fileSystem.js')
     const logger = (await import('../config/logger.js')).default
     const { ingestVideo } = await import('../services/videoIngestion.js')
 
     // All stat calls return same size → skip copy
-    vi.mocked(fsp.default.stat).mockResolvedValue({ size: 5_000_000 } as any)
+    vi.mocked(corefs.getFileStats).mockResolvedValue({ size: 5_000_000 } as any)
 
     await ingestVideo('/source/my-video.mp4')
 
     expect(logger.info).toHaveBeenCalledWith(
       expect.stringContaining('Video already copied (same size), skipping copy'),
     )
-    expect(fsModule.default.createReadStream).not.toHaveBeenCalled()
+    expect(corefs.openReadStream).not.toHaveBeenCalled()
   })
 
   it('ingestVideo copies video when dest does not exist', async () => {
-    const fsModule = await import('fs')
-    const fsp = await import('fs/promises')
+    const corefs = await import('../core/fileSystem.js')
     const { ingestVideo } = await import('../services/videoIngestion.js')
 
     // First stat (destPath for skip-copy check) throws → needs copy
     // Second stat (destPath for final size) succeeds
-    vi.mocked(fsp.default.stat)
+    vi.mocked(corefs.getFileStats)
       .mockRejectedValueOnce(new Error('ENOENT'))
       .mockResolvedValueOnce({ size: 5_000_000 } as any)
 
     await ingestVideo('/source/my-video.mp4')
 
-    expect(fsModule.default.createReadStream).toHaveBeenCalled()
+    expect(corefs.openReadStream).toHaveBeenCalled()
   })
 })
 
@@ -338,9 +302,9 @@ describe('transcription', () => {
   })
 
   it('transcribeVideo extracts audio and transcribes (small file)', async () => {
-    const fsp = await import('fs/promises')
+    const corefs = await import('../core/fileSystem.js')
     // File under 25MB threshold
-    vi.mocked(fsp.default.stat).mockResolvedValueOnce({ size: 10 * 1024 * 1024 } as any)
+    vi.mocked(corefs.getFileStats).mockResolvedValueOnce({ size: 10 * 1024 * 1024 } as any)
 
     const { transcribeVideo } = await import('../services/transcription.js')
     const { extractAudio } = await import('../tools/ffmpeg/audioExtraction.js')
@@ -360,25 +324,24 @@ describe('transcription', () => {
   })
 
   it('transcribeVideo saves transcript JSON', async () => {
-    const fsp = await import('fs/promises')
-    vi.mocked(fsp.default.stat).mockResolvedValueOnce({ size: 10 * 1024 * 1024 } as any)
+    const corefs = await import('../core/fileSystem.js')
+    vi.mocked(corefs.getFileStats).mockResolvedValueOnce({ size: 10 * 1024 * 1024 } as any)
 
     const { transcribeVideo } = await import('../services/transcription.js')
     const video = makeVideoFile()
 
     await transcribeVideo(video)
 
-    expect(fsp.default.writeFile).toHaveBeenCalledWith(
+    expect(corefs.writeJsonFile).toHaveBeenCalledWith(
       expect.stringContaining('transcript.json'),
-      expect.any(String),
-      'utf-8',
+      expect.any(Object),
     )
   })
 
   it('transcribeVideo chunks large audio files', async () => {
-    const fsp = await import('fs/promises')
+    const corefs = await import('../core/fileSystem.js')
     // File over 25MB threshold
-    vi.mocked(fsp.default.stat).mockResolvedValueOnce({ size: 30 * 1024 * 1024 } as any)
+    vi.mocked(corefs.getFileStats).mockResolvedValueOnce({ size: 30 * 1024 * 1024 } as any)
 
     const { transcribeVideo } = await import('../services/transcription.js')
     const { splitAudioIntoChunks } = await import('../tools/ffmpeg/audioExtraction.js')
@@ -394,16 +357,16 @@ describe('transcription', () => {
   })
 
   it('transcribeVideo cleans up temp audio file', async () => {
-    const fsp = await import('fs/promises')
-    vi.mocked(fsp.default.stat).mockResolvedValueOnce({ size: 10 * 1024 * 1024 } as any)
+    const corefs = await import('../core/fileSystem.js')
+    vi.mocked(corefs.getFileStats).mockResolvedValueOnce({ size: 10 * 1024 * 1024 } as any)
 
     const { transcribeVideo } = await import('../services/transcription.js')
     const video = makeVideoFile()
 
     await transcribeVideo(video)
 
-    // unlink called for mp3 temp file cleanup
-    expect(fsp.default.unlink).toHaveBeenCalledWith(expect.stringContaining('.mp3'))
+    // removeFile called for mp3 temp file cleanup
+    expect(corefs.removeFile).toHaveBeenCalledWith(expect.stringContaining('.mp3'))
   })
 })
 
@@ -423,7 +386,7 @@ describe('captionGeneration', () => {
   })
 
   it('generateCaptions creates captions directory', async () => {
-    const fsp = await import('fs/promises')
+    const corefs = await import('../core/fileSystem.js')
     const { generateCaptions } = await import('../services/captionGeneration.js')
 
     const video = makeVideoFile()
@@ -431,14 +394,13 @@ describe('captionGeneration', () => {
 
     await generateCaptions(video, transcript)
 
-    expect(fsp.default.mkdir).toHaveBeenCalledWith(
+    expect(corefs.ensureDirectory).toHaveBeenCalledWith(
       expect.stringContaining('captions'),
-      { recursive: true },
     )
   })
 
   it('generateCaptions writes SRT, VTT, and ASS files', async () => {
-    const fsp = await import('fs/promises')
+    const corefs = await import('../core/fileSystem.js')
     const { generateCaptions } = await import('../services/captionGeneration.js')
 
     const video = makeVideoFile()
@@ -446,21 +408,18 @@ describe('captionGeneration', () => {
 
     const result = await generateCaptions(video, transcript)
 
-    // writeFile called 3 times: SRT, VTT, ASS
-    expect(fsp.default.writeFile).toHaveBeenCalledWith(
+    // writeTextFile called 3 times: SRT, VTT, ASS
+    expect(corefs.writeTextFile).toHaveBeenCalledWith(
       expect.stringContaining('captions.srt'),
       expect.any(String),
-      'utf-8',
     )
-    expect(fsp.default.writeFile).toHaveBeenCalledWith(
+    expect(corefs.writeTextFile).toHaveBeenCalledWith(
       expect.stringContaining('captions.vtt'),
       expect.any(String),
-      'utf-8',
     )
-    expect(fsp.default.writeFile).toHaveBeenCalledWith(
+    expect(corefs.writeTextFile).toHaveBeenCalledWith(
       expect.stringContaining('captions.ass'),
       expect.any(String),
-      'utf-8',
     )
 
     // Returns 3 paths
@@ -491,8 +450,8 @@ describe('captionGeneration', () => {
 // 4. gitOperations.ts
 // ============================================================================
 
-vi.mock('child_process', () => ({
-  execSync: vi.fn().mockReturnValue(Buffer.from('main\n')),
+vi.mock('../core/process.js', () => ({
+  execCommandSync: vi.fn().mockReturnValue('main'),
 }))
 
 describe('gitOperations', () => {
@@ -501,50 +460,50 @@ describe('gitOperations', () => {
   })
 
   it('commitAndPush runs git add, commit, and push', async () => {
-    const { execSync } = await import('child_process')
+    const coreProcess = await import('../core/process.js')
     const { commitAndPush } = await import('../services/gitOperations.js')
 
     await commitAndPush('my-video')
 
-    expect(execSync).toHaveBeenCalledWith('git add -A', expect.objectContaining({ cwd: '/tmp/repo' }))
-    expect(execSync).toHaveBeenCalledWith(
+    expect(coreProcess.execCommandSync).toHaveBeenCalledWith('git add -A', expect.objectContaining({ cwd: '/tmp/repo' }))
+    expect(coreProcess.execCommandSync).toHaveBeenCalledWith(
       expect.stringContaining('git commit -m'),
       expect.objectContaining({ cwd: '/tmp/repo' }),
     )
-    expect(execSync).toHaveBeenCalledWith(
+    expect(coreProcess.execCommandSync).toHaveBeenCalledWith(
       expect.stringContaining('git push origin'),
       expect.objectContaining({ cwd: '/tmp/repo' }),
     )
   })
 
   it('commitAndPush uses default commit message', async () => {
-    const { execSync } = await import('child_process')
+    const coreProcess = await import('../core/process.js')
     const { commitAndPush } = await import('../services/gitOperations.js')
 
     await commitAndPush('test-slug')
 
-    expect(execSync).toHaveBeenCalledWith(
+    expect(coreProcess.execCommandSync).toHaveBeenCalledWith(
       expect.stringContaining('Auto-processed video: test-slug'),
       expect.any(Object),
     )
   })
 
   it('commitAndPush uses custom commit message', async () => {
-    const { execSync } = await import('child_process')
+    const coreProcess = await import('../core/process.js')
     const { commitAndPush } = await import('../services/gitOperations.js')
 
     await commitAndPush('test-slug', 'Custom message here')
 
-    expect(execSync).toHaveBeenCalledWith(
+    expect(coreProcess.execCommandSync).toHaveBeenCalledWith(
       expect.stringContaining('Custom message here'),
       expect.any(Object),
     )
   })
 
   it('commitAndPush handles nothing-to-commit gracefully', async () => {
-    const { execSync } = await import('child_process')
-    vi.mocked(execSync)
-      .mockReturnValueOnce(Buffer.from('')) // git add
+    const coreProcess = await import('../core/process.js')
+    vi.mocked(coreProcess.execCommandSync)
+      .mockReturnValueOnce('') // git add
       .mockImplementationOnce(() => {
         throw new Error('nothing to commit, working tree clean')
       })
@@ -556,9 +515,9 @@ describe('gitOperations', () => {
   })
 
   it('commitAndPush throws on real git errors', async () => {
-    const { execSync } = await import('child_process')
-    vi.mocked(execSync)
-      .mockReturnValueOnce(Buffer.from('')) // git add
+    const coreProcess = await import('../core/process.js')
+    vi.mocked(coreProcess.execCommandSync)
+      .mockReturnValueOnce('') // git add
       .mockImplementationOnce(() => {
         throw new Error('fatal: not a git repository')
       })
@@ -569,24 +528,24 @@ describe('gitOperations', () => {
   })
 
   it('stageFiles calls git add for each pattern', async () => {
-    const { execSync } = await import('child_process')
+    const coreProcess = await import('../core/process.js')
     const { stageFiles } = await import('../services/gitOperations.js')
 
     await stageFiles(['*.md', 'recordings/**'])
 
-    expect(execSync).toHaveBeenCalledWith(
+    expect(coreProcess.execCommandSync).toHaveBeenCalledWith(
       'git add *.md',
       expect.objectContaining({ cwd: '/tmp/repo' }),
     )
-    expect(execSync).toHaveBeenCalledWith(
+    expect(coreProcess.execCommandSync).toHaveBeenCalledWith(
       'git add recordings/**',
       expect.objectContaining({ cwd: '/tmp/repo' }),
     )
   })
 
   it('stageFiles throws on git add failure', async () => {
-    const { execSync } = await import('child_process')
-    vi.mocked(execSync).mockImplementationOnce(() => {
+    const coreProcess = await import('../core/process.js')
+    vi.mocked(coreProcess.execCommandSync).mockImplementationOnce(() => {
       throw new Error('pathspec did not match')
     })
 
@@ -783,8 +742,9 @@ const mockWatcherInstance = {
   close: vi.fn(),
 }
 
-vi.mock('chokidar', () => ({
+vi.mock('../core/watcher.js', () => ({
   watch: vi.fn(() => mockWatcherInstance),
+  EventEmitter,
 }))
 
 describe('FileWatcher', () => {
@@ -794,37 +754,37 @@ describe('FileWatcher', () => {
   })
 
   it('constructor creates watch folder if it does not exist', async () => {
-    const fs = await import('fs')
-    vi.mocked(fs.default.existsSync).mockReturnValueOnce(false)
+    const corefs = await import('../core/fileSystem.js')
+    vi.mocked(corefs.fileExistsSync).mockReturnValueOnce(false)
 
     const { FileWatcher } = await import('../services/fileWatcher.js')
     new FileWatcher()
 
-    expect(fs.default.mkdirSync).toHaveBeenCalledWith('/tmp/watch', { recursive: true })
+    expect(corefs.ensureDirectorySync).toHaveBeenCalledWith('/tmp/watch')
   })
 
   it('constructor does not create folder if it exists', async () => {
-    const fs = await import('fs')
-    vi.mocked(fs.default.existsSync).mockReturnValueOnce(true)
-    vi.mocked(fs.default.mkdirSync).mockClear()
+    const corefs = await import('../core/fileSystem.js')
+    vi.mocked(corefs.fileExistsSync).mockReturnValueOnce(true)
+    vi.mocked(corefs.ensureDirectorySync).mockClear()
 
     const { FileWatcher } = await import('../services/fileWatcher.js')
     new FileWatcher()
 
-    expect(fs.default.mkdirSync).not.toHaveBeenCalled()
+    expect(corefs.ensureDirectorySync).not.toHaveBeenCalled()
   })
 
   it('start() creates a chokidar watcher', async () => {
-    const fs = await import('fs')
-    vi.mocked(fs.default.existsSync).mockReturnValueOnce(true)
+    const corefs = await import('../core/fileSystem.js')
+    vi.mocked(corefs.fileExistsSync).mockReturnValueOnce(true)
 
-    const chokidar = await import('chokidar')
+    const watcher = await import('../core/watcher.js')
     const { FileWatcher } = await import('../services/fileWatcher.js')
 
     const fw = new FileWatcher()
     fw.start()
 
-    expect(chokidar.watch).toHaveBeenCalledWith('/tmp/watch', expect.objectContaining({
+    expect(watcher.watch).toHaveBeenCalledWith('/tmp/watch', expect.objectContaining({
       persistent: true,
       ignoreInitial: true,
       depth: 0,
@@ -832,8 +792,8 @@ describe('FileWatcher', () => {
   })
 
   it('start() registers event handlers', async () => {
-    const fs = await import('fs')
-    vi.mocked(fs.default.existsSync).mockReturnValueOnce(true)
+    const corefs = await import('../core/fileSystem.js')
+    vi.mocked(corefs.fileExistsSync).mockReturnValueOnce(true)
 
     const { FileWatcher } = await import('../services/fileWatcher.js')
     const fw = new FileWatcher()
@@ -847,8 +807,8 @@ describe('FileWatcher', () => {
   })
 
   it('stop() closes the watcher', async () => {
-    const fs = await import('fs')
-    vi.mocked(fs.default.existsSync).mockReturnValueOnce(true)
+    const corefs = await import('../core/fileSystem.js')
+    vi.mocked(corefs.fileExistsSync).mockReturnValueOnce(true)
 
     const { FileWatcher } = await import('../services/fileWatcher.js')
     const fw = new FileWatcher()
@@ -859,8 +819,8 @@ describe('FileWatcher', () => {
   })
 
   it('stop() is safe to call without starting', async () => {
-    const fs = await import('fs')
-    vi.mocked(fs.default.existsSync).mockReturnValueOnce(true)
+    const corefs = await import('../core/fileSystem.js')
+    vi.mocked(corefs.fileExistsSync).mockReturnValueOnce(true)
 
     const { FileWatcher } = await import('../services/fileWatcher.js')
     const fw = new FileWatcher()
@@ -870,8 +830,8 @@ describe('FileWatcher', () => {
   })
 
   it('FileWatcher extends EventEmitter', async () => {
-    const fs = await import('fs')
-    vi.mocked(fs.default.existsSync).mockReturnValueOnce(true)
+    const corefs = await import('../core/fileSystem.js')
+    vi.mocked(corefs.fileExistsSync).mockReturnValueOnce(true)
 
     const { FileWatcher } = await import('../services/fileWatcher.js')
     const fw = new FileWatcher()
@@ -880,8 +840,8 @@ describe('FileWatcher', () => {
   })
 
   it('handleDetectedFile ignores non-mp4 files (via add event)', async () => {
-    const fs = await import('fs')
-    vi.mocked(fs.default.existsSync).mockReturnValueOnce(true)
+    const corefs = await import('../core/fileSystem.js')
+    vi.mocked(corefs.fileExistsSync).mockReturnValueOnce(true)
 
     const { FileWatcher } = await import('../services/fileWatcher.js')
     const fw = new FileWatcher()
@@ -899,11 +859,11 @@ describe('FileWatcher', () => {
   })
 
   it('handleDetectedFile errors are caught and logged, not thrown as unhandled rejections', async () => {
-    const fs = await import('fs')
+    const corefs = await import('../core/fileSystem.js')
     const loggerMod = await import('../config/logger.js')
-    vi.mocked(fs.default.existsSync).mockReturnValueOnce(true)
+    vi.mocked(corefs.fileExistsSync).mockReturnValueOnce(true)
     // statSync throws to simulate an unexpected error inside handleDetectedFile
-    vi.mocked(fs.default.statSync).mockImplementationOnce(() => {
+    vi.mocked(corefs.getFileStatsSync).mockImplementationOnce(() => {
       throw new Error('unexpected disk error')
     })
 
@@ -928,9 +888,9 @@ describe('FileWatcher', () => {
   })
 
   it('handleDetectedFile skips small files', async () => {
-    const fs = await import('fs')
-    vi.mocked(fs.default.existsSync).mockReturnValueOnce(true)
-    vi.mocked(fs.default.statSync).mockReturnValueOnce({ size: 500 } as any) // Below 1MB threshold
+    const corefs = await import('../core/fileSystem.js')
+    vi.mocked(corefs.fileExistsSync).mockReturnValueOnce(true)
+    vi.mocked(corefs.getFileStatsSync).mockReturnValueOnce({ size: 500 } as any) // Below 1MB threshold
 
     const { FileWatcher } = await import('../services/fileWatcher.js')
     const fw = new FileWatcher()

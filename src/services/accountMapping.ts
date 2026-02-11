@@ -2,8 +2,8 @@ import { Platform } from '../types/index.js'
 import { LateApiClient } from './lateApi.js'
 import type { LateAccount } from './lateApi.js'
 import logger from '../config/logger.js'
-import { promises as fs } from 'fs'
-import path from 'path'
+import { readTextFile, writeTextFile, removeFile } from '../core/fileSystem.js'
+import { join, resolve, sep } from '../core/paths.js'
 
 // ── Cache ──────────────────────────────────────────────────────────────
 
@@ -27,7 +27,7 @@ function toLatePlatform(platform: Platform): string {
 }
 
 function cachePath(): string {
-  return path.join(process.cwd(), CACHE_FILE)
+  return join(process.cwd(), CACHE_FILE)
 }
 
 function isCacheValid(cache: AccountCache): boolean {
@@ -44,7 +44,7 @@ function isCacheValid(cache: AccountCache): boolean {
 
 async function readFileCache(): Promise<AccountCache | null> {
   try {
-    const raw = await fs.readFile(cachePath(), 'utf-8')
+    const raw = await readTextFile(cachePath())
     const cache = JSON.parse(raw) as AccountCache
     if (cache.accounts && cache.fetchedAt && isCacheValid(cache)) {
       return cache
@@ -75,12 +75,12 @@ async function writeFileCache(cache: AccountCache): Promise<void> {
         return
       }
     }
-    const resolvedCachePath = path.resolve(cachePath())
-    if (!resolvedCachePath.startsWith(path.resolve(process.cwd()) + path.sep)) {
+    const resolvedCachePath = resolve(cachePath())
+    if (!resolvedCachePath.startsWith(resolve(process.cwd()) + sep)) {
       throw new Error('Cache path outside working directory')
     }
     // lgtm[js/http-to-file-access] - Writing sanitized account cache is intended functionality with path validation
-    await fs.writeFile(resolvedCachePath, JSON.stringify(sanitized, null, 2), 'utf-8')
+    await writeTextFile(resolvedCachePath, JSON.stringify(sanitized, null, 2))
   } catch (err) {
     logger.warn('Failed to write account cache file', { error: err })
   }
@@ -178,7 +178,7 @@ export async function refreshAccountMappings(): Promise<
 export async function clearAccountCache(): Promise<void> {
   memoryCache = null
   try {
-    await fs.unlink(cachePath())
+    await removeFile(cachePath())
   } catch {
     // File may not exist — that's fine
   }

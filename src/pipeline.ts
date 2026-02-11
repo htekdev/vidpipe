@@ -1,5 +1,5 @@
-import path from 'path'
-import { promises as fs } from 'fs'
+import { join, dirname, basename } from './core/paths.js'
+import { ensureDirectory, writeJsonFile, writeTextFile, copyFile, removeFile } from './core/fileSystem.js'
 import logger from './config/logger'
 import { getConfig } from './config/environment'
 import { ingestVideo } from './services/videoIngestion'
@@ -187,9 +187,9 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
       const drift = Math.abs(expectedDuration - adjustedDuration)
       logger.info(`[Pipeline] Silence removal: original=${transcript.duration.toFixed(1)}s, removed=${totalRemoved.toFixed(1)}s, expected=${expectedDuration.toFixed(1)}s, adjusted=${adjustedDuration.toFixed(1)}s, drift=${drift.toFixed(1)}s`)
 
-      await fs.writeFile(
-        path.join(video.videoDir, 'transcript-edited.json'),
-        JSON.stringify(adjustedTranscript, null, 2),
+      await writeJsonFile(
+        join(video.videoDir, 'transcript-edited.json'),
+        adjustedTranscript,
       )
     }
   }
@@ -210,7 +210,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
     if (assFile && silenceKeepSegments) {
       // Single-pass: re-do silence removal + burn captions from ORIGINAL video in one encode
       // This guarantees frame-accurate cuts with perfectly aligned captions
-      const captionedOutput = path.join(video.videoDir, `${video.slug}-captioned.mp4`)
+      const captionedOutput = join(video.videoDir, `${video.slug}-captioned.mp4`)
       captionedVideoPath = await runStage<string>(
         Stage.CaptionBurn,
         () => singlePassEditAndCaption(video.repoPath, silenceKeepSegments!, assFile, captionedOutput),
@@ -219,7 +219,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
     } else if (assFile) {
       // No silence removal — just burn captions into original video
       const videoToBurn = editedVideoPath ?? video.repoPath
-      const captionedOutput = path.join(video.videoDir, `${video.slug}-captioned.mp4`)
+      const captionedOutput = join(video.videoDir, `${video.slug}-captioned.mp4`)
       captionedVideoPath = await runStage<string>(
         Stage.CaptionBurn,
         () => burnCaptions(videoToBurn, assFile, captionedOutput),
@@ -259,7 +259,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   if (transcript && summary && !cfg.SKIP_SOCIAL) {
     const result = await runStage<SocialPost[]>(
       Stage.SocialMedia,
-      () => generateSocialPosts(video, transcript, summary, path.join(video.videoDir, 'social-posts'), getModelForAgent('SocialMediaAgent')),
+      () => generateSocialPosts(video, transcript, summary, join(video.videoDir, 'social-posts'), getModelForAgent('SocialMediaAgent')),
       stageResults,
     )
     if (result) socialPosts = result
@@ -298,13 +298,13 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
           }
           const posts = await generateShortPosts(video, asShortClip, transcript, getModelForAgent('MediumClipPostsAgent'))
           // Move posts to medium-clips/{slug}/posts/
-          const clipsDir = path.join(path.dirname(video.repoPath), 'medium-clips')
-          const postsDir = path.join(clipsDir, clip.slug, 'posts')
-          await fs.mkdir(postsDir, { recursive: true })
+          const clipsDir = join(dirname(video.repoPath), 'medium-clips')
+          const postsDir = join(clipsDir, clip.slug, 'posts')
+          await ensureDirectory(postsDir)
           for (const post of posts) {
-            const destPath = path.join(postsDir, path.basename(post.outputPath))
-            await fs.copyFile(post.outputPath, destPath)
-            await fs.unlink(post.outputPath).catch(() => {})
+            const destPath = join(postsDir, basename(post.outputPath))
+            await copyFile(post.outputPath, destPath)
+            await removeFile(post.outputPath)
             post.outputPath = destPath
           }
           socialPosts.push(...posts)
@@ -345,8 +345,8 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   if (report.records.length > 0) {
     logger.info(costTracker.formatReport())
     const costMd = generateCostMarkdown(report)
-    const costPath = path.join(video.videoDir, 'cost-report.md')
-    await fs.writeFile(costPath, costMd, 'utf-8')
+    const costPath = join(video.videoDir, 'cost-report.md')
+    await writeTextFile(costPath, costMd)
     logger.info(`Cost report saved: ${costPath}`)
   }
 

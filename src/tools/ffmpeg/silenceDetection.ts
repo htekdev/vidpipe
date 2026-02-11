@@ -1,9 +1,5 @@
-import ffmpeg from 'fluent-ffmpeg'
+import { createFFmpeg } from '../../core/ffmpeg.js'
 import logger from '../../config/logger'
-import { getFFmpegPath } from '../../config/ffmpegResolver.js'
-
-const ffmpegPath = getFFmpegPath()
-ffmpeg.setFfmpegPath(ffmpegPath)
 
 export interface SilenceRegion {
   start: number   // seconds
@@ -25,7 +21,7 @@ export async function detectSilence(
     const regions: SilenceRegion[] = []
     let stderr = ''
 
-    ffmpeg(audioPath)
+    createFFmpeg(audioPath)
       .audioFilters(`silencedetect=noise=${noiseThreshold}:d=${minDuration}`)
       .format('null')
       .output('-')

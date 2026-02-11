@@ -1,11 +1,11 @@
-import readline from 'readline'
-import { promises as fs } from 'fs'
-import path from 'path'
+import { createReadlineInterface } from '../core/cli.js'
+import { writeTextFile, readTextFile, fileExists } from '../core/fileSystem.js'
+import { join } from '../core/paths.js'
 import { getFFmpegPath, getFFprobePath } from '../config/ffmpegResolver'
 import { LateApiClient } from '../services/lateApi'
 import { getDefaultScheduleConfig } from '../services/scheduleConfig'
 
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+const rl = createReadlineInterface({ input: process.stdin, output: process.stdout })
 
 function ask(question: string): Promise<string> {
   return new Promise((resolve) => {
@@ -22,13 +22,13 @@ export async function runInit(): Promise<void> {
 
   console.log('\n🎬 Welcome to vidpipe setup!\n')
 
-  const envPath = path.join(process.cwd(), '.env')
+  const envPath = join(process.cwd(), '.env')
   const envVars: Record<string, string> = {}
 
   // Load existing .env if present
   let existingEnv = ''
   try {
-    existingEnv = await fs.readFile(envPath, 'utf-8')
+    existingEnv = await readTextFile(envPath)
   } catch {
     // No existing .env
   }
@@ -122,12 +122,11 @@ export async function runInit(): Promise<void> {
       // Schedule.json
       const createSchedule = await ask('  ? Create default schedule.json? [Y/n]: ')
       if (createSchedule.toLowerCase() !== 'n') {
-        const schedulePath = path.join(process.cwd(), 'schedule.json')
-        try {
-          await fs.access(schedulePath)
+        const schedulePath = join(process.cwd(), 'schedule.json')
+        if (await fileExists(schedulePath)) {
           console.log('  ✅ schedule.json already exists')
-        } catch {
-          await fs.writeFile(schedulePath, JSON.stringify(getDefaultScheduleConfig(), null, 2))
+        } else {
+          await writeTextFile(schedulePath, JSON.stringify(getDefaultScheduleConfig(), null, 2))
           console.log('  ✅ schedule.json created with optimal posting times')
         }
       }
@@ -145,7 +144,7 @@ export async function runInit(): Promise<void> {
       existingEnv += `\n${key}=${value}`
     }
   }
-  await fs.writeFile(envPath, existingEnv.trim() + '\n')
+  await writeTextFile(envPath, existingEnv.trim() + '\n')
 
   console.log('\n✅ Setup complete! Configuration saved to .env')
   console.log('   Run `vidpipe doctor` to verify everything is working.')

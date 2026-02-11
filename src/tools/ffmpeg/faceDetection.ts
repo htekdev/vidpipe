@@ -1,23 +1,19 @@
-import { execFile } from 'child_process'
-import { existsSync } from 'fs'
-import { promises as fs } from 'fs'
-import path from 'path'
-import os from 'os'
-import sharp from 'sharp'
-import * as ort from 'onnxruntime-node'
-import { fileURLToPath } from 'url'
+import { execFileRaw } from '../../core/process.js'
+import { fileExistsSync, listDirectory, removeFile, removeDirectory, makeTempDir } from '../../core/fileSystem.js'
+import { dirname, join, resolve, fileURLToPath } from '../../core/paths.js'
+import { sharp, ort } from '../../core/media.js'
+import { getFFmpegPath, getFFprobePath } from '../../core/ffmpeg.js'
 import logger from '../../config/logger'
-import { getFFmpegPath, getFFprobePath } from '../../config/ffmpegResolver.js'
 
 const ffmpegPath = getFFmpegPath()
 const ffprobePath = getFFprobePath()
 
 // Resolve model path: dist/models/ (production) or assets/models/ (dev)
 const __filename_local = fileURLToPath(import.meta.url)
-const __dirname_local = path.dirname(__filename_local)
+const __dirname_local = dirname(__filename_local)
 
-const PROD_MODEL_PATH = path.resolve(__dirname_local, '..', '..', 'models', 'ultraface-320.onnx')
-const DEV_MODEL_PATH = path.resolve(
+const PROD_MODEL_PATH = resolve(__dirname_local, '..', '..', 'models', 'ultraface-320.onnx')
+const DEV_MODEL_PATH = resolve(
   __dirname_local,
   '..',
   '..',
@@ -27,7 +23,7 @@ const DEV_MODEL_PATH = path.resolve(
   'ultraface-320.onnx',
 )
 
-const MODEL_PATH = existsSync(PROD_MODEL_PATH) ? PROD_MODEL_PATH : DEV_MODEL_PATH
+const MODEL_PATH = fileExistsSync(PROD_MODEL_PATH) ? PROD_MODEL_PATH : DEV_MODEL_PATH
 
 /** Cached ONNX session — loaded once, reused across calls. */
 let cachedSession: ort.InferenceSession | null = null
@@ -84,9 +80,10 @@ const REFINE_MAX_SIZE_FRAC = 0.55
 
 async function getVideoDuration(videoPath: string): Promise<number> {
   return new Promise((resolve, reject) => {
-    execFile(
+    execFileRaw(
       ffprobePath,
       ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', videoPath],
+      {},
       (error, stdout) => {
         if (error) {
           reject(new Error(`ffprobe failed: ${error.message}`))
@@ -100,7 +97,7 @@ async function getVideoDuration(videoPath: string): Promise<number> {
 
 export async function getVideoResolution(videoPath: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
-    execFile(
+    execFileRaw(
       ffprobePath,
       [
         '-v', 'error',
@@ -109,6 +106,7 @@ export async function getVideoResolution(videoPath: string): Promise<{ width: nu
         '-of', 'csv=p=0',
         videoPath,
       ],
+      {},
       (error, stdout) => {
         if (error) {
           reject(new Error(`ffprobe failed: ${error.message}`))
@@ -132,11 +130,11 @@ async function extractSampleFrames(videoPath: string, tempDir: string): Promise<
 
   const framePaths: string[] = []
   for (let i = 0; i < timestamps.length; i++) {
-    const framePath = path.join(tempDir, `frame_${i}.png`)
+    const framePath = join(tempDir, `frame_${i}.png`)
     framePaths.push(framePath)
 
     await new Promise<void>((resolve, reject) => {
-      execFile(
+      execFileRaw(
         ffmpegPath,
         [
           '-y',
@@ -174,7 +172,7 @@ interface FaceBox {
 
 async function getSession(): Promise<ort.InferenceSession> {
   if (cachedSession) return cachedSession
-  if (!existsSync(MODEL_PATH)) {
+  if (!fileExistsSync(MODEL_PATH)) {
     throw new Error(`Face detection model not found at ${MODEL_PATH}. Run 'vidpipe doctor' to check dependencies.`)
   }
   cachedSession = await ort.InferenceSession.create(MODEL_PATH, {
@@ -493,7 +491,7 @@ export function calculateCornerConfidence(scores: number[]): number {
  * @returns The detected webcam region in original video resolution, or null
  */
 export async function detectWebcamRegion(videoPath: string): Promise<WebcamRegion | null> {
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'face-detect-'))
+  const tempDir = await makeTempDir('face-detect-')
 
   try {
     const resolution = await getVideoResolution(videoPath)
@@ -602,10 +600,10 @@ export async function detectWebcamRegion(videoPath: string): Promise<WebcamRegio
 
     return region
   } finally {
-    const files = await fs.readdir(tempDir).catch(() => [] as string[])
+    const files = await listDirectory(tempDir).catch(() => [] as string[])
     for (const f of files) {
-      await fs.unlink(path.join(tempDir, f)).catch(() => {})
+      await removeFile(join(tempDir, f)).catch(() => {})
     }
-    await fs.rmdir(tempDir).catch(() => {})
+    await removeDirectory(tempDir).catch(() => {})
   }
 }

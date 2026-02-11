@@ -1,5 +1,5 @@
-import path from 'path'
-import fsp from 'fs/promises'
+import { join } from '../core/paths.js'
+import { writeTextFile, ensureDirectory } from '../core/fileSystem.js'
 import { VideoFile, Transcript } from '../types'
 import { generateSRT, generateVTT, generateStyledASS } from '../tools/captions/captionGenerator'
 import { getConfig } from '../config/environment'
@@ -14,21 +14,21 @@ export async function generateCaptions(
   transcript: Transcript,
 ): Promise<string[]> {
   const config = getConfig()
-  const captionsDir = path.join(config.OUTPUT_DIR, video.slug, 'captions')
-  await fsp.mkdir(captionsDir, { recursive: true })
+  const captionsDir = join(config.OUTPUT_DIR, video.slug, 'captions')
+  await ensureDirectory(captionsDir)
 
-  const srtPath = path.join(captionsDir, 'captions.srt')
-  const vttPath = path.join(captionsDir, 'captions.vtt')
-  const assPath = path.join(captionsDir, 'captions.ass')
+  const srtPath = join(captionsDir, 'captions.srt')
+  const vttPath = join(captionsDir, 'captions.vtt')
+  const assPath = join(captionsDir, 'captions.ass')
 
   const srt = generateSRT(transcript)
   const vtt = generateVTT(transcript)
   const ass = generateStyledASS(transcript)
 
   await Promise.all([
-    fsp.writeFile(srtPath, srt, 'utf-8'),
-    fsp.writeFile(vttPath, vtt, 'utf-8'),
-    fsp.writeFile(assPath, ass, 'utf-8'),
+    writeTextFile(srtPath, srt),
+    writeTextFile(vttPath, vtt),
+    writeTextFile(assPath, ass),
   ])
 
   const paths = [srtPath, vttPath, assPath]

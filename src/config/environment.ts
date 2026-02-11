@@ -1,11 +1,11 @@
-import path from 'path'
-import fs from 'fs'
-import dotenv from 'dotenv'
+import { join } from '../core/paths.js'
+import { fileExistsSync } from '../core/fileSystem.js'
+import { loadEnvFile } from '../core/env.js'
 
 // Load .env file from repo root
-const envPath = path.join(process.cwd(), '.env')
-if (fs.existsSync(envPath)) {
-  dotenv.config({ path: envPath })
+const envPath = join(process.cwd(), '.env')
+if (fileExistsSync(envPath)) {
+  loadEnvFile(envPath)
 }
 
 export interface AppEnvironment {
@@ -65,7 +65,7 @@ export function initConfig(cli: CLIOptions = {}): AppEnvironment {
 
   config = {
     OPENAI_API_KEY: cli.openaiKey || process.env.OPENAI_API_KEY || '',
-    WATCH_FOLDER: cli.watchDir || process.env.WATCH_FOLDER || path.join(repoRoot, 'watch'),
+    WATCH_FOLDER: cli.watchDir || process.env.WATCH_FOLDER || join(repoRoot, 'watch'),
     REPO_ROOT: repoRoot,
     FFMPEG_PATH: process.env.FFMPEG_PATH || 'ffmpeg',   // legacy; prefer ffmpegResolver
     FFPROBE_PATH: process.env.FFPROBE_PATH || 'ffprobe', // legacy; prefer ffmpegResolver
@@ -74,8 +74,8 @@ export function initConfig(cli: CLIOptions = {}): AppEnvironment {
     LLM_PROVIDER: process.env.LLM_PROVIDER || 'copilot',
     LLM_MODEL: process.env.LLM_MODEL || '',
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
-    OUTPUT_DIR:cli.outputDir || process.env.OUTPUT_DIR || path.join(repoRoot, 'recordings'),
-    BRAND_PATH: cli.brand || process.env.BRAND_PATH || path.join(repoRoot, 'brand.json'),
+    OUTPUT_DIR:cli.outputDir || process.env.OUTPUT_DIR || join(repoRoot, 'recordings'),
+    BRAND_PATH: cli.brand || process.env.BRAND_PATH || join(repoRoot, 'brand.json'),
     VERBOSE: cli.verbose ?? false,
     SKIP_GIT: cli.git === false,
     SKIP_SILENCE_REMOVAL: cli.silenceRemoval === false,

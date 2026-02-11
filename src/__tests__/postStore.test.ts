@@ -17,6 +17,17 @@ vi.mock('../config/environment.js', () => ({
   getConfig: () => ({ OUTPUT_DIR: tmpDir }),
 }))
 
+// Allow spying on renameFile from core/fileSystem for the EPERM fallback test
+const { mockRenameFile } = vi.hoisted(() => ({
+  mockRenameFile: vi.fn() as ReturnType<typeof vi.fn>,
+}))
+
+vi.mock('../core/fileSystem.js', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('../core/fileSystem.js')>()
+  mockRenameFile.mockImplementation(mod.renameFile)
+  return { ...mod, renameFile: mockRenameFile }
+})
+
 // ── Import after mocks ────────────────────────────────────────────────
 
 import {
@@ -208,8 +219,8 @@ describe('postStore', () => {
       // Write a media file so the folder has content to copy
       await fs.writeFile(path.join(item.folderPath, 'media.mp4'), 'fake-video-bytes')
 
-      // Spy on fs.rename to simulate EPERM (Windows file handle lock)
-      const renameSpy = vi.spyOn(fs, 'rename').mockRejectedValueOnce(
+      // Mock renameFile from core/fileSystem to simulate EPERM (Windows file handle lock)
+      mockRenameFile.mockRejectedValueOnce(
         Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' }),
       )
 
@@ -232,8 +243,6 @@ describe('postStore', () => {
 
       const mediaContent = await fs.readFile(path.join(publishedDir, 'media.mp4'), 'utf-8')
       expect(mediaContent).toBe('fake-video-bytes')
-
-      renameSpy.mockRestore()
     })
   })
 

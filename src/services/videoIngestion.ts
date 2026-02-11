@@ -1,48 +1,35 @@
-import path from 'path'
-import fs from 'fs'
-import fsp from 'fs/promises'
-import slugify from 'slugify'
-import ffmpeg from 'fluent-ffmpeg'
+import { join, basename, extname } from '../core/paths.js'
+import { fileExistsSync, ensureDirectory, copyFile, getFileStats, listDirectory, removeDirectory, removeFile, openReadStream, openWriteStream } from '../core/fileSystem.js'
+import { slugify } from '../core/text.js'
+import { ffprobe } from '../core/ffmpeg.js'
 import { VideoFile } from '../types'
 import { getConfig } from '../config/environment'
 import logger from '../config/logger'
-import { getFFmpegPath, getFFprobePath } from '../config/ffmpegResolver.js'
 
-const ffmpegBin = getFFmpegPath()
-const ffprobeBin = getFFprobePath()
-ffmpeg.setFfmpegPath(ffmpegBin)
-ffmpeg.setFfprobePath(ffprobeBin)
-
-function getVideoMetadata(filePath: string): Promise<{ duration: number }> {
-  return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(filePath, (err, metadata) => {
-      if (err) {
-        return reject(err)
-      }
-      resolve({ duration: metadata.format.duration ?? 0 })
-    })
-  })
+async function getVideoMetadata(filePath: string): Promise<{ duration: number }> {
+  const metadata = await ffprobe(filePath)
+  return { duration: metadata.format.duration ?? 0 }
 }
 
 export async function ingestVideo(sourcePath: string): Promise<VideoFile> {
   const config = getConfig()
-  const baseName = path.basename(sourcePath, path.extname(sourcePath))
+  const baseName = basename(sourcePath, extname(sourcePath))
   const slug = slugify(baseName, { lower: true })
 
-  const recordingsDir = path.join(config.OUTPUT_DIR, slug)
-  const thumbnailsDir = path.join(recordingsDir, 'thumbnails')
-  const shortsDir = path.join(recordingsDir, 'shorts')
-  const socialPostsDir = path.join(recordingsDir, 'social-posts')
+  const recordingsDir = join(config.OUTPUT_DIR, slug)
+  const thumbnailsDir = join(recordingsDir, 'thumbnails')
+  const shortsDir = join(recordingsDir, 'shorts')
+  const socialPostsDir = join(recordingsDir, 'social-posts')
 
   logger.info(`Ingesting video: ${sourcePath} → ${slug}`)
 
   // Clean stale artifacts if output folder already exists
-  if (fs.existsSync(recordingsDir)) {
+  if (fileExistsSync(recordingsDir)) {
     logger.warn(`Output folder already exists, cleaning previous artifacts: ${recordingsDir}`)
 
     const subDirs = ['thumbnails', 'shorts', 'social-posts', 'chapters', 'medium-clips', 'captions']
     for (const sub of subDirs) {
-      await fsp.rm(path.join(recordingsDir, sub), { recursive: true, force: true })
+      await removeDirectory(join(recordingsDir, sub), { recursive: true, force: true })
     }
 
     const stalePatterns = [
@@ -51,29 +38,29 @@ export async function ingestVideo(sourcePath: string): Promise<VideoFile> {
       'summary.md', 'blog-post.md', 'README.md',
     ]
     for (const pattern of stalePatterns) {
-      await fsp.rm(path.join(recordingsDir, pattern), { force: true })
+      await removeFile(join(recordingsDir, pattern))
     }
 
-    const files = await fsp.readdir(recordingsDir)
+    const files = await listDirectory(recordingsDir)
     for (const file of files) {
       if (file.endsWith('-edited.mp4') || file.endsWith('-captioned.mp4')) {
-        await fsp.rm(path.join(recordingsDir, file), { force: true })
+        await removeFile(join(recordingsDir, file))
       }
     }
   }
 
-  await fsp.mkdir(recordingsDir, { recursive: true })
-  await fsp.mkdir(thumbnailsDir, { recursive: true })
-  await fsp.mkdir(shortsDir, { recursive: true })
-  await fsp.mkdir(socialPostsDir, { recursive: true })
+  await ensureDirectory(recordingsDir)
+  await ensureDirectory(thumbnailsDir)
+  await ensureDirectory(shortsDir)
+  await ensureDirectory(socialPostsDir)
 
   const destFilename = `${slug}.mp4`
-  const destPath = path.join(recordingsDir, destFilename)
+  const destPath = join(recordingsDir, destFilename)
 
   let needsCopy = true
   try {
-    const destStats = await fsp.stat(destPath)
-    const srcStats = await fsp.stat(sourcePath)
+    const destStats = await getFileStats(destPath)
+    const srcStats = await getFileStats(sourcePath)
     if (destStats.size === srcStats.size) {
       logger.info(`Video already copied (same size), skipping copy`)
       needsCopy = false
@@ -84,8 +71,8 @@ export async function ingestVideo(sourcePath: string): Promise<VideoFile> {
 
   if (needsCopy) {
     await new Promise<void>((resolve, reject) => {
-      const readStream = fs.createReadStream(sourcePath)
-      const writeStream = fs.createWriteStream(destPath)
+      const readStream = openReadStream(sourcePath)
+      const writeStream = openWriteStream(destPath)
       readStream.on('error', reject)
       writeStream.on('error', reject)
       writeStream.on('finish', resolve)
@@ -101,7 +88,7 @@ export async function ingestVideo(sourcePath: string): Promise<VideoFile> {
   } catch (err) {
     logger.warn(`ffprobe failed, continuing without duration metadata: ${err instanceof Error ? err.message : String(err)}`)
   }
-  const stats = await fsp.stat(destPath)
+  const stats = await getFileStats(destPath)
 
   logger.info(`Video metadata: duration=${duration}s, size=${stats.size} bytes`)
 

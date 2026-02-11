@@ -4,10 +4,10 @@ import { VideoFile, Transcript, MediumClip, MediumSegment } from '../types'
 import { extractClip, extractCompositeClipWithTransitions } from '../tools/ffmpeg/clipExtraction'
 import { generateStyledASSForSegment, generateStyledASSForComposite } from '../tools/captions/captionGenerator'
 import { burnCaptions } from '../tools/ffmpeg/captionBurning'
-import { v4 as uuidv4 } from 'uuid'
-import slugify from 'slugify'
-import { promises as fs } from 'fs'
-import path from 'path'
+import { generateId } from '../core/text.js'
+import { slugify } from '../core/text.js'
+import { writeTextFile, ensureDirectory } from '../core/fileSystem.js'
+import { join, dirname } from '../core/paths.js'
 import logger from '../config/logger'
 
 // ── Types for the LLM's plan_medium_clips tool call ─────────────────────────
@@ -186,16 +186,16 @@ export async function generateMediumClips(
       return []
     }
 
-    const clipsDir = path.join(path.dirname(video.repoPath), 'medium-clips')
-    await fs.mkdir(clipsDir, { recursive: true })
+    const clipsDir = join(dirname(video.repoPath), 'medium-clips')
+    await ensureDirectory(clipsDir)
 
     const clips: MediumClip[] = []
 
     for (const plan of planned) {
-      const id = uuidv4()
-      const clipSlug = slugify(plan.title, { lower: true, strict: true })
+      const id = generateId()
+      const clipSlug = slugify(plan.title)
       const totalDuration = plan.segments.reduce((sum, s) => sum + (s.end - s.start), 0)
-      const outputPath = path.join(clipsDir, `${clipSlug}.mp4`)
+      const outputPath = join(clipsDir, `${clipSlug}.mp4`)
 
       const segments: MediumSegment[] = plan.segments.map((s) => ({
         start: s.start,
@@ -217,10 +217,10 @@ export async function generateMediumClips(
           ? generateStyledASSForSegment(transcript, segments[0].start, segments[0].end, 1.0, 'medium')
           : generateStyledASSForComposite(transcript, segments, 1.0, 'medium')
 
-        const assPath = path.join(clipsDir, `${clipSlug}.ass`)
-        await fs.writeFile(assPath, assContent)
+        const assPath = join(clipsDir, `${clipSlug}.ass`)
+        await writeTextFile(assPath, assContent)
 
-        captionedPath = path.join(clipsDir, `${clipSlug}-captioned.mp4`)
+        captionedPath = join(clipsDir, `${clipSlug}-captioned.mp4`)
         await burnCaptions(outputPath, assPath, captionedPath)
         logger.info(`[MediumVideoAgent] Burned captions for clip: ${plan.title}`)
       } catch (err) {
@@ -230,7 +230,7 @@ export async function generateMediumClips(
       }
 
       // Generate description markdown
-      const mdPath = path.join(clipsDir, `${clipSlug}.md`)
+      const mdPath = join(clipsDir, `${clipSlug}.md`)
       const mdContent = [
         `# ${plan.title}\n`,
         `**Topic:** ${plan.topic}\n`,
@@ -246,7 +246,7 @@ export async function generateMediumClips(
         plan.tags.map((t) => `- ${t}`).join('\n'),
         '',
       ].join('\n')
-      await fs.writeFile(mdPath, mdContent)
+      await writeTextFile(mdPath, mdContent)
 
       clips.push({
         id,

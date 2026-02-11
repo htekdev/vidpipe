@@ -1,11 +1,10 @@
-import express from 'express'
-import path from 'path'
-import { fileURLToPath } from 'url'
+import { express } from '../core/http.js'
+import { join, dirname, fileURLToPath } from '../core/paths.js'
 import { createRouter } from './routes'
 import { getConfig } from '../config/environment'
 import logger from '../config/logger'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const __dirname = dirname(fileURLToPath(import.meta.url))
 
 export interface ReviewServerOptions {
   port?: number
@@ -26,19 +25,19 @@ export async function startReviewServer(options: ReviewServerOptions = {}): Prom
 
   // Serve media files from publish-queue and published directories
   const cfg = getConfig()
-  const queueDir = path.join(cfg.OUTPUT_DIR, 'publish-queue')
-  const publishedDir = path.join(cfg.OUTPUT_DIR, 'published')
+  const queueDir = join(cfg.OUTPUT_DIR, 'publish-queue')
+  const publishedDir = join(cfg.OUTPUT_DIR, 'published')
   app.use('/media/queue', express.static(queueDir))
   app.use('/media/published', express.static(publishedDir))
 
   // Serve static frontend
-  const publicDir = path.join(__dirname, 'public')
+  const publicDir = join(__dirname, 'public')
   app.use(express.static(publicDir))
 
   // SPA fallback — serve index.html for non-API routes
   app.get('/*', (req, res) => {
     if (!req.path.startsWith('/api/') && !req.path.startsWith('/media/')) {
-      res.sendFile(path.join(publicDir, 'index.html'))
+      res.sendFile(join(publicDir, 'index.html'))
     }
   })
 

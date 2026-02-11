@@ -9,24 +9,26 @@ const { mockExecFile, mockMkdtemp, mockCopyFile, mockReaddir, mockUnlink, mockRm
   mockRmdir: vi.fn(),
 }));
 
-vi.mock('child_process', () => ({
-  execFile: mockExecFile,
+vi.mock('../core/process.js', () => ({
+  execFileRaw: mockExecFile,
 }));
 
-vi.mock('fs', async (importOriginal) => {
-  const original = await importOriginal() as any;
-  return {
-    ...original,
-    promises: {
-      ...original.promises,
-      mkdtemp: mockMkdtemp,
-      copyFile: mockCopyFile,
-      readdir: mockReaddir,
-      unlink: mockUnlink,
-      rmdir: mockRmdir,
-    },
-  };
-});
+vi.mock('../core/fileSystem.js', () => ({
+  makeTempDir: mockMkdtemp,
+  copyFile: mockCopyFile,
+  listDirectory: mockReaddir,
+  removeFile: mockUnlink,
+  removeDirectory: mockRmdir,
+}));
+
+vi.mock('../core/paths.js', () => ({
+  join: (...args: string[]) => args.join('/'),
+  fontsDir: () => '/fonts',
+}));
+
+vi.mock('../core/ffmpeg.js', () => ({
+  getFFmpegPath: () => 'ffmpeg',
+}));
 
 vi.mock('../config/logger.js', () => ({
   default: {

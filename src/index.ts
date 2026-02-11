@@ -1,4 +1,4 @@
-import { Command } from 'commander'
+import { Command } from './core/cli.js'
 import { initConfig, validateRequiredKeys, getConfig } from './config/environment'
 import type { CLIOptions } from './config/environment'
 import { FileWatcher } from './services/fileWatcher'
@@ -8,13 +8,13 @@ import { runDoctor } from './commands/doctor'
 import { runInit } from './commands/init'
 import { runSchedule } from './commands/schedule'
 import { startReviewServer } from './review/server'
-import open from 'open'
-import path from 'path'
-import { readFileSync } from 'fs'
-import { fileURLToPath } from 'url'
+import { openUrl } from './core/cli.js'
+import { dirname, resolve } from './core/paths.js'
+import { readTextFileSync } from './core/fileSystem.js'
+import { fileURLToPath } from './core/paths.js'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const pkg = JSON.parse(readFileSync(path.resolve(__dirname, '..', 'package.json'), 'utf-8'))
+const __dirname = dirname(fileURLToPath(import.meta.url))
+const pkg = JSON.parse(readTextFileSync(resolve(__dirname, '..', 'package.json')))
 
 const BANNER = `
 ╔══════════════════════════════════════╗
@@ -51,7 +51,7 @@ program
       process.exit(1)
     }
     const { port, close } = await startReviewServer({ port: parsedPort })
-    await open(`http://localhost:${port}`)
+    await openUrl(`http://localhost:${port}`)
     console.log(`\nReview app running at http://localhost:${port}`)
     console.log('Press Ctrl+C to stop.\n')
 
@@ -157,7 +157,7 @@ const defaultCmd = program
 
     // Direct file mode
     if (videoPath) {
-      const resolvedPath = path.resolve(videoPath)
+      const resolvedPath = resolve(videoPath)
       logger.info(`Processing single video: ${resolvedPath}`)
       await processVideoSafe(resolvedPath)
       logger.info('Done.')

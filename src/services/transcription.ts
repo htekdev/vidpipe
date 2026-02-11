@@ -1,5 +1,5 @@
-import path from 'path'
-import fsp from 'fs/promises'
+import { join } from '../core/paths.js'
+import { getFileStats, writeJsonFile, ensureDirectory, removeFile } from '../core/fileSystem.js'
 import { extractAudio, splitAudioIntoChunks } from '../tools/ffmpeg/audioExtraction'
 import { transcribeAudio } from '../tools/whisper/whisperClient'
 import { VideoFile, Transcript, Segment, Word } from '../types'
@@ -12,17 +12,17 @@ export async function transcribeVideo(video: VideoFile): Promise<Transcript> {
   const config = getConfig()
 
   // 1. Create cache directory for temp audio files
-  const cacheDir = path.join(config.REPO_ROOT, 'cache')
-  await fsp.mkdir(cacheDir, { recursive: true })
+  const cacheDir = join(config.REPO_ROOT, 'cache')
+  await ensureDirectory(cacheDir)
   logger.info(`Cache directory ready: ${cacheDir}`)
 
   // 2. Extract audio as compressed MP3 (much smaller than WAV)
-  const mp3Path = path.join(cacheDir, `${video.slug}.mp3`)
+  const mp3Path = join(cacheDir, `${video.slug}.mp3`)
   logger.info(`Extracting audio for "${video.slug}"`)
   await extractAudio(video.repoPath, mp3Path)
 
   // 3. Check file size and chunk if necessary
-  const stats = await fsp.stat(mp3Path)
+  const stats = await getFileStats(mp3Path)
   const fileSizeMB = stats.size / (1024 * 1024)
   logger.info(`Extracted audio: ${fileSizeMB.toFixed(1)}MB`)
 
@@ -41,20 +41,20 @@ export async function transcribeVideo(video: VideoFile): Promise<Transcript> {
     // Clean up chunk files
     for (const chunkPath of chunkPaths) {
       if (chunkPath !== mp3Path) {
-        await fsp.unlink(chunkPath).catch(() => {})
+        await removeFile(chunkPath).catch(() => {})
       }
     }
   }
 
   // 4. Save transcript JSON
-  const transcriptDir = path.join(config.OUTPUT_DIR, video.slug)
-  await fsp.mkdir(transcriptDir, { recursive: true })
-  const transcriptPath = path.join(transcriptDir, 'transcript.json')
-  await fsp.writeFile(transcriptPath, JSON.stringify(transcript, null, 2), 'utf-8')
+  const transcriptDir = join(config.OUTPUT_DIR, video.slug)
+  await ensureDirectory(transcriptDir)
+  const transcriptPath = join(transcriptDir, 'transcript.json')
+  await writeJsonFile(transcriptPath, transcript)
   logger.info(`Transcript saved: ${transcriptPath}`)
 
   // 5. Clean up temp audio file
-  await fsp.unlink(mp3Path).catch(() => {})
+  await removeFile(mp3Path).catch(() => {})
   logger.info(`Cleaned up temp file: ${mp3Path}`)
 
   // 6. Return the transcript

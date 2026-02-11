@@ -1,7 +1,7 @@
 import { getConfig } from '../config/environment'
 import logger from '../config/logger'
-import { promises as fs } from 'fs'
-import path from 'path'
+import { readTextFile, writeTextFile, writeJsonFile, ensureDirectory, copyFile, fileExists, listDirectoryWithTypes, removeDirectory, renameFile, copyDirectory } from '../core/fileSystem.js'
+import { join, basename, resolve, sep } from '../core/paths.js'
 
 export interface QueueItemMetadata {
   id: string
@@ -38,39 +38,34 @@ export interface QueueItem {
 
 function getQueueDir(): string {
   const { OUTPUT_DIR } = getConfig()
-  return path.join(OUTPUT_DIR, 'publish-queue')
+  return join(OUTPUT_DIR, 'publish-queue')
 }
 
 function getPublishedDir(): string {
   const { OUTPUT_DIR } = getConfig()
-  return path.join(OUTPUT_DIR, 'published')
+  return join(OUTPUT_DIR, 'published')
 }
 
 async function readQueueItem(folderPath: string, id: string): Promise<QueueItem | null> {
-  const metadataPath = path.join(folderPath, 'metadata.json')
-  const postPath = path.join(folderPath, 'post.md')
-  const mediaPath = path.join(folderPath, 'media.mp4')
+  const metadataPath = join(folderPath, 'metadata.json')
+  const postPath = join(folderPath, 'post.md')
+  const mediaPath = join(folderPath, 'media.mp4')
 
   try {
     // Read directly without prior existence check to avoid TOCTOU race
-    const metadataRaw = await fs.readFile(metadataPath, 'utf-8')
+    const metadataRaw = await readTextFile(metadataPath)
     const metadata: QueueItemMetadata = JSON.parse(metadataRaw)
 
     let postContent = ''
     try {
-      postContent = await fs.readFile(postPath, 'utf-8')
+      postContent = await readTextFile(postPath)
     } catch {
       logger.debug(`No post.md found for ${String(id).replace(/[\r\n]/g, '')}`)
     }
 
     let hasMedia = false
-    const mediaFilePath = path.join(folderPath, 'media.mp4')
-    try {
-      await fs.access(mediaFilePath)
-      hasMedia = true
-    } catch {
-      // no media file
-    }
+    const mediaFilePath = join(folderPath, 'media.mp4')
+    hasMedia = await fileExists(mediaFilePath)
 
     return {
       id,
@@ -88,11 +83,11 @@ async function readQueueItem(folderPath: string, id: string): Promise<QueueItem 
 
 export async function getPendingItems(): Promise<QueueItem[]> {
   const queueDir = getQueueDir()
-  await fs.mkdir(queueDir, { recursive: true })
+  await ensureDirectory(queueDir)
 
   let entries: string[]
   try {
-    const dirents = await fs.readdir(queueDir, { withFileTypes: true })
+    const dirents = await listDirectoryWithTypes(queueDir)
     entries = dirents.filter(d => d.isDirectory()).map(d => d.name)
   } catch {
     return []
@@ -100,7 +95,7 @@ export async function getPendingItems(): Promise<QueueItem[]> {
 
   const items: QueueItem[] = []
   for (const name of entries) {
-    const item = await readQueueItem(path.join(queueDir, name), name)
+    const item = await readQueueItem(join(queueDir, name), name)
     if (item) items.push(item)
   }
 
@@ -117,7 +112,7 @@ export async function getItem(id: string): Promise<QueueItem | null> {
   if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
     throw new Error(`Invalid ID format: ${id}`)
   }
-  const folderPath = path.join(getQueueDir(), path.basename(id))
+  const folderPath = join(getQueueDir(), basename(id))
   return readQueueItem(folderPath, id)
 }
 
@@ -131,17 +126,17 @@ export async function createItem(
   if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
     throw new Error(`Invalid ID format: ${id}`)
   }
-  const folderPath = path.join(getQueueDir(), path.basename(id))
-  await fs.mkdir(folderPath, { recursive: true })
+  const folderPath = join(getQueueDir(), basename(id))
+  await ensureDirectory(folderPath)
 
-  await fs.writeFile(path.join(folderPath, 'metadata.json'), JSON.stringify(metadata, null, 2), 'utf-8')
-  await fs.writeFile(path.join(folderPath, 'post.md'), postContent, 'utf-8')
+  await writeJsonFile(join(folderPath, 'metadata.json'), metadata)
+  await writeTextFile(join(folderPath, 'post.md'), postContent)
 
   let hasMedia = false
-  const mediaPath = path.join(folderPath, 'media.mp4')
+  const mediaPath = join(folderPath, 'media.mp4')
 
   if (mediaSourcePath) {
-    await fs.copyFile(mediaSourcePath, mediaPath)
+    await copyFile(mediaSourcePath, mediaPath)
     hasMedia = true
   }
 
@@ -196,14 +191,13 @@ export async function updateItem(
     // Use only the sanitized object — do not spread raw HTTP updates (CodeQL js/http-to-file-access)
     existing.metadata = sanitized
     // Validate write target is within the expected queue directory
-    const metadataWritePath = path.resolve(path.join(existing.folderPath, 'metadata.json'))
-    if (!metadataWritePath.startsWith(path.resolve(getQueueDir()) + path.sep)) {
+    const metadataWritePath = resolve(join(existing.folderPath, 'metadata.json'))
+    if (!metadataWritePath.startsWith(resolve(getQueueDir()) + sep)) {
       throw new Error('Write target outside queue directory')
     }
-    await fs.writeFile(
+    await writeTextFile(
       metadataWritePath,
       JSON.stringify(existing.metadata, null, 2),
-      'utf-8',
     )
   }
 
@@ -212,12 +206,12 @@ export async function updateItem(
     const sanitizedContent = String(updates.postContent)
     existing.postContent = sanitizedContent
     // Validate write target is within the expected queue directory (CodeQL js/http-to-file-access)
-    const postWritePath = path.resolve(path.join(existing.folderPath, 'post.md'))
-    if (!postWritePath.startsWith(path.resolve(getQueueDir()) + path.sep)) {
+    const postWritePath = resolve(join(existing.folderPath, 'post.md'))
+    if (!postWritePath.startsWith(resolve(getQueueDir()) + sep)) {
       throw new Error('Write target outside queue directory')
     }
     // lgtm[js/http-to-file-access] - Writing user-provided post content to queue is intended functionality with path validation
-    await fs.writeFile(postWritePath, sanitizedContent, 'utf-8')
+    await writeTextFile(postWritePath, sanitizedContent)
   }
 
   logger.debug(`Updated queue item: ${String(id).replace(/[\r\n]/g, '')}`)
@@ -272,38 +266,37 @@ export async function approveItem(
   }
 
   // Validate write target is within the expected queue directory (CodeQL js/http-to-file-access)
-  const approveMetadataPath = path.resolve(path.join(item.folderPath, 'metadata.json'))
-  if (!approveMetadataPath.startsWith(path.resolve(getQueueDir()) + path.sep)) {
+  const approveMetadataPath = resolve(join(item.folderPath, 'metadata.json'))
+  if (!approveMetadataPath.startsWith(resolve(getQueueDir()) + sep)) {
     throw new Error('Write target outside queue directory')
   }
   // lgtm[js/http-to-file-access] - Writing sanitized metadata to queue is intended functionality with path validation
-  await fs.writeFile(
+  await writeTextFile(
     approveMetadataPath,
     JSON.stringify(sanitizedMetadata, null, 2),
-    'utf-8',
   )
 
   const publishedDir = getPublishedDir()
-  await fs.mkdir(publishedDir, { recursive: true })
+  await ensureDirectory(publishedDir)
   
-  // Validate destination path to prevent path traversal - use path.basename inline
-  const destPath = path.join(publishedDir, path.basename(id))
-  const resolvedDest = path.resolve(destPath)
-  const resolvedPublishedDir = path.resolve(publishedDir)
-  if (!resolvedDest.startsWith(resolvedPublishedDir + path.sep) && resolvedDest !== resolvedPublishedDir) {
+  // Validate destination path to prevent path traversal - use basename inline
+  const destPath = join(publishedDir, basename(id))
+  const resolvedDest = resolve(destPath)
+  const resolvedPublishedDir = resolve(publishedDir)
+  if (!resolvedDest.startsWith(resolvedPublishedDir + sep) && resolvedDest !== resolvedPublishedDir) {
     throw new Error(`Invalid destination path for item ${id}`)
   }
 
   try {
-    await fs.rename(item.folderPath, destPath)
+    await renameFile(item.folderPath, destPath)
   } catch (renameErr: unknown) {
     // On Windows, rename can fail with EPERM if a file handle is still releasing.
     // Fall back to recursive copy + delete.
     const errCode = (renameErr as NodeJS.ErrnoException | null)?.code
     if (errCode === 'EPERM') {
       logger.warn(`rename failed (EPERM) for ${String(id).replace(/[\r\n]/g, '')}, falling back to copy+delete`)
-      await fs.cp(item.folderPath, destPath, { recursive: true })
-      await fs.rm(item.folderPath, { recursive: true, force: true })
+      await copyDirectory(item.folderPath, destPath)
+      await removeDirectory(item.folderPath, { recursive: true, force: true })
     } else {
       throw renameErr
     }
@@ -317,9 +310,9 @@ export async function rejectItem(id: string): Promise<void> {
   if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
     throw new Error(`Invalid ID format: ${id}`)
   }
-  const folderPath = path.join(getQueueDir(), path.basename(id))
+  const folderPath = join(getQueueDir(), basename(id))
   try {
-    await fs.rm(folderPath, { recursive: true })
+    await removeDirectory(folderPath, { recursive: true })
     logger.debug(`Rejected and deleted queue item: ${String(id).replace(/[\r\n]/g, '')}`)
   } catch (err) {
     logger.debug(`Failed to reject queue item ${String(id).replace(/[\r\n]/g, '')}: ${String(err).replace(/[\r\n]/g, '')}`)
@@ -328,11 +321,11 @@ export async function rejectItem(id: string): Promise<void> {
 
 export async function getPublishedItems(): Promise<QueueItem[]> {
   const publishedDir = getPublishedDir()
-  await fs.mkdir(publishedDir, { recursive: true })
+  await ensureDirectory(publishedDir)
 
   let entries: string[]
   try {
-    const dirents = await fs.readdir(publishedDir, { withFileTypes: true })
+    const dirents = await listDirectoryWithTypes(publishedDir)
     entries = dirents.filter(d => d.isDirectory()).map(d => d.name)
   } catch {
     return []
@@ -340,7 +333,7 @@ export async function getPublishedItems(): Promise<QueueItem[]> {
 
   const items: QueueItem[] = []
   for (const name of entries) {
-    const item = await readQueueItem(path.join(publishedDir, name), name)
+    const item = await readQueueItem(join(publishedDir, name), name)
     if (item) items.push(item)
   }
 
@@ -353,18 +346,12 @@ export async function itemExists(id: string): Promise<'pending' | 'published' | 
   if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
     throw new Error(`Invalid ID format: ${id}`)
   }
-  try {
-    await fs.access(path.join(getQueueDir(), path.basename(id)))
+  if (await fileExists(join(getQueueDir(), basename(id)))) {
     return 'pending'
-  } catch {
-    // not in queue
   }
 
-  try {
-    await fs.access(path.join(getPublishedDir(), path.basename(id)))
+  if (await fileExists(join(getPublishedDir(), basename(id)))) {
     return 'published'
-  } catch {
-    // not published
   }
 
   return null

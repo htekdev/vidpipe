@@ -1,20 +1,11 @@
-import { execFile } from 'child_process'
-import { promises as fs, existsSync } from 'fs'
-import path from 'path'
-import os from 'os'
-import { fileURLToPath } from 'url'
+import { execFileRaw } from '../../core/process.js'
+import { copyFile, listDirectory, removeFile, removeDirectory, makeTempDir } from '../../core/fileSystem.js'
+import { join, fontsDir } from '../../core/paths.js'
+import { getFFmpegPath } from '../../core/ffmpeg.js'
 import logger from '../../config/logger'
-import { getFFmpegPath } from '../../config/ffmpegResolver.js'
 
 const ffmpegPath = getFFmpegPath()
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-
-// In tsup bundle: __dirname = dist/tools/ffmpeg/, fonts copied to dist/fonts/
-// In dev (tsx): __dirname = src/tools/ffmpeg/, fonts at ../../../assets/fonts/
-const bundledFontsDir = path.resolve(__dirname, '..', '..', 'fonts')
-const FONTS_DIR = existsSync(bundledFontsDir)
-  ? bundledFontsDir
-  : path.resolve(__dirname, '..', '..', '..', 'assets', 'fonts')
+const FONTS_DIR = fontsDir()
 
 export interface KeepSegment {
   start: number
@@ -93,7 +84,7 @@ export async function singlePassEdit(
   logger.info(`[SinglePassEdit] Editing ${keepSegments.length} segments → ${outputPath}`)
 
   return new Promise((resolve, reject) => {
-    execFile(ffmpegPath, args, { maxBuffer: 50 * 1024 * 1024 }, (error, _stdout, stderr) => {
+    execFileRaw(ffmpegPath, args, { maxBuffer: 50 * 1024 * 1024 }, (error, _stdout, stderr) => {
       if (error) {
         logger.error(`[SinglePassEdit] FFmpeg failed: ${stderr}`)
         reject(new Error(`Single-pass edit failed: ${error.message}`))
@@ -117,13 +108,13 @@ export async function singlePassEditAndCaption(
   outputPath: string,
 ): Promise<string> {
   // Copy ASS + bundled fonts to temp dir to avoid Windows drive colon issue
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'caption-'))
-  const tempAss = path.join(tempDir, 'captions.ass')
-  await fs.copyFile(assPath, tempAss)
+  const tempDir = await makeTempDir('caption-')
+  const tempAss = join(tempDir, 'captions.ass')
+  await copyFile(assPath, tempAss)
 
   let fontFiles: string[]
   try {
-    fontFiles = await fs.readdir(FONTS_DIR)
+    fontFiles = await listDirectory(FONTS_DIR)
   } catch (err: any) {
     if (err?.code === 'ENOENT') {
       throw new Error(`Fonts directory not found at ${FONTS_DIR}. Ensure assets/fonts/ exists in the project root.`)
@@ -132,7 +123,7 @@ export async function singlePassEditAndCaption(
   }
   for (const f of fontFiles) {
     if (f.endsWith('.ttf') || f.endsWith('.otf')) {
-      await fs.copyFile(path.join(FONTS_DIR, f), path.join(tempDir, f))
+      await copyFile(join(FONTS_DIR, f), join(tempDir, f))
     }
   }
 
@@ -159,13 +150,13 @@ export async function singlePassEditAndCaption(
   logger.info(`[SinglePassEdit] Processing ${keepSegments.length} segments with captions → ${outputPath}`)
 
   return new Promise((resolve, reject) => {
-    execFile(ffmpegPath, args, { cwd: tempDir, maxBuffer: 50 * 1024 * 1024 }, async (error, _stdout, stderr) => {
+    execFileRaw(ffmpegPath, args, { cwd: tempDir, maxBuffer: 50 * 1024 * 1024 }, async (error, _stdout, stderr) => {
       // Cleanup temp
-      const files = await fs.readdir(tempDir).catch(() => [] as string[])
+      const files = await listDirectory(tempDir).catch(() => [] as string[])
       for (const f of files) {
-        await fs.unlink(path.join(tempDir, f)).catch(() => {})
+        await removeFile(join(tempDir, f)).catch(() => {})
       }
-      await fs.rmdir(tempDir).catch(() => {})
+      await removeDirectory(tempDir).catch(() => {})
 
       if (error) {
         logger.error(`[SinglePassEdit] FFmpeg failed: ${stderr}`)

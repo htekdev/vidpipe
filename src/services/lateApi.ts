@@ -13,9 +13,9 @@
  */
 import { getConfig } from '../config/environment.js'
 import logger from '../config/logger.js'
-import { promises as fs, createReadStream } from 'fs'
-import { Readable } from 'stream'
-import path from 'path'
+import { getFileStats, openReadStream } from '../core/fileSystem.js'
+import { Readable } from '../core/network.js'
+import { basename, extname } from '../core/paths.js'
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -193,9 +193,9 @@ export class LateApiClient {
   }
 
   async uploadMedia(filePath: string): Promise<LateMediaUploadResult> {
-    const fileStats = await fs.stat(filePath)
-    const fileName = path.basename(filePath)
-    const ext = path.extname(fileName).toLowerCase()
+    const fileStats = await getFileStats(filePath)
+    const fileName = basename(filePath)
+    const ext = extname(fileName).toLowerCase()
     const contentType =
       ext === '.mp4' ? 'video/mp4' : ext === '.webm' ? 'video/webm' : ext === '.mov' ? 'video/quicktime' : 'video/mp4'
 
@@ -209,7 +209,7 @@ export class LateApiClient {
     logger.debug(`Late API presigned URL obtained for ${String(fileName).replace(/[\r\n]/g, '')} (expires in ${presign.expiresIn}s)`)
 
     // Step 2: Stream file to presigned URL (avoids loading entire file into memory)
-    const nodeStream = createReadStream(filePath)
+    const nodeStream = openReadStream(filePath)
     try {
       const webStream = Readable.toWeb(nodeStream) as ReadableStream
       const uploadResp = await fetch(presign.uploadUrl, {

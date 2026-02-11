@@ -1,20 +1,11 @@
-import { execFile } from 'child_process'
-import { promises as fs, existsSync } from 'fs'
-import pathMod from 'path'
-import os from 'os'
-import { fileURLToPath } from 'url'
+import { execFileRaw } from '../../core/process.js'
+import { ensureDirectory, copyFile, listDirectory, removeFile, removeDirectory, makeTempDir, renameFile } from '../../core/fileSystem.js'
+import { dirname, join, fontsDir } from '../../core/paths.js'
+import { getFFmpegPath } from '../../core/ffmpeg.js'
 import logger from '../../config/logger'
-import { getFFmpegPath } from '../../config/ffmpegResolver.js'
 
 const ffmpegPath = getFFmpegPath()
-const __dirname = pathMod.dirname(fileURLToPath(import.meta.url))
-
-// In tsup bundle: __dirname = dist/tools/ffmpeg/, fonts copied to dist/fonts/
-// In dev (tsx): __dirname = src/tools/ffmpeg/, fonts at ../../../assets/fonts/
-const bundledFontsDir = pathMod.resolve(__dirname, '..', '..', 'fonts')
-const FONTS_DIR = existsSync(bundledFontsDir)
-  ? bundledFontsDir
-  : pathMod.resolve(__dirname, '..', '..', '..', 'assets', 'fonts')
+const FONTS_DIR = fontsDir()
 
 /**
  * Burn ASS subtitles into video (hard-coded subtitles).
@@ -27,22 +18,22 @@ export async function burnCaptions(
   assPath: string,
   outputPath: string,
 ): Promise<string> {
-  const outputDir = pathMod.dirname(outputPath)
-  await fs.mkdir(outputDir, { recursive: true })
+  const outputDir = dirname(outputPath)
+  await ensureDirectory(outputDir)
 
   logger.info(`Burning captions into video → ${outputPath}`)
 
   // Create a dedicated temp dir so we can use colon-free relative paths
-  const workDir = await fs.mkdtemp(pathMod.join(os.tmpdir(), 'caption-'))
-  const tempAss = pathMod.join(workDir, 'captions.ass')
-  const tempOutput = pathMod.join(workDir, 'output.mp4')
+  const workDir = await makeTempDir('caption-')
+  const tempAss = join(workDir, 'captions.ass')
+  const tempOutput = join(workDir, 'output.mp4')
 
-  await fs.copyFile(assPath, tempAss)
+  await copyFile(assPath, tempAss)
 
   // Copy bundled fonts so libass can find them via fontsdir=.
   let fontFiles: string[]
   try {
-    fontFiles = await fs.readdir(FONTS_DIR)
+    fontFiles = await listDirectory(FONTS_DIR)
   } catch (err: any) {
     if (err?.code === 'ENOENT') {
       throw new Error(`Fonts directory not found at ${FONTS_DIR}. Ensure assets/fonts/ exists in the project root.`)
@@ -51,7 +42,7 @@ export async function burnCaptions(
   }
   for (const f of fontFiles) {
     if (f.endsWith('.ttf') || f.endsWith('.otf')) {
-      await fs.copyFile(pathMod.join(FONTS_DIR, f), pathMod.join(workDir, f))
+      await copyFile(join(FONTS_DIR, f), join(workDir, f))
     }
   }
 
@@ -69,13 +60,13 @@ export async function burnCaptions(
   ]
 
   return new Promise<string>((resolve, reject) => {
-    execFile(ffmpegPath, args, { cwd: workDir, maxBuffer: 10 * 1024 * 1024 }, async (error, _stdout, stderr) => {
+    execFileRaw(ffmpegPath, args, { cwd: workDir, maxBuffer: 10 * 1024 * 1024 }, async (error, _stdout, stderr) => {
       const cleanup = async () => {
-        const files = await fs.readdir(workDir).catch(() => [] as string[])
+        const files = await listDirectory(workDir).catch(() => [] as string[])
         for (const f of files) {
-          await fs.unlink(pathMod.join(workDir, f)).catch(() => {})
+          await removeFile(join(workDir, f)).catch(() => {})
         }
-        await fs.rmdir(workDir).catch(() => {})
+        await removeDirectory(workDir).catch(() => {})
       }
 
       if (error) {
@@ -86,9 +77,9 @@ export async function burnCaptions(
       }
 
       try {
-        await fs.rename(tempOutput, outputPath)
+        await renameFile(tempOutput, outputPath)
       } catch {
-        await fs.copyFile(tempOutput, outputPath)
+        await copyFile(tempOutput, outputPath)
       }
       await cleanup()
       logger.info(`Captions burned: ${outputPath}`)

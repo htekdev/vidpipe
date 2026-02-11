@@ -1,6 +1,6 @@
 import type { ToolWithHandler, MCPServerConfig } from '../providers/types.js'
-import * as fs from 'fs'
-import * as path from 'path'
+import { ensureDirectorySync, writeTextFileSync } from '../core/fileSystem.js'
+import { join } from '../core/paths.js'
 import { BaseAgent } from './BaseAgent'
 import logger from '../config/logger'
 import { getBrandConfig } from '../config/brand'
@@ -180,11 +180,11 @@ export async function generateBlogPost(
       throw new Error('BlogAgent did not produce any blog content')
     }
 
-    const outDir = path.join(video.videoDir, 'social-posts')
-    fs.mkdirSync(outDir, { recursive: true })
+    const outDir = join(video.videoDir, 'social-posts')
+    ensureDirectorySync(outDir)
 
-    const outputPath = path.join(outDir, 'devto.md')
-    fs.writeFileSync(outputPath, renderBlogMarkdown(blogContent), 'utf-8')
+    const outputPath = join(outDir, 'devto.md')
+    writeTextFileSync(outputPath, renderBlogMarkdown(blogContent))
     logger.info(`[BlogAgent] Wrote blog post to ${outputPath}`)
 
     return outputPath

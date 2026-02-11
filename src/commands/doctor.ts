@@ -1,13 +1,12 @@
-import { spawnSync } from 'child_process'
-import { existsSync } from 'fs'
-import { createRequire } from 'module'
-import path from 'path'
+import { spawnCommand, createModuleRequire } from '../core/process.js'
+import { fileExistsSync } from '../core/fileSystem.js'
+import { join } from '../core/paths.js'
 import { getConfig } from '../config/environment.js'
 import { LateApiClient } from '../services/lateApi.js'
 import { loadScheduleConfig } from '../services/scheduleConfig.js'
 import type { ProviderName } from '../providers/index.js'
 
-const require = createRequire(import.meta.url)
+const require = createModuleRequire(import.meta.url)
 
 interface CheckResult {
   label: string
@@ -28,7 +27,7 @@ function resolveFFmpegPath(): { path: string; source: string } {
   }
   try {
     const staticPath = require('ffmpeg-static') as string
-    if (staticPath && existsSync(staticPath)) {
+    if (staticPath && fileExistsSync(staticPath)) {
       return { path: staticPath, source: 'ffmpeg-static' }
     }
   } catch { /* not available */ }
@@ -42,7 +41,7 @@ function resolveFFprobePath(): { path: string; source: string } {
   }
   try {
     const { path: probePath } = require('@ffprobe-installer/ffprobe') as { path: string }
-    if (probePath && existsSync(probePath)) {
+    if (probePath && fileExistsSync(probePath)) {
       return { path: probePath, source: '@ffprobe-installer/ffprobe' }
     }
   } catch { /* not available */ }
@@ -88,7 +87,7 @@ function checkNode(): CheckResult {
 function checkFFmpeg(): CheckResult {
   const { path: binPath, source } = resolveFFmpegPath()
   try {
-    const result = spawnSync(binPath, ['-version'], { encoding: 'utf-8', timeout: 10_000 })
+    const result = spawnCommand(binPath, ['-version'], { timeout: 10_000 })
     if (result.status === 0 && result.stdout) {
       const ver = parseVersionFromOutput(result.stdout)
       return { label: 'FFmpeg', ok: true, required: true, message: `FFmpeg ${ver} (source: ${source})` }
@@ -105,7 +104,7 @@ function checkFFmpeg(): CheckResult {
 function checkFFprobe(): CheckResult {
   const { path: binPath, source } = resolveFFprobePath()
   try {
-    const result = spawnSync(binPath, ['-version'], { encoding: 'utf-8', timeout: 10_000 })
+    const result = spawnCommand(binPath, ['-version'], { timeout: 10_000 })
     if (result.status === 0 && result.stdout) {
       const ver = parseVersionFromOutput(result.stdout)
       return { label: 'FFprobe', ok: true, required: true, message: `FFprobe ${ver} (source: ${source})` }
@@ -145,7 +144,7 @@ function checkExaKey(): CheckResult {
 
 function checkGit(): CheckResult {
   try {
-    const result = spawnSync('git', ['--version'], { encoding: 'utf-8', timeout: 10_000 })
+    const result = spawnCommand('git', ['--version'], { timeout: 10_000 })
     if (result.status === 0 && result.stdout) {
       const ver = parseVersionFromOutput(result.stdout)
       return { label: 'Git', ok: true, required: false, message: `Git ${ver}` }
@@ -160,8 +159,8 @@ function checkGit(): CheckResult {
 }
 
 function checkWatchFolder(): CheckResult {
-  const watchDir = getConfig().WATCH_FOLDER || path.join(process.cwd(), 'watch')
-  const exists = existsSync(watchDir)
+  const watchDir = getConfig().WATCH_FOLDER || join(process.cwd(), 'watch')
+  const exists = fileExistsSync(watchDir)
   return {
     label: 'Watch folder',
     ok: exists,
@@ -302,9 +301,9 @@ async function checkLateApi(apiKey: string): Promise<void> {
 }
 
 async function checkScheduleConfig(): Promise<void> {
-  const schedulePath = path.join(process.cwd(), 'schedule.json')
+  const schedulePath = join(process.cwd(), 'schedule.json')
 
-  if (!existsSync(schedulePath)) {
+  if (!fileExistsSync(schedulePath)) {
     console.log('  ⬚ Schedule config: schedule.json not found (will use defaults on first run)')
     return
   }
