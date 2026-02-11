@@ -307,8 +307,8 @@ if (!copilotReviewDone) {
   } else {
     console.log(`ℹ️  Copilot Review: Latest review is for ${copilotReviewCommit.slice(0, 7)} (HEAD: ${sha.slice(0, 7)})`);
   }
-  // Check for unresolved threads
-  const graphql = `{ repository(owner:\\"${owner}\\",name:\\"${repo}\\") { pullRequest(number:${prNumber}) { reviewThreads(first:100) { nodes { isResolved } } } } }`;
+  // Check for unresolved threads (exclude code scanning bot threads that can't be resolved via API)
+  const graphql = `{ repository(owner:\\"${owner}\\",name:\\"${repo}\\") { pullRequest(number:${prNumber}) { reviewThreads(first:100) { nodes { isResolved comments(first:1) { nodes { author { login } } } } } } } }`;
   const threadsResult = tryRun(
     `gh api graphql -f query="${graphql}"`
   );
@@ -316,12 +316,21 @@ if (!copilotReviewDone) {
     try {
       const data = JSON.parse(threadsResult.stdout);
       const threads: any[] = data.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
-      const unresolved = threads.filter((t: any) => !t.isResolved).length;
-      if (unresolved > 0) {
-        console.log(`⚠️ Copilot Code Review: ${unresolved} unresolved threads on PR #${prNumber}. Run the review-triage agent.`);
+      const codeScanningBots = new Set(['github-code-scanning[bot]', 'github-advanced-security[bot]']);
+      const unresolvedAll = threads.filter((t: any) => !t.isResolved);
+      const unresolvedHuman = unresolvedAll.filter((t: any) => {
+        const author = t.comments?.nodes?.[0]?.author?.login ?? '';
+        return !codeScanningBots.has(author);
+      });
+      const scanningCount = unresolvedAll.length - unresolvedHuman.length;
+      if (unresolvedHuman.length > 0) {
+        console.log(`⚠️ Copilot Code Review: ${unresolvedHuman.length} unresolved threads on PR #${prNumber}. Run the review-triage agent.`);
         allPassed = false;
       } else {
         console.log('✅ Copilot Review: All threads resolved');
+      }
+      if (scanningCount > 0) {
+        console.log(`ℹ️  Code Scanning: ${scanningCount} code scanning threads (auto-resolve when alerts are dismissed)`);
       }
     } catch {
       console.log('⚠️ Copilot Review: Could not parse review threads.');
