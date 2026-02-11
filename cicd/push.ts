@@ -316,7 +316,7 @@ if (!copilotReviewDone) {
     try {
       const data = JSON.parse(threadsResult.stdout);
       const threads: any[] = data.data?.repository?.pullRequest?.reviewThreads?.nodes ?? [];
-      const codeScanningBots = new Set(['github-code-scanning[bot]', 'github-advanced-security[bot]']);
+      const codeScanningBots = new Set(['github-code-scanning', 'github-advanced-security']);
       const unresolvedAll = threads.filter((t: any) => !t.isResolved);
       const unresolvedHuman = unresolvedAll.filter((t: any) => {
         const author = t.comments?.nodes?.[0]?.author?.login ?? '';
