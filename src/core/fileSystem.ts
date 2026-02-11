@@ -151,12 +151,14 @@ export async function writeJsonFile(filePath: string, data: unknown): Promise<vo
 
 /** Write text file. Creates parent dirs. */
 export async function writeTextFile(filePath: string, content: string): Promise<void> {
+  if (typeof content !== 'string') throw new TypeError('content must be a string')
   await fsp.mkdir(dirname(filePath), { recursive: true })
   await fsp.writeFile(filePath, content, 'utf-8')
 }
 
 /** Sync variant of writeTextFile. */
 export function writeTextFileSync(filePath: string, content: string): void {
+  if (typeof content !== 'string') throw new TypeError('content must be a string')
   mkdirSync(dirname(filePath), { recursive: true })
   writeFileSync(filePath, content, 'utf-8')
 }
