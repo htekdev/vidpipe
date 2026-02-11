@@ -3,7 +3,7 @@ import { withMermaid } from 'vitepress-plugin-mermaid'
 
 export default withMermaid(defineConfig({
   title: 'VidPipe',
-  description: 'Automated video processing pipeline — transcription, clips, captions, social publishing',
+  description: 'AI-powered video editor — turn raw recordings into shorts, social clips, captions, and blog posts',
   base: '/vidpipe/',
   appearance: 'dark',
 
@@ -21,10 +21,10 @@ export default withMermaid(defineConfig({
           text: 'Guide',
           items: [
             { text: 'Getting Started', link: '/guide/getting-started' },
-            { text: 'Configuration', link: '/guide/configuration' },
             { text: 'Brand Customization', link: '/guide/brand-customization' },
-            { text: 'FFmpeg Setup', link: '/guide/ffmpeg-setup' },
             { text: 'Social Publishing', link: '/guide/social-publishing' },
+            { text: 'Configuration', link: '/guide/configuration' },
+            { text: 'FFmpeg Setup', link: '/guide/ffmpeg-setup' },
           ],
         },
       ],

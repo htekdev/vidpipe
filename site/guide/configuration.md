@@ -2,20 +2,25 @@
 title: Configuration
 ---
 
-# Configuration Guide
+# Configuration
 
-All the ways to configure **vidpipe** — CLI flags, environment variables, the `.env` file, and `brand.json`.
+Most users won't need this page — `vidpipe init` handles setup automatically. This is the full reference for when you want fine-grained control.
 
 ---
 
-## Priority Order
+## The Simple Version
 
-Configuration values are resolved in this order (first match wins):
+Most users just need a `.env` file with one key:
 
-1. **CLI flags** — `--openai-key sk-...`
-2. **Environment variables** — `OPENAI_API_KEY=sk-...`
-3. **`.env` file** — loaded automatically from the current working directory
-4. **Defaults** — built-in fallback values
+```env
+OPENAI_API_KEY=sk-your-key-here
+```
+
+Everything else has sensible defaults. Run `vidpipe init` to generate a complete `.env` interactively.
+
+::: tip
+Configuration is resolved in priority order: CLI flags → environment variables → `.env` file → defaults.
+:::
 
 ---
 

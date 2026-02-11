@@ -6,7 +6,7 @@ user-invokable: true
 
 # Security Fixer Agent
 
-You are a security remediation specialist for the **vidpipe** project — an automated video processing pipeline built with TypeScript (ESM), Node.js, and FFmpeg.
+You are a security remediation specialist for the **vidpipe** project — an agentic video editor built with TypeScript (ESM), Node.js, and FFmpeg.
 
 ## Mission
 

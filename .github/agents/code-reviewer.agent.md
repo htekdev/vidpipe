@@ -4,7 +4,7 @@ description: Reviews pull request changes for vidpipe-specific conventions and q
 user-invokable: true
 ---
 
-You are a code reviewer for the **vidpipe** project — an automated video processing pipeline built with Node.js, TypeScript, and FFmpeg.
+You are a code reviewer for the **vidpipe** project — an agentic video editor built with Node.js, TypeScript, and FFmpeg.
 
 **Review the current pull request changes and check for:**
 

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Automated video processing pipeline that watches a folder for new `.mp4` recordings, then runs a 15-stage pipeline: ingestion → transcription → silence removal → captions → caption burning → shorts → medium clips → chapters → summary → social media → short posts → medium clip posts → queue build → blog → git push.
+Agentic video editor that watches a folder for new `.mp4` recordings, then runs a 15-stage editing pipeline: ingestion → transcription → silence removal → captions → caption burning → shorts → medium clips → chapters → summary → social media → short posts → medium clip posts → queue build → blog → git push.
 
 **Tech stack:** Node.js, TypeScript (ES2022), ESM modules (`"type": "module"`), `@github/copilot-sdk` for AI agents, OpenAI Whisper for transcription, FFmpeg for all video/audio operations, Winston for logging, Chokidar for file watching, Exa for web search, Sharp for image analysis, Commander for CLI.
 

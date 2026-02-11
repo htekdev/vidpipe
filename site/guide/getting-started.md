@@ -4,234 +4,153 @@ title: Getting Started
 
 # Getting Started
 
-Get up and running with **vidpipe** in under five minutes.
+From raw recording to social-ready content in under 2 minutes.
 
 ---
 
-## Prerequisites
-
-| Requirement | Minimum Version | Notes |
-|-------------|-----------------|-------|
-| **Node.js** | 20+ | [Download](https://nodejs.org/) |
-| **FFmpeg** | 6.0+ | Auto-bundled on common platforms (Windows x64, macOS, Linux x64) via `ffmpeg-static` (optional dep). On other architectures, install system FFmpeg and ensure it is on `PATH` or set `FFMPEG_PATH`. See [FFmpeg Setup](/guide/ffmpeg-setup). |
-| **OpenAI API key** | — | For Whisper transcription (and for agents only when `LLM_PROVIDER=openai`). [Get a key](https://platform.openai.com/api-keys) |
-| **GitHub Copilot** | Active subscription | Default LLM provider for AI agents via [Copilot SDK](https://github.com/github/copilot-sdk). Alternative providers (OpenAI, Claude) are also supported — see [Configuration](/guide/configuration#llm-provider). |
-| **Git** | 2.x+ | Only needed if git auto-commit is enabled (on by default) |
-| **Exa AI API key** | — | *Optional* — enables web-search links in social media posts |
-
----
-
-## Installation
-
-Install globally from npm:
+## 1. Install
 
 ```bash
 npm install -g vidpipe
 ```
 
-Or run directly with `npx`:
+## 2. Set Up
 
 ```bash
-npx vidpipe --once /path/to/video.mp4
+vidpipe init
 ```
 
-### From source
+The setup wizard walks you through everything — API keys, FFmpeg verification, social accounts. Just follow the prompts.
 
-```bash
-git clone https://github.com/htekdev/vidpipe.git
-cd vidpipe
-npm install
-npm run build
-npm start
-```
-
----
-
-## Quick Start
-
-### 1. Process a single video
-
-```bash
-vidpipe --once /path/to/video.mp4
-```
-
-Or pass the file directly (implies `--once`):
+## 3. Process Your First Video
 
 ```bash
 vidpipe /path/to/video.mp4
 ```
 
-### 2. Watch a folder for new recordings
+That's it. Go grab a coffee — your AI editor will cut the dead air, generate highlight clips, burn captions, write social posts, and draft a blog while you wait.
+
+---
+
+## What Happens Next
+
+After your AI editor finishes (~5–15 minutes for a 10–30 min video), you'll find:
+
+| Output | Files |
+|--------|-------|
+| 📝 Transcripts | `transcript.json` — word-level timestamps |
+| ✂️ Edited Video | `*-edited.mp4` — silence removed, `*-captioned.mp4` — with burned captions |
+| 🎬 Shorts | 15–60s highlight clips in landscape, portrait (9:16), square, and feed (4:5) |
+| 🎞️ Medium Clips | 1–3 min standalone segments with crossfade transitions |
+| 📑 Chapters | YouTube timestamps, Markdown, JSON, and FFmpeg metadata |
+| 📱 Social Posts | Drafts for TikTok, YouTube, Instagram, LinkedIn, and X |
+| 📰 Blog Post | Dev.to-style article with web-sourced links |
+| 📄 Summary | README.md with key-frame screenshots |
+
+::: tip Want to see the full output tree?
+```
+recordings/my-video/
+├── my-video.mp4
+├── my-video-edited.mp4
+├── my-video-captioned.mp4
+├── README.md
+├── transcript.json
+├── blog-post.md
+├── shorts/
+│   ├── highlight-clip.mp4
+│   ├── highlight-clip-portrait.mp4
+│   └── highlight-clip/posts/
+├── medium-clips/
+│   └── topic-deep-dive.mp4
+├── chapters/
+│   ├── chapters.json
+│   └── chapters-youtube.txt
+└── social-posts/
+    ├── tiktok.md
+    ├── youtube.md
+    ├── instagram.md
+    ├── linkedin.md
+    └── x.md
+```
+:::
+
+---
+
+## Watch Mode
+
+Want continuous processing? Point vidpipe at a folder:
 
 ```bash
 vidpipe --watch-dir ~/Videos/Recordings
 ```
 
-The tool monitors the folder and automatically processes any new `.mp4` that appears.
-
-### 3. Full example with all options
-
-```bash
-vidpipe \
-  --watch-dir ~/Videos/Recordings \
-  --output-dir ~/Content/processed \
-  --openai-key sk-... \
-  --exa-key exa-... \
-  --brand ./my-brand.json \
-  --verbose
-```
+Every new `.mp4` dropped in that folder is automatically processed.
 
 ---
 
-## First Run
+## Verify Your Setup
 
-### Pre-flight check
-
-Before processing your first video, verify all prerequisites are installed:
+Something not working? Run the doctor:
 
 ```bash
 vidpipe --doctor
 ```
 
-This checks for Node.js, FFmpeg, API keys, and folder permissions in one shot.
+This checks Node.js, FFmpeg, API keys, and folder permissions in one shot.
 
-### Expected processing time
+---
 
-| Stage | Time (per 10 min of video) |
-|-------|---------------------------|
-| Transcription (Whisper API) | 1–3 minutes |
-| AI analysis (shorts, summaries, social posts) | 2–5 minutes |
-| Video processing (FFmpeg clip extraction) | 1–3 minutes per short clip |
-| **Total** | **~5–15 minutes** for a typical 10–30 min recording |
+## Prerequisites
 
-### What gets created
+::: details What do I need installed?
 
-After the pipeline finishes, your output folder will contain:
+| Requirement | Version | How to Get It |
+|-------------|---------|---------------|
+| **Node.js** | 20+ | [nodejs.org](https://nodejs.org/) |
+| **FFmpeg** | 6.0+ | Auto-bundled on Windows x64, macOS, Linux x64. Others: see [FFmpeg Setup](/guide/ffmpeg-setup) |
+| **OpenAI API key** | — | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) — needed for transcription |
+| **GitHub Copilot** | Active subscription | Default AI provider. Alternatives: [OpenAI or Claude](/guide/configuration#llm-provider) |
 
-- **Transcripts** — full word-level JSON transcripts (original + silence-removed)
-- **Edited video** — silence-removed and captioned versions of the full recording
-- **Shorts** — AI-selected highlight clips with captions and portrait variants
-- **Summaries** — a Markdown README with embedded screenshots
-- **Social posts** — platform-tailored drafts for TikTok, YouTube, Instagram, LinkedIn, and X
-- **Blog post** — long-form Markdown article generated from the transcript
+**Optional:**
 
-See the [full output structure](#what-it-produces) below for the complete directory layout.
+| Tool | Purpose |
+|------|---------|
+| **Git** | Auto-commit output (on by default, skip with `--no-git`) |
+| **Exa AI key** | Web-search links in social posts and blog |
 
-### Common first-run issues
+:::
+
+---
+
+## Common First-Run Issues
 
 | Symptom | Fix |
 |---------|-----|
-| `Missing required: OPENAI_API_KEY` | Set `OPENAI_API_KEY` in your `.env` file or pass `--openai-key` |
-| FFmpeg errors or codec failures | Run `vidpipe --doctor` to diagnose — usually a missing or outdated FFmpeg install |
-| No videos detected | Verify your watch folder path matches the `WATCH_FOLDER` env var (or `--watch-dir` flag) |
-| Processing takes a long time | Normal for first run — the Whisper API call dominates; subsequent runs with cached transcripts are faster |
+| `Missing required: OPENAI_API_KEY` | Run `vidpipe init` or set `OPENAI_API_KEY` in `.env` |
+| FFmpeg errors | Run `vidpipe --doctor` — usually a missing or outdated install |
+| No videos detected | Check your `--watch-dir` path exists and contains `.mp4` files |
+| Slow first run | Normal — Whisper API dominates. Cached transcripts speed up re-runs |
 
 ---
 
-## Configuration
+## Skip What You Don't Need
 
-There are three ways to configure the tool (highest priority first):
+```bash
+# Transcription only (fastest)
+vidpipe --no-silence-removal --no-shorts --no-social --no-captions --no-git /path/to/video.mp4
 
-1. **CLI flags** — e.g. `--openai-key sk-...`
-2. **Environment variables** — e.g. `OPENAI_API_KEY=sk-...`
-3. **`.env` file** — automatically loaded from the current working directory
+# Everything except social media
+vidpipe --no-social /path/to/video.mp4
 
-Create a `.env` file for convenience:
-
-```env
-OPENAI_API_KEY=sk-your-key-here
-WATCH_FOLDER=/home/you/Videos/Recordings
-OUTPUT_DIR=/home/you/Content/processed
-# EXA_API_KEY=your-exa-key     # optional
+# No git commits (useful during testing)
+vidpipe --no-git /path/to/video.mp4
 ```
-
-> **Tip:** Copy the included `.env.example` as a starting point.
-
-For the full configuration reference, see the [Configuration Guide](/guide/configuration).
-
----
-
-## What It Produces
-
-After processing a video, the tool creates a rich output directory:
-
-```
-recordings/
-└── my-awesome-demo/
-    ├── my-awesome-demo.mp4              # Original video copy
-    ├── my-awesome-demo-edited.mp4       # Silence-removed version
-    ├── my-awesome-demo-captioned.mp4    # Captioned final video
-    ├── README.md                        # AI-generated summary with screenshots
-    ├── transcript.json                  # Full transcript (word-level timestamps)
-    ├── transcript-edited.json           # Adjusted transcript (after silence removal)
-    ├── blog-post.md                     # Long-form blog post
-    ├── thumbnails/
-    │   ├── snapshot-001.png             # Key-moment screenshots
-    │   ├── snapshot-002.png
-    │   └── ...
-    ├── shorts/
-    │   ├── catchy-clip-title.mp4        # Extracted short clip
-    │   ├── catchy-clip-title-captioned.mp4
-    │   ├── catchy-clip-title-portrait.mp4  # 9:16 platform variant
-    │   ├── catchy-clip-title.ass        # Caption file
-    │   ├── catchy-clip-title.md         # Clip metadata & description
-    │   └── ...
-    ├── medium-clips/
-    │   ├── topic-deep-dive.mp4          # 1–3 minute topic clip
-    │   ├── topic-deep-dive-captioned.mp4
-    │   ├── topic-deep-dive.ass
-    │   ├── topic-deep-dive.md
-    │   └── ...
-    ├── chapters/
-    │   ├── chapters.json                # Canonical chapter data
-    │   ├── chapters-youtube.txt         # YouTube description timestamps
-    │   ├── chapters.md                  # Markdown table
-    │   └── chapters.ffmetadata          # FFmpeg metadata format
-    └── social-posts/
-        ├── tiktok.md                    # TikTok post draft
-        ├── youtube.md                   # YouTube description
-        ├── instagram.md                 # Instagram caption
-        ├── linkedin.md                  # LinkedIn post
-        └── x.md                         # X (Twitter) post
-```
-
-### Pipeline stages
-
-| # | Stage | What happens |
-|---|-------|-------------|
-| 1 | **Ingestion** | Copies video into output dir, extracts metadata with FFprobe |
-| 2 | **Transcription** | Extracts audio → sends to OpenAI Whisper for word-level transcription |
-| 3 | **Silence Removal** | AI detects dead-air segments and cuts them out |
-| 4 | **Captions** | Generates `.ass` subtitle file from transcript |
-| 5 | **Caption Burn** | Burns captions into the video with FFmpeg (single-pass when combined with silence removal) |
-| 6 | **Shorts** | AI identifies compelling moments, FFmpeg cuts clips + generates platform variants |
-| 7 | **Medium Clips** | AI extracts 1–3 minute standalone topic segments with crossfade transitions |
-| 8 | **Chapters** | AI analyses transcript for topic boundaries, generates chapter markers in multiple formats |
-| 9 | **Summary** | AI writes a Markdown README with embedded screenshots |
-| 10 | **Social Media** | AI generates platform-tailored posts (TikTok, YouTube, Instagram, LinkedIn, X) |
-| 11 | **Short Posts** | AI generates social posts for each short clip |
-| 12 | **Medium Clip Posts** | AI generates social posts for each medium clip |
-| 13 | **Blog Post** | AI writes a long-form blog post from the transcript |
-| 14 | **Queue Build** | Builds publish queue from social posts with scheduled slots |
-| 15 | **Git Push** | Auto-commits and pushes all output to your repo |
 
 ---
 
 ## Next Steps
 
-- [Configuration Guide](/guide/configuration) — all CLI flags, env vars, and skip options
+- [Brand Customization](/guide/brand-customization) — tailor AI output to your voice
+- [Social Publishing](/guide/social-publishing) — review, schedule, and publish posts
+- [Configuration](/guide/configuration) — all CLI flags, env vars, and advanced options
 - [FFmpeg Setup](/guide/ffmpeg-setup) — platform-specific installation instructions
-- [Brand Customization](/guide/brand-customization) — tailor AI output to your personal brand
-- [Social Publishing](/guide/social-publishing) — review, schedule, and publish posts to social media
-
----
-
-## Optional: Social Publishing
-
-To publish posts to social media:
-
-1. Sign up at [getlate.dev](https://getlate.dev)
-2. Connect your social accounts
-3. Run `vidpipe init` to configure
-
-See [Social Publishing Guide](/guide/social-publishing) for details.

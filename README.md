@@ -9,9 +9,9 @@
    ╚═══╝  ╚═╝╚═════╝ ╚═╝     ╚═╝╚═╝     ╚══════╝
 ```
 
-**Drop a video. Get transcripts, summaries, short clips, captions, blog posts, and social media posts — automatically.**
+**Your AI video editor — turn raw recordings into shorts, reels, captions, social posts, and blog posts. Record once, publish everywhere.**
 
-An AI-powered CLI pipeline that watches for new video recordings and transforms them into rich, structured content using [GitHub Copilot SDK](https://github.com/github/copilot-sdk) agents and OpenAI Whisper.
+An agentic video editor that watches for new recordings and edits them into social-media-ready content — shorts, reels, captions, blog posts, and platform-tailored social posts — using [GitHub Copilot SDK](https://github.com/github/copilot-sdk) AI agents and OpenAI Whisper.
 
 [![CI](https://github.com/htekdev/vidpipe/actions/workflows/ci.yml/badge.svg)](https://github.com/htekdev/vidpipe/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/vidpipe)](https://www.npmjs.com/package/vidpipe)
@@ -306,7 +306,7 @@ Social media publishing is configured via `schedule.json` and the Late API. See 
 
 ## 🏗️ Architecture
 
-Agent-based architecture built on the [GitHub Copilot SDK](https://github.com/github/copilot-sdk):
+Agentic architecture built on the [GitHub Copilot SDK](https://github.com/github/copilot-sdk) — each editing task is handled by a specialized AI agent:
 
 ```mermaid
 graph TD
