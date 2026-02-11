@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { promises as fs } from 'fs'
-import path from 'path'
-import os from 'os'
-import { randomUUID } from 'crypto'
+import { promises as fs, closeSync } from 'node:fs'
+import path from 'node:path'
+import os from 'node:os'
+import { randomUUID } from 'node:crypto'
+import tmp from 'tmp'
 
 vi.mock('../config/logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -188,7 +189,8 @@ describe('scheduleConfig', () => {
           },
         },
       }
-      const filePath = path.join(tmpDir, `existing-schedule-${randomUUID()}.json`)
+      const tmpFile = tmp.fileSync({ dir: tmpDir, postfix: '.json' })
+      const filePath = tmpFile.name
       await fs.writeFile(filePath, JSON.stringify(customConfig), 'utf-8')
 
       const config = await loadScheduleConfig(filePath)
@@ -199,7 +201,7 @@ describe('scheduleConfig', () => {
 
   describe('clearScheduleCache', () => {
     it('forces reload on next call', async () => {
-      const filePath = path.join(tmpDir, `cached-schedule-${randomUUID()}.json`)
+      const filePath = tmp.tmpNameSync({ dir: tmpDir, postfix: '.json' })
 
       // First load creates defaults
       const config1 = await loadScheduleConfig(filePath)
@@ -207,7 +209,10 @@ describe('scheduleConfig', () => {
 
       // Overwrite file
       const updated = { ...config1, timezone: 'Asia/Tokyo' }
-      await fs.writeFile(filePath, JSON.stringify(updated), 'utf-8')
+      const updateTmp = tmp.fileSync({ dir: tmpDir, postfix: '.json', keep: true })
+      await fs.writeFile(updateTmp.name, JSON.stringify(updated), 'utf-8')
+      closeSync(updateTmp.fd) // Close file descriptor on Windows before rename
+      await fs.rename(updateTmp.name, filePath)
 
       // Still cached — same timezone
       clearScheduleCache()

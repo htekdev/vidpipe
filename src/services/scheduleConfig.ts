@@ -1,8 +1,7 @@
-import { promises as fs } from 'fs'
-import path from 'path'
-import os from 'os'
-import logger from '../config/logger'
-import { randomUUID } from 'crypto'
+import { promises as fs, closeSync } from 'node:fs'
+import path from 'node:path'
+import logger from '../config/logger.js'
+import tmp from 'tmp'
 
 export type DayOfWeek = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
 
@@ -160,12 +159,12 @@ export async function loadScheduleConfig(configPath?: string): Promise<ScheduleC
   try {
     raw = await fs.readFile(filePath, 'utf-8')
   } catch {
-    // Use OS temp directory with random UUID to prevent predictable temp file paths
-    const tempPath = path.join(os.tmpdir(), `vidpipe-schedule-${randomUUID()}.json`)
+    const tempFile = tmp.fileSync({ postfix: '.json', keep: true })
     logger.info(`No schedule.json found at ${filePath}, creating with defaults`)
     const defaults = getDefaultScheduleConfig()
-    await fs.writeFile(tempPath, JSON.stringify(defaults, null, 2), 'utf-8')
-    await fs.rename(tempPath, filePath)
+    await fs.writeFile(tempFile.name, JSON.stringify(defaults, null, 2), 'utf-8')
+    closeSync(tempFile.fd) // Close file descriptor on Windows before rename
+    await fs.rename(tempFile.name, filePath)
     cachedConfig = defaults
     return defaults
   }

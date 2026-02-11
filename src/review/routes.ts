@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises'
 import { Router } from 'express'
+import rateLimit from 'express-rate-limit'
 import { getPendingItems, getItem, updateItem, approveItem, rejectItem } from '../services/postStore'
 import { findNextSlot, getScheduleCalendar } from '../services/scheduler'
 import { getAccountId } from '../services/accountMapping'
@@ -25,6 +26,8 @@ function setCache(key: string, data: unknown, ttl = CACHE_TTL_MS): void {
 
 export function createRouter(): Router {
   const router = Router()
+
+  router.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }))
 
   // GET /api/posts/pending — list all pending review items
   router.get('/api/posts/pending', async (req, res) => {

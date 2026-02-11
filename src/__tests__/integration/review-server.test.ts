@@ -1,8 +1,9 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
-import { promises as fs } from 'fs'
-import path from 'path'
-import os from 'os'
-import { randomUUID } from 'crypto'
+import { promises as fs, closeSync } from 'node:fs'
+import path from 'node:path'
+import os from 'node:os'
+import { randomUUID } from 'node:crypto'
+import tmp from 'tmp'
 
 // ── Mock setup ─────────────────────────────────────────────────────────
 
@@ -86,17 +87,18 @@ async function createTestItem(id: string, overrides: Partial<QueueItemMetadata> 
   const dir = path.join(tmpDir, 'publish-queue', id)
   await fs.mkdir(dir, { recursive: true })
   
-  // Use temp file with randomUUID, then rename to expected location
-  const metadataTmp = path.join(dir, `metadata-${randomUUID()}.tmp`)
+  const metadataTmp = tmp.fileSync({ dir, postfix: '.tmp', keep: true })
   await fs.writeFile(
-    metadataTmp,
+    metadataTmp.name,
     JSON.stringify(makeMetadata({ id, ...overrides })),
   )
-  await fs.rename(metadataTmp, path.join(dir, 'metadata.json'))
+  closeSync(metadataTmp.fd) // Close file descriptor on Windows before rename
+  await fs.rename(metadataTmp.name, path.join(dir, 'metadata.json'))
   
-  const postTmp = path.join(dir, `post-${randomUUID()}.tmp`)
-  await fs.writeFile(postTmp, `Test post content for ${id}`)
-  await fs.rename(postTmp, path.join(dir, 'post.md'))
+  const postTmp = tmp.fileSync({ dir, postfix: '.tmp', keep: true })
+  await fs.writeFile(postTmp.name, `Test post content for ${id}`)
+  closeSync(postTmp.fd) // Close file descriptor on Windows before rename
+  await fs.rename(postTmp.name, path.join(dir, 'post.md'))
 }
 
 // ── Lifecycle ──────────────────────────────────────────────────────────

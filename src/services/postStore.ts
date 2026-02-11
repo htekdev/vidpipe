@@ -52,14 +52,7 @@ async function readQueueItem(folderPath: string, id: string): Promise<QueueItem 
   const mediaPath = path.join(folderPath, 'media.mp4')
 
   try {
-    await fs.access(metadataPath)
-  } catch {
-    logger.debug(`Skipping ${String(id).replace(/[\r\n]/g, '')}: no metadata.json found`)
-    return null
-  }
-
-  try {
-    // Fix TOCTOU race: don't check file existence separately, just try to read
+    // Read directly without prior existence check to avoid TOCTOU race
     const metadataRaw = await fs.readFile(metadataPath, 'utf-8')
     const metadata: QueueItemMetadata = JSON.parse(metadataRaw)
 
@@ -185,24 +178,30 @@ export async function updateItem(
       sourceClip: existing.metadata.sourceClip !== null ? String(existing.metadata.sourceClip) : null,
       clipType: existing.metadata.clipType,
       sourceMediaPath: existing.metadata.sourceMediaPath !== null ? String(existing.metadata.sourceMediaPath) : null,
-      hashtags: Array.isArray(existing.metadata.hashtags) ? existing.metadata.hashtags.map(String) : [],
-      links: Array.isArray(existing.metadata.links) ? existing.metadata.links : [],
-      characterCount: Number(existing.metadata.characterCount) || 0,
-      platformCharLimit: Number(existing.metadata.platformCharLimit) || 0,
-      suggestedSlot: existing.metadata.suggestedSlot !== null ? String(existing.metadata.suggestedSlot) : null,
-      scheduledFor: existing.metadata.scheduledFor !== null ? String(existing.metadata.scheduledFor) : null,
-      status: existing.metadata.status,
-      latePostId: existing.metadata.latePostId !== null ? String(existing.metadata.latePostId) : null,
-      publishedUrl: existing.metadata.publishedUrl !== null ? String(existing.metadata.publishedUrl) : null,
+      hashtags: Array.isArray(updates.metadata.hashtags) ? updates.metadata.hashtags.map(String) : (Array.isArray(existing.metadata.hashtags) ? existing.metadata.hashtags.map(String) : []),
+      links: Array.isArray(updates.metadata.links) ? updates.metadata.links : (Array.isArray(existing.metadata.links) ? existing.metadata.links : []),
+      characterCount: updates.metadata.characterCount !== undefined ? Number(updates.metadata.characterCount) || 0 : (Number(existing.metadata.characterCount) || 0),
+      platformCharLimit: updates.metadata.platformCharLimit !== undefined ? Number(updates.metadata.platformCharLimit) || 0 : (Number(existing.metadata.platformCharLimit) || 0),
+      suggestedSlot: updates.metadata.suggestedSlot !== undefined ? (updates.metadata.suggestedSlot !== null ? String(updates.metadata.suggestedSlot) : null) : (existing.metadata.suggestedSlot !== null ? String(existing.metadata.suggestedSlot) : null),
+      scheduledFor: updates.metadata.scheduledFor !== undefined ? (updates.metadata.scheduledFor !== null ? String(updates.metadata.scheduledFor) : null) : (existing.metadata.scheduledFor !== null ? String(existing.metadata.scheduledFor) : null),
+      status: updates.metadata.status ?? existing.metadata.status,
+      latePostId: updates.metadata.latePostId !== undefined ? (updates.metadata.latePostId !== null ? String(updates.metadata.latePostId) : null) : (existing.metadata.latePostId !== null ? String(existing.metadata.latePostId) : null),
+      publishedUrl: updates.metadata.publishedUrl !== undefined ? (updates.metadata.publishedUrl !== null ? String(updates.metadata.publishedUrl) : null) : (existing.metadata.publishedUrl !== null ? String(existing.metadata.publishedUrl) : null),
       createdAt: String(existing.metadata.createdAt),
-      reviewedAt: existing.metadata.reviewedAt !== null ? String(existing.metadata.reviewedAt) : null,
-      publishedAt: existing.metadata.publishedAt !== null ? String(existing.metadata.publishedAt) : null,
-      textOnly: existing.metadata.textOnly,
-      platformSpecificData: existing.metadata.platformSpecificData,
+      reviewedAt: updates.metadata.reviewedAt !== undefined ? (updates.metadata.reviewedAt !== null ? String(updates.metadata.reviewedAt) : null) : (existing.metadata.reviewedAt !== null ? String(existing.metadata.reviewedAt) : null),
+      publishedAt: updates.metadata.publishedAt !== undefined ? (updates.metadata.publishedAt !== null ? String(updates.metadata.publishedAt) : null) : (existing.metadata.publishedAt !== null ? String(existing.metadata.publishedAt) : null),
+      textOnly: updates.metadata.textOnly ?? existing.metadata.textOnly,
+      platformSpecificData: updates.metadata.platformSpecificData ?? existing.metadata.platformSpecificData,
     }
-    existing.metadata = { ...sanitized, ...updates.metadata }
+    // Use only the sanitized object — do not spread raw HTTP updates (CodeQL js/http-to-file-access)
+    existing.metadata = sanitized
+    // Validate write target is within the expected queue directory
+    const metadataWritePath = path.resolve(path.join(existing.folderPath, 'metadata.json'))
+    if (!metadataWritePath.startsWith(path.resolve(getQueueDir()) + path.sep)) {
+      throw new Error('Write target outside queue directory')
+    }
     await fs.writeFile(
-      path.join(existing.folderPath, 'metadata.json'),
+      metadataWritePath,
       JSON.stringify(existing.metadata, null, 2),
       'utf-8',
     )
@@ -212,7 +211,12 @@ export async function updateItem(
     // Sanitize post content - ensure it's a string
     const sanitizedContent = String(updates.postContent)
     existing.postContent = sanitizedContent
-    await fs.writeFile(path.join(existing.folderPath, 'post.md'), sanitizedContent, 'utf-8')
+    // Validate write target is within the expected queue directory (CodeQL js/http-to-file-access)
+    const postWritePath = path.resolve(path.join(existing.folderPath, 'post.md'))
+    if (!postWritePath.startsWith(path.resolve(getQueueDir()) + path.sep)) {
+      throw new Error('Write target outside queue directory')
+    }
+    await fs.writeFile(postWritePath, sanitizedContent, 'utf-8')
   }
 
   logger.debug(`Updated queue item: ${String(id).replace(/[\r\n]/g, '')}`)
@@ -266,8 +270,13 @@ export async function approveItem(
     platformSpecificData: item.metadata.platformSpecificData,
   }
 
+  // Validate write target is within the expected queue directory (CodeQL js/http-to-file-access)
+  const approveMetadataPath = path.resolve(path.join(item.folderPath, 'metadata.json'))
+  if (!approveMetadataPath.startsWith(path.resolve(getQueueDir()) + path.sep)) {
+    throw new Error('Write target outside queue directory')
+  }
   await fs.writeFile(
-    path.join(item.folderPath, 'metadata.json'),
+    approveMetadataPath,
     JSON.stringify(sanitizedMetadata, null, 2),
     'utf-8',
   )

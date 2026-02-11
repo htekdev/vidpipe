@@ -3,6 +3,7 @@ import { promises as fs } from 'fs'
 import path from 'path'
 import os from 'os'
 import { randomUUID } from 'crypto'
+import tmp from 'tmp'
 
 // ── Mock setup ─────────────────────────────────────────────────────────
 
@@ -87,7 +88,8 @@ describe('postStore', () => {
     })
 
     it('copies media file when provided', async () => {
-      const mediaSource = path.join(tmpDir, `source-media-${randomUUID()}.mp4`)
+      const mediaTmpFile = tmp.fileSync({ dir: tmpDir, postfix: '.mp4' })
+      const mediaSource = mediaTmpFile.name
       await fs.writeFile(mediaSource, 'fake-video-bytes')
 
       const meta = makeMetadata({ id: 'create-media' })

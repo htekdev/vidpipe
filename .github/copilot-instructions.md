@@ -533,6 +533,27 @@ SKIP_SOCIAL_PUBLISH=  # Optional — Skip queue-build stage (via --no-social-pub
 3. Verify the test passes
 4. Run full test suite to ensure no regressions: `npm test`
 
+## Post-Push CI Workflow
+
+Always use `npm run push` (never raw `git push`) to push changes. The push script runs typecheck, tests, coverage, and build before pushing, then polls CI gates (CodeQL and Copilot Code Review) on the associated PR.
+
+**When `npm run push` fails at ANY step, you MUST fix the failure and retry — never leave a failed push unresolved.**
+
+| Failure | Action |
+|---|---|
+| Type check errors | Fix the TypeScript errors reported in the output |
+| Test failures | Fix the failing tests or the code they test |
+| Coverage below thresholds | Add tests to meet the coverage thresholds (statements=70%, branches=65%, functions=70%, lines=70%) |
+| Build errors | Fix the build errors reported in the output |
+| Git push rejected | Resolve merge conflicts or upstream issues, then retry |
+| CodeQL security alerts | Run the `security-fixer` agent to remediate all reported alerts |
+| Copilot Code Review unresolved threads | Run the `review-triage` agent to triage and resolve review comments |
+| Any other failure | Read the error message, diagnose the root cause, and fix it |
+
+- If **multiple** gates fail, dispatch independent fixes **in parallel** where possible
+- After fixes are applied, run `npm run push` again to verify and re-poll CI
+- **Repeat until all steps pass** — the push is not done until every gate is green
+
 ## Testing
 
 ### Test Suite

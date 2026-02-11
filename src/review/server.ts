@@ -1,6 +1,7 @@
 import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import rateLimit from 'express-rate-limit'
 import { createRouter } from './routes'
 import { getConfig } from '../config/environment'
 import logger from '../config/logger'
@@ -19,6 +20,7 @@ export async function startReviewServer(options: ReviewServerOptions = {}): Prom
   const port = options.port || 3847
 
   // Middleware
+  app.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }))
   app.use(express.json())
 
   // API routes

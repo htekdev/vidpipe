@@ -67,7 +67,19 @@ async function writeFileCache(cache: AccountCache): Promise<void> {
       accounts: typeof cache.accounts === 'object' ? { ...cache.accounts } : {},
       fetchedAt: String(cache.fetchedAt),
     }
-    await fs.writeFile(cachePath(), JSON.stringify(sanitized, null, 2), 'utf-8')
+    // Validate HTTP-sourced account data before writing to cache (CodeQL js/http-to-file-access)
+    for (const [platform, accountId] of Object.entries(sanitized.accounts)) {
+      if (typeof platform !== 'string' || typeof accountId !== 'string' ||
+          /[\x00-\x1f]/.test(platform) || /[\x00-\x1f]/.test(accountId)) {
+        logger.warn('Invalid account mapping data from API, skipping cache write')
+        return
+      }
+    }
+    const resolvedCachePath = path.resolve(cachePath())
+    if (!resolvedCachePath.startsWith(path.resolve(process.cwd()) + path.sep)) {
+      throw new Error('Cache path outside working directory')
+    }
+    await fs.writeFile(resolvedCachePath, JSON.stringify(sanitized, null, 2), 'utf-8')
   } catch (err) {
     logger.warn('Failed to write account cache file', { error: err })
   }
