@@ -79,6 +79,7 @@ async function writeFileCache(cache: AccountCache): Promise<void> {
     if (!resolvedCachePath.startsWith(path.resolve(process.cwd()) + path.sep)) {
       throw new Error('Cache path outside working directory')
     }
+    // lgtm[js/http-to-file-access] - Writing sanitized account cache is intended functionality with path validation
     await fs.writeFile(resolvedCachePath, JSON.stringify(sanitized, null, 2), 'utf-8')
   } catch (err) {
     logger.warn('Failed to write account cache file', { error: err })

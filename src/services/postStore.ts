@@ -216,6 +216,7 @@ export async function updateItem(
     if (!postWritePath.startsWith(path.resolve(getQueueDir()) + path.sep)) {
       throw new Error('Write target outside queue directory')
     }
+    // lgtm[js/http-to-file-access] - Writing user-provided post content to queue is intended functionality with path validation
     await fs.writeFile(postWritePath, sanitizedContent, 'utf-8')
   }
 
@@ -275,6 +276,7 @@ export async function approveItem(
   if (!approveMetadataPath.startsWith(path.resolve(getQueueDir()) + path.sep)) {
     throw new Error('Write target outside queue directory')
   }
+  // lgtm[js/http-to-file-access] - Writing sanitized metadata to queue is intended functionality with path validation
   await fs.writeFile(
     approveMetadataPath,
     JSON.stringify(sanitizedMetadata, null, 2),
