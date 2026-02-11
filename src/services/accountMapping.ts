@@ -1,7 +1,7 @@
 import { Platform } from '../types/index.js'
 import { LateApiClient } from './lateApi.js'
 import type { LateAccount } from './lateApi.js'
-import logger, { sanitizeForLog } from '../config/logger.js'
+import logger from '../config/logger.js'
 import { promises as fs } from 'fs'
 import path from 'path'
 
@@ -57,7 +57,17 @@ async function readFileCache(): Promise<AccountCache | null> {
 
 async function writeFileCache(cache: AccountCache): Promise<void> {
   try {
-    await fs.writeFile(cachePath(), JSON.stringify(cache, null, 2), 'utf-8')
+    // Validate cache structure before writing to prevent malformed data
+    if (!cache || typeof cache !== 'object' || !cache.accounts || !cache.fetchedAt) {
+      logger.warn('Invalid cache structure, skipping write')
+      return
+    }
+    // Sanitize by re-constructing with only expected fields
+    const sanitized: AccountCache = {
+      accounts: typeof cache.accounts === 'object' ? { ...cache.accounts } : {},
+      fetchedAt: String(cache.fetchedAt),
+    }
+    await fs.writeFile(cachePath(), JSON.stringify(sanitized, null, 2), 'utf-8')
   } catch (err) {
     logger.warn('Failed to write account cache file', { error: err })
   }

@@ -188,7 +188,7 @@ describe('scheduleConfig', () => {
           },
         },
       }
-      const filePath = path.join(tmpDir, 'existing-schedule.json')
+      const filePath = path.join(tmpDir, `existing-schedule-${randomUUID()}.json`)
       await fs.writeFile(filePath, JSON.stringify(customConfig), 'utf-8')
 
       const config = await loadScheduleConfig(filePath)
@@ -199,7 +199,7 @@ describe('scheduleConfig', () => {
 
   describe('clearScheduleCache', () => {
     it('forces reload on next call', async () => {
-      const filePath = path.join(tmpDir, 'cached-schedule.json')
+      const filePath = path.join(tmpDir, `cached-schedule-${randomUUID()}.json`)
 
       // First load creates defaults
       const config1 = await loadScheduleConfig(filePath)

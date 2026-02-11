@@ -2,7 +2,8 @@ import ffmpeg from 'fluent-ffmpeg';
 import { execFile } from 'child_process';
 import { promises as fs } from 'fs';
 import pathMod from 'path';
-import { randomUUID } from 'node:crypto';
+import tmp from 'tmp';
+
 import logger from '../../config/logger';
 import { ShortSegment } from '../../types';
 import { getFFmpegPath, getFFprobePath } from '../../config/ffmpegResolver.js';
@@ -113,8 +114,8 @@ export async function extractCompositeClip(
   const outputDir = pathMod.dirname(outputPath);
   await fs.mkdir(outputDir, { recursive: true });
 
-  const tempDir = pathMod.join(outputDir, `.temp-${randomUUID()}`);
-  await fs.mkdir(tempDir, { recursive: true });
+  const tempDirObj = tmp.dirSync({ unsafeCleanup: true, prefix: 'vidpipe-' });
+  const tempDir = tempDirObj.name;
 
   const tempFiles: string[] = [];
 
@@ -142,7 +143,8 @@ export async function extractCompositeClip(
     }
 
     // Build concat list file
-    const concatListPath = pathMod.join(tempDir, 'concat-list.txt');
+    const concatListFile = tmp.fileSync({ dir: tempDir, postfix: '.txt', prefix: 'concat-' });
+    const concatListPath = concatListFile.name;
     const listContent = tempFiles.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n');
     await fs.writeFile(concatListPath, listContent);
 

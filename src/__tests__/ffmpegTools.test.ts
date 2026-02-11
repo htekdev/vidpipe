@@ -16,6 +16,8 @@ const {
   mockFfmpegInstance,
   mockFfmpegCtor,
   mockFfprobe,
+  mockTmpDirSync,
+  mockTmpFileSync,
 } = vi.hoisted(() => {
   const inst: Record<string, any> = {
     input: vi.fn().mockReturnThis(),
@@ -62,6 +64,8 @@ const {
     mockFfmpegInstance: inst,
     mockFfmpegCtor: ctor,
     mockFfprobe: ffprobe,
+    mockTmpDirSync: vi.fn(() => ({ name: '/tmp/vidpipe-test', removeCallback: vi.fn() })),
+    mockTmpFileSync: vi.fn(() => ({ name: '/tmp/vidpipe-test/concat-test.txt', fd: 3, removeCallback: vi.fn() })),
   };
 });
 
@@ -92,6 +96,13 @@ vi.mock('fs', async (importOriginal) => {
 
 vi.mock('fluent-ffmpeg', () => ({
   default: mockFfmpegCtor,
+}));
+
+vi.mock('tmp', () => ({
+  default: {
+    dirSync: mockTmpDirSync,
+    fileSync: mockTmpFileSync,
+  },
 }));
 
 vi.mock('../../config/logger.js', () => ({
@@ -181,14 +192,14 @@ describe('clipExtraction', () => {
         { start: 20, end: 25, description: 'b' },
       ];
       const result = await extractCompositeClip('/in.mp4', segs, '/out.mp4', 1);
-      // mkdir for output dir + temp dir
-      expect(mockMkdir).toHaveBeenCalledTimes(2);
+      // mkdir for output dir only (temp dir created by tmp.dirSync)
+      expect(mockMkdir).toHaveBeenCalledTimes(1);
       // ffmpeg called: 2 segment extractions + 1 concat = 3 times
       expect(mockFfmpegCtor).toHaveBeenCalledTimes(3);
       // concat list written
       expect(mockWriteFile).toHaveBeenCalledTimes(1);
       // temp dir cleaned up
-      expect(mockRm).toHaveBeenCalledWith(expect.stringContaining('.temp-'), { recursive: true, force: true });
+      expect(mockRm).toHaveBeenCalledWith(expect.stringContaining('vidpipe-'), { recursive: true, force: true });
       expect(result).toBe('/out.mp4');
     });
   });

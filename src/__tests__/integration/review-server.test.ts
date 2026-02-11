@@ -85,11 +85,18 @@ function makeMetadata(overrides: Partial<QueueItemMetadata> = {}): QueueItemMeta
 async function createTestItem(id: string, overrides: Partial<QueueItemMetadata> = {}) {
   const dir = path.join(tmpDir, 'publish-queue', id)
   await fs.mkdir(dir, { recursive: true })
+  
+  // Use temp file with randomUUID, then rename to expected location
+  const metadataTmp = path.join(dir, `metadata-${randomUUID()}.tmp`)
   await fs.writeFile(
-    path.join(dir, 'metadata.json'),
+    metadataTmp,
     JSON.stringify(makeMetadata({ id, ...overrides })),
   )
-  await fs.writeFile(path.join(dir, 'post.md'), `Test post content for ${id}`)
+  await fs.rename(metadataTmp, path.join(dir, 'metadata.json'))
+  
+  const postTmp = path.join(dir, `post-${randomUUID()}.tmp`)
+  await fs.writeFile(postTmp, `Test post content for ${id}`)
+  await fs.rename(postTmp, path.join(dir, 'post.md'))
 }
 
 // ── Lifecycle ──────────────────────────────────────────────────────────

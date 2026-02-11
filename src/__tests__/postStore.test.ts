@@ -87,7 +87,7 @@ describe('postStore', () => {
     })
 
     it('copies media file when provided', async () => {
-      const mediaSource = path.join(tmpDir, 'source-media.mp4')
+      const mediaSource = path.join(tmpDir, `source-media-${randomUUID()}.mp4`)
       await fs.writeFile(mediaSource, 'fake-video-bytes')
 
       const meta = makeMetadata({ id: 'create-media' })

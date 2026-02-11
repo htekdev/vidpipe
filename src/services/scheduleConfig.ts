@@ -1,5 +1,6 @@
 import { promises as fs } from 'fs'
 import path from 'path'
+import os from 'os'
 import logger from '../config/logger'
 import { randomUUID } from 'crypto'
 
@@ -159,7 +160,8 @@ export async function loadScheduleConfig(configPath?: string): Promise<ScheduleC
   try {
     raw = await fs.readFile(filePath, 'utf-8')
   } catch {
-    const tempPath = `${filePath}.tmp-${randomUUID()}`
+    // Use OS temp directory with random UUID to prevent predictable temp file paths
+    const tempPath = path.join(os.tmpdir(), `vidpipe-schedule-${randomUUID()}.json`)
     logger.info(`No schedule.json found at ${filePath}, creating with defaults`)
     const defaults = getDefaultScheduleConfig()
     await fs.writeFile(tempPath, JSON.stringify(defaults, null, 2), 'utf-8')

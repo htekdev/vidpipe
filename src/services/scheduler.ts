@@ -1,7 +1,7 @@
 import { LateApiClient, type LatePost } from './lateApi'
 import { loadScheduleConfig, type DayOfWeek } from './scheduleConfig'
 import { getPublishedItems } from './postStore'
-import logger, { sanitizeForLog } from '../config/logger'
+import logger from '../config/logger'
 
 /**
  * Normalize ISO datetime to milliseconds since epoch for collision detection.
@@ -153,7 +153,7 @@ export async function findNextSlot(platform: string): Promise<string | null> {
   const config = await loadScheduleConfig()
   const platformConfig = config.platforms[platform]
   if (!platformConfig) {
-    logger.warn(`No schedule config found for platform "${platform}"`)
+    logger.warn(`No schedule config found for platform "${String(platform).replace(/[\r\n]/g, '')}"`)
     return null
   }
 
@@ -185,14 +185,14 @@ export async function findNextSlot(platform: string): Promise<string | null> {
 
     const available = candidates.find(c => !bookedDatetimes.has(normalizeDateTime(c)))
     if (available) {
-      logger.debug(`Found available slot for ${sanitizeForLog(platform)}: ${sanitizeForLog(available)}`)
+      logger.debug(`Found available slot for ${String(platform).replace(/[\r\n]/g, '')}: ${String(available).replace(/[\r\n]/g, '')}`)
       return available
     }
 
     startOffset = endOffset + 1
   }
 
-  logger.warn(`No available slot found for "${sanitizeForLog(platform)}" within ${MAX_LOOKAHEAD_DAYS} days`)
+  logger.warn(`No available slot found for "${String(platform).replace(/[\r\n]/g, '')}" within ${MAX_LOOKAHEAD_DAYS} days`)
   return null
 }
 

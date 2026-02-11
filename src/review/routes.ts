@@ -6,7 +6,7 @@ import { getAccountId } from '../services/accountMapping'
 import { LateApiClient, type LateAccount, type LateProfile } from '../services/lateApi'
 import { loadScheduleConfig } from '../services/scheduleConfig'
 import { fromLatePlatform, normalizePlatformString } from '../types'
-import logger, { sanitizeForLog } from '../config/logger'
+import logger from '../config/logger'
 
 // ── Simple in-memory cache (avoids repeated Late API calls) ────────────
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
@@ -95,7 +95,7 @@ export function createRouter(): Router {
         const mediaExists = await fs.access(effectiveMediaPath).then(() => true, () => false)
         if (mediaExists) {
           if (!item.mediaPath && item.metadata.sourceMediaPath) {
-            logger.info(`Using source media fallback for ${sanitizeForLog(item.id)}: ${sanitizeForLog(item.metadata.sourceMediaPath)}`)
+            logger.info(`Using source media fallback for ${String(item.id).replace(/[\r\n]/g, '')}: ${String(item.metadata.sourceMediaPath).replace(/[\r\n]/g, '')}`)
           }
           const upload = await client.uploadMedia(effectiveMediaPath)
           mediaItems = [{ type: upload.type, url: upload.url }]
@@ -135,7 +135,7 @@ export function createRouter(): Router {
       res.json({ success: true, scheduledFor: slot, latePostId: latePost._id })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      logger.error(`Approve failed for ${sanitizeForLog(req.params.id)}: ${sanitizeForLog(msg)}`)
+      logger.error(`Approve failed for ${String(req.params.id).replace(/[\r\n]/g, '')}: ${String(msg).replace(/[\r\n]/g, '')}`)
       res.status(500).json({ error: msg })
     }
   })
