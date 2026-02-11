@@ -63,6 +63,15 @@ if (!ghAuth.ok) {
 }
 console.log('  ✓ gh auth status OK');
 
+// uncommitted changes
+const status = tryRun('git status --porcelain');
+if (status.ok && status.stdout.length > 0) {
+  console.error('❌ Uncommitted changes detected. Commit or stash them before pushing.\n');
+  console.error(status.stdout);
+  process.exit(1);
+}
+console.log('  ✓ No uncommitted changes');
+
 // typecheck
 console.log('  ⏳ Running type check...');
 run('npx tsc --noEmit', 'Type check');
