@@ -156,6 +156,10 @@ describe('scheduler', () => {
   })
 
   it('does not count evening CST post on next UTC day (timezone bug)', async () => {
+    // Pin to Monday so Tue and Wed are consecutive available days
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-02-09T12:00:00Z'))
+
     // Config: tiktok at 19:00 CST (Tue-Thu)
     // A post at Tue 19:00 CST = Wed 01:00 UTC.
     // Slot finding should be timezone-aware.
@@ -206,6 +210,8 @@ describe('scheduler', () => {
     // Should be 1 day apart (consecutive), not 2+ (skipping)
     expect(dayDiffDays).toBe(1)
     expect(secondSlot).toMatch(/T19:00:00/)
+
+    vi.useRealTimers()
   })
 
   it('returns Thursday 20:00 before Friday 15:00 (slot ordering by date)', async () => {

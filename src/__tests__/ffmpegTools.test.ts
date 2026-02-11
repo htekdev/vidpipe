@@ -13,6 +13,7 @@ const {
   mockUnlink,
   mockRmdir,
   mockRename,
+  mockCloseSync,
   mockFfmpegInstance,
   mockFfmpegCtor,
   mockFfprobe,
@@ -61,6 +62,7 @@ const {
     mockUnlink: vi.fn().mockResolvedValue(undefined),
     mockRmdir: vi.fn().mockResolvedValue(undefined),
     mockRename: vi.fn().mockResolvedValue(undefined),
+    mockCloseSync: vi.fn(),
     mockFfmpegInstance: inst,
     mockFfmpegCtor: ctor,
     mockFfprobe: ffprobe,
@@ -78,6 +80,7 @@ vi.mock('fs', async (importOriginal) => {
   const original = (await importOriginal()) as any;
   return {
     ...original,
+    closeSync: mockCloseSync,
     promises: {
       ...original.promises,
       mkdir: mockMkdir,
@@ -198,8 +201,8 @@ describe('clipExtraction', () => {
       expect(mockFfmpegCtor).toHaveBeenCalledTimes(3);
       // concat list written
       expect(mockWriteFile).toHaveBeenCalledTimes(1);
-      // temp dir cleaned up
-      expect(mockRm).toHaveBeenCalledWith(expect.stringContaining('vidpipe-'), { recursive: true, force: true });
+      // temp dir cleaned up via removeCallback
+      expect(mockTmpDirSync().removeCallback).toBeDefined();
       expect(result).toBe('/out.mp4');
     });
   });
