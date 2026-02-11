@@ -308,3 +308,14 @@ describe('Review Server API', () => {
     })
   })
 })
+
+// ── Server startup test ─────────────────────────────────────────────
+
+describe('startReviewServer', () => {
+  it('starts without path-to-regexp errors (regression: /* wildcard)', async () => {
+    const { startReviewServer } = await import('../../review/server.js')
+    const server = await startReviewServer({ port: 0 })
+    expect(server.port).toBeGreaterThan(0)
+    await server.close()
+  })
+})

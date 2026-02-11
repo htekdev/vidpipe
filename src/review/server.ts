@@ -35,7 +35,7 @@ export async function startReviewServer(options: ReviewServerOptions = {}): Prom
   app.use(express.static(publicDir))
 
   // SPA fallback — serve index.html for non-API routes
-  app.get('/*', (req, res) => {
+  app.get('/{*splat}', (req, res) => {
     if (!req.path.startsWith('/api/') && !req.path.startsWith('/media/')) {
       res.sendFile(join(publicDir, 'index.html'))
     }

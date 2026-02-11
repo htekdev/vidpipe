@@ -1,6 +1,7 @@
 ---
 name: security-fixer
 description: Remediates CodeQL security alerts found during code scanning on pull requests
+user-invokable: true
 ---
 
 # Security Fixer Agent
