@@ -1,6 +1,6 @@
 import { execFileRaw } from '../../core/process.js'
 import { fileExistsSync, listDirectory, removeFile, removeDirectory, makeTempDir } from '../../core/fileSystem.js'
-import { dirname, join, resolve, fileURLToPath } from '../../core/paths.js'
+import { join, modelsDir } from '../../core/paths.js'
 import { sharp, ort } from '../../core/media.js'
 import { getFFmpegPath, getFFprobePath } from '../../core/ffmpeg.js'
 import logger from '../../config/logger'
@@ -8,22 +8,7 @@ import logger from '../../config/logger'
 const ffmpegPath = getFFmpegPath()
 const ffprobePath = getFFprobePath()
 
-// Resolve model path: dist/models/ (production) or assets/models/ (dev)
-const __filename_local = fileURLToPath(import.meta.url)
-const __dirname_local = dirname(__filename_local)
-
-const PROD_MODEL_PATH = resolve(__dirname_local, '..', '..', 'models', 'ultraface-320.onnx')
-const DEV_MODEL_PATH = resolve(
-  __dirname_local,
-  '..',
-  '..',
-  '..',
-  'assets',
-  'models',
-  'ultraface-320.onnx',
-)
-
-const MODEL_PATH = fileExistsSync(PROD_MODEL_PATH) ? PROD_MODEL_PATH : DEV_MODEL_PATH
+const MODEL_PATH = join(modelsDir(), 'ultraface-320.onnx')
 
 /** Cached ONNX session — loaded once, reused across calls. */
 let cachedSession: ort.InferenceSession | null = null

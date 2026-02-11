@@ -8,6 +8,7 @@ import {
   extname,
   projectRoot,
   fontsDir,
+  modelsDir,
   assetsDir,
   findRoot,
 } from '../../core/paths.js'
@@ -102,5 +103,17 @@ describe('assetsDir', () => {
   it('returns path ending with assets/fonts or assets\\fonts', () => {
     const result = assetsDir('fonts')
     expect(result).toMatch(/assets[/\\]fonts$/)
+  })
+})
+
+describe('modelsDir', () => {
+  it('returns a path that actually exists on disk', () => {
+    const dir = modelsDir()
+    expect(existsSync(dir)).toBe(true)
+  })
+
+  it('contains the ultraface ONNX model', () => {
+    const dir = modelsDir()
+    expect(existsSync(join(dir, 'ultraface-320.onnx'))).toBe(true)
   })
 })

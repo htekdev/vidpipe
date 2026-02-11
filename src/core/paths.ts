@@ -48,6 +48,15 @@ export function fontsDir(): string {
   return existsSync(bundled) ? bundled : assetsDir('fonts')
 }
 
+/**
+ * Resolve the models directory — checks bundled (dist/models/) first,
+ * falls back to dev (assets/models/).
+ */
+export function modelsDir(): string {
+  const bundled = resolve(projectRoot(), 'dist', 'models')
+  return existsSync(bundled) ? bundled : assetsDir('models')
+}
+
 /** Get the recordings directory, optionally for a specific slug. */
 export function recordingsDir(slug?: string): string {
   return slug ? join(projectRoot(), 'recordings', slug) : join(projectRoot(), 'recordings')

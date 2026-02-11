@@ -9,12 +9,10 @@ import { runInit } from './commands/init'
 import { runSchedule } from './commands/schedule'
 import { startReviewServer } from './review/server'
 import { openUrl } from './core/cli.js'
-import { dirname, resolve } from './core/paths.js'
 import { readTextFileSync } from './core/fileSystem.js'
-import { fileURLToPath } from './core/paths.js'
+import { projectRoot, join, resolve } from './core/paths.js'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-const pkg = JSON.parse(readTextFileSync(resolve(__dirname, '..', 'package.json')))
+const pkg = JSON.parse(readTextFileSync(join(projectRoot(), 'package.json')))
 
 const BANNER = `
 ╔══════════════════════════════════════╗
