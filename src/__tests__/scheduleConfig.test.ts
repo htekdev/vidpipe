@@ -1,8 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest'
 import { promises as fs, closeSync } from 'node:fs'
 import path from 'node:path'
-import os from 'node:os'
-import { randomUUID } from 'node:crypto'
 import tmp from 'tmp'
 
 vi.mock('../config/logger.js', () => ({
@@ -18,7 +16,8 @@ import {
   getPlatformSchedule,
 } from '../services/scheduleConfig.js'
 
-const tmpDir = path.join(os.tmpdir(), `vidpipe-schedule-${randomUUID()}`)
+const tmpDirObj = tmp.dirSync({ prefix: 'vidpipe-schedule-', unsafeCleanup: false })
+const tmpDir = tmpDirObj.name
 
 describe('scheduleConfig', () => {
   beforeEach(async () => {
@@ -27,7 +26,15 @@ describe('scheduleConfig', () => {
   })
 
   afterEach(async () => {
-    await fs.rm(tmpDir, { recursive: true, force: true })
+    // Clean directory contents but keep the directory
+    const entries = await fs.readdir(tmpDir)
+    await Promise.all(
+      entries.map((entry) => fs.rm(path.join(tmpDir, entry), { recursive: true, force: true })),
+    )
+  })
+
+  afterAll(() => {
+    tmpDirObj.removeCallback()
   })
 
   describe('getDefaultScheduleConfig', () => {

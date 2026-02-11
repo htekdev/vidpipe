@@ -1,13 +1,12 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
 import { promises as fs, closeSync } from 'node:fs'
 import path from 'node:path'
-import os from 'node:os'
-import { randomUUID } from 'node:crypto'
 import tmp from 'tmp'
 
 // ── Mock setup ─────────────────────────────────────────────────────────
 
-const tmpDir = path.join(os.tmpdir(), `vidpipe-review-test-${randomUUID()}`)
+const tmpDirObj = tmp.dirSync({ prefix: 'vidpipe-review-test-', unsafeCleanup: false })
+const tmpDir = tmpDirObj.name
 
 vi.mock('../../config/logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -110,6 +109,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await fs.rm(tmpDir, { recursive: true, force: true })
+  tmpDirObj.removeCallback()
 })
 
 beforeEach(async () => {

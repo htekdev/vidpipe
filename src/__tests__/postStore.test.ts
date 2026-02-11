@@ -1,13 +1,12 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest'
 import { promises as fs } from 'fs'
 import path from 'path'
-import os from 'os'
-import { randomUUID } from 'crypto'
 import tmp from 'tmp'
 
 // ── Mock setup ─────────────────────────────────────────────────────────
 
-const tmpDir = path.join(os.tmpdir(), `vidpipe-poststore-${randomUUID()}`)
+const tmpDirObj = tmp.dirSync({ prefix: 'vidpipe-poststore-', unsafeCleanup: false })
+const tmpDir = tmpDirObj.name
 
 vi.mock('../config/logger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -66,7 +65,15 @@ describe('postStore', () => {
   })
 
   afterEach(async () => {
-    await fs.rm(tmpDir, { recursive: true, force: true })
+    // Clean directory contents but keep the directory
+    const entries = await fs.readdir(tmpDir)
+    await Promise.all(
+      entries.map((entry) => fs.rm(path.join(tmpDir, entry), { recursive: true, force: true })),
+    )
+  })
+
+  afterAll(() => {
+    tmpDirObj.removeCallback()
   })
 
   describe('createItem', () => {

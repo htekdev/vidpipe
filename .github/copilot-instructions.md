@@ -638,6 +638,23 @@ When reviewing pull requests for this repository, keep these conventions in mind
 - All FFmpeg/FFprobe usage MUST go through `src/config/ffmpegResolver.ts` — never hardcode paths
 - The xfade filter requires explicit fps after trim+setpts (see `getVideoFps()` in clipExtraction.ts)
 
+### Code Review Focus (for Copilot Code Review)
+
+When reviewing pull requests, focus **only** on:
+- Bugs, logic errors, and incorrect behavior
+- Security vulnerabilities (injection, auth bypass, secrets exposure)
+- Race conditions, resource leaks, and error handling gaps
+- Breaking changes to public APIs or contracts
+
+Do **NOT** comment on:
+- Code style, formatting, or naming conventions
+- Minor refactoring suggestions or "could be cleaner" improvements
+- Import ordering, whitespace, or cosmetic changes
+- Suggestions that don't fix an actual bug or vulnerability
+- Test file organization or test naming patterns
+
+Keep feedback concise — one comment per real issue. If there are no critical issues, approve without comments.
+
 ### What NOT to flag in reviews
 - Don't suggest adding coverage for provider SDK adapters (intentional exclusion)
 - Don't suggest changing the `continue-on-error` on the agent-review workflow (it's advisory by design)
