@@ -5,7 +5,7 @@
  *   user message → LLM → (tool_calls? → execute → feed back → LLM)* → final text
  */
 
-import OpenAI from 'openai';
+import { OpenAI } from '../core/ai.js';
 import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,

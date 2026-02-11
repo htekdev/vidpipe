@@ -1,6 +1,6 @@
 import type { ToolWithHandler } from '../providers/types.js'
-import * as fs from 'fs'
-import * as path from 'path'
+import { ensureDirectorySync, writeTextFileSync } from '../core/fileSystem.js'
+import { join, dirname } from '../core/paths.js'
 import { BaseAgent } from './BaseAgent'
 import logger from '../config/logger'
 import type { MCPServerConfig } from '../providers/types.js'
@@ -141,6 +141,8 @@ function toPlatformEnum(raw: string): Platform {
       return Platform.LinkedIn
     case 'x':
     case 'twitter':
+    case 'x (twitter)':
+    case 'x/twitter':
       return Platform.X
     default:
       return normalised as Platform
@@ -229,18 +231,17 @@ export async function generateShortPosts(
     const collectedPosts = agent.getCollectedPosts()
 
     // Save posts to recordings/{slug}/shorts/{short-slug}/posts/
-    const shortsDir = path.join(path.dirname(video.repoPath), 'shorts')
-    const postsDir = path.join(shortsDir, short.slug, 'posts')
-    fs.mkdirSync(postsDir, { recursive: true })
+    const shortsDir = join(dirname(video.repoPath), 'shorts')
+    const postsDir = join(shortsDir, short.slug, 'posts')
+    ensureDirectorySync(postsDir)
 
     const socialPosts: SocialPost[] = collectedPosts.map((p) => {
       const platform = toPlatformEnum(p.platform)
-      const outputPath = path.join(postsDir, `${platform}.md`)
+      const outputPath = join(postsDir, `${platform}.md`)
 
-      fs.writeFileSync(
+      writeTextFileSync(
         outputPath,
         renderPostFile(p, { videoSlug: video.slug, shortSlug: short.slug }),
-        'utf-8',
       )
       logger.info(`[SocialMediaAgent] Wrote short post ${outputPath}`)
 
@@ -292,17 +293,16 @@ export async function generateSocialPosts(
     const collectedPosts = agent.getCollectedPosts()
 
     // Ensure the output directory exists
-    const outDir = outputDir ?? path.join(video.videoDir, 'social-posts')
-    fs.mkdirSync(outDir, { recursive: true })
+    const outDir = outputDir ?? join(video.videoDir, 'social-posts')
+    ensureDirectorySync(outDir)
 
     const socialPosts: SocialPost[] = collectedPosts.map((p) => {
       const platform = toPlatformEnum(p.platform)
-      const outputPath = path.join(outDir, `${platform}.md`)
+      const outputPath = join(outDir, `${platform}.md`)
 
-      fs.writeFileSync(
+      writeTextFileSync(
         outputPath,
         renderPostFile(p, { videoSlug: video.slug }),
-        'utf-8',
       )
       logger.info(`[SocialMediaAgent] Wrote ${outputPath}`)
 

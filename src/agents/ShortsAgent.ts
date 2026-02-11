@@ -5,10 +5,10 @@ import { extractClip, extractCompositeClip } from '../tools/ffmpeg/clipExtractio
 import { generateStyledASSForSegment, generateStyledASSForComposite, generatePortraitASSWithHook, generatePortraitASSWithHookComposite } from '../tools/captions/captionGenerator'
 import { burnCaptions } from '../tools/ffmpeg/captionBurning'
 import { generatePlatformVariants, type Platform } from '../tools/ffmpeg/aspectRatio'
-import { v4 as uuidv4 } from 'uuid'
-import slugify from 'slugify'
-import { promises as fs } from 'fs'
-import path from 'path'
+import { generateId } from '../core/text.js'
+import { slugify } from '../core/text.js'
+import { writeTextFile, ensureDirectory } from '../core/fileSystem.js'
+import { join, dirname } from '../core/paths.js'
 import logger from '../config/logger'
 
 // ── Types for the LLM's plan_shorts tool call ──────────────────────────────
@@ -167,16 +167,16 @@ export async function generateShorts(
       return []
     }
 
-    const shortsDir = path.join(path.dirname(video.repoPath), 'shorts')
-    await fs.mkdir(shortsDir, { recursive: true })
+    const shortsDir = join(dirname(video.repoPath), 'shorts')
+    await ensureDirectory(shortsDir)
 
     const shorts: ShortClip[] = []
 
     for (const plan of planned) {
-      const id = uuidv4()
-      const shortSlug = slugify(plan.title, { lower: true, strict: true })
+      const id = generateId()
+      const shortSlug = slugify(plan.title)
       const totalDuration = plan.segments.reduce((sum, s) => sum + (s.end - s.start), 0)
-      const outputPath = path.join(shortsDir, `${shortSlug}.mp4`)
+      const outputPath = join(shortsDir, `${shortSlug}.mp4`)
 
       const segments: ShortSegment[] = plan.segments.map((s) => ({
         start: s.start,
@@ -219,10 +219,10 @@ export async function generateShorts(
           ? generateStyledASSForSegment(transcript, segments[0].start, segments[0].end)
           : generateStyledASSForComposite(transcript, segments)
 
-        const assPath = path.join(shortsDir, `${shortSlug}.ass`)
-        await fs.writeFile(assPath, assContent)
+        const assPath = join(shortsDir, `${shortSlug}.ass`)
+        await writeTextFile(assPath, assContent)
 
-        captionedPath = path.join(shortsDir, `${shortSlug}-captioned.mp4`)
+        captionedPath = join(shortsDir, `${shortSlug}-captioned.mp4`)
         await burnCaptions(outputPath, assPath, captionedPath)
         logger.info(`[ShortsAgent] Burned captions for short: ${plan.title}`)
       } catch (err) {
@@ -239,8 +239,8 @@ export async function generateShorts(
             const portraitAssContent = segments.length === 1
               ? generatePortraitASSWithHook(transcript, plan.title, segments[0].start, segments[0].end)
               : generatePortraitASSWithHookComposite(transcript, segments, plan.title)
-            const portraitAssPath = path.join(shortsDir, `${shortSlug}-portrait.ass`)
-            await fs.writeFile(portraitAssPath, portraitAssContent)
+            const portraitAssPath = join(shortsDir, `${shortSlug}-portrait.ass`)
+            await writeTextFile(portraitAssPath, portraitAssContent)
             const portraitCaptionedPath = portraitVariant.path.replace('.mp4', '-captioned.mp4')
             await burnCaptions(portraitVariant.path, portraitAssPath, portraitCaptionedPath)
             // Update the variant path to point to the captioned version
@@ -254,7 +254,7 @@ export async function generateShorts(
       }
 
       // Generate description markdown
-      const mdPath = path.join(shortsDir, `${shortSlug}.md`)
+      const mdPath = join(shortsDir, `${shortSlug}.md`)
       const mdContent = [
         `# ${plan.title}\n`,
         plan.description,
@@ -268,7 +268,7 @@ export async function generateShorts(
         plan.tags.map((t) => `- ${t}`).join('\n'),
         '',
       ].join('\n')
-      await fs.writeFile(mdPath, mdContent)
+      await writeTextFile(mdPath, mdContent)
 
       shorts.push({
         id,

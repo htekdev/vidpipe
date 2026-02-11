@@ -1,9 +1,9 @@
-import { execFile } from 'child_process'
-import { promises as fs } from 'fs'
-import pathMod from 'path'
+import { execFileRaw } from '../../core/process.js'
+import { ensureDirectory, copyFile } from '../../core/fileSystem.js'
+import { dirname, join } from '../../core/paths.js'
+import { getFFmpegPath } from '../../core/ffmpeg.js'
 import logger from '../../config/logger'
 import { detectWebcamRegion, getVideoResolution } from './faceDetection'
-import { getFFmpegPath } from '../../config/ffmpegResolver.js'
 
 const ffmpegPath = getFFmpegPath()
 
@@ -122,15 +122,15 @@ export async function convertAspectRatio(
   targetRatio: AspectRatio,
   options: ConvertOptions = {},
 ): Promise<string> {
-  const outputDir = pathMod.dirname(outputPath)
-  await fs.mkdir(outputDir, { recursive: true })
+  const outputDir = dirname(outputPath)
+  await ensureDirectory(outputDir)
 
   const sourceRatio: AspectRatio = '16:9' // our videos are always landscape
 
   // Same ratio — stream copy
   if (sourceRatio === targetRatio && !options.letterbox) {
     logger.info(`Aspect ratio already ${targetRatio}, copying → ${outputPath}`)
-    await fs.copyFile(inputPath, outputPath)
+    await copyFile(inputPath, outputPath)
     return outputPath
   }
 
@@ -150,7 +150,7 @@ export async function convertAspectRatio(
   ]
 
   return new Promise<string>((resolve, reject) => {
-    execFile(ffmpegPath, args, { maxBuffer: 10 * 1024 * 1024 }, (error, _stdout, stderr) => {
+    execFileRaw(ffmpegPath, args, { maxBuffer: 10 * 1024 * 1024 }, (error, _stdout, stderr) => {
       if (error) {
         logger.error(`Aspect ratio conversion failed: ${stderr || error.message}`)
         reject(new Error(`Aspect ratio conversion failed: ${stderr || error.message}`))
@@ -226,8 +226,8 @@ async function convertWithSmartLayout(
   config: SmartLayoutConfig,
 ): Promise<string> {
   const { label, targetW, screenH, camH, fallbackRatio } = config
-  const outputDir = pathMod.dirname(outputPath)
-  await fs.mkdir(outputDir, { recursive: true })
+  const outputDir = dirname(outputPath)
+  await ensureDirectory(outputDir)
 
   const webcam = await detectWebcamRegion(inputPath)
 
@@ -293,7 +293,7 @@ async function convertWithSmartLayout(
   ]
 
   return new Promise<string>((resolve, reject) => {
-    execFile(ffmpegPath, args, { maxBuffer: 10 * 1024 * 1024 }, (error, _stdout, stderr) => {
+    execFileRaw(ffmpegPath, args, { maxBuffer: 10 * 1024 * 1024 }, (error, _stdout, stderr) => {
       if (error) {
         logger.error(`[${label}] FFmpeg failed: ${stderr || error.message}`)
         reject(new Error(`${label} conversion failed: ${stderr || error.message}`))
@@ -401,7 +401,7 @@ export async function generatePlatformVariants(
   slug: string,
   platforms: Platform[] = ['tiktok', 'linkedin'],
 ): Promise<{ platform: Platform; aspectRatio: AspectRatio; path: string; width: number; height: number }[]> {
-  await fs.mkdir(outputDir, { recursive: true })
+  await ensureDirectory(outputDir)
 
   // Deduplicate by aspect ratio to avoid redundant encodes
   const ratioMap = new Map<AspectRatio, Platform[]>()
@@ -417,7 +417,7 @@ export async function generatePlatformVariants(
 
   for (const [ratio, associatedPlatforms] of ratioMap) {
     const suffix = ratio === '9:16' ? 'portrait' : ratio === '4:5' ? 'feed' : 'square'
-    const outPath = pathMod.join(outputDir, `${slug}-${suffix}.mp4`)
+    const outPath = join(outputDir, `${slug}-${suffix}.mp4`)
 
     try {
       if (ratio === '9:16') {

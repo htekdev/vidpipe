@@ -1,6 +1,7 @@
 ---
 name: review-triage
 description: Triages and resolves GitHub Copilot PR code review comments with critical evaluation of system stability impact
+user-invokable: true
 ---
 
 # Review Triage Agent

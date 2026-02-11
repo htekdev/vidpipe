@@ -13,9 +13,12 @@ const {
   mockUnlink,
   mockRmdir,
   mockRename,
+  mockCloseSync,
   mockFfmpegInstance,
   mockFfmpegCtor,
   mockFfprobe,
+  mockTmpDirSync,
+  mockTmpFileSync,
 } = vi.hoisted(() => {
   const inst: Record<string, any> = {
     input: vi.fn().mockReturnThis(),
@@ -42,10 +45,6 @@ const {
 
   const ctor = vi.fn(() => inst);
   const ffprobe = vi.fn();
-  // Attach static helpers to ctor so setFfmpegPath etc. don't blow up
-  (ctor as any).setFfmpegPath = vi.fn();
-  (ctor as any).setFfprobePath = vi.fn();
-  (ctor as any).ffprobe = ffprobe;
 
   return {
     mockExecFile: vi.fn(),
@@ -59,39 +58,42 @@ const {
     mockUnlink: vi.fn().mockResolvedValue(undefined),
     mockRmdir: vi.fn().mockResolvedValue(undefined),
     mockRename: vi.fn().mockResolvedValue(undefined),
+    mockCloseSync: vi.fn(),
     mockFfmpegInstance: inst,
     mockFfmpegCtor: ctor,
     mockFfprobe: ffprobe,
+    mockTmpDirSync: vi.fn(() => ({ name: '/tmp/vidpipe-test', removeCallback: vi.fn() })),
+    mockTmpFileSync: vi.fn(() => ({ name: '/tmp/vidpipe-test/concat-test.txt', fd: 3, removeCallback: vi.fn() })),
   };
 });
 
 // ── Mocks ──────────────────────────────────────────────────────────────────
-vi.mock('child_process', () => ({
-  execFile: mockExecFile,
+vi.mock('../core/process.js', () => ({
+  execFileRaw: mockExecFile,
 }));
 
-vi.mock('fs', async (importOriginal) => {
-  const original = (await importOriginal()) as any;
-  return {
-    ...original,
-    promises: {
-      ...original.promises,
-      mkdir: mockMkdir,
-      rm: mockRm,
-      writeFile: mockWriteFile,
-      stat: mockStat,
-      mkdtemp: mockMkdtemp,
-      copyFile: mockCopyFile,
-      readdir: mockReaddir,
-      unlink: mockUnlink,
-      rmdir: mockRmdir,
-      rename: mockRename,
-    },
-  };
-});
+vi.mock('../core/fileSystem.js', () => ({
+  ensureDirectory: mockMkdir,
+  writeTextFile: mockWriteFile,
+  closeFileDescriptor: mockCloseSync,
+  getFileStats: mockStat,
+  makeTempDir: mockMkdtemp,
+  copyFile: mockCopyFile,
+  listDirectory: mockReaddir,
+  removeFile: mockUnlink,
+  removeDirectory: mockRmdir,
+  renameFile: mockRename,
+  tmp: {
+    dirSync: mockTmpDirSync,
+    fileSync: mockTmpFileSync,
+  },
+}));
 
-vi.mock('fluent-ffmpeg', () => ({
-  default: mockFfmpegCtor,
+vi.mock('../core/ffmpeg.js', () => ({
+  createFFmpeg: mockFfmpegCtor,
+  getFFmpegPath: vi.fn(() => 'ffmpeg'),
+  getFFprobePath: vi.fn(() => 'ffprobe'),
+  ffprobe: mockFfprobe,
 }));
 
 vi.mock('../../config/logger.js', () => ({
@@ -136,7 +138,7 @@ describe('clipExtraction', () => {
   describe('extractClip', () => {
     it('creates output dir and calls ffmpeg with correct start/duration (re-encode)', async () => {
       const result = await extractClip('/in.mp4', 10, 20, '/out/clip.mp4', 1);
-      expect(mockMkdir).toHaveBeenCalledWith(expect.any(String), { recursive: true });
+      expect(mockMkdir).toHaveBeenCalledWith(expect.any(String));
       expect(mockFfmpegCtor).toHaveBeenCalledWith('/in.mp4');
       expect(mockFfmpegInstance.setStartTime).toHaveBeenCalledWith(9); // 10-1
       expect(mockFfmpegInstance.setDuration).toHaveBeenCalledWith(12); // (20+1)-(10-1)
@@ -181,14 +183,14 @@ describe('clipExtraction', () => {
         { start: 20, end: 25, description: 'b' },
       ];
       const result = await extractCompositeClip('/in.mp4', segs, '/out.mp4', 1);
-      // mkdir for output dir + temp dir
-      expect(mockMkdir).toHaveBeenCalledTimes(2);
+      // mkdir for output dir only (temp dir created by tmp.dirSync)
+      expect(mockMkdir).toHaveBeenCalledTimes(1);
       // ffmpeg called: 2 segment extractions + 1 concat = 3 times
       expect(mockFfmpegCtor).toHaveBeenCalledTimes(3);
       // concat list written
       expect(mockWriteFile).toHaveBeenCalledTimes(1);
-      // temp dir cleaned up
-      expect(mockRm).toHaveBeenCalledWith(expect.stringContaining('.temp-'), { recursive: true, force: true });
+      // temp dir cleaned up via removeCallback
+      expect(mockTmpDirSync().removeCallback).toBeDefined();
       expect(result).toBe('/out.mp4');
     });
   });
@@ -332,6 +334,18 @@ describe('captionBurning', () => {
     expect(mockCopyFile).toHaveBeenCalled();
     expect(result).toBe('/out/burned.mp4');
   });
+
+  it('throws descriptive error when fonts directory is missing', async () => {
+    mockReaddir.mockRejectedValueOnce(Object.assign(new Error("ENOENT: no such file or directory, scandir '/fonts'"), { code: 'ENOENT' }));
+    mockExecFile.mockImplementation(
+      (_cmd: string, _args: string[], _opts: any, cb?: Function) => {
+        if (cb) cb(null, '', '');
+        return { on: vi.fn() };
+      },
+    );
+
+    await expect(burnCaptions('/video.mp4', '/subs.ass', '/out/burned.mp4')).rejects.toThrow('Fonts directory not found');
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -341,7 +355,7 @@ describe('audioExtraction', () => {
   describe('extractAudio', () => {
     it('extracts mp3 audio by default', async () => {
       const result = await extractAudio('/video.mp4', '/out/audio.mp3');
-      expect(mockMkdir).toHaveBeenCalledWith(expect.any(String), { recursive: true });
+      expect(mockMkdir).toHaveBeenCalledWith(expect.any(String));
       expect(mockFfmpegCtor).toHaveBeenCalledWith('/video.mp4');
       expect(mockFfmpegInstance.noVideo).toHaveBeenCalled();
       expect(mockFfmpegInstance.audioChannels).toHaveBeenCalledWith(1);
@@ -376,9 +390,7 @@ describe('audioExtraction', () => {
 
     it('splits large file into chunks', async () => {
       mockStat.mockResolvedValue({ size: 48 * 1024 * 1024 }); // 48MB
-      mockFfprobe.mockImplementation((_path: string, cb: Function) => {
-        cb(null, { format: { duration: 600 } }); // 10 minutes
-      });
+      mockFfprobe.mockResolvedValue({ format: { duration: 600 } }); // 10 minutes
 
       const result = await splitAudioIntoChunks('/audio.mp3', 24);
       // 48MB / 24MB = 2 chunks
@@ -394,9 +406,7 @@ describe('audioExtraction', () => {
 
     it('rejects when ffprobe fails', async () => {
       mockStat.mockResolvedValue({ size: 48 * 1024 * 1024 });
-      mockFfprobe.mockImplementation((_path: string, cb: Function) => {
-        cb(new Error('probe fail'));
-      });
+      mockFfprobe.mockRejectedValue(new Error('probe fail'));
       await expect(splitAudioIntoChunks('/audio.mp3', 24)).rejects.toThrow('ffprobe failed');
     });
   });
@@ -502,7 +512,7 @@ describe('frameCapture', () => {
   describe('captureFrame', () => {
     it('captures frame at given timestamp', async () => {
       const result = await captureFrame('/video.mp4', 30.5, '/out/frame.png');
-      expect(mockMkdir).toHaveBeenCalledWith(expect.any(String), { recursive: true });
+      expect(mockMkdir).toHaveBeenCalledWith(expect.any(String));
       expect(mockFfmpegCtor).toHaveBeenCalledWith('/video.mp4');
       expect(mockFfmpegInstance.seekInput).toHaveBeenCalledWith(30.5);
       expect(mockFfmpegInstance.frames).toHaveBeenCalledWith(1);

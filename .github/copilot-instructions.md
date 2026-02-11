@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-Automated video processing pipeline that watches a folder for new `.mp4` recordings, then runs a 14-stage pipeline: ingestion → transcription → silence removal → captions → caption burning → shorts → medium clips → chapters → summary → social media → short posts → medium clip posts → blog → git push.
+Automated video processing pipeline that watches a folder for new `.mp4` recordings, then runs a 15-stage pipeline: ingestion → transcription → silence removal → captions → caption burning → shorts → medium clips → chapters → summary → social media → short posts → medium clip posts → queue build → blog → git push.
 
 **Tech stack:** Node.js, TypeScript (ES2022), ESM modules (`"type": "module"`), `@github/copilot-sdk` for AI agents, OpenAI Whisper for transcription, FFmpeg for all video/audio operations, Winston for logging, Chokidar for file watching, Exa for web search, Sharp for image analysis, Commander for CLI.
 
@@ -10,7 +10,7 @@ Automated video processing pipeline that watches a folder for new `.mp4` recordi
 
 ### Pipeline Stages (pipeline.ts)
 
-14 stages executed in order. Each is wrapped in `runStage()` which catches errors and records timing. A stage failure does **NOT** abort the pipeline — subsequent stages proceed with whatever data is available.
+15 stages executed in order. Each is wrapped in `runStage()` which catches errors and records timing. A stage failure does **NOT** abort the pipeline — subsequent stages proceed with whatever data is available.
 
 | # | Stage enum | What it does |
 |---|-----------|-------------|
@@ -26,8 +26,9 @@ Automated video processing pipeline that watches a folder for new `.mp4` recordi
 | 10 | `social-media` | Agent generates posts for 5 platforms (TikTok, YouTube, Instagram, LinkedIn, X) with web search for links |
 | 11 | `short-posts` | For each short clip, agent generates per-platform social posts saved to `shorts/{slug}/posts/` |
 | 12 | `medium-clip-posts` | For each medium clip, reuses short-post agent, saves to `medium-clips/{slug}/posts/` |
-| 13 | `blog` | Agent writes dev.to-style blog post (800–1500 words) with frontmatter, web search for links |
-| 14 | `git-push` | `git add -A && git commit && git push` for the recording folder |
+| 13 | `queue-build` | Copies social posts + video variants into flat `publish-queue/` folder for review |
+| 14 | `blog` | Agent writes dev.to-style blog post (800–1500 words) with frontmatter, web search for links |
+| 15 | `git-push` | `git add -A && git commit && git push` for the recording folder |
 
 **Key data flow:**
 - **Adjusted transcript** (post silence-removal) is used for captions (aligned to edited video)
@@ -194,6 +195,35 @@ Two-phase webcam detection:
 | `faceDetection` | Webcam overlay detection via skin-tone analysis + edge refinement (uses Sharp) |
 
 All FFmpeg tools use `execFile()` with `process.env.FFMPEG_PATH` (not shell commands). Set via `FFMPEG_PATH` / `FFPROBE_PATH` env vars.
+
+### Social Publishing (Late API)
+
+vidpipe publishes social media posts via [Late API](https://getlate.dev). Posts stay **local until approved** through the review web app.
+
+**Architecture:**
+- Pipeline stages 10-12 generate `SocialPost[]` for 5 platforms
+- Stage 13 (`queue-build`) maps posts + video variants into `publish-queue/{slug}-{platform}/` folders
+- Each folder contains: `media.mp4`, `metadata.json`, `post.md`
+- `vidpipe review` opens a localhost web app for approve/reject/edit
+- On approve: upload media via presigned URL → create scheduled post in Late API → move to `published/`
+- On reject: delete folder. On skip: leave for next session.
+
+**Key services:**
+| File | Purpose |
+|------|---------|
+| `src/services/lateApi.ts` | Late API HTTP client (presigned upload, CRUD) |
+| `src/services/postStore.ts` | Read/write/query publish-queue/ and published/ folders |
+| `src/services/queueBuilder.ts` | Pipeline stage that populates publish-queue/ |
+| `src/services/scheduler.ts` | Smart scheduling with per-platform time slots |
+| `src/services/scheduleConfig.ts` | Load/validate schedule.json |
+| `src/services/accountMapping.ts` | Platform → Late account ID mapping |
+| `src/review/server.ts` | Express.js review server |
+| `src/review/routes.ts` | REST API routes |
+| `src/review/public/index.html` | Tinder-style review UI |
+
+**Platform mapping:** `Platform.X` = `'x'` but Late uses `'twitter'`. Use `toLateplatform()` / `fromLatePlatform()` from types.
+
+**Media upload flow:** 2-step presign: `POST /media/presign` → `PUT` file to presigned URL → use `publicUrl` in post creation.
 
 ## Coding Conventions
 
@@ -367,6 +397,12 @@ npx tsx src/index.ts --no-git --no-social --no-shorts video.mp4
 #   -v, --verbose          Verbose logging
 ```
 
+- `vidpipe init` — Interactive setup wizard (API keys, providers, social publishing)
+- `vidpipe review` — Open social media post review app in browser
+- `vidpipe review --port 3847` — Custom port for review server
+- `vidpipe schedule` — View current posting schedule across platforms
+- `vidpipe schedule --platform linkedin` — Filter schedule by platform
+
 ## File Structure
 
 ```
@@ -394,6 +430,9 @@ vidpipe/
 │   │   ├── SummaryAgent.ts         # README generation with frame captures
 │   │   ├── SocialMediaAgent.ts     # Multi-platform social post generation (also short/medium posts)
 │   │   └── BlogAgent.ts            # Dev.to blog post generation
+│   ├── commands/
+│   │   ├── init.ts                 # Interactive setup wizard (API keys, providers, social publishing)
+│   │   └── schedule.ts             # View/filter posting schedule across platforms
 │   ├── providers/
 │   │   ├── types.ts                # LLMProvider, LLMSession, LLMResponse, TokenUsage, CostInfo interfaces
 │   │   ├── CopilotProvider.ts      # GitHub Copilot SDK backend (default)
@@ -407,7 +446,18 @@ vidpipe/
 │   │   ├── captionGeneration.ts    # SRT/VTT/ASS generation orchestration
 │   │   ├── fileWatcher.ts          # Chokidar file watcher with stability checks
 │   │   ├── gitOperations.ts        # Git add/commit/push
-│   │   └── socialPosting.ts        # Social post rendering helpers
+│   │   ├── socialPosting.ts        # Social post rendering helpers
+│   │   ├── lateApi.ts              # Late API HTTP client (presigned upload, CRUD)
+│   │   ├── accountMapping.ts       # Platform → Late account ID mapping
+│   │   ├── postStore.ts            # Read/write/query publish-queue/ and published/ folders
+│   │   ├── queueBuilder.ts         # Pipeline stage that populates publish-queue/
+│   │   ├── scheduler.ts            # Smart scheduling with per-platform time slots
+│   │   └── scheduleConfig.ts       # Load/validate schedule.json
+│   ├── review/
+│   │   ├── server.ts               # Express.js review server
+│   │   ├── routes.ts               # REST API routes
+│   │   └── public/
+│   │       └── index.html          # Tinder-style review UI
 │   └── tools/
 │       ├── ffmpeg/
 │       │   ├── silenceDetection.ts # Detect silence regions
@@ -427,6 +477,7 @@ vidpipe/
 ├── assets/
 │   └── fonts/                      # Bundled Montserrat Bold font files
 ├── brand.json                      # Brand voice, vocabulary, hashtags, guidelines
+├── schedule.json                   # Per-platform posting schedule configuration
 ├── recordings/                     # Output: one subfolder per processed video
 │   └── {slug}/
 │       ├── {slug}.mp4              # Ingested video copy
@@ -463,6 +514,9 @@ FFPROBE_PATH=         # Optional — absolute path to ffprobe binary (default: '
 EXA_API_KEY=          # Optional — Exa AI API key for web search in posts/blog
 OUTPUT_DIR=           # Optional — output directory (default: ./recordings)
 BRAND_PATH=           # Optional — path to brand.json (default: ./brand.json)
+LATE_API_KEY=         # Optional — Late API key for social publishing
+LATE_PROFILE_ID=      # Optional — Late profile ID (auto-detected)
+SKIP_SOCIAL_PUBLISH=  # Optional — Skip queue-build stage (via --no-social-publish)
 ```
 
 ## Bug Fix Testing Convention
@@ -478,6 +532,27 @@ BRAND_PATH=           # Optional — path to brand.json (default: ./brand.json)
 2. Then implement the fix
 3. Verify the test passes
 4. Run full test suite to ensure no regressions: `npm test`
+
+## Post-Push CI Workflow
+
+Always use `npm run push` (never raw `git push`) to push changes. The push script runs typecheck, tests, coverage, and build before pushing, then polls CI gates (CodeQL and Copilot Code Review) on the associated PR.
+
+**When `npm run push` fails at ANY step, you MUST fix the failure and retry — never leave a failed push unresolved.**
+
+| Failure | Action |
+|---|---|
+| Type check errors | Fix the TypeScript errors reported in the output |
+| Test failures | Fix the failing tests or the code they test |
+| Coverage below thresholds | Add tests to meet the coverage thresholds (statements=70%, branches=65%, functions=70%, lines=70%) |
+| Build errors | Fix the build errors reported in the output |
+| Git push rejected | Resolve merge conflicts or upstream issues, then retry |
+| CodeQL security alerts | Run the `security-fixer` agent to remediate all reported alerts |
+| Copilot Code Review unresolved threads | Run the `review-triage` agent to triage and resolve review comments |
+| Any other failure | Read the error message, diagnose the root cause, and fix it |
+
+- If **multiple** gates fail, dispatch independent fixes **in parallel** where possible
+- After fixes are applied, run `npm run push` again to verify and re-poll CI
+- **Repeat until all steps pass** — the push is not done until every gate is green
 
 ## Testing
 
@@ -562,6 +637,23 @@ When reviewing pull requests for this repository, keep these conventions in mind
 ### FFmpeg
 - All FFmpeg/FFprobe usage MUST go through `src/config/ffmpegResolver.ts` — never hardcode paths
 - The xfade filter requires explicit fps after trim+setpts (see `getVideoFps()` in clipExtraction.ts)
+
+### Code Review Focus (for Copilot Code Review)
+
+When reviewing pull requests, focus **only** on:
+- Bugs, logic errors, and incorrect behavior
+- Security vulnerabilities (injection, auth bypass, secrets exposure)
+- Race conditions, resource leaks, and error handling gaps
+- Breaking changes to public APIs or contracts
+
+Do **NOT** comment on:
+- Code style, formatting, or naming conventions
+- Minor refactoring suggestions or "could be cleaner" improvements
+- Import ordering, whitespace, or cosmetic changes
+- Suggestions that don't fix an actual bug or vulnerability
+- Test file organization or test naming patterns
+
+Keep feedback concise — one comment per real issue. If there are no critical issues, approve without comments.
 
 ### What NOT to flag in reviews
 - Don't suggest adding coverage for provider SDK adapters (intentional exclusion)

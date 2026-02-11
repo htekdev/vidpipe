@@ -1,16 +1,13 @@
-import ffmpeg from 'fluent-ffmpeg';
-import { execFile } from 'child_process';
-import { promises as fs } from 'fs';
-import pathMod from 'path';
-import { randomUUID } from 'node:crypto';
-import logger from '../../config/logger';
-import { ShortSegment } from '../../types';
-import { getFFmpegPath, getFFprobePath } from '../../config/ffmpegResolver.js';
+import { createFFmpeg, getFFmpegPath, getFFprobePath } from '../../core/ffmpeg.js'
+import { execFileRaw } from '../../core/process.js'
+import { ensureDirectory, writeTextFile, closeFileDescriptor, tmp } from '../../core/fileSystem.js'
+import { dirname, join } from '../../core/paths.js'
 
-const ffmpegPath = getFFmpegPath();
-const ffprobePath = getFFprobePath();
-ffmpeg.setFfmpegPath(ffmpegPath);
-ffmpeg.setFfprobePath(ffprobePath);
+import logger from '../../config/logger'
+import { ShortSegment } from '../../types'
+
+const ffmpegPath = getFFmpegPath()
+const ffprobePath = getFFprobePath()
 
 const DEFAULT_FPS = 25;
 
@@ -21,7 +18,7 @@ const DEFAULT_FPS = 25;
  */
 async function getVideoFps(videoPath: string): Promise<number> {
   return new Promise<number>((resolve) => {
-    execFile(
+    execFileRaw(
       ffprobePath,
       ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=r_frame_rate', '-of', 'csv=p=0', videoPath],
       { timeout: 5000 },
@@ -64,8 +61,8 @@ export async function extractClip(
   outputPath: string,
   buffer: number = 1.0,
 ): Promise<string> {
-  const outputDir = pathMod.dirname(outputPath);
-  await fs.mkdir(outputDir, { recursive: true });
+  const outputDir = dirname(outputPath);
+  await ensureDirectory(outputDir);
 
   const bufferedStart = Math.max(0, start - buffer);
   const bufferedEnd = end + buffer;
@@ -73,7 +70,7 @@ export async function extractClip(
   logger.info(`Extracting clip [${start}s–${end}s] (buffered: ${bufferedStart.toFixed(2)}s–${bufferedEnd.toFixed(2)}s) → ${outputPath}`);
 
   return new Promise<string>((resolve, reject) => {
-    ffmpeg(videoPath)
+    createFFmpeg(videoPath)
       .setStartTime(bufferedStart)
       .setDuration(duration)
       .outputOptions(['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-threads', '4', '-c:a', 'aac', '-b:a', '128k'])
@@ -110,19 +107,20 @@ export async function extractCompositeClip(
     return extractClip(videoPath, segments[0].start, segments[0].end, outputPath, buffer);
   }
 
-  const outputDir = pathMod.dirname(outputPath);
-  await fs.mkdir(outputDir, { recursive: true });
+  const outputDir = dirname(outputPath);
+  await ensureDirectory(outputDir);
 
-  const tempDir = pathMod.join(outputDir, `.temp-${randomUUID()}`);
-  await fs.mkdir(tempDir, { recursive: true });
+  const tempDirObj = tmp.dirSync({ unsafeCleanup: true, prefix: 'vidpipe-' });
+  const tempDir = tempDirObj.name;
 
   const tempFiles: string[] = [];
+  let concatListFile: tmp.FileResult | null = null;
 
   try {
     // Extract each segment to a temp file (re-encode for reliable concat)
     for (let i = 0; i < segments.length; i++) {
       const seg = segments[i];
-      const tempPath = pathMod.join(tempDir, `segment-${i}.mp4`);
+      const tempPath = join(tempDir, `segment-${i}.mp4`);
       tempFiles.push(tempPath);
 
       const bufferedStart = Math.max(0, seg.start - buffer);
@@ -130,7 +128,7 @@ export async function extractCompositeClip(
       logger.info(`Extracting segment ${i + 1}/${segments.length} [${seg.start}s–${seg.end}s] (buffered: ${bufferedStart.toFixed(2)}s–${bufferedEnd.toFixed(2)}s)`);
 
       await new Promise<void>((resolve, reject) => {
-        ffmpeg(videoPath)
+        createFFmpeg(videoPath)
           .setStartTime(bufferedStart)
           .setDuration(bufferedEnd - bufferedStart)
           .outputOptions(['-threads', '4', '-preset', 'ultrafast'])
@@ -142,14 +140,17 @@ export async function extractCompositeClip(
     }
 
     // Build concat list file
-    const concatListPath = pathMod.join(tempDir, 'concat-list.txt');
+    concatListFile = tmp.fileSync({ dir: tempDir, postfix: '.txt', prefix: 'concat-' });
+    const concatListPath = concatListFile.name;
     const listContent = tempFiles.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n');
-    await fs.writeFile(concatListPath, listContent);
+    await writeTextFile(concatListPath, listContent);
+    // Close file descriptor to avoid leaks on Windows
+    closeFileDescriptor(concatListFile.fd);
 
     // Concatenate segments (re-encode for clean joins across buffered segments)
     logger.info(`Concatenating ${segments.length} segments → ${outputPath}`);
     await new Promise<void>((resolve, reject) => {
-      ffmpeg()
+      createFFmpeg()
         .input(concatListPath)
         .inputOptions(['-f', 'concat', '-safe', '0'])
         .outputOptions(['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-threads', '4', '-c:a', 'aac'])
@@ -162,8 +163,15 @@ export async function extractCompositeClip(
     logger.info(`Composite clip complete: ${outputPath}`);
     return outputPath;
   } finally {
-    // Clean up temp files
-    await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    // Clean up temp files and remove callbacks
+    if (concatListFile) {
+      try {
+        concatListFile.removeCallback();
+      } catch {}
+    }
+    try {
+      tempDirObj.removeCallback();
+    } catch {}
   }
 }
 
@@ -196,8 +204,8 @@ export async function extractCompositeClipWithTransitions(
     return extractCompositeClip(videoPath, segments, outputPath, buffer);
   }
 
-  const outputDir = pathMod.dirname(outputPath);
-  await fs.mkdir(outputDir, { recursive: true });
+  const outputDir = dirname(outputPath);
+  await ensureDirectory(outputDir);
 
   // Detect source fps so we can force CFR after trim (FFmpeg 7.x xfade requires it)
   const fps = await getVideoFps(videoPath);
@@ -264,7 +272,7 @@ export async function extractCompositeClipWithTransitions(
   logger.info(`[ClipExtraction] Compositing ${segments.length} segments with xfade transitions → ${outputPath}`);
 
   return new Promise<string>((resolve, reject) => {
-    execFile(ffmpegPath, args, { maxBuffer: 50 * 1024 * 1024 }, (error, _stdout, stderr) => {
+    execFileRaw(ffmpegPath, args, { maxBuffer: 50 * 1024 * 1024 }, (error, _stdout, stderr) => {
       if (error) {
         logger.error(`[ClipExtraction] xfade composite failed: ${stderr}`);
         reject(new Error(`xfade composite clip failed: ${error.message}`));

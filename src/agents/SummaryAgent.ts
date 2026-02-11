@@ -1,6 +1,6 @@
 import type { ToolWithHandler } from '../providers/types.js'
-import { promises as fs } from 'fs'
-import path from 'path'
+import { writeTextFile, ensureDirectory } from '../core/fileSystem.js'
+import { join } from '../core/paths.js'
 
 import { BaseAgent } from './BaseAgent'
 import { captureFrame } from '../tools/ffmpeg/frameCapture'
@@ -137,11 +137,11 @@ class SummaryAgent extends BaseAgent {
 
   // Resolved paths
   private get thumbnailDir(): string {
-    return path.join(this.outputDir, 'thumbnails')
+    return join(this.outputDir, 'thumbnails')
   }
 
   private get markdownPath(): string {
-    return path.join(this.outputDir, 'README.md')
+    return join(this.outputDir, 'README.md')
   }
 
   /* ── Tools exposed to the LLM ─────────────────────────────────────────── */
@@ -215,7 +215,7 @@ class SummaryAgent extends BaseAgent {
   private async handleCaptureFrame(args: CaptureFrameArgs): Promise<string> {
     const idx = String(args.index).padStart(3, '0')
     const filename = `snapshot-${idx}.png`
-    const outputPath = path.join(this.thumbnailDir, filename)
+    const outputPath = join(this.thumbnailDir, filename)
 
     await captureFrame(this.videoPath, args.timestamp, outputPath)
 
@@ -231,8 +231,8 @@ class SummaryAgent extends BaseAgent {
   }
 
   private async handleWriteSummary(args: WriteSummaryArgs): Promise<string> {
-    await fs.mkdir(this.outputDir, { recursive: true })
-    await fs.writeFile(this.markdownPath, args.markdown, 'utf-8')
+    await ensureDirectory(this.outputDir)
+    await writeTextFile(this.markdownPath, args.markdown)
 
     logger.info(`[SummaryAgent] Wrote summary → ${this.markdownPath}`)
     return `Summary written to ${this.markdownPath}`
@@ -342,7 +342,7 @@ export async function generateSummary(
   model?: string,
 ): Promise<VideoSummary> {
   const config = getConfig()
-  const outputDir = path.join(config.OUTPUT_DIR, video.slug)
+  const outputDir = join(config.OUTPUT_DIR, video.slug)
 
   // Build content-section snippets for the system prompt
   const shortsInfo = buildShortsSection(shorts)

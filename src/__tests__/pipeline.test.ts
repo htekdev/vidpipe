@@ -21,6 +21,7 @@ const {
   mockRemoveDeadSilence,
   mockBurnCaptions,
   mockSinglePassEditAndCaption,
+  mockBuildPublishQueue,
 } = vi.hoisted(() => ({
   mockLogger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
   mockGetConfig: vi.fn(),
@@ -38,6 +39,7 @@ const {
   mockRemoveDeadSilence: vi.fn(),
   mockBurnCaptions: vi.fn(),
   mockSinglePassEditAndCaption: vi.fn(),
+  mockBuildPublishQueue: vi.fn(),
 }))
 
 // ---- Mock all external dependencies ----
@@ -60,6 +62,7 @@ vi.mock('../services/gitOperations.js', () => ({ commitAndPush: mockCommitAndPus
 vi.mock('../agents/SilenceRemovalAgent.js', () => ({ removeDeadSilence: mockRemoveDeadSilence }))
 vi.mock('../tools/ffmpeg/captionBurning.js', () => ({ burnCaptions: mockBurnCaptions }))
 vi.mock('../tools/ffmpeg/singlePassEdit.js', () => ({ singlePassEditAndCaption: mockSinglePassEditAndCaption }))
+vi.mock('../services/queueBuilder.js', () => ({ buildPublishQueue: mockBuildPublishQueue }))
 
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>()
@@ -122,6 +125,7 @@ function defaultConfig(overrides: Record<string, unknown> = {}) {
     SKIP_SOCIAL: false,
     SKIP_CAPTIONS: false,
     SKIP_GIT: false,
+    SKIP_SOCIAL_PUBLISH: false,
     ...overrides,
   }
 }
@@ -294,6 +298,7 @@ describe('processVideo', () => {
     mockGenerateShortPosts.mockResolvedValue([])
     mockGenerateBlogPost.mockResolvedValue('# Blog')
     mockCommitAndPush.mockResolvedValue(undefined)
+    mockBuildPublishQueue.mockResolvedValue({ itemsCreated: 0, itemsSkipped: 0, errors: [] })
   })
 
   it('returns a PipelineResult with all stages recorded', async () => {

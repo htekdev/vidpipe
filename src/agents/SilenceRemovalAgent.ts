@@ -1,17 +1,11 @@
-import ffmpeg from 'fluent-ffmpeg'
+import { ffprobe } from '../core/ffmpeg.js'
 import type { ToolWithHandler } from '../providers/types.js'
-import path from 'path'
+import { join } from '../core/paths.js'
 import { BaseAgent } from './BaseAgent'
 import { detectSilence, SilenceRegion } from '../tools/ffmpeg/silenceDetection'
 import { singlePassEdit } from '../tools/ffmpeg/singlePassEdit'
 import type { VideoFile, Transcript, SilenceRemovalResult } from '../types'
 import logger from '../config/logger'
-import { getFFmpegPath, getFFprobePath } from '../config/ffmpegResolver.js'
-
-const ffmpegPath = getFFmpegPath()
-const ffprobePath = getFFprobePath()
-ffmpeg.setFfmpegPath(ffmpegPath)
-ffmpeg.setFfprobePath(ffprobePath)
 
 // ── Types for the LLM's decide_removals tool call ──────────────────────────
 
@@ -109,13 +103,13 @@ class SilenceRemovalAgent extends BaseAgent {
 
 // ── FFmpeg helpers ───────────────────────────────────────────────────────────
 
-function getVideoDuration(videoPath: string): Promise<number> {
-  return new Promise((resolve, reject) => {
-    ffmpeg.ffprobe(videoPath, (err, metadata) => {
-      if (err) return reject(new Error(`ffprobe failed: ${err.message}`))
-      resolve(metadata.format.duration ?? 0)
-    })
-  })
+async function getVideoDuration(videoPath: string): Promise<number> {
+  try {
+    const metadata = await ffprobe(videoPath)
+    return metadata.format.duration ?? 0
+  } catch (err) {
+    throw new Error(`ffprobe failed: ${(err as Error).message}`)
+  }
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -239,7 +233,7 @@ export async function removeDeadSilence(
   }
 
   // 4. Single-pass re-encode with trim+setpts+concat for frame-accurate cuts
-  const editedPath = path.join(video.videoDir, `${video.slug}-edited.mp4`)
+  const editedPath = join(video.videoDir, `${video.slug}-edited.mp4`)
   await singlePassEdit(video.repoPath, keepSegments, editedPath)
 
   // Compute effective removals (merged, non-overlapping) from keep-segments

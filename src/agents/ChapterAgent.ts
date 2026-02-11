@@ -1,6 +1,6 @@
 import type { ToolWithHandler } from '../providers/types.js'
-import { promises as fs } from 'fs'
-import path from 'path'
+import { writeTextFile, writeJsonFile, ensureDirectory } from '../core/fileSystem.js'
+import { join } from '../core/paths.js'
 
 import { BaseAgent } from './BaseAgent'
 import logger from '../config/logger'
@@ -115,7 +115,7 @@ class ChapterAgent extends BaseAgent {
   }
 
   private get chaptersDir(): string {
-    return path.join(this.outputDir, 'chapters')
+    return join(this.outputDir, 'chapters')
   }
 
   protected getTools(): ToolWithHandler[] {
@@ -165,29 +165,25 @@ class ChapterAgent extends BaseAgent {
 
   private async handleGenerateChapters(args: GenerateChaptersArgs): Promise<string> {
     const { chapters } = args
-    await fs.mkdir(this.chaptersDir, { recursive: true })
+    await ensureDirectory(this.chaptersDir)
 
     // Write all 4 formats in parallel
     await Promise.all([
-      fs.writeFile(
-        path.join(this.chaptersDir, 'chapters.json'),
+      writeTextFile(
+        join(this.chaptersDir, 'chapters.json'),
         generateChaptersJSON(chapters),
-        'utf-8',
       ),
-      fs.writeFile(
-        path.join(this.chaptersDir, 'chapters-youtube.txt'),
+      writeTextFile(
+        join(this.chaptersDir, 'chapters-youtube.txt'),
         generateYouTubeTimestamps(chapters),
-        'utf-8',
       ),
-      fs.writeFile(
-        path.join(this.chaptersDir, 'chapters.md'),
+      writeTextFile(
+        join(this.chaptersDir, 'chapters.md'),
         generateChaptersMarkdown(chapters),
-        'utf-8',
       ),
-      fs.writeFile(
-        path.join(this.chaptersDir, 'chapters.ffmetadata'),
+      writeTextFile(
+        join(this.chaptersDir, 'chapters.ffmetadata'),
         generateFFMetadata(chapters, this.totalDuration),
-        'utf-8',
       ),
     ])
 
@@ -212,7 +208,7 @@ export async function generateChapters(
   model?: string,
 ): Promise<Chapter[]> {
   const config = getConfig()
-  const outputDir = path.join(config.OUTPUT_DIR, video.slug)
+  const outputDir = join(config.OUTPUT_DIR, video.slug)
 
   const agent = new ChapterAgent(outputDir, video.duration, model)
   const transcriptBlock = buildTranscriptBlock(transcript)

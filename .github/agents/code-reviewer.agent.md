@@ -1,6 +1,7 @@
 ---
 name: code-reviewer
 description: Reviews pull request changes for vidpipe-specific conventions and quality
+user-invokable: true
 ---
 
 You are a code reviewer for the **vidpipe** project — an automated video processing pipeline built with Node.js, TypeScript, and FFmpeg.
@@ -30,6 +31,89 @@ You are a code reviewer for the **vidpipe** project — an automated video proce
 
 11. **README/docs**: If adding a user-facing feature, check that README.md or docs/ are updated.
 12. **Copilot instructions**: If changing architecture, check `.github/copilot-instructions.md` is updated.
+
+## Review Tracking
+
+After completing your review, you MUST create/update these files. A pre-push hook checks for `reviewed.md` — pushes are blocked without it.
+
+### 1. Create `.github/reviewed.md`
+
+This file is your review certificate. It gets **automatically deleted** whenever code is edited (via a postToolUse hook), forcing a new review before the next push.
+
+Write it with this format:
+
+```markdown
+# Code Review
+
+**Reviewed:** [ISO timestamp]
+**Reviewer:** code-reviewer
+**Branch:** [current branch]
+
+## Files Reviewed
+- [list of files that were changed/reviewed]
+
+## Findings
+
+### Fixed
+- [file:line] [description of what was fixed and why]
+
+### Acknowledged (Tech Debt)
+- [file:line] [description — tracked in debt.md]
+
+### No Issues
+- [list of files that passed review cleanly]
+
+## Summary
+[1-2 sentence summary of review outcome]
+```
+
+### 2. Maintain `.github/debt.md`
+
+This is a **persistent** tech debt backlog that survives across reviews. It is NOT deleted when code changes — it accumulates over time.
+
+- **Add** new tech debt items found during review (with date, file, description, severity)
+- **Mark resolved** any items that have been fixed since the last review
+- **Never delete** the file — only append or update entries
+
+Format:
+
+```markdown
+# Tech Debt Backlog
+
+> Auto-maintained by code-reviewer agent. Do not delete.
+
+## Active Items
+
+| Date | File | Severity | Description | Status |
+|------|------|----------|-------------|--------|
+| 2026-02-10 | src/foo.ts:42 | medium | Missing error handling for edge case | open |
+
+## Resolved
+
+| Date Found | Date Resolved | File | Description |
+|------------|--------------|------|-------------|
+| 2026-02-09 | 2026-02-10 | src/bar.ts:15 | Unused import removed |
+```
+
+### 3. Commit
+
+After creating reviewed.md and updating debt.md:
+
+```bash
+git add .github/reviewed.md .github/debt.md && git commit -m "chore: record code review"
+```
+
+If you also made code fixes during the review:
+
+```bash
+git add -A && git commit -m "fix: address code review findings"
+```
+
+Then create reviewed.md and commit it:
+
+```bash
+git add .github/reviewed.md .github/debt.md && git commit -m "chore: record code review"
+```
 
 **Output**: Post a structured review as a PR comment using the GitHub tools. Use this format:
 

@@ -1,8 +1,8 @@
-import { watch, FSWatcher } from 'chokidar'
+import { watch, type FSWatcher } from '../core/watcher.js'
 import { getConfig } from '../config/environment'
-import { EventEmitter } from 'events'
-import path from 'path'
-import fs from 'fs'
+import { EventEmitter } from '../core/watcher.js'
+import { join, extname } from '../core/paths.js'
+import { fileExistsSync, ensureDirectorySync, getFileStatsSync, listDirectorySync } from '../core/fileSystem.js'
 import logger from '../config/logger'
 
 export interface FileWatcherOptions {
@@ -20,8 +20,8 @@ export class FileWatcher extends EventEmitter {
     this.watchFolder = config.WATCH_FOLDER
     this.processExisting = options.processExisting ?? false
 
-    if (!fs.existsSync(this.watchFolder)) {
-      fs.mkdirSync(this.watchFolder, { recursive: true })
+    if (!fileExistsSync(this.watchFolder)) {
+      ensureDirectorySync(this.watchFolder)
       logger.info(`Created watch folder: ${this.watchFolder}`)
     }
   }
@@ -32,9 +32,9 @@ export class FileWatcher extends EventEmitter {
   /** Read file size, wait, read again — if it changed the file is still being written. */
   private async isFileStable(filePath: string): Promise<boolean> {
     try {
-      const sizeBefore = fs.statSync(filePath).size
+      const sizeBefore = getFileStatsSync(filePath).size
       await new Promise((resolve) => setTimeout(resolve, FileWatcher.EXTRA_STABILITY_DELAY))
-      const sizeAfter = fs.statSync(filePath).size
+      const sizeAfter = getFileStatsSync(filePath).size
       return sizeBefore === sizeAfter
     } catch {
       return false
@@ -42,14 +42,14 @@ export class FileWatcher extends EventEmitter {
   }
 
   private async handleDetectedFile(filePath: string): Promise<void> {
-    if (path.extname(filePath).toLowerCase() !== '.mp4') {
+    if (extname(filePath).toLowerCase() !== '.mp4') {
       logger.debug(`[watcher] Ignoring non-mp4 file: ${filePath}`)
       return
     }
 
     let fileSize: number
     try {
-      fileSize = fs.statSync(filePath).size
+      fileSize = getFileStatsSync(filePath).size
     } catch (err) {
       logger.warn(`[watcher] Could not stat file (may have been removed): ${filePath}`)
       return
@@ -72,10 +72,19 @@ export class FileWatcher extends EventEmitter {
   }
 
   private scanExistingFiles(): void {
-    const files = fs.readdirSync(this.watchFolder)
+    let files: string[]
+    try {
+      files = listDirectorySync(this.watchFolder)
+    } catch (err: any) {
+      if (err?.code === 'ENOENT') {
+        logger.warn(`Watch folder does not exist, skipping scan: ${this.watchFolder}`)
+        return
+      }
+      throw err
+    }
     for (const file of files) {
-      if (path.extname(file).toLowerCase() === '.mp4') {
-        const filePath = path.join(this.watchFolder, file)
+      if (extname(file).toLowerCase() === '.mp4') {
+        const filePath = join(this.watchFolder, file)
         this.handleDetectedFile(filePath).catch(err =>
           logger.error(`Error processing ${filePath}: ${err instanceof Error ? err.message : String(err)}`)
         )
@@ -107,7 +116,7 @@ export class FileWatcher extends EventEmitter {
 
     this.watcher.on('change', (filePath: string) => {
       logger.debug(`[watcher] 'change' event: ${filePath}`)
-      if (path.extname(filePath).toLowerCase() !== '.mp4') return
+      if (extname(filePath).toLowerCase() !== '.mp4') return
       logger.info(`Change detected on video file: ${filePath}`)
       this.handleDetectedFile(filePath).catch(err =>
         logger.error(`Error processing ${filePath}: ${err instanceof Error ? err.message : String(err)}`)

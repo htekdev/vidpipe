@@ -5,7 +5,8 @@
  * that can be swapped with OpenAI or Claude providers via the abstraction layer.
  */
 
-import { CopilotClient, CopilotSession, SessionEvent } from '@github/copilot-sdk'
+import { CopilotClient, CopilotSession } from '../core/ai.js'
+import type { SessionEvent } from '../core/ai.js'
 import logger from '../config/logger.js'
 import type {
   LLMProvider,

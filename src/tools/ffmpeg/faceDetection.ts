@@ -1,13 +1,17 @@
-import { execFile } from 'child_process'
-import { promises as fs } from 'fs'
-import path from 'path'
-import os from 'os'
-import sharp from 'sharp'
+import { execFileRaw } from '../../core/process.js'
+import { fileExistsSync, listDirectory, removeFile, removeDirectory, makeTempDir } from '../../core/fileSystem.js'
+import { join, modelsDir } from '../../core/paths.js'
+import { sharp, ort } from '../../core/media.js'
+import { getFFmpegPath, getFFprobePath } from '../../core/ffmpeg.js'
 import logger from '../../config/logger'
-import { getFFmpegPath, getFFprobePath } from '../../config/ffmpegResolver.js'
 
 const ffmpegPath = getFFmpegPath()
 const ffprobePath = getFFprobePath()
+
+const MODEL_PATH = join(modelsDir(), 'ultraface-320.onnx')
+
+/** Cached ONNX session — loaded once, reused across calls. */
+let cachedSession: ort.InferenceSession | null = null
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,38 +35,17 @@ export interface WebcamRegion {
   confidence: number
 }
 
-/**
- * Per-frame analysis result for a single corner region.
- *
- * @property skinToneRatio - Fraction of pixels matching the skin-tone heuristic (0–1)
- * @property variance - Average RGB channel variance — high variance means the
- *   region has complex visual content (a face), low variance means a solid
- *   background or static UI element.
- */
-export interface CornerAnalysis {
-  position: WebcamRegion['position']
-  x: number
-  y: number
-  width: number
-  height: number
-  skinToneRatio: number
-  variance: number
-}
-
 // ── Constants ────────────────────────────────────────────────────────────────
 
 /** Number of frames sampled evenly across the video for analysis. */
 const SAMPLE_FRAMES = 5
-/** Width to downscale frames to for fast pixel analysis. */
-const ANALYSIS_WIDTH = 320
-/** Height to downscale frames to for fast pixel analysis. */
-const ANALYSIS_HEIGHT = 180
-/** Each corner region is 25% of the frame width/height. */
-const CORNER_FRACTION = 0.25
-/** Minimum skin-tone pixel ratio to consider a corner as a webcam candidate. */
-const MIN_SKIN_RATIO = 0.05
-/** Minimum confidence score to accept a webcam detection. */
-const MIN_CONFIDENCE = 0.3
+/** UltraFace model input dimensions. */
+const MODEL_WIDTH = 320
+const MODEL_HEIGHT = 240
+/** Minimum face detection confidence from the ONNX model. */
+const MIN_FACE_CONFIDENCE = 0.5
+/** Minimum confidence across frames to accept a webcam detection. */
+const MIN_DETECTION_CONFIDENCE = 0.3
 
 // ── Refinement constants ─────────────────────────────────────────────────────
 
@@ -82,9 +65,10 @@ const REFINE_MAX_SIZE_FRAC = 0.55
 
 async function getVideoDuration(videoPath: string): Promise<number> {
   return new Promise((resolve, reject) => {
-    execFile(
+    execFileRaw(
       ffprobePath,
       ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', videoPath],
+      {},
       (error, stdout) => {
         if (error) {
           reject(new Error(`ffprobe failed: ${error.message}`))
@@ -98,7 +82,7 @@ async function getVideoDuration(videoPath: string): Promise<number> {
 
 export async function getVideoResolution(videoPath: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
-    execFile(
+    execFileRaw(
       ffprobePath,
       [
         '-v', 'error',
@@ -107,6 +91,7 @@ export async function getVideoResolution(videoPath: string): Promise<{ width: nu
         '-of', 'csv=p=0',
         videoPath,
       ],
+      {},
       (error, stdout) => {
         if (error) {
           reject(new Error(`ffprobe failed: ${error.message}`))
@@ -121,7 +106,6 @@ export async function getVideoResolution(videoPath: string): Promise<{ width: nu
 
 async function extractSampleFrames(videoPath: string, tempDir: string): Promise<string[]> {
   const duration = await getVideoDuration(videoPath)
-  // Space frames evenly, avoiding very start/end
   const interval = Math.max(1, Math.floor(duration / (SAMPLE_FRAMES + 1)))
 
   const timestamps: number[] = []
@@ -131,17 +115,17 @@ async function extractSampleFrames(videoPath: string, tempDir: string): Promise<
 
   const framePaths: string[] = []
   for (let i = 0; i < timestamps.length; i++) {
-    const framePath = path.join(tempDir, `frame_${i}.png`)
+    const framePath = join(tempDir, `frame_${i}.png`)
     framePaths.push(framePath)
 
     await new Promise<void>((resolve, reject) => {
-      execFile(
+      execFileRaw(
         ffmpegPath,
         [
           '-y',
           '-ss', timestamps[i].toFixed(2),
           '-i', videoPath,
-          '-vf', `scale=${ANALYSIS_WIDTH}:${ANALYSIS_HEIGHT}`,
+          '-vf', `scale=${MODEL_WIDTH}:${MODEL_HEIGHT}`,
           '-frames:v', '1',
           '-q:v', '2',
           framePath,
@@ -161,81 +145,99 @@ async function extractSampleFrames(videoPath: string, tempDir: string): Promise<
   return framePaths
 }
 
-/**
- * Check if a pixel (in RGB) falls within skin-tone range.
- * Uses simplified HSV heuristic: hue ~0-50°, moderate saturation.
- */
-export function isSkinTone(r: number, g: number, b: number): boolean {
-  // Rule-based skin detection in RGB space (avoids HSV conversion overhead)
-  // Skin typically: R > 95, G > 40, B > 20, max-min > 15, |R-G| > 15, R > G, R > B
-  const max = Math.max(r, g, b)
-  const min = Math.min(r, g, b)
-  return (
-    r > 95 && g > 40 && b > 20 &&
-    (max - min) > 15 &&
-    Math.abs(r - g) > 15 &&
-    r > g && r > b
-  )
+// ── ONNX Face Detection ─────────────────────────────────────────────────────
+
+interface FaceBox {
+  x1: number
+  y1: number
+  x2: number
+  y2: number
+  confidence: number
 }
 
-async function analyzeCorner(
-  framePath: string,
-  position: WebcamRegion['position'],
-): Promise<CornerAnalysis> {
-  const cornerW = Math.floor(ANALYSIS_WIDTH * CORNER_FRACTION)
-  const cornerH = Math.floor(ANALYSIS_HEIGHT * CORNER_FRACTION)
-
-  let left: number
-  let top: number
-  switch (position) {
-    case 'top-left':     left = 0; top = 0; break
-    case 'top-right':    left = ANALYSIS_WIDTH - cornerW; top = 0; break
-    case 'bottom-left':  left = 0; top = ANALYSIS_HEIGHT - cornerH; break
-    case 'bottom-right': left = ANALYSIS_WIDTH - cornerW; top = ANALYSIS_HEIGHT - cornerH; break
+async function getSession(): Promise<ort.InferenceSession> {
+  if (cachedSession) return cachedSession
+  if (!fileExistsSync(MODEL_PATH)) {
+    throw new Error(`Face detection model not found at ${MODEL_PATH}. Run 'vidpipe doctor' to check dependencies.`)
   }
+  cachedSession = await ort.InferenceSession.create(MODEL_PATH, {
+    executionProviders: ['cpu'],
+    graphOptimizationLevel: 'all',
+  })
+  return cachedSession
+}
 
+/**
+ * Run UltraFace ONNX model on a frame image. Returns face bounding boxes
+ * in normalized coordinates (0-1).
+ */
+async function detectFacesInFrame(framePath: string): Promise<FaceBox[]> {
+  const session = await getSession()
+
+  // Load and preprocess: resize to 320×240, convert to float32 NCHW, normalize to [0,1]
   const { data, info } = await sharp(framePath)
-    .extract({ left, top, width: cornerW, height: cornerH })
+    .resize(MODEL_WIDTH, MODEL_HEIGHT, { fit: 'fill' })
+    .removeAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true })
 
-  const totalPixels = info.width * info.height
-  const channels = info.channels
-  let skinCount = 0
-  let sumR = 0, sumG = 0, sumB = 0
-  let sumR2 = 0, sumG2 = 0, sumB2 = 0
+  const pixels = info.width * info.height
+  const floatData = new Float32Array(3 * pixels)
 
-  for (let i = 0; i < data.length; i += channels) {
-    const r = data[i]
-    const g = data[i + 1]
-    const b = data[i + 2]
-
-    if (isSkinTone(r, g, b)) skinCount++
-
-    sumR += r; sumG += g; sumB += b
-    sumR2 += r * r; sumG2 += g * g; sumB2 += b * b
+  // HWC RGB → NCHW (channel-first), normalize 0-1 with ImageNet mean/std
+  const mean = [127, 127, 127]
+  const std = 128
+  for (let i = 0; i < pixels; i++) {
+    floatData[i] = (data[i * 3] - mean[0]) / std             // R
+    floatData[pixels + i] = (data[i * 3 + 1] - mean[1]) / std // G
+    floatData[2 * pixels + i] = (data[i * 3 + 2] - mean[2]) / std // B
   }
 
-  const skinToneRatio = skinCount / totalPixels
+  const inputTensor = new ort.Tensor('float32', floatData, [1, 3, MODEL_HEIGHT, MODEL_WIDTH])
+  const results = await session.run({ input: inputTensor })
 
-  // Compute variance across all channels as a measure of visual complexity
-  const meanR = sumR / totalPixels
-  const meanG = sumG / totalPixels
-  const meanB = sumB / totalPixels
-  const varR = sumR2 / totalPixels - meanR * meanR
-  const varG = sumG2 / totalPixels - meanG * meanG
-  const varB = sumB2 / totalPixels - meanB * meanB
-  const variance = (varR + varG + varB) / 3
+  const scores = results['scores'].data as Float32Array  // [1, N, 2]
+  const boxes = results['boxes'].data as Float32Array     // [1, N, 4]
+  const numDetections = scores.length / 2
 
-  return {
-    position,
-    x: left,
-    y: top,
-    width: cornerW,
-    height: cornerH,
-    skinToneRatio,
-    variance,
+  const faces: FaceBox[] = []
+  for (let i = 0; i < numDetections; i++) {
+    const faceScore = scores[i * 2 + 1] // index 1 = face class
+    if (faceScore > MIN_FACE_CONFIDENCE) {
+      faces.push({
+        x1: boxes[i * 4],
+        y1: boxes[i * 4 + 1],
+        x2: boxes[i * 4 + 2],
+        y2: boxes[i * 4 + 3],
+        confidence: faceScore,
+      })
+    }
   }
+
+  return faces
+}
+
+/**
+ * Determine which corner a face box belongs to. Returns null if the face
+ * is in the center of the frame (not a webcam overlay).
+ */
+function classifyCorner(
+  box: FaceBox,
+): WebcamRegion['position'] | null {
+  const cx = (box.x1 + box.x2) / 2
+  const cy = (box.y1 + box.y2) / 2
+
+  // Face center must be in the outer 40% of the frame to be a corner webcam
+  const isLeft = cx < 0.4
+  const isRight = cx > 0.6
+  const isTop = cy < 0.4
+  const isBottom = cy > 0.6
+
+  if (isTop && isLeft) return 'top-left'
+  if (isTop && isRight) return 'top-right'
+  if (isBottom && isLeft) return 'bottom-left'
+  if (isBottom && isRight) return 'bottom-right'
+  return null // center face — likely full-frame webcam, not an overlay
 }
 
 // ── Refinement helpers ───────────────────────────────────────────────────────
@@ -449,91 +451,100 @@ export async function refineBoundingBox(
 
 /**
  * Calculate confidence that a corner contains a webcam overlay based on
- * per-frame scores. Combines consistency (fraction of non-zero frames) with
- * average score.
+ * per-frame face detections. Higher consistency across frames = more confident.
  */
 export function calculateCornerConfidence(scores: number[]): number {
   if (scores.length === 0) return 0
   const nonZeroCount = scores.filter(s => s > 0).length
   const consistency = nonZeroCount / scores.length
   const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length
-  return consistency * Math.min(avgScore * 10, 1)
+  return consistency * avgScore
 }
 
 /**
- * Detect a webcam overlay region in a screen recording.
+ * Detect a webcam overlay region in a screen recording using the UltraFace
+ * ONNX model for face detection.
  *
- * ### Two-phase approach
- *
- * **Phase 1 — Coarse corner scan:**
- * Samples 5 frames at even intervals across the video and analyzes each of the
- * four corners (25% × 25% regions) for skin-tone pixels and visual variance.
- * A corner with consistent skin-tone presence across multiple frames is likely
- * a webcam overlay. The scoring formula weights skin ratio by variance — webcam
- * corners are visually busy (a moving face), while solid-color UI elements
- * (like a colored status bar) have low variance even if they match skin tones.
- *
- * **Phase 2 — Refined edge detection ({@link refineBoundingBox}):**
- * Once we know which corner, we find the overlay's exact pixel boundaries by
- * looking for persistent intensity edges across frames.
- *
- * All analysis is performed on downscaled frames (320×180) for speed, then
- * results are scaled back to the original video resolution.
+ * ### Approach
+ * 1. Sample 5 frames evenly across the video
+ * 2. Run UltraFace face detection on each frame
+ * 3. For each detected face, classify which corner it's in
+ * 4. The corner with consistent face detections across frames is the webcam
+ * 5. Refine the bounding box using edge detection for exact overlay boundaries
  *
  * @param videoPath - Path to the source video file
  * @returns The detected webcam region in original video resolution, or null
- *   if no webcam overlay is found with sufficient confidence
  */
 export async function detectWebcamRegion(videoPath: string): Promise<WebcamRegion | null> {
-  const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'face-detect-'))
+  const tempDir = await makeTempDir('face-detect-')
 
   try {
     const resolution = await getVideoResolution(videoPath)
     const framePaths = await extractSampleFrames(videoPath, tempDir)
 
-    const positions: WebcamRegion['position'][] = [
-      'top-left', 'top-right', 'bottom-left', 'bottom-right',
-    ]
-
-    // Analyze all corners across all frames
-    const scoresByPosition = new Map<WebcamRegion['position'], number[]>()
-    for (const pos of positions) {
-      scoresByPosition.set(pos, [])
+    // Track face detections per corner across all frames
+    const cornerScores = new Map<WebcamRegion['position'], number[]>()
+    const cornerBoxes = new Map<WebcamRegion['position'], FaceBox[]>()
+    for (const pos of ['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const) {
+      cornerScores.set(pos, [])
+      cornerBoxes.set(pos, [])
     }
 
     for (const framePath of framePaths) {
-      for (const pos of positions) {
-        const analysis = await analyzeCorner(framePath, pos)
-        // Score = skin ratio weighted by variance (webcam corners are visually busy)
-        const score = analysis.skinToneRatio > MIN_SKIN_RATIO
-          ? analysis.skinToneRatio * Math.min(analysis.variance / 1000, 1)
-          : 0
-        scoresByPosition.get(pos)!.push(score)
+      const faces = await detectFacesInFrame(framePath)
+
+      // Track which corners got a face this frame
+      const foundCorners = new Set<WebcamRegion['position']>()
+
+      for (const face of faces) {
+        const corner = classifyCorner(face)
+        if (corner) {
+          foundCorners.add(corner)
+          cornerScores.get(corner)!.push(face.confidence)
+          cornerBoxes.get(corner)!.push(face)
+        }
+      }
+
+      // Corners without a face this frame get a 0
+      for (const pos of ['top-left', 'top-right', 'bottom-left', 'bottom-right'] as const) {
+        if (!foundCorners.has(pos)) {
+          cornerScores.get(pos)!.push(0)
+        }
       }
     }
 
-    // Find the corner with the highest consistent score
+    // Find best corner
     let bestPosition: WebcamRegion['position'] | null = null
     let bestConfidence = 0
 
-    for (const [pos, scores] of scoresByPosition) {
+    for (const [pos, scores] of cornerScores) {
       const confidence = calculateCornerConfidence(scores)
-
+      logger.debug(`[FaceDetection] Corner ${pos}: confidence=${confidence.toFixed(3)}, scores=[${scores.map(s => s.toFixed(2)).join(',')}]`)
       if (confidence > bestConfidence) {
         bestConfidence = confidence
         bestPosition = pos
       }
     }
 
-    if (!bestPosition || bestConfidence < MIN_CONFIDENCE) {
-      logger.info('[FaceDetection] No webcam region detected')
+    if (!bestPosition || bestConfidence < MIN_DETECTION_CONFIDENCE) {
+      logger.info(`[FaceDetection] No webcam region detected (best: ${bestPosition} at ${bestConfidence.toFixed(3)})`)
       return null
     }
 
-    // Refine the bounding box using edge detection, then map to original resolution
+    // Compute average face bounding box from model detections
+    const boxes = cornerBoxes.get(bestPosition)!
+    const avgBox: FaceBox = {
+      x1: boxes.reduce((s, b) => s + b.x1, 0) / boxes.length,
+      y1: boxes.reduce((s, b) => s + b.y1, 0) / boxes.length,
+      x2: boxes.reduce((s, b) => s + b.x2, 0) / boxes.length,
+      y2: boxes.reduce((s, b) => s + b.y2, 0) / boxes.length,
+      confidence: bestConfidence,
+    }
+
+    // Try edge refinement for pixel-accurate webcam overlay boundaries
     const refined = await refineBoundingBox(framePaths, bestPosition)
-    const scaleX = resolution.width / ANALYSIS_WIDTH
-    const scaleY = resolution.height / ANALYSIS_HEIGHT
+    const scaleX = resolution.width / MODEL_WIDTH
+    const scaleY = resolution.height / MODEL_HEIGHT
 
     let origX: number, origY: number, origW: number, origH: number
 
@@ -543,20 +554,18 @@ export async function detectWebcamRegion(videoPath: string): Promise<WebcamRegio
       origW = Math.round(refined.width * scaleX)
       origH = Math.round(refined.height * scaleY)
     } else {
-      // Fall back to coarse 25% corner bounds
-      const cornerW = Math.floor(ANALYSIS_WIDTH * CORNER_FRACTION)
-      const cornerH = Math.floor(ANALYSIS_HEIGHT * CORNER_FRACTION)
-      origW = Math.round(cornerW * scaleX)
-      origH = Math.round(cornerH * scaleY)
-      switch (bestPosition) {
-        case 'top-left':     origX = 0; origY = 0; break
-        case 'top-right':    origX = resolution.width - origW; origY = 0; break
-        case 'bottom-left':  origX = 0; origY = resolution.height - origH; break
-        case 'bottom-right':
-          origX = resolution.width - origW
-          origY = resolution.height - origH
-          break
-      }
+      // Use expanded face bounding box as webcam region estimate
+      // Webcam overlay is typically larger than the face (includes some background)
+      const expandFactor = 1.4
+      const faceCx = (avgBox.x1 + avgBox.x2) / 2
+      const faceCy = (avgBox.y1 + avgBox.y2) / 2
+      const faceW = (avgBox.x2 - avgBox.x1) * expandFactor
+      const faceH = (avgBox.y2 - avgBox.y1) * expandFactor
+
+      origX = Math.max(0, Math.round((faceCx - faceW / 2) * resolution.width))
+      origY = Math.max(0, Math.round((faceCy - faceH / 2) * resolution.height))
+      origW = Math.min(resolution.width - origX, Math.round(faceW * resolution.width))
+      origH = Math.min(resolution.height - origY, Math.round(faceH * resolution.height))
     }
 
     const region: WebcamRegion = {
@@ -576,11 +585,10 @@ export async function detectWebcamRegion(videoPath: string): Promise<WebcamRegio
 
     return region
   } finally {
-    // Clean up temp frames
-    const files = await fs.readdir(tempDir).catch(() => [] as string[])
+    const files = await listDirectory(tempDir).catch(() => [] as string[])
     for (const f of files) {
-      await fs.unlink(path.join(tempDir, f)).catch(() => {})
+      await removeFile(join(tempDir, f)).catch(() => {})
     }
-    await fs.rmdir(tempDir).catch(() => {})
+    await removeDirectory(tempDir, { recursive: true, force: true }).catch(() => {})
   }
 }

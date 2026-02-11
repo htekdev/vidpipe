@@ -1,0 +1,98 @@
+/* Montserrat font faces */
+@font-face {
+  font-family: 'Montserrat';
+  src: url('/fonts/Montserrat-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Montserrat';
+  src: url('/fonts/Montserrat-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* Base font */
+:root {
+  --vp-font-family-base: 'Montserrat', system-ui, sans-serif;
+}
+
+/* Dark theme overrides */
+.dark {
+  /* Brand colors — gradient blue/purple */
+  --vp-c-brand-1: #60a5fa;
+  --vp-c-brand-2: #a78bfa;
+  --vp-c-brand-3: #818cf8;
+  --vp-c-brand-soft: rgba(96, 165, 250, 0.14);
+
+  /* Background surfaces */
+  --vp-c-bg: #0f0f23;
+  --vp-c-bg-soft: #1a1a2e;
+  --vp-c-bg-alt: #1a1a2e;
+  --vp-c-bg-elv: #16213e;
+
+  /* Text */
+  --vp-c-text-1: #e6edf3;
+  --vp-c-text-2: #8b949e;
+  --vp-c-text-3: rgba(139, 148, 158, 0.7);
+
+  /* Borders & dividers */
+  --vp-c-border: rgba(15, 52, 96, 0.6);
+  --vp-c-divider: rgba(15, 52, 96, 0.4);
+  --vp-c-gutter: #0f0f23;
+
+  /* Green tip / success */
+  --vp-c-green-1: #4ade80;
+  --vp-c-green-2: #22c55e;
+  --vp-c-green-3: #16a34a;
+  --vp-c-green-soft: rgba(74, 222, 128, 0.14);
+
+  /* Hero */
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(135deg, #60a5fa, #a78bfa);
+  --vp-home-hero-image-background-image: linear-gradient(135deg, rgba(96, 165, 250, 0.3), rgba(167, 139, 250, 0.3));
+  --vp-home-hero-image-filter: blur(56px);
+
+  /* Sidebar */
+  --vp-sidebar-bg-color: #0f0f23;
+
+  /* Code blocks */
+  --vp-code-block-bg: #1a1a2e;
+  --vp-code-bg: rgba(22, 33, 62, 0.5);
+}
+
+/* Nav background */
+.dark .VPNav,
+.dark .VPNavBar {
+  background-color: #0f0f23 !important;
+}
+
+.dark .VPNavBar.has-sidebar .content {
+  background-color: #0f0f23 !important;
+}
+
+.dark .VPSidebar {
+  background-color: #0f0f23 !important;
+}
+
+/* Custom scrollbar */
+.dark ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.dark ::-webkit-scrollbar-track {
+  background: #0f0f23;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #0f3460;
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #60a5fa;
+}

@@ -1,5 +1,5 @@
-import OpenAI from 'openai'
-import fs from 'fs'
+import { OpenAI } from '../../core/ai.js'
+import { fileExistsSync, getFileStatsSync, openReadStream } from '../../core/fileSystem.js'
 import { getConfig } from '../../config/environment'
 import logger from '../../config/logger'
 import { getWhisperPrompt } from '../../config/brand'
@@ -13,12 +13,12 @@ const WARN_FILE_SIZE_MB = 20
 export async function transcribeAudio(audioPath: string): Promise<Transcript> {
   logger.info(`Starting Whisper transcription: ${audioPath}`)
 
-  if (!fs.existsSync(audioPath)) {
+  if (!fileExistsSync(audioPath)) {
     throw new Error(`Audio file not found: ${audioPath}`)
   }
 
   // Check file size against Whisper's 25MB limit
-  const stats = fs.statSync(audioPath)
+  const stats = getFileStatsSync(audioPath)
   const fileSizeMB = stats.size / (1024 * 1024)
 
   if (fileSizeMB > MAX_FILE_SIZE_MB) {
@@ -38,7 +38,7 @@ export async function transcribeAudio(audioPath: string): Promise<Transcript> {
     const prompt = getWhisperPrompt()
     const response = await openai.audio.transcriptions.create({
       model: 'whisper-1',
-      file: fs.createReadStream(audioPath),
+      file: openReadStream(audioPath),
       response_format: 'verbose_json',
       timestamp_granularities: ['word', 'segment'],
       ...(prompt && { prompt }),

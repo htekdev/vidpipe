@@ -1,13 +1,7 @@
-import ffmpeg from 'fluent-ffmpeg';
-import { promises as fs } from 'fs';
-import path from 'path';
-import logger from '../../config/logger';
-import { getFFmpegPath, getFFprobePath } from '../../config/ffmpegResolver.js';
-
-const ffmpegPath = getFFmpegPath();
-const ffprobePath = getFFprobePath();
-ffmpeg.setFfmpegPath(ffmpegPath);
-ffmpeg.setFfprobePath(ffprobePath);
+import { createFFmpeg } from '../../core/ffmpeg.js'
+import { ensureDirectory } from '../../core/fileSystem.js'
+import { dirname, join } from '../../core/paths.js'
+import logger from '../../config/logger'
 
 /**
  * Extract a single PNG frame at the given timestamp (seconds).
@@ -17,13 +11,13 @@ export async function captureFrame(
   timestamp: number,
   outputPath: string,
 ): Promise<string> {
-  const outputDir = path.dirname(outputPath);
-  await fs.mkdir(outputDir, { recursive: true });
+  const outputDir = dirname(outputPath);
+  await ensureDirectory(outputDir);
 
   logger.info(`Capturing frame at ${timestamp}s → ${outputPath}`);
 
   return new Promise<string>((resolve, reject) => {
-    ffmpeg(videoPath)
+    createFFmpeg(videoPath)
       .seekInput(timestamp)
       .frames(1)
       .output(outputPath)
@@ -48,13 +42,13 @@ export async function captureFrames(
   timestamps: number[],
   outputDir: string,
 ): Promise<string[]> {
-  await fs.mkdir(outputDir, { recursive: true });
+  await ensureDirectory(outputDir);
 
   const results: string[] = [];
 
   for (let i = 0; i < timestamps.length; i++) {
     const idx = String(i + 1).padStart(3, '0');
-    const outputPath = path.join(outputDir, `snapshot-${idx}.png`);
+    const outputPath = join(outputDir, `snapshot-${idx}.png`);
     await captureFrame(videoPath, timestamps[i], outputPath);
     results.push(outputPath);
   }

@@ -1,5 +1,4 @@
-import fs from 'fs'
-import path from 'path'
+import { fileExistsSync, readTextFileSync } from '../core/fileSystem.js'
 import { getConfig } from './environment'
 import logger from './logger'
 
@@ -99,13 +98,13 @@ export function getBrandConfig(): BrandConfig {
   const config = getConfig()
   const brandPath = config.BRAND_PATH
 
-  if (!fs.existsSync(brandPath)) {
+  if (!fileExistsSync(brandPath)) {
     logger.warn('brand.json not found — using defaults')
     cachedBrand = { ...defaultBrand }
     return cachedBrand
   }
 
-  const raw = fs.readFileSync(brandPath, 'utf-8')
+  const raw = readTextFileSync(brandPath)
   cachedBrand = JSON.parse(raw) as BrandConfig
   validateBrandConfig(cachedBrand)
   logger.info(`Brand config loaded: ${cachedBrand.name}`)

@@ -5,7 +5,7 @@
  * Uses direct @anthropic-ai/sdk for tool-calling with our own agent loop.
  */
 
-import Anthropic from '@anthropic-ai/sdk'
+import { Anthropic } from '../core/ai.js'
 import type {
   ContentBlock,
   MessageParam,

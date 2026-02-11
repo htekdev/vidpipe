@@ -24,20 +24,13 @@ vi.mock('../config/environment.js', () => ({
   initConfig: vi.fn(),
 }))
 
-// Mock fs for brand.ts and whisperClient.ts
-vi.mock('fs', async () => {
-  const actual = await vi.importActual<typeof import('fs')>('fs')
-  return {
-    ...actual,
-    default: {
-      ...actual,
-      existsSync: vi.fn().mockReturnValue(true),
-      readFileSync: vi.fn().mockReturnValue('{}'),
-      statSync: vi.fn().mockReturnValue({ size: 1024 * 1024 }),
-      createReadStream: vi.fn().mockReturnValue('fake-stream'),
-    },
-  }
-})
+// Mock core/fileSystem for brand.ts and whisperClient.ts
+vi.mock('../core/fileSystem.js', () => ({
+  fileExistsSync: vi.fn().mockReturnValue(true),
+  readTextFileSync: vi.fn().mockReturnValue('{}'),
+  getFileStatsSync: vi.fn().mockReturnValue({ size: 1024 * 1024 }),
+  openReadStream: vi.fn().mockReturnValue('fake-stream'),
+}))
 
 // Mock openai for whisperClient.ts
 const mockCreate = vi.fn().mockResolvedValue({
@@ -51,8 +44,8 @@ const mockCreate = vi.fn().mockResolvedValue({
   ],
 })
 
-vi.mock('openai', () => ({
-  default: class MockOpenAI {
+vi.mock('../core/ai.js', () => ({
+  OpenAI: class MockOpenAI {
     audio = {
       transcriptions: {
         create: mockCreate,
@@ -65,7 +58,7 @@ vi.mock('openai', () => ({
 
 // ── Imports (after mocks) ──────────────────────────────────────────────
 
-import fs from 'fs'
+import { fileExistsSync, readTextFileSync, getFileStatsSync, openReadStream } from '../core/fileSystem.js'
 import { getConfig } from '../config/environment.js'
 
 // ========================================================================
@@ -90,8 +83,8 @@ describe('brand.ts', () => {
 
   beforeEach(() => {
     vi.resetModules()
-    vi.mocked(fs.existsSync).mockReturnValue(true)
-    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(fakeBrand))
+    vi.mocked(fileExistsSync).mockReturnValue(true)
+    vi.mocked(readTextFileSync).mockReturnValue(JSON.stringify(fakeBrand))
   })
 
   it('getBrandConfig() returns parsed brand config', async () => {
@@ -104,7 +97,7 @@ describe('brand.ts', () => {
   })
 
   it('getBrandConfig() returns defaults when file not found', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(false)
+    vi.mocked(fileExistsSync).mockReturnValue(false)
 
     const { getBrandConfig } = await import('../config/brand.js')
     const config = getBrandConfig()
@@ -117,10 +110,10 @@ describe('brand.ts', () => {
     const { getBrandConfig } = await import('../config/brand.js')
 
     getBrandConfig()
-    const callsAfterFirst = vi.mocked(fs.readFileSync).mock.calls.length
+    const callsAfterFirst = vi.mocked(readTextFileSync).mock.calls.length
 
     getBrandConfig()
-    const callsAfterSecond = vi.mocked(fs.readFileSync).mock.calls.length
+    const callsAfterSecond = vi.mocked(readTextFileSync).mock.calls.length
 
     // Second call should not trigger another read
     expect(callsAfterSecond).toBe(callsAfterFirst)
@@ -190,9 +183,9 @@ describe('whisperClient.ts', () => {
   beforeEach(() => {
     vi.resetModules()
     mockCreate.mockClear()
-    vi.mocked(fs.existsSync).mockReturnValue(true)
-    vi.mocked(fs.statSync).mockReturnValue({ size: 1024 * 1024 } as any)
-    vi.mocked(fs.createReadStream).mockReturnValue('fake-stream' as any)
+    vi.mocked(fileExistsSync).mockReturnValue(true)
+    vi.mocked(getFileStatsSync).mockReturnValue({ size: 1024 * 1024 } as any)
+    vi.mocked(openReadStream).mockReturnValue('fake-stream' as any)
     vi.mocked(getConfig).mockReturnValue({
       OPENAI_API_KEY: 'test-key',
       BRAND_PATH: '/fake/brand.json',
@@ -220,7 +213,7 @@ describe('whisperClient.ts', () => {
   })
 
   it('transcribeAudio() throws when file not found', async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(false)
+    vi.mocked(fileExistsSync).mockReturnValue(false)
 
     const { transcribeAudio } = await import('../tools/whisper/whisperClient.js')
 
@@ -230,7 +223,7 @@ describe('whisperClient.ts', () => {
   })
 
   it('transcribeAudio() throws when file exceeds 25MB', async () => {
-    vi.mocked(fs.statSync).mockReturnValue({
+    vi.mocked(getFileStatsSync).mockReturnValue({
       size: 30 * 1024 * 1024,
     } as any)
 

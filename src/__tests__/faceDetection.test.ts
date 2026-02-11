@@ -31,10 +31,33 @@ vi.mock('sharp', () => ({
   default: vi.fn(),
 }))
 
+vi.mock('onnxruntime-node', () => {
+  class MockTensor {
+    type: string
+    data: any
+    dims: number[]
+    constructor(type: string, data: any, dims: number[]) {
+      this.type = type
+      this.data = data
+      this.dims = dims
+    }
+  }
+  return {
+    InferenceSession: {
+      create: vi.fn().mockResolvedValue({
+        run: vi.fn().mockResolvedValue({
+          scores: { data: new Float32Array([0.1, 0.9]) },
+          boxes: { data: new Float32Array([0.7, 0.7, 0.9, 0.9]) },
+        }),
+      }),
+    },
+    Tensor: MockTensor,
+  }
+})
+
 // ── Imports ──────────────────────────────────────────────────────────────────
 
 import {
-  isSkinTone,
   calculateCornerConfidence,
   detectWebcamRegion,
   findPeakDiff,
@@ -46,70 +69,6 @@ import sharpDefault from 'sharp'
 
 const mockedExecFile = vi.mocked(execFile)
 const mockedSharp = vi.mocked(sharpDefault)
-
-// ── isSkinTone ───────────────────────────────────────────────────────────────
-
-describe('isSkinTone', () => {
-  it('returns true for typical skin tones', () => {
-    // Light skin
-    expect(isSkinTone(200, 150, 130)).toBe(true)
-    // Medium skin
-    expect(isSkinTone(180, 120, 90)).toBe(true)
-    // Darker warm skin
-    expect(isSkinTone(160, 100, 70)).toBe(true)
-  })
-
-  it('returns false for pure blue', () => {
-    expect(isSkinTone(0, 0, 255)).toBe(false)
-  })
-
-  it('returns false for pure green', () => {
-    expect(isSkinTone(0, 255, 0)).toBe(false)
-  })
-
-  it('returns false for black', () => {
-    expect(isSkinTone(0, 0, 0)).toBe(false)
-  })
-
-  it('returns false for white', () => {
-    // White: R=G=B → |R-G| = 0, fails abs(r-g) > 15
-    expect(isSkinTone(255, 255, 255)).toBe(false)
-  })
-
-  it('returns false when R is not dominant', () => {
-    // G > R
-    expect(isSkinTone(100, 200, 50)).toBe(false)
-  })
-
-  it('returns false for low R below threshold', () => {
-    // R <= 95
-    expect(isSkinTone(90, 50, 30)).toBe(false)
-  })
-
-  it('returns false for low G below threshold', () => {
-    // G <= 40
-    expect(isSkinTone(200, 30, 20)).toBe(false)
-  })
-
-  it('returns false for low B below threshold', () => {
-    // B <= 20
-    expect(isSkinTone(200, 100, 15)).toBe(false)
-  })
-
-  it('returns false when max-min difference is too small', () => {
-    // max - min <= 15
-    expect(isSkinTone(100, 96, 90)).toBe(false)
-  })
-
-  it('returns false when R-G difference is too small', () => {
-    // |R - G| <= 15
-    expect(isSkinTone(110, 100, 50)).toBe(false)
-  })
-
-  it('returns false when B > R', () => {
-    expect(isSkinTone(100, 50, 150)).toBe(false)
-  })
-})
 
 // ── calculateCornerConfidence ────────────────────────────────────────────────
 
@@ -124,27 +83,27 @@ describe('calculateCornerConfidence', () => {
 
   it('returns high confidence for consistently high scores', () => {
     const confidence = calculateCornerConfidence([0.5, 0.6, 0.7, 0.5, 0.6])
-    // All non-zero → consistency=1, avgScore=0.58, min(5.8,1)=1 → conf=1
-    expect(confidence).toBe(1)
+    // All non-zero → consistency=1.0, avgScore=0.58 → conf = consistency * avgScore = 1.0 * 0.58 = 0.58
+    expect(confidence).toBeCloseTo(0.58, 1)
   })
 
   it('returns moderate confidence for mixed scores', () => {
     const confidence = calculateCornerConfidence([0.3, 0, 0.4, 0, 0.2])
-    // 3/5 non-zero → consistency=0.6, avg=0.18, min(1.8,1)=1 → conf=0.6
+    // 3/5 non-zero → consistency=0.6, avg=0.18 → conf=0.108
     expect(confidence).toBeGreaterThan(0)
-    expect(confidence).toBeLessThan(1)
+    expect(confidence).toBeLessThan(0.5)
   })
 
   it('returns low confidence for mostly zero scores', () => {
     const confidence = calculateCornerConfidence([0, 0, 0, 0, 0.01])
     expect(confidence).toBeGreaterThan(0)
-    expect(confidence).toBeLessThan(0.1)
+    expect(confidence).toBeLessThan(0.01)
   })
 
-  it('caps avgScore contribution at 1', () => {
-    // Large scores: avg=2.0, min(20,1)=1 → confidence = consistency * 1
+  it('scales linearly with avgScore (no cap)', () => {
+    // consistency=1, avgScore=2.0 → confidence=2.0 (no capping)
     const confidence = calculateCornerConfidence([2.0, 2.0, 2.0])
-    expect(confidence).toBe(1)
+    expect(confidence).toBe(2)
   })
 })
 
@@ -170,7 +129,6 @@ describe('detectWebcamRegion', () => {
     const duration = opts?.duration ?? '60.0'
     const fail = opts?.fail ?? false
 
-    let callIndex = 0
     mockedExecFile.mockImplementation((_cmd: any, args: any, ...rest: any[]) => {
       const cb = typeof rest[0] === 'function' ? rest[0] : rest[1]
       const argsArr = args as string[]
@@ -194,30 +152,25 @@ describe('detectWebcamRegion', () => {
   }
 
   /**
-   * Helper: create sharp mock that returns pixel data for both
-   * corner analysis (extract().raw().toBuffer()) and
-   * edge refinement (raw().toBuffer()).
-   * @param skinCorner - which corner has skin-tone pixels
+   * Helper: create sharp mock that returns pixel data for ONNX preprocessing
+   * (resize + removeAlpha + raw) and edge refinement (raw).
    */
-  function setupSharpMock(skinCorner?: WebcamRegion['position']) {
-    const cornerW = 80 // 320 * 0.25
-    const cornerH = 45 // 180 * 0.25
+  function setupSharpMock(opts?: { webcamCorner?: WebcamRegion['position'] }) {
     const frameW = 320
-    const frameH = 180
+    const frameH = 240 // ONNX model expects 240 height
 
-    mockedSharp.mockImplementation((framePath: any) => {
-      // Full-frame buffer for refineBoundingBox: gray background + webcam region
+    mockedSharp.mockImplementation((_framePath: any) => {
+      // Full-frame buffer for refineBoundingBox
       const fullBuf = Buffer.alloc(frameW * frameH * 3)
       for (let i = 0; i < frameW * frameH; i++) {
         fullBuf[i * 3] = 128
         fullBuf[i * 3 + 1] = 128
         fullBuf[i * 3 + 2] = 128
       }
-      if (skinCorner) {
-        // Place a bright webcam-like block in the appropriate corner
+      if (opts?.webcamCorner) {
         const wcW = 50, wcH = 50
-        const wcX = skinCorner.includes('right') ? frameW - wcW : 0
-        const wcY = skinCorner.includes('bottom') ? frameH - wcH : 0
+        const wcX = opts.webcamCorner.includes('right') ? frameW - wcW : 0
+        const wcY = opts.webcamCorner.includes('bottom') ? frameH - wcH : 0
         for (let y = wcY; y < wcY + wcH; y++) {
           for (let x = wcX; x < wcX + wcW; x++) {
             const idx = (y * frameW + x) * 3
@@ -228,57 +181,35 @@ describe('detectWebcamRegion', () => {
         }
       }
 
-      // raw() for full-frame refinement
-      const rawForFull = vi.fn().mockReturnValue({
+      const rawResult = {
         toBuffer: vi.fn().mockResolvedValue({
           data: fullBuf,
           info: { width: frameW, height: frameH, channels: 3 },
         }),
-      })
+      }
 
-      // extract() for corner analysis
-      const extractFn = vi.fn().mockImplementation(({ left, top }: any) => {
-        let pos: string
-        if (left === 0 && top === 0) pos = 'top-left'
-        else if (left > 0 && top === 0) pos = 'top-right'
-        else if (left === 0 && top > 0) pos = 'bottom-left'
-        else pos = 'bottom-right'
-
-        const pixelCount = cornerW * cornerH
-        const buf = Buffer.alloc(pixelCount * 3)
-
-        if (pos === skinCorner) {
-          for (let i = 0; i < pixelCount; i++) {
-            const v = (i % 60)
-            buf[i * 3] = 170 + v
-            buf[i * 3 + 1] = 100 + (v >> 1)
-            buf[i * 3 + 2] = 60 + (v >> 2)
-          }
-        } else {
-          for (let i = 0; i < pixelCount; i++) {
-            buf[i * 3] = 128
-            buf[i * 3 + 1] = 128
-            buf[i * 3 + 2] = 128
-          }
-        }
-
-        return {
-          raw: vi.fn().mockReturnValue({
-            toBuffer: vi.fn().mockResolvedValue({
-              data: buf,
-              info: { width: cornerW, height: cornerH, channels: 3 },
-            }),
+      return {
+        resize: vi.fn().mockReturnValue({
+          removeAlpha: vi.fn().mockReturnValue({
+            raw: vi.fn().mockReturnValue(rawResult),
           }),
-        }
-      })
-
-      return { extract: extractFn, raw: rawForFull } as any
+        }),
+        raw: vi.fn().mockReturnValue(rawResult),
+      } as any
     })
   }
 
-  it('detects webcam in bottom-right corner with refined bounds', async () => {
+  it('detects webcam in bottom-right corner via ONNX face detection', async () => {
     setupExecFileMocks()
-    setupSharpMock('bottom-right')
+    setupSharpMock({ webcamCorner: 'bottom-right' })
+
+    // Mock ONNX to return a face in bottom-right corner (normalized coords)
+    const ort = await import('onnxruntime-node')
+    const mockSession = await (ort.InferenceSession as any).create()
+    mockSession.run.mockResolvedValue({
+      scores: { data: new Float32Array([0.05, 0.95]) }, // 1 detection: [bg=0.05, face=0.95]
+      boxes: { data: new Float32Array([0.75, 0.75, 0.95, 0.95]) }, // bottom-right corner
+    })
 
     const result = await detectWebcamRegion('/video.mp4')
 
@@ -287,14 +218,18 @@ describe('detectWebcamRegion', () => {
     expect(result!.confidence).toBeGreaterThan(0)
     expect(result!.width).toBeGreaterThan(0)
     expect(result!.height).toBeGreaterThan(0)
-    // With refinement, the x should be further right than the coarse 25% corner
-    // Coarse would be 1920 - 480 = 1440; refined should be closer to 1920 - 300 = 1620
-    expect(result!.x).toBeGreaterThan(1440)
   })
 
   it('detects webcam in top-left corner', async () => {
     setupExecFileMocks()
-    setupSharpMock('top-left')
+    setupSharpMock({ webcamCorner: 'top-left' })
+
+    const ort = await import('onnxruntime-node')
+    const mockSession = await (ort.InferenceSession as any).create()
+    mockSession.run.mockResolvedValue({
+      scores: { data: new Float32Array([0.05, 0.90]) },
+      boxes: { data: new Float32Array([0.05, 0.05, 0.25, 0.25]) }, // top-left corner
+    })
 
     const result = await detectWebcamRegion('/video.mp4')
 
@@ -302,9 +237,16 @@ describe('detectWebcamRegion', () => {
     expect(result!.position).toBe('top-left')
   })
 
-  it('returns null when no skin tones detected', async () => {
+  it('returns null when no faces detected', async () => {
     setupExecFileMocks()
-    setupSharpMock(undefined) // all corners uniform gray
+    setupSharpMock()
+
+    const ort = await import('onnxruntime-node')
+    const mockSession = await (ort.InferenceSession as any).create()
+    mockSession.run.mockResolvedValue({
+      scores: { data: new Float32Array([0.95, 0.05]) }, // no face (bg > face)
+      boxes: { data: new Float32Array([0.0, 0.0, 0.1, 0.1]) },
+    })
 
     const result = await detectWebcamRegion('/video.mp4')
 

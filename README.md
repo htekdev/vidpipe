@@ -1,13 +1,26 @@
-[![CI](https://github.com/htekdev/vidpipe/actions/workflows/ci.yml/badge.svg)](https://github.com/htekdev/vidpipe/actions/workflows/ci.yml)
-[![npm version](https://img.shields.io/npm/v/vidpipe)](https://www.npmjs.com/package/vidpipe)
-[![Node.js 20+](https://img.shields.io/badge/node-20%2B-brightgreen)](https://nodejs.org/)
-[![License: ISC](https://img.shields.io/badge/license-ISC-blue)](./LICENSE)
+<div align="center">
 
-# 🎬 VidPipe
+```
+ ██╗   ██╗██╗██████╗ ██████╗ ██╗██████╗ ███████╗
+ ██║   ██║██║██╔══██╗██╔══██╗██║██╔══██╗██╔════╝
+ ██║   ██║██║██║  ██║██████╔╝██║██████╔╝█████╗  
+ ╚██╗ ██╔╝██║██║  ██║██╔═══╝ ██║██╔═══╝ ██╔══╝  
+  ╚████╔╝ ██║██████╔╝██║     ██║██║     ███████╗
+   ╚═══╝  ╚═╝╚═════╝ ╚═╝     ╚═╝╚═╝     ╚══════╝
+```
 
 **Drop a video. Get transcripts, summaries, short clips, captions, blog posts, and social media posts — automatically.**
 
 An AI-powered CLI pipeline that watches for new video recordings and transforms them into rich, structured content using [GitHub Copilot SDK](https://github.com/github/copilot-sdk) agents and OpenAI Whisper.
+
+[![CI](https://github.com/htekdev/vidpipe/actions/workflows/ci.yml/badge.svg)](https://github.com/htekdev/vidpipe/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/vidpipe)](https://www.npmjs.com/package/vidpipe)
+[![Node.js 20+](https://img.shields.io/badge/node-20%2B-brightgreen)](https://nodejs.org/)
+[![License: ISC](https://img.shields.io/badge/license-ISC-blue)](./LICENSE)
+[![Docs](https://img.shields.io/badge/docs-vidpipe-a78bfa)](https://htekdev.github.io/vidpipe/)
+[![Last Updated](https://img.shields.io/badge/last_updated-February_2026-informational)](.)
+
+</div>
 
 ```bash
 npm install -g vidpipe
@@ -17,24 +30,38 @@ npm install -g vidpipe
 
 ## ✨ Features
 
-- 🎬 **14-Stage Automated Pipeline** — Drop a video and walk away; everything runs end-to-end
-- 🎙️ **Whisper Transcription** — Word-level timestamps via OpenAI Whisper API
-- 🔇 **AI-Driven Silence Removal** — Conservative, context-aware dead-air detection (capped at 20% removal)
-- 📐 **Smart Split-Screen Layouts** — Webcam + screen content for 3 aspect ratios: portrait (9:16), square (1:1), and feed (4:5)
-- 🔍 **Edge-Based Webcam Detection** — Detects webcam overlay position via skin-tone analysis and inter-frame edge refinement (no hardcoded margins)
-- 🎯 **Face-Aware AR-Matched Cropping** — Webcam region is aspect-ratio-matched and center-cropped to fill each layout with no black bars
-- 💬 **Karaoke Captions** — Opus Clips-style word-by-word highlighting with green active word on portrait, yellow on landscape
-- 🪝 **Hook Overlays** — Animated title text burned into portrait short clips
-- ✂️ **Short Clips** — AI identifies the best 15–60s moments, supports composite (multi-segment) shorts
-- 🎞️ **Medium Clips** — 1–3 min standalone segments for deeper content with crossfade transitions
-- 📑 **Chapter Detection** — AI-identified topic boundaries in 4 formats (JSON, Markdown, FFmetadata, YouTube timestamps)
-- 📱 **Social Media Posts** — Platform-tailored content for TikTok, YouTube, Instagram, LinkedIn, and X
-- 📰 **Dev.to Blog Post** — Long-form technical blog post with frontmatter and web-sourced links
-- 🔗 **Web Search Integration** — Finds relevant links for social posts and blog content via Exa
-- 🔄 **Git Automation** — Auto-commits and pushes all generated content after each video
-- 🎨 **Brand Voice** — Customize AI tone, vocabulary, hashtags, and content style via `brand.json`
-- 👁️ **Watch Mode** — Monitors a folder and processes new `.mp4` files on arrival
-- 🧠 **Agent Architecture** — Powered by GitHub Copilot SDK with tool-calling agents
+<p align="center">
+  <img src="assets/features-infographic.png" alt="VidPipe Features — Input → AI Processing → Outputs" width="900" />
+</p>
+
+<br />
+
+<table>
+  <tr>
+    <td>🎙️ <b>Whisper Transcription</b> — Word-level timestamps</td>
+    <td>📐 <b>Split-Screen Layouts</b> — Portrait, square, and feed</td>
+  </tr>
+  <tr>
+    <td>🔇 <b>AI Silence Removal</b> — Context-aware, capped at 20%</td>
+    <td>💬 <b>Karaoke Captions</b> — Word-by-word highlighting</td>
+  </tr>
+  <tr>
+    <td>✂️ <b>Short Clips</b> — Best 15–60s moments, multi-segment</td>
+    <td>🎞️ <b>Medium Clips</b> — 1–3 min with crossfade transitions</td>
+  </tr>
+  <tr>
+    <td>📑 <b>Chapter Detection</b> — JSON, Markdown, YouTube, FFmeta</td>
+    <td>📱 <b>Social Posts</b> — TikTok, YouTube, Instagram, LinkedIn, X</td>
+  </tr>
+  <tr>
+    <td>📰 <b>Blog Post</b> — Dev.to style with web-sourced links</td>
+    <td>🎨 <b>Brand Voice</b> — Custom tone, hashtags via brand.json</td>
+  </tr>
+  <tr>
+    <td>🔍 <b>Face Detection</b> — ONNX-based webcam cropping</td>
+    <td>🚀 <b>Auto-Publish</b> — Scheduled posting to TikTok, YouTube, Instagram, LinkedIn, X</td>
+  </tr>
+</table>
 
 ---
 
@@ -85,6 +112,9 @@ vidpipe \
 
 ```
 vidpipe [options] [video-path]
+vidpipe init              # Interactive setup wizard
+vidpipe review            # Open post review web app
+vidpipe schedule          # View posting schedule
 ```
 
 | Option | Description |
@@ -101,6 +131,8 @@ vidpipe [options] [video-path]
 | `--no-shorts` | Skip short clip extraction |
 | `--no-medium-clips` | Skip medium clip generation |
 | `--no-social` | Skip social media posts |
+| `--no-social-publish` | Skip social media queue-build stage |
+| `--late-api-key <key>` | Override Late API key |
 | `--no-captions` | Skip caption generation/burning |
 | `--no-git` | Skip git commit/push |
 | `-v, --verbose` | Debug-level logging |
@@ -154,10 +186,52 @@ recordings/
 
 ---
 
+## 📺 Review App
+
+VidPipe includes a built-in web app for reviewing, editing, and scheduling social media posts before publishing.
+
+<div align="center">
+  <img src="assets/review-ui.png" alt="VidPipe Review UI" width="800" />
+  <br />
+  <em>Review and approve posts across YouTube, TikTok, Instagram, LinkedIn, and X/Twitter</em>
+</div>
+
+```bash
+# Launch the review app
+vidpipe review
+```
+
+- **Platform tabs** — Filter posts by platform (YouTube, TikTok, Instagram, LinkedIn, X)
+- **Video preview** — See the video thumbnail and content before approving
+- **Keyboard shortcuts** — Arrow keys to navigate, Enter to approve, Backspace to reject
+- **Smart scheduling** — Posts are queued with optimal timing per platform
+
+---
+
 ## 🔄 Pipeline
 
-```
-Ingest → Transcribe → Silence Removal → Captions → Caption Burn → Shorts → Medium Clips → Chapters → Summary → Social Media → Short Posts → Medium Clip Posts → Blog → Git Push
+```mermaid
+graph LR
+    A[📥 Ingest] --> B[🎙️ Transcribe]
+    B --> C[🔇 Silence Removal]
+    C --> D[💬 Captions]
+    D --> E[🔥 Caption Burn]
+    E --> F[✂️ Shorts]
+    F --> G[🎞️ Medium Clips]
+    G --> H[📑 Chapters]
+    H --> I[📝 Summary]
+    I --> J[📱 Social Media]
+    J --> K[📱 Short Posts]
+    K --> L[📱 Medium Posts]
+    L --> M[📰 Blog]
+    M --> N[📦 Queue Build]
+    N --> O[🔄 Git Push]
+
+    style A fill:#2d5a27,stroke:#4ade80
+    style B fill:#1e3a5f,stroke:#60a5fa
+    style E fill:#5a2d27,stroke:#f87171
+    style F fill:#5a4d27,stroke:#fbbf24
+    style O fill:#2d5a27,stroke:#4ade80
 ```
 
 | # | Stage | Description |
@@ -175,7 +249,8 @@ Ingest → Transcribe → Silence Removal → Captions → Caption Burn → Shor
 | 11 | **Short Posts** | Per-short social media posts for all 5 platforms |
 | 12 | **Medium Clip Posts** | Per-medium-clip social media posts for all 5 platforms |
 | 13 | **Blog** | Dev.to blog post with frontmatter, web-sourced links via Exa |
-| 14 | **Git Push** | Auto-commits and pushes to `origin main` |
+| 14 | **Queue Build** | Builds publish queue from social posts with scheduled slots |
+| 15 | **Git Push** | Auto-commits and pushes to `origin main` |
 
 Each stage can be independently skipped with `--no-*` flags. A stage failure does not abort the pipeline — subsequent stages proceed with whatever data is available.
 
@@ -210,7 +285,10 @@ OUTPUT_DIR=/path/to/output
 # BRAND_PATH=./brand.json         # Optional: path to brand voice config
 # FFMPEG_PATH=/usr/local/bin/ffmpeg
 # FFPROBE_PATH=/usr/local/bin/ffprobe
+# LATE_API_KEY=sk_your_key_here   # Optional: Late API for social publishing
 ```
+
+Social media publishing is configured via `schedule.json` and the Late API. See [Social Publishing Guide](./docs/social-publishing.md) for details.
 
 ---
 
@@ -222,6 +300,7 @@ OUTPUT_DIR=/path/to/output
 | [Configuration](./docs/configuration.md) | All CLI flags, env vars, skip options, and examples |
 | [FFmpeg Setup](./docs/ffmpeg-setup.md) | Platform-specific install (Windows, macOS, Linux, ARM64) |
 | [Brand Customization](./docs/brand-customization.md) | Customize AI voice, vocabulary, hashtags, and content style |
+| [Social Publishing](./docs/social-publishing.md) | Review, schedule, and publish social posts via Late API |
 
 ---
 
@@ -229,15 +308,25 @@ OUTPUT_DIR=/path/to/output
 
 Agent-based architecture built on the [GitHub Copilot SDK](https://github.com/github/copilot-sdk):
 
-```
-BaseAgent (abstract)
-├── SilenceRemovalAgent → detect_silence, decide_removals
-├── SummaryAgent        → capture_frame, write_summary
-├── ShortsAgent         → plan_shorts
-├── MediumVideoAgent    → plan_medium_clips
-├── ChapterAgent        → generate_chapters
-├── SocialMediaAgent    → search_links, create_posts
-└── BlogAgent           → search_web, write_blog
+```mermaid
+graph TD
+    BP[🧠 BaseAgent] --> SRA[SilenceRemovalAgent]
+    BP --> SA[SummaryAgent]
+    BP --> SHA[ShortsAgent]
+    BP --> MVA[MediumVideoAgent]
+    BP --> CA[ChapterAgent]
+    BP --> SMA[SocialMediaAgent]
+    BP --> BA[BlogAgent]
+
+    SRA -->|tools| T1[detect_silence, decide_removals]
+    SHA -->|tools| T2[plan_shorts]
+    MVA -->|tools| T3[plan_medium_clips]
+    CA -->|tools| T4[generate_chapters]
+    SA -->|tools| T5[capture_frame, write_summary]
+    SMA -->|tools| T6[search_links, create_posts]
+    BA -->|tools| T7[search_web, write_blog]
+
+    style BP fill:#1e3a5f,stroke:#60a5fa,color:#fff
 ```
 
 Each agent communicates with the LLM through structured tool calls, ensuring reliable, parseable outputs.
@@ -262,7 +351,7 @@ Each agent communicates with the LLM through structured tool calls, ensuring rel
 
 ## 🗺️ Roadmap
 
-- [ ] **Automated social posting** — Publish directly to platforms via their APIs
+- [x] **Automated social posting** — Publish directly to platforms via Late API
 - [ ] **Multi-language support** — Transcription and summaries in multiple languages
 - [ ] **Custom templates** — User-defined Markdown & social post templates
 - [ ] **Web dashboard** — Browser UI for reviewing and editing outputs
@@ -292,3 +381,4 @@ Run `vidpipe doctor` to verify your setup.
 ## 📄 License
 
 ISC © [htekdev](https://github.com/htekdev)
+

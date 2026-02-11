@@ -5,7 +5,7 @@ import { execFile } from 'child_process'
 import { promisify } from 'util'
 import { promises as fs } from 'fs'
 import { isFFmpegAvailable } from './fixture.js'
-import { detectWebcamRegion, isSkinTone, calculateCornerConfidence } from '../../tools/ffmpeg/faceDetection.js'
+import { detectWebcamRegion, calculateCornerConfidence } from '../../tools/ffmpeg/faceDetection.js'
 import { getFFmpegPath } from '../../config/ffmpegResolver.js'
 
 const execFileAsync = promisify(execFile)
@@ -43,26 +43,6 @@ describe.skipIf(!ffmpegOk)('faceDetection integration', { timeout: 60_000 }, () 
   })
 
   // ── 2. Pure function validation with real data ─────────────────────────────
-  describe('isSkinTone', () => {
-    it('detects typical skin-tone RGB values', () => {
-      // Light skin tone
-      expect(isSkinTone(200, 150, 120)).toBe(true)
-      // Medium skin tone
-      expect(isSkinTone(180, 120, 80)).toBe(true)
-    })
-
-    it('rejects non-skin-tone RGB values', () => {
-      // Pure blue
-      expect(isSkinTone(0, 0, 255)).toBe(false)
-      // Pure green
-      expect(isSkinTone(0, 255, 0)).toBe(false)
-      // White
-      expect(isSkinTone(255, 255, 255)).toBe(false)
-      // Black
-      expect(isSkinTone(0, 0, 0)).toBe(false)
-    })
-  })
-
   describe('calculateCornerConfidence', () => {
     it('returns 0 for empty scores', () => {
       expect(calculateCornerConfidence([])).toBe(0)
@@ -90,13 +70,14 @@ describe.skipIf(!ffmpegOk)('faceDetection integration', { timeout: 60_000 }, () 
     const tmpBase = os.tmpdir()
 
     // Snapshot existing face-detect dirs before running
-    const before = (await fs.readdir(tmpBase)).filter(d => d.startsWith('face-detect-'))
+    const before = new Set((await fs.readdir(tmpBase)).filter(d => d.startsWith('face-detect-')))
 
     await detectWebcamRegion(videoPath)
 
     const after = (await fs.readdir(tmpBase)).filter(d => d.startsWith('face-detect-'))
 
-    // No new face-detect directories should remain
-    expect(after.length).toBeLessThanOrEqual(before.length)
+    // No NEW face-detect directories should remain (ignore pre-existing ones)
+    const newDirs = after.filter(d => !before.has(d))
+    expect(newDirs).toEqual([])
   })
 })

@@ -1,4 +1,5 @@
 import { defineConfig } from 'tsup'
+import { copyFileSync, mkdirSync, readdirSync, statSync } from 'fs'
 
 export default defineConfig({
   entry: ['src/index.ts'],
@@ -18,4 +19,21 @@ export default defineConfig({
     // All dependencies are external (installed by npm)
     /^[^./]/,
   ],
+  onSuccess: async () => {
+    // Copy static assets for review server
+    mkdirSync('dist/public', { recursive: true })
+    copyFileSync('src/review/public/index.html', 'dist/public/index.html')
+    // Copy fonts for caption burning
+    mkdirSync('dist/fonts', { recursive: true })
+    const fontFiles = readdirSync('assets/fonts').filter(f => statSync(`assets/fonts/${f}`).isFile())
+    for (const f of fontFiles) {
+      copyFileSync(`assets/fonts/${f}`, `dist/fonts/${f}`)
+    }
+    // Copy face detection model
+    mkdirSync('dist/models', { recursive: true })
+    const modelFiles = readdirSync('assets/models').filter(f => statSync(`assets/models/${f}`).isFile())
+    for (const f of modelFiles) {
+      copyFileSync(`assets/models/${f}`, `dist/models/${f}`)
+    }
+  },
 })

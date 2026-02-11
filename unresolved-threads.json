@@ -1,0 +1,255 @@
+[
+  {
+    "ID": "PRRT_kwDORK3Ahc5t3uQD",
+    "IsResolved": false,
+    "IsOutdated": false,
+    "IsCollapsed": false,
+    "Comments": {
+      "Nodes": [
+        {
+          "ID": "PRRC_kwDORK3Ahc6mWRBb",
+          "Body": "The comment on line 15 uses '~2 years' as an approximation, but 730 days is exactly 2 years (365 * 2). Consider updating the comment to '(2 years)' for accuracy, or adjust the constant to account for leap years if true approximation is intended.\n```suggestion\nconst MAX_LOOKAHEAD_DAYS = 730  // hard ceiling (2 years)\n```",
+          "Path": "src/services/scheduler.ts",
+          "Line": 15,
+          "Author": {
+            "Login": "copilot-pull-request-reviewer"
+          },
+          "CreatedAt": "2026-02-11T00:07:30Z",
+          "UpdatedAt": "2026-02-11T00:07:32Z",
+          "URL": "https://github.com/htekdev/vidpipe/pull/13#discussion_r2790854747"
+        }
+      ],
+      "TotalCount": 1
+    }
+  },
+  {
+    "ID": "PRRT_kwDORK3Ahc5t3uQM",
+    "IsResolved": false,
+    "IsOutdated": true,
+    "IsCollapsed": false,
+    "Comments": {
+      "Nodes": [
+        {
+          "ID": "PRRC_kwDORK3Ahc6mWRBm",
+          "Body": "The temporary file creation uses a predictable pattern (original path + suffix). Consider using os.tmpdir() with randomUUID() to avoid potential issues if the target directory is not writable or if parallel processes try to write to the same location.",
+          "Path": "src/services/scheduleConfig.ts",
+          "Line": null,
+          "Author": {
+            "Login": "copilot-pull-request-reviewer"
+          },
+          "CreatedAt": "2026-02-11T00:07:31Z",
+          "UpdatedAt": "2026-02-11T00:07:33Z",
+          "URL": "https://github.com/htekdev/vidpipe/pull/13#discussion_r2790854758"
+        }
+      ],
+      "TotalCount": 1
+    }
+  },
+  {
+    "ID": "PRRT_kwDORK3Ahc5t3uQQ",
+    "IsResolved": false,
+    "IsOutdated": false,
+    "IsCollapsed": false,
+    "Comments": {
+      "Nodes": [
+        {
+          "ID": "PRRC_kwDORK3Ahc6mWRBr",
+          "Body": "Lines 223-227 check for empty content after stripping frontmatter, but line 223 already has a fallback to post.content. This means the validation on lines 226-227 will only throw if both stripped and original post.content are empty. Consider clarifying the intent: if frontmatter stripping should always be validated, remove the fallback on line 223.",
+          "Path": "src/services/queueBuilder.ts",
+          "Line": 227,
+          "Author": {
+            "Login": "copilot-pull-request-reviewer"
+          },
+          "CreatedAt": "2026-02-11T00:07:31Z",
+          "UpdatedAt": "2026-02-11T00:07:33Z",
+          "URL": "https://github.com/htekdev/vidpipe/pull/13#discussion_r2790854763"
+        }
+      ],
+      "TotalCount": 1
+    }
+  },
+  {
+    "ID": "PRRT_kwDORK3Ahc5t3uQT",
+    "IsResolved": false,
+    "IsOutdated": true,
+    "IsCollapsed": false,
+    "Comments": {
+      "Nodes": [
+        {
+          "ID": "PRRC_kwDORK3Ahc6mWRBw",
+          "Body": "The path traversal check on line 225 is redundant because line 222 already uses path.basename(id), which strips any directory components. The validateId() function called earlier also ensures id contains only safe characters. Consider removing lines 221-227 or documenting why this defense-in-depth check is necessary.",
+          "Path": "src/services/postStore.ts",
+          "Line": null,
+          "Author": {
+            "Login": "copilot-pull-request-reviewer"
+          },
+          "CreatedAt": "2026-02-11T00:07:31Z",
+          "UpdatedAt": "2026-02-11T00:07:33Z",
+          "URL": "https://github.com/htekdev/vidpipe/pull/13#discussion_r2790854768"
+        }
+      ],
+      "TotalCount": 1
+    }
+  },
+  {
+    "ID": "PRRT_kwDORK3Ahc5t3uQZ",
+    "IsResolved": false,
+    "IsOutdated": false,
+    "IsCollapsed": false,
+    "Comments": {
+      "Nodes": [
+        {
+          "ID": "PRRC_kwDORK3Ahc6mWRB6",
+          "Body": "The route pattern '/{*splat}' on line 39 is not valid Express syntax. This should be '/*' to create a catch-all route for SPA fallback. The current pattern will not match as intended.",
+          "Path": "src/review/server.ts",
+          "Line": 43,
+          "Author": {
+            "Login": "copilot-pull-request-reviewer"
+          },
+          "CreatedAt": "2026-02-11T00:07:31Z",
+          "UpdatedAt": "2026-02-11T00:07:31Z",
+          "URL": "https://github.com/htekdev/vidpipe/pull/13#discussion_r2790854778"
+        }
+      ],
+      "TotalCount": 1
+    }
+  },
+  {
+    "ID": "PRRT_kwDORK3Ahc5t39Kd",
+    "IsResolved": false,
+    "IsOutdated": false,
+    "IsCollapsed": false,
+    "Comments": {
+      "Nodes": [
+        {
+          "ID": "PRRC_kwDORK3Ahc6mWmN5",
+          "Body": "## Insecure temporary file\n\nInsecure creation of file in [the os temp dir](1).\n\n[Show more details](https://github.com/htekdev/vidpipe/security/code-scanning/79)",
+          "Path": "src/__tests__/integration/review-server.test.ts",
+          "Line": 92,
+          "Author": {
+            "Login": "github-advanced-security"
+          },
+          "CreatedAt": "2026-02-11T00:31:49Z",
+          "UpdatedAt": "2026-02-11T00:31:51Z",
+          "URL": "https://github.com/htekdev/vidpipe/pull/13#discussion_r2790941561"
+        }
+      ],
+      "TotalCount": 1
+    }
+  },
+  {
+    "ID": "PRRT_kwDORK3Ahc5t39Kh",
+    "IsResolved": false,
+    "IsOutdated": false,
+    "IsCollapsed": false,
+    "Comments": {
+      "Nodes": [
+        {
+          "ID": "PRRC_kwDORK3Ahc6mWmN8",
+          "Body": "## Insecure temporary file\n\nInsecure creation of file in [the os temp dir](1).\n\n[Show more details](https://github.com/htekdev/vidpipe/security/code-scanning/80)",
+          "Path": "src/__tests__/integration/review-server.test.ts",
+          "Line": 98,
+          "Author": {
+            "Login": "github-advanced-security"
+          },
+          "CreatedAt": "2026-02-11T00:31:50Z",
+          "UpdatedAt": "2026-02-11T00:31:51Z",
+          "URL": "https://github.com/htekdev/vidpipe/pull/13#discussion_r2790941564"
+        }
+      ],
+      "TotalCount": 1
+    }
+  },
+  {
+    "ID": "PRRT_kwDORK3Ahc5t39Kk",
+    "IsResolved": false,
+    "IsOutdated": false,
+    "IsCollapsed": false,
+    "Comments": {
+      "Nodes": [
+        {
+          "ID": "PRRC_kwDORK3Ahc6mWmOB",
+          "Body": "## Insecure temporary file\n\nInsecure creation of file in [the os temp dir](1).\n\n[Show more details](https://github.com/htekdev/vidpipe/security/code-scanning/34)",
+          "Path": "src/__tests__/postStore.test.ts",
+          "Line": 91,
+          "Author": {
+            "Login": "github-advanced-security"
+          },
+          "CreatedAt": "2026-02-11T00:31:50Z",
+          "UpdatedAt": "2026-02-11T00:31:51Z",
+          "URL": "https://github.com/htekdev/vidpipe/pull/13#discussion_r2790941569"
+        }
+      ],
+      "TotalCount": 1
+    }
+  },
+  {
+    "ID": "PRRT_kwDORK3Ahc5t39Km",
+    "IsResolved": false,
+    "IsOutdated": false,
+    "IsCollapsed": false,
+    "Comments": {
+      "Nodes": [
+        {
+          "ID": "PRRC_kwDORK3Ahc6mWmOF",
+          "Body": "## Insecure temporary file\n\nInsecure creation of file in [the os temp dir](1).\n\n[Show more details](https://github.com/htekdev/vidpipe/security/code-scanning/35)",
+          "Path": "src/__tests__/scheduleConfig.test.ts",
+          "Line": 192,
+          "Author": {
+            "Login": "github-advanced-security"
+          },
+          "CreatedAt": "2026-02-11T00:31:50Z",
+          "UpdatedAt": "2026-02-11T00:31:51Z",
+          "URL": "https://github.com/htekdev/vidpipe/pull/13#discussion_r2790941573"
+        }
+      ],
+      "TotalCount": 1
+    }
+  },
+  {
+    "ID": "PRRT_kwDORK3Ahc5t39Kr",
+    "IsResolved": false,
+    "IsOutdated": false,
+    "IsCollapsed": false,
+    "Comments": {
+      "Nodes": [
+        {
+          "ID": "PRRC_kwDORK3Ahc6mWmOK",
+          "Body": "## Insecure temporary file\n\nInsecure creation of file in [the os temp dir](1).\n\n[Show more details](https://github.com/htekdev/vidpipe/security/code-scanning/36)",
+          "Path": "src/__tests__/scheduleConfig.test.ts",
+          "Line": 210,
+          "Author": {
+            "Login": "github-advanced-security"
+          },
+          "CreatedAt": "2026-02-11T00:31:50Z",
+          "UpdatedAt": "2026-02-11T00:31:51Z",
+          "URL": "https://github.com/htekdev/vidpipe/pull/13#discussion_r2790941578"
+        }
+      ],
+      "TotalCount": 1
+    }
+  },
+  {
+    "ID": "PRRT_kwDORK3Ahc5t39Kw",
+    "IsResolved": false,
+    "IsOutdated": false,
+    "IsCollapsed": false,
+    "Comments": {
+      "Nodes": [
+        {
+          "ID": "PRRC_kwDORK3Ahc6mWmOQ",
+          "Body": "## Missing rate limiting\n\nThis route handler performs [a file system access](1), but is not rate-limited.\n\n[Show more details](https://github.com/htekdev/vidpipe/security/code-scanning/10)",
+          "Path": "src/review/routes.ts",
+          "Line": 141,
+          "Author": {
+            "Login": "github-advanced-security"
+          },
+          "CreatedAt": "2026-02-11T00:31:50Z",
+          "UpdatedAt": "2026-02-11T00:31:51Z",
+          "URL": "https://github.com/htekdev/vidpipe/pull/13#discussion_r2790941584"
+        }
+      ],
+      "TotalCount": 1
+    }
+  }
+]

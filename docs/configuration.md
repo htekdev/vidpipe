@@ -48,6 +48,13 @@ Disable individual pipeline stages:
 | `--no-social` | Social media post generation |
 | `--no-medium-clips` | Medium clip (1–3 min) extraction |
 | `--no-captions` | Caption generation and burning |
+| `--no-social-publish` | Social media queue-build stage |
+
+### Additional Flags
+
+| Flag | Description |
+|------|-------------|
+| `--late-api-key <key>` | Override Late API key |
 
 **Examples:**
 
@@ -87,6 +94,13 @@ Set these in your shell or in a `.env` file in the working directory.
 | `FFPROBE_PATH` | ❌ | Absolute path to `ffprobe` binary | `ffprobe` (from PATH) |
 | `EXA_API_KEY` | ❌ | Exa AI API key for web search in social posts | — |
 | `BRAND_PATH` | ❌ | Path to `brand.json` | `./brand.json` |
+
+### Social Publishing
+
+| Variable | Required | Description | Default |
+|----------|----------|-------------|---------|
+| `LATE_API_KEY` | ❌ | Late API key for social media publishing | — |
+| `LATE_PROFILE_ID` | ❌ | Late profile ID (auto-detected if not set) | — |
 
 ---
 
@@ -286,6 +300,12 @@ OPENAI_API_KEY=sk-... vidpipe \
   --output-dir /tmp/output \
   /path/to/video.mp4
 ```
+
+---
+
+## Schedule Configuration
+
+The `schedule.json` file defines when social media posts are published. It is generated automatically by the pipeline and can be managed via `vidpipe schedule`. For full details on scheduling and the review workflow, see the [Social Publishing Guide](./social-publishing.md).
 
 ---
 

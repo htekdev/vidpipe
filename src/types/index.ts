@@ -293,6 +293,7 @@ export enum PipelineStage {
   ShortPosts = 'short-posts',
   MediumClipPosts = 'medium-clip-posts',
   Blog = 'blog',
+  QueueBuild = 'queue-build',
   GitPush = 'git-push',
 }
 
@@ -376,4 +377,74 @@ export interface AgentResult<T = unknown> {
     promptTokens: number;
     completionTokens: number;
   };
+}
+
+// ============================================================================
+// SOCIAL PUBLISHING / QUEUE
+// ============================================================================
+
+/** Character limits per social media platform */
+export const PLATFORM_CHAR_LIMITS: Record<string, number> = {
+  tiktok: 2200,
+  youtube: 5000,
+  instagram: 2200,
+  linkedin: 3000,
+  twitter: 280,
+}
+
+/**
+ * Maps vidpipe Platform enum values to Late API platform strings.
+ * Platform.X = 'x' but Late API expects 'twitter'.
+ */
+export function toLatePlatform(platform: Platform): string {
+  return platform === Platform.X ? 'twitter' : platform
+}
+
+/**
+ * Maps a Late API platform string back to vidpipe Platform enum.
+ * 
+ * Validates the input against known Platform values to avoid admitting
+ * unknown/unsupported platforms via an unchecked cast.
+ * 
+ * @throws {Error} If the platform is not supported
+ */
+export function fromLatePlatform(latePlatform: string): Platform {
+  const normalized = normalizePlatformString(latePlatform)
+  
+  if (normalized === 'twitter') {
+    return Platform.X
+  }
+  
+  const platformValues = Object.values(Platform) as string[]
+  if (platformValues.includes(normalized)) {
+    return normalized as Platform
+  }
+  
+  throw new Error(`Unsupported platform from Late API: ${latePlatform}`)
+}
+
+/**
+ * Normalizes raw platform strings (e.g., from user input or API responses)
+ * to Late API platform names. Handles X/Twitter variants and case-insensitivity.
+ * 
+ * @example
+ * normalizePlatformString('X') // 'twitter'
+ * normalizePlatformString('x (twitter)') // 'twitter'
+ * normalizePlatformString('YouTube') // 'youtube'
+ */
+export function normalizePlatformString(raw: string): string {
+  const lower = raw.toLowerCase().trim()
+  if (lower === 'x' || lower === 'x (twitter)' || lower === 'x/twitter') {
+    return 'twitter'
+  }
+  return lower
+}
+
+/** Schedule time slot for a platform */
+export interface ScheduleSlot {
+  platform: string
+  scheduledFor: string  // ISO datetime
+  postId?: string       // Late post ID if already published
+  itemId?: string       // Local queue item ID
+  label?: string
 }
