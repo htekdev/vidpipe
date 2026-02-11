@@ -189,7 +189,7 @@ describe('scheduleConfig', () => {
           },
         },
       }
-      const tmpFile = tmp.fileSync({ dir: tmpDir, postfix: '.json' })
+      const tmpFile = tmp.fileSync({ dir: tmpDir, postfix: '.json', mode: 0o600 })
       const filePath = tmpFile.name
       await fs.writeFile(filePath, JSON.stringify(customConfig), 'utf-8')
 
@@ -209,7 +209,7 @@ describe('scheduleConfig', () => {
 
       // Overwrite file
       const updated = { ...config1, timezone: 'Asia/Tokyo' }
-      const updateTmp = tmp.fileSync({ dir: tmpDir, postfix: '.json', keep: true })
+      const updateTmp = tmp.fileSync({ dir: tmpDir, postfix: '.json', keep: true, mode: 0o600 })
       await fs.writeFile(updateTmp.name, JSON.stringify(updated), 'utf-8')
       closeSync(updateTmp.fd) // Close file descriptor on Windows before rename
       await fs.rename(updateTmp.name, filePath)

@@ -88,7 +88,7 @@ describe('postStore', () => {
     })
 
     it('copies media file when provided', async () => {
-      const mediaTmpFile = tmp.fileSync({ dir: tmpDir, postfix: '.mp4' })
+      const mediaTmpFile = tmp.fileSync({ dir: tmpDir, postfix: '.mp4', mode: 0o600 })
       const mediaSource = mediaTmpFile.name
       await fs.writeFile(mediaSource, 'fake-video-bytes')
 
