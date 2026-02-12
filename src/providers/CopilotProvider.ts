@@ -3,6 +3,11 @@
  *
  * Extracts the Copilot-specific logic from BaseAgent into a reusable provider
  * that can be swapped with OpenAI or Claude providers via the abstraction layer.
+ *
+ * NOTE: Vision support for tool results is not available in the Copilot provider.
+ * The @github/copilot-sdk handles tool calls internally, so we cannot inject
+ * images into the conversation. Tools returning imagePath will have the path
+ * included in the JSON result as text only.
  */
 
 import { CopilotClient, CopilotSession } from '../core/ai.js'

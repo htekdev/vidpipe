@@ -8,8 +8,11 @@
 import { Anthropic } from '../core/ai.js'
 import type {
   ContentBlock,
+  ContentBlockParam,
+  ImageBlockParam,
   MessageParam,
   TextBlock,
+  TextBlockParam,
   Tool,
   ToolResultBlockParam,
   ToolUseBlock,
@@ -27,6 +30,7 @@ import type {
   ProviderEventType,
   ProviderEvent,
 } from './types.js'
+import { hasImagePath, extractImage } from './imageUtils.js'
 
 const DEFAULT_MODEL = 'claude-opus-4.6'
 const DEFAULT_MAX_TOKENS = 8192
@@ -169,6 +173,7 @@ class ClaudeSession implements LLMSession {
 
       // Execute tool calls and build result messages
       const toolResults: ToolResultBlockParam[] = []
+      const pendingImageBlocks: ContentBlockParam[] = []
 
       for (const block of toolUseBlocks) {
         const tool = this.tools.find((t) => t.name === block.name)
@@ -192,6 +197,26 @@ class ClaudeSession implements LLMSession {
             content: JSON.stringify(result),
           })
           this.emit('tool_end', { name: block.name, result })
+
+          // Check if result contains an image path
+          if (hasImagePath(result)) {
+            const extracted = await extractImage(result)
+            if (extracted) {
+              const textBlock: TextBlockParam = {
+                type: 'text',
+                text: `[Image from tool ${block.name}: ${extracted.path}]`,
+              }
+              const imageBlock: ImageBlockParam = {
+                type: 'image',
+                source: {
+                  type: 'base64',
+                  media_type: extracted.mimeType,
+                  data: extracted.base64,
+                },
+              }
+              pendingImageBlocks.push(textBlock, imageBlock)
+            }
+          }
         } catch (err) {
           const errorMsg = err instanceof Error ? err.message : String(err)
           logger.error(`Tool ${block.name} failed: ${errorMsg}`)
@@ -205,8 +230,13 @@ class ClaudeSession implements LLMSession {
         }
       }
 
-      // Add tool results as a user message and loop
+      // Add tool results as a user message
       this.messages.push({ role: 'user', content: toolResults })
+
+      // If we have images, add them as a follow-up user message
+      if (pendingImageBlocks.length > 0) {
+        this.messages.push({ role: 'user', content: pendingImageBlocks })
+      }
     }
   }
 

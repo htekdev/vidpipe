@@ -4,6 +4,7 @@ import { dirname, join } from '../../core/paths.js'
 import { getFFmpegPath } from '../../core/ffmpeg.js'
 import logger from '../../config/logger'
 import { detectWebcamRegion, getVideoResolution } from './faceDetection'
+import { LayoutAgent } from '../../agents/LayoutAgent.js'
 
 const ffmpegPath = getFFmpegPath()
 
@@ -377,6 +378,16 @@ export async function convertToFeedSmart(
   })
 }
 
+/** Options for {@link generatePlatformVariants}. */
+export interface GeneratePlatformVariantsOptions {
+  /**
+   * Use the vision-based LayoutAgent instead of ONNX face detection.
+   * The agent analyzes frame content and constructs FFmpeg commands dynamically.
+   * Default: false (uses existing ONNX/heuristic pipeline).
+   */
+  useAgent?: boolean
+}
+
 /**
  * Generate platform-specific aspect-ratio variants of a short clip.
  *
@@ -389,10 +400,17 @@ export async function convertToFeedSmart(
  *    split-screen layout, falling back to {@link convertAspectRatio} for any
  *    ratio without a smart converter.
  *
+ * ### Agent mode
+ * When `options.useAgent` is true, the vision-based {@link LayoutAgent} is used
+ * for portrait (9:16) variants instead of the ONNX face detection pipeline.
+ * The agent captures frames, analyzes content, and builds FFmpeg commands
+ * dynamically based on what it sees.
+ *
  * @param inputPath - Source video (16:9 landscape)
  * @param outputDir - Directory to write variant files into
  * @param slug - Base filename slug (e.g. "my-video-short-1")
  * @param platforms - Platforms to generate for (default: tiktok + linkedin)
+ * @param options - Additional options (useAgent, etc.)
  * @returns Array of variant metadata (one entry per platform, deduplicated files)
  */
 export async function generatePlatformVariants(
@@ -400,6 +418,7 @@ export async function generatePlatformVariants(
   outputDir: string,
   slug: string,
   platforms: Platform[] = ['tiktok', 'linkedin'],
+  options: GeneratePlatformVariantsOptions = {},
 ): Promise<{ platform: Platform; aspectRatio: AspectRatio; path: string; width: number; height: number }[]> {
   await ensureDirectory(outputDir)
 
@@ -421,7 +440,18 @@ export async function generatePlatformVariants(
 
     try {
       if (ratio === '9:16') {
-        await convertToPortraitSmart(inputPath, outPath)
+        if (options.useAgent) {
+          // Use vision-based LayoutAgent for portrait variants
+          logger.info(`[generatePlatformVariants] Using LayoutAgent for ${slug} portrait`)
+          const agent = new LayoutAgent()
+          try {
+            await agent.createPortraitVariant(inputPath, outPath)
+          } finally {
+            await agent.destroy()
+          }
+        } else {
+          await convertToPortraitSmart(inputPath, outPath)
+        }
       } else if (ratio === '1:1') {
         await convertToSquareSmart(inputPath, outPath)
       } else if (ratio === '4:5') {
