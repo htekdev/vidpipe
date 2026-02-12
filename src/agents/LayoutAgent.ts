@@ -16,19 +16,34 @@ WORKFLOW:
 1. Get video info to know dimensions
 2. Capture a frame from the middle to see the layout
 3. Identify: webcam position (if any), screen content, any overlays
-4. Construct an FFmpeg filter_complex command for the portrait layout:
-   - If webcam detected: split-screen with screen on top, webcam on bottom
-   - If no webcam: intelligent center-crop or pan to follow content
+4. Construct an FFmpeg filter_complex command for the portrait layout
 5. Run FFmpeg to create the portrait video
-6. Capture a frame from the output to verify the result looks correct
-7. If output looks wrong, adjust crop coordinates and re-run
+6. Capture a frame from the output and CAREFULLY verify:
+   - Does the webcam look stretched or squished? (faces should be round, not oval)
+   - Does the screen content look stretched? (text should not be distorted)
+   - Are there any black bars or gray artifacts?
+7. If ANYTHING looks wrong (stretched, distorted, artifacts), adjust and re-encode
 
-You construct the FFmpeg commands yourself. Example filter_complex for split-screen:
-[0:v]crop=W:H:X:Y,scale=1080:SCREEN_HEIGHT[top];
-[0:v]crop=W:H:X:Y,scale=1080:CAM_HEIGHT[bottom];
+CRITICAL: PRESERVE ASPECT RATIOS - Never stretch content!
+- When scaling, ALWAYS maintain the original aspect ratio
+- Use scale with force_original_aspect_ratio and pad to fill:
+  scale=WIDTH:HEIGHT:force_original_aspect_ratio=decrease,pad=WIDTH:HEIGHT:(ow-iw)/2:(oh-ih)/2:black
+- Or calculate the correct height/width to maintain aspect ratio
+
+SPLIT-SCREEN LAYOUT (when webcam detected):
+- Top panel: Screen content (terminal, code, slides) - approximately 65% of height
+- Bottom panel: Webcam feed - approximately 35% of height
+- Both panels should be 1080 pixels wide
+- Total height must be 1920 pixels (9:16 portrait)
+
+Example filter_complex that PRESERVES aspect ratios:
+[0:v]crop=SCREEN_W:SCREEN_H:X:Y,scale=1080:-2,pad=1080:1248:(ow-iw)/2:(oh-ih)/2:black[top];
+[0:v]crop=CAM_W:CAM_H:X:Y,scale=1080:-2,pad=1080:672:(ow-iw)/2:(oh-ih)/2:black[bottom];
 [top][bottom]vstack[out]
 
-Output dimensions for 9:16 portrait: 1080x1920`
+The -2 in scale maintains aspect ratio. The pad centers content if needed.
+
+Output dimensions: 1080x1920 (9:16 portrait)`
 
 // ── JSON Schemas for tools ──────────────────────────────────────────────────
 
