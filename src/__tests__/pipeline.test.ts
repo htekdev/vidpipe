@@ -296,7 +296,7 @@ describe('processVideo', () => {
     mockGetConfig.mockReturnValue(defaultConfig())
     mockMainVideoAssetIngest.mockResolvedValue({
       toVideoFile: () => video,
-    })
+    } as any)
     mockTranscribeVideo.mockResolvedValue(transcript)
     mockRemoveDeadSilence.mockResolvedValue({ editedPath: '/edited.mp4', removals: [], keepSegments: [], wasEdited: false })
     mockGenerateCaptions.mockResolvedValue(['/captions.ass'])
@@ -324,7 +324,7 @@ describe('processVideo', () => {
 
   it('calls stages in correct order', async () => {
     const callOrder: string[] = []
-    mockMainVideoAssetIngest.mockImplementation(async () => { callOrder.push('ingest'); return { toVideoFile: () => video } })
+    mockMainVideoAssetIngest.mockImplementation(async () => { callOrder.push('ingest'); return { toVideoFile: () => video } as any })
     mockTranscribeVideo.mockImplementation(async () => { callOrder.push('transcribe'); return transcript })
     mockRemoveDeadSilence.mockImplementation(async () => { callOrder.push('silence'); return { editedPath: '', removals: [], keepSegments: [], wasEdited: false } })
     mockGenerateCaptions.mockImplementation(async () => { callOrder.push('captions'); return ['/captions.ass'] })
@@ -562,7 +562,7 @@ describe('processVideoSafe', () => {
     mockGetConfig.mockReturnValue(defaultConfig())
     mockMainVideoAssetIngest.mockResolvedValue({
       toVideoFile: () => makeVideoFile(),
-    })
+    } as any)
     mockTranscribeVideo.mockResolvedValue(makeTranscript())
     mockRemoveDeadSilence.mockResolvedValue({ editedPath: '', removals: [], keepSegments: [], wasEdited: false })
     mockGenerateCaptions.mockResolvedValue([])

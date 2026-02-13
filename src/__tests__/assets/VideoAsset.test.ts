@@ -132,12 +132,13 @@ describe('VideoAsset', () => {
             index: 0,
             codec_name: 'h264',
             codec_long_name: 'H.264 / AVC',
-            profile: 'High',
+            profile: 100,
             codec_time_base: '1/30',
-            duration: 120.5,
-            bit_rate: 5000000,
+            duration: '120.5',
+            bit_rate: '5000000',
           },
         ],
+        chapters: [],
       })
 
       const metadata = await asset.getMetadata()
@@ -153,7 +154,8 @@ describe('VideoAsset', () => {
     it('caches metadata on subsequent calls', async () => {
       vi.mocked(ffmpeg.ffprobe).mockResolvedValue({
         format: { duration: 60, size: 500000, filename: '', nb_streams: 1, format_name: 'mp4', format_long_name: '', start_time: 0, bit_rate: 0, tags: {} },
-        streams: [{ codec_type: 'video', width: 1280, height: 720, index: 0, codec_name: '', codec_long_name: '', profile: '', codec_time_base: '', duration: 0, bit_rate: 0 }],
+        streams: [{ codec_type: 'video', width: 1280, height: 720, index: 0, codec_name: '', codec_long_name: '', profile: 0, codec_time_base: '', duration: '0', bit_rate: '0' }],
+        chapters: [],
       })
 
       await asset.getMetadata()
@@ -165,7 +167,8 @@ describe('VideoAsset', () => {
     it('re-fetches metadata when force is true', async () => {
       vi.mocked(ffmpeg.ffprobe).mockResolvedValue({
         format: { duration: 60, size: 500000, filename: '', nb_streams: 1, format_name: 'mp4', format_long_name: '', start_time: 0, bit_rate: 0, tags: {} },
-        streams: [{ codec_type: 'video', width: 1280, height: 720, index: 0, codec_name: '', codec_long_name: '', profile: '', codec_time_base: '', duration: 0, bit_rate: 0 }],
+        streams: [{ codec_type: 'video', width: 1280, height: 720, index: 0, codec_name: '', codec_long_name: '', profile: 0, codec_time_base: '', duration: '0', bit_rate: '0' }],
+        chapters: [],
       })
 
       await asset.getMetadata()
@@ -247,7 +250,8 @@ describe('VideoAsset', () => {
     it('clears cached metadata', async () => {
       vi.mocked(ffmpeg.ffprobe).mockResolvedValue({
         format: { duration: 60, size: 500000, filename: '', nb_streams: 1, format_name: 'mp4', format_long_name: '', start_time: 0, bit_rate: 0, tags: {} },
-        streams: [{ codec_type: 'video', width: 1280, height: 720, index: 0, codec_name: '', codec_long_name: '', profile: '', codec_time_base: '', duration: 0, bit_rate: 0 }],
+        streams: [{ codec_type: 'video', width: 1280, height: 720, index: 0, codec_name: '', codec_long_name: '', profile: 0, codec_time_base: '', duration: '0', bit_rate: '0' }],
+        chapters: [],
       })
 
       await asset.getMetadata()

@@ -44,6 +44,9 @@ import {
 } from './loaders.js'
 import { getConfig } from '../config/environment.js'
 import logger from '../config/logger.js'
+import {
+  Platform,
+} from '../types/index.js'
 import type {
   ShortClip,
   MediumClip,
@@ -51,7 +54,6 @@ import type {
   Transcript,
   VideoFile,
   VideoLayout,
-  Platform,
   AspectRatio,
 } from '../types/index.js'
 

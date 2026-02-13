@@ -9,7 +9,7 @@
 import { VideoAsset } from './VideoAsset.js'
 import { SocialPostAsset } from './SocialPostAsset.js'
 import { join } from '../core/paths.js'
-import { fileExists, readdir } from '../core/fileSystem.js'
+import { fileExists, listDirectory } from '../core/fileSystem.js'
 import type { MediumClip, Platform } from '../types/index.js'
 import { Platform as PlatformEnum } from '../types/index.js'
 import type { AssetOptions } from './Asset.js'

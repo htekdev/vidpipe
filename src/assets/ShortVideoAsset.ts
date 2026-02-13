@@ -72,7 +72,7 @@ export class ShortVideoAsset extends VideoAsset {
    */
   async getPlatformVariants(): Promise<Map<Platform, string>> {
     const variants = new Map<Platform, string>()
-    const platforms = Object.values(Platform)
+    const platforms = Object.values(PlatformEnum)
 
     await Promise.all(
       platforms.map(async (platform) => {

@@ -9,7 +9,6 @@ import { Asset, AssetOptions } from '../../assets/Asset.js'
  */
 class TestAsset extends Asset<string> {
   private _exists: boolean
-  private _result: string
   private generateCount = 0
 
   constructor(exists: boolean, result: string) {
@@ -26,7 +25,7 @@ class TestAsset extends Asset<string> {
     if (opts?.force || !this._exists) {
       this.generateCount++
     }
-    return this._result
+    return this._result!
   }
 
   getGenerateCount(): number {

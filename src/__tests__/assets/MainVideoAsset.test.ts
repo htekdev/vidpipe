@@ -476,10 +476,11 @@ describe('MainVideoAsset', () => {
         mtime: new Date('2024-01-01'),
         isFile: () => true,
         isDirectory: () => false,
-      })
+      } as any)
       vi.mocked(ffmpeg.ffprobe).mockResolvedValue({
         format: { duration: 120, size: 1024000, filename: '', nb_streams: 1, format_name: 'mp4', format_long_name: '', start_time: 0, bit_rate: 0, tags: {} },
-        streams: [{ codec_type: 'video', width: 1920, height: 1080, index: 0, codec_name: '', codec_long_name: '', profile: '', codec_time_base: '', duration: 0, bit_rate: 0 }],
+        streams: [{ codec_type: 'video', width: 1920, height: 1080, index: 0, codec_name: '', codec_long_name: '', profile: 0, codec_time_base: '', duration: '0', bit_rate: '0' }],
+        chapters: [],
       })
 
       const asset = await MainVideoAsset.load('/recordings/test')

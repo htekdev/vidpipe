@@ -48,6 +48,7 @@ export type LayoutType =
 export interface OnlyWebcamParams {
   /** Optional scale factor (1.0 = fit to frame, >1.0 = crop edges) */
   scale?: number;
+  [key: string]: unknown;
 }
 
 /**
@@ -58,6 +59,7 @@ export interface OnlyWebcamParams {
  */
 export interface OnlyScreenParams {
   /** No additional parameters needed */
+  [key: string]: unknown;
 }
 
 /**
@@ -77,6 +79,7 @@ export interface SplitLayoutParams {
    * Default: 'bottom-right'
    */
   webcamPosition?: 'bottom-left' | 'bottom-right' | 'bottom-center';
+  [key: string]: unknown;
 }
 
 /**
@@ -94,6 +97,7 @@ export interface ZoomWebcamParams {
   /** Optional center point for zoom (0-1, relative to frame) */
   centerX?: number;
   centerY?: number;
+  [key: string]: unknown;
 }
 
 /**
@@ -115,6 +119,7 @@ export interface ZoomScreenParams {
     width: number;
     height: number;
   };
+  [key: string]: unknown;
 }
 
 /**
@@ -153,6 +158,7 @@ export interface FadeParams {
    * Default: 0.5
    */
   duration: number;
+  [key: string]: unknown;
 }
 
 /**
@@ -172,6 +178,7 @@ export interface SwipeParams {
    * Default: 0.3
    */
   duration?: number;
+  [key: string]: unknown;
 }
 
 /**
@@ -196,6 +203,7 @@ export interface ZoomTransitionParams {
    * Default: true
    */
   blur?: boolean;
+  [key: string]: unknown;
 }
 
 /**
@@ -205,6 +213,7 @@ export interface ZoomTransitionParams {
  */
 export interface CutParams {
   /** No parameters — instant cut */
+  [key: string]: unknown;
 }
 
 /**
@@ -277,6 +286,7 @@ export interface TextOverlayParams {
    * Default: 'none'
    */
   animation?: 'none' | 'fade-in' | 'slide-up' | 'pop';
+  [key: string]: unknown;
 }
 
 /**
@@ -314,6 +324,7 @@ export interface HighlightRegionParams {
    * Default: 'none'
    */
   animation?: 'none' | 'pulse' | 'draw';
+  [key: string]: unknown;
 }
 
 /**
@@ -334,6 +345,7 @@ export interface SlowMotionParams {
    * Default: true (for speeds >= 0.5)
    */
   preservePitch?: boolean;
+  [key: string]: unknown;
 }
 
 /**
@@ -371,6 +383,7 @@ export interface BRollParams {
    * Default: 25
    */
   pipSize?: number;
+  [key: string]: unknown;
 }
 
 /**
@@ -385,6 +398,7 @@ export interface FadeToBlackParams {
    * Default: 1.0
    */
   duration?: number;
+  [key: string]: unknown;
 }
 
 /**
