@@ -51,6 +51,7 @@ vi.mock('../config/brand.js', () => ({
       interests: ['testing'], 
       avoids: ['nothing'] 
     },
+    customVocabulary: ['test', 'vocabulary'],
     hashtags: {
       always: ['#TestBrand', '#Testing'],
       preferred: ['#Tech', '#Development'],
@@ -61,6 +62,7 @@ vi.mock('../config/brand.js', () => ({
       },
     },
     contentGuidelines: { 
+      shortsFocus: 'test shorts focus',
       blogFocus: 'testing focus',
       socialFocus: 'test social focus',
     },
