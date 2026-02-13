@@ -571,12 +571,7 @@ describe('Real SocialMediaAgent', () => {
   });
 
   it('integrates brand voice into system prompt', async () => {
-    // Import the agent class to inspect its system prompt
-    const { default: SocialMediaAgentModule } = await import('../agents/SocialMediaAgent.js');
-    
-    // We can't directly access the private system prompt, but we can verify
-    // it's using getBrandConfig by checking that the agent initializes without errors
-    // and that the mock getBrandConfig was called
+    // Verify that the agent initializes without errors and uses brand config
     const { generateSocialPosts } = await import('../agents/SocialMediaAgent.js');
     
     // This call should succeed if brand config is properly integrated
