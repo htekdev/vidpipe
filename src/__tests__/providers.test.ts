@@ -67,6 +67,15 @@ describe('calculatePRUCost', () => {
     // claude-haiku-4.5 has pruMultiplier: 0.33
     expect(calculatePRUCost('claude-haiku-4.5')).toBe(0.33);
   });
+
+  it('defaults to 1 PRU when pruMultiplier is undefined', () => {
+    // gpt-4.1-mini has pricing but no pruMultiplier and no copilotIncluded
+    expect(calculatePRUCost('gpt-4.1-mini')).toBe(1);
+  });
+
+  it('defaults to 1 PRU for gemini-2.5-flash (no pruMultiplier)', () => {
+    expect(calculatePRUCost('gemini-2.5-flash')).toBe(1);
+  });
 });
 
 describe('getModelPricing', () => {
@@ -424,6 +433,10 @@ describe('fromLatePlatform', () => {
   it('passes other platform strings through as-is', () => {
     expect(fromLatePlatform('youtube')).toBe(Platform.YouTube);
     expect(fromLatePlatform('tiktok')).toBe(Platform.TikTok);
+  });
+
+  it('throws for unsupported platform', () => {
+    expect(() => fromLatePlatform('fakebook')).toThrow('Unsupported platform from Late API: fakebook');
   });
 });
 

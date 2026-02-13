@@ -127,6 +127,41 @@ describe('brand.ts', () => {
     expect(prompt).toContain('TypeScript')
     expect(prompt).toContain('FFmpeg')
   })
+
+  it('getBrandConfig() validates and warns for missing/empty fields', async () => {
+    const partialBrand = {
+      name: '',
+      handle: '',
+      tagline: '',
+      customVocabulary: [],
+      hashtags: { always: [], preferred: [] },
+      contentGuidelines: { shortsFocus: '', blogFocus: '', socialFocus: '' },
+    }
+    vi.mocked(readTextFileSync).mockReturnValue(JSON.stringify(partialBrand))
+
+    const { getBrandConfig } = await import('../config/brand.js')
+    const config = getBrandConfig()
+
+    // Config should still load (validation only warns, doesn't throw)
+    expect(config.name).toBe('')
+    expect(config.customVocabulary).toEqual([])
+  })
+
+  it('getBrandConfig() validates and warns for missing sections', async () => {
+    const minimalBrand = {
+      name: 'Test',
+      handle: '@t',
+      tagline: 'tag',
+      customVocabulary: ['word'],
+    }
+    vi.mocked(readTextFileSync).mockReturnValue(JSON.stringify(minimalBrand))
+
+    const { getBrandConfig } = await import('../config/brand.js')
+    const config = getBrandConfig()
+
+    // voice, advocacy, hashtags, contentGuidelines are all missing → warned
+    expect(config.name).toBe('Test')
+  })
 })
 
 // ========================================================================

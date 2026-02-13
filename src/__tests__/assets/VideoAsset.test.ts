@@ -151,6 +151,30 @@ describe('VideoAsset', () => {
       })
     })
 
+    it('defaults to 0 when no video stream found', async () => {
+      vi.mocked(ffmpeg.ffprobe).mockResolvedValue({
+        format: { duration: 60, size: 500000, filename: '', nb_streams: 1, format_name: 'mp4', format_long_name: '', start_time: 0, bit_rate: 0, tags: {} },
+        streams: [{ codec_type: 'audio', index: 0, codec_name: 'aac', codec_long_name: '', profile: 0, codec_time_base: '', duration: '0', bit_rate: '0' }],
+        chapters: [],
+      })
+
+      const metadata = await asset.getMetadata()
+      expect(metadata.width).toBe(0)
+      expect(metadata.height).toBe(0)
+    })
+
+    it('defaults duration and size to 0 when format fields missing', async () => {
+      vi.mocked(ffmpeg.ffprobe).mockResolvedValue({
+        format: { filename: '', nb_streams: 0, format_name: '', format_long_name: '', start_time: 0, bit_rate: 0, tags: {} },
+        streams: [],
+        chapters: [],
+      })
+
+      const metadata = await asset.getMetadata()
+      expect(metadata.duration).toBe(0)
+      expect(metadata.size).toBe(0)
+    })
+
     it('caches metadata on subsequent calls', async () => {
       vi.mocked(ffmpeg.ffprobe).mockResolvedValue({
         format: { duration: 60, size: 500000, filename: '', nb_streams: 1, format_name: 'mp4', format_long_name: '', start_time: 0, bit_rate: 0, tags: {} },
@@ -243,6 +267,104 @@ describe('VideoAsset', () => {
       expect(dirPath).toMatch(/recordings[/\\]test-video[/\\]captions$/)
       expect(fileSystem.writeTextFile).toHaveBeenCalledTimes(3)
       expect(captions.srt).toMatch(/recordings[/\\]test-video[/\\]captions[/\\]captions\.srt$/)
+    })
+
+    it('regenerates captions when force is true even if files exist', async () => {
+      // fileExists calls for caption files return true, but force overrides
+      vi.mocked(fileSystem.fileExists)
+        .mockResolvedValueOnce(true) // srt
+        .mockResolvedValueOnce(true) // vtt
+        .mockResolvedValueOnce(true) // ass
+        .mockResolvedValueOnce(true) // transcript exists
+
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
+        text: 'Test',
+        segments: [{ id: 0, start: 0, end: 1, text: 'Test' }],
+        words: [],
+      })
+
+      await asset.getCaptions({ force: true })
+
+      expect(fileSystem.writeTextFile).toHaveBeenCalledTimes(3)
+    })
+
+    it('generates captions when only some files exist', async () => {
+      // srt exists, vtt doesn't, ass exists — should still generate
+      vi.mocked(fileSystem.fileExists)
+        .mockResolvedValueOnce(true)  // srt
+        .mockResolvedValueOnce(false) // vtt
+        .mockResolvedValueOnce(true)  // ass
+        .mockResolvedValueOnce(true)  // transcript exists
+
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
+        text: 'Test',
+        segments: [{ id: 0, start: 0, end: 1, text: 'Test' }],
+        words: [],
+      })
+
+      const captions = await asset.getCaptions()
+
+      // Should generate all captions since not all existed
+      expect(fileSystem.writeTextFile).toHaveBeenCalledTimes(3)
+      expect(captions.srt).toBeDefined()
+    })
+  })
+
+  describe('getChapters()', () => {
+    it('loads chapters from disk when file exists', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
+        chapters: [
+          { timestamp: 0, title: 'Intro', description: 'Start' },
+          { timestamp: 60, title: 'Main', description: 'Content' },
+        ],
+      })
+
+      const chapters = await asset.getChapters()
+
+      expect(chapters).toHaveLength(2)
+      expect(chapters[0].title).toBe('Intro')
+    })
+
+    it('returns empty array when file does not exist', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(false)
+
+      const chapters = await asset.getChapters()
+
+      expect(chapters).toEqual([])
+    })
+
+    it('returns empty array when chapters key is missing from file', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({})
+
+      const chapters = await asset.getChapters()
+
+      expect(chapters).toEqual([])
+    })
+
+    it('returns empty array when force is true (skips disk cache)', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
+        chapters: [{ timestamp: 0, title: 'Ch1', description: '' }],
+      })
+
+      const chapters = await asset.getChapters({ force: true })
+
+      // force=true causes !opts?.force to be false, so it skips disk read
+      expect(chapters).toEqual([])
+    })
+
+    it('caches chapters on subsequent calls', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
+        chapters: [{ timestamp: 0, title: 'Ch1', description: '' }],
+      })
+
+      await asset.getChapters()
+      await asset.getChapters()
+
+      expect(fileSystem.readJsonFile).toHaveBeenCalledTimes(1)
     })
   })
 
