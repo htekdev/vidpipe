@@ -70,6 +70,25 @@ interface FilterSegment {
   label: string
 }
 
+/**
+ * Tracks the zoom transformation active at each segment in the concat timeline.
+ * Used to transform highlight_region coordinates from source space to output space.
+ */
+interface ZoomSegment {
+  /** Start time in the concatenated timeline */
+  concatStart: number
+  /** End time in the concatenated timeline */
+  concatEnd: number
+  /** The layout type for this segment */
+  layout: LayoutType
+  /** The layout parameters */
+  params: Record<string, unknown>
+  /** Webcam region used for this segment */
+  webcamRegion?: WebcamRegion
+  /** Source video width */
+  sourceWidth?: number
+}
+
 // ============================================================================
 // TEXT POSITION MAPPING
 // ============================================================================
@@ -118,12 +137,29 @@ function normalizeTextPosition(position: string): TextPosition | string {
 }
 
 /**
- * Escape a file path for use inside FFmpeg filter strings.
- * Converts backslashes to forward slashes and escapes colons
- * (needed for Windows drive letters like C:).
+ * Escape a file path for use inside FFmpeg -filter_complex.
+ * Two parsing levels: filtergraph then filter-option.
+ * Converts backslashes to forward slashes and double-escapes colons:
+ * \\: → filtergraph outputs \: → option parser reads literal :
  */
 function escapeFFmpegPath(filePath: string): string {
-  return filePath.replace(/\\/g, '/').replace(/:/g, '\\:')
+  return filePath.replace(/\\/g, '/').replace(/:/g, '\\\\:')
+}
+
+/**
+ * Escape text for use in FFmpeg drawtext `text=` value within -filter_complex.
+ * Two parsing levels: filtergraph (splits by , ; handles ' and \) then
+ * filter-option (splits by : handles ' and \).
+ * Text is used WITHOUT single quotes to avoid nested quoting issues.
+ */
+function escapeDrawtext(text: string): string {
+  return text
+    .replace(/\\/g, '\\\\\\\\')   // \ → \\\\ (double-escape both levels)
+    .replace(/'/g, "\\\\\\'")     // ' → \\\' (double-escape both levels)
+    .replace(/:/g, '\\\\:')       // : → \\: (double-escape both levels)
+    .replace(/;/g, '\\;')         // ; → \; (filtergraph level only)
+    .replace(/\[/g, '\\[')        // [ → \[ (filtergraph level only)
+    .replace(/\]/g, '\\]')        // ] → \] (filtergraph level only)
 }
 
 /**
@@ -140,6 +176,95 @@ function getSwipeTransition(direction: SwipeDirection): string {
     case 'down':
       return 'slidedown'
   }
+}
+
+// ============================================================================
+// ZOOM COORDINATE TRANSFORMATION
+// ============================================================================
+
+/**
+ * Compute the zoom crop rectangle (in normalized 0-1 coords of the source frame)
+ * for a given layout. Returns undefined if the layout doesn't zoom.
+ *
+ * The crop rect describes what portion of the source frame is visible after zoom.
+ * For zoom_screen: the visible region after screen-area crop + zoom.
+ * For zoom_webcam: not transformed (webcam-space coords don't map to source frame).
+ */
+function getZoomCropRect(
+  layout: LayoutType,
+  params: Record<string, unknown>,
+  webcamRegion: WebcamRegion | undefined,
+  sourceWidth?: number,
+): { x: number; y: number; w: number; h: number } | undefined {
+  if (layout === 'zoom_screen') {
+    const p = params as ZoomScreenParams
+    const scale = p.scale ?? 1.5
+
+    if (p.region && typeof p.region.x === 'number' && typeof p.region.y === 'number') {
+      // Zoom to specific normalized region
+      return { x: p.region.x, y: p.region.y, w: p.region.width, h: p.region.height }
+    }
+
+    if (webcamRegion) {
+      // First exclude webcam, then zoom center of screen area
+      const srcW = sourceWidth ?? 1920
+      const midX = Math.round(srcW / 2)
+      const isWebcamRight = webcamRegion.x > midX
+      // Screen area in normalized coordinates
+      const screenStartX = isWebcamRight ? 0 : webcamRegion.width / srcW
+      const screenWidth = isWebcamRight ? webcamRegion.x / srcW : 1 - webcamRegion.width / srcW
+
+      const zoomFactor = 1 / scale
+      const offsetX = (1 - zoomFactor) / 2
+      const offsetY = (1 - zoomFactor) / 2
+      // Zoom is applied AFTER screen crop, so coords are relative to screen area
+      return {
+        x: screenStartX + screenWidth * offsetX,
+        y: offsetY,
+        w: screenWidth * zoomFactor,
+        h: zoomFactor,
+      }
+    }
+
+    // No webcam, zoom center of full frame
+    const zoomFactor = 1 / scale
+    const offset = (1 - zoomFactor) / 2
+    return { x: offset, y: offset, w: zoomFactor, h: zoomFactor }
+  }
+
+  // Non-zoom layouts don't transform coordinates
+  return undefined
+}
+
+/**
+ * Transform highlight_region coordinates from source-frame space to output space
+ * based on the active zoom layout.
+ *
+ * @param coords - Normalized source-frame coordinates (0-1)
+ * @param zoomRect - The zoom crop rectangle in normalized source-frame coords
+ * @returns Transformed normalized coordinates in output space, or undefined if region is outside crop
+ */
+function transformCoordsForZoom(
+  coords: { x: number; y: number; w: number; h: number },
+  zoomRect: { x: number; y: number; w: number; h: number },
+): { x: number; y: number; w: number; h: number } | undefined {
+  const outX = (coords.x - zoomRect.x) / zoomRect.w
+  const outY = (coords.y - zoomRect.y) / zoomRect.h
+  const outW = coords.w / zoomRect.w
+  const outH = coords.h / zoomRect.h
+
+  // Clamp to visible area (0-1 range)
+  const clampedX = Math.max(0, Math.min(1, outX))
+  const clampedY = Math.max(0, Math.min(1, outY))
+  const clampedW = Math.min(outW, 1 - clampedX)
+  const clampedH = Math.min(outH, 1 - clampedY)
+
+  // If region is completely outside the zoom crop, skip it
+  if (outX + outW <= 0 || outY + outH <= 0 || outX >= 1 || outY >= 1) {
+    return undefined
+  }
+
+  return { x: clampedX, y: clampedY, w: clampedW, h: clampedH }
 }
 
 // ============================================================================
@@ -372,15 +497,18 @@ function compileEffect(
   startTime: number,
   endTime?: number,
   fontPath?: string,
+  zoomSegments?: readonly ZoomSegment[],
 ): string {
   switch (effect) {
     case 'text_overlay': {
       const p = params as TextOverlayParams
-      const text = p.text.replace(/'/g, "\\'").replace(/:/g, "\\:")
+      // Escape text for filter option level (\' for ', \: for :, \\ for \)
+      const text = escapeDrawtext(p.text)
       const fontSize = p.fontSize ?? 48
       const color = (p.color ?? '#FFFFFF').replace('#', '0x')
       const position = getTextPosition(p.position, fontSize)
       const bgColor = p.backgroundColor ? `:box=1:boxcolor=${p.backgroundColor.replace('#', '0x')}` : ''
+      // Escape : in fontfile path for filter option parser
       const fontFile = fontPath ? `:fontfile=${escapeFFmpegPath(fontPath)}` : ''
       const animation = p.animation ?? 'none'
 
@@ -400,14 +528,15 @@ function compileEffect(
       } else if (animation === 'slide-up') {
         // Slide from 60px below target position to target over animDuration
         const slideDistance = 60
-        yExpr = `if(lt(t\,${(startTime + animDuration).toFixed(3)})\,${position.y}+${slideDistance}*(1-(t-${startTime.toFixed(3)})/${animDuration.toFixed(3)})\,${position.y})`
+        yExpr = `if(lt(t\\,${(startTime + animDuration).toFixed(3)})\\,${position.y}+${slideDistance}*(1-(t-${startTime.toFixed(3)})/${animDuration.toFixed(3)})\\,${position.y})`
       } else if (animation === 'pop') {
-        // Scale to 140% then back to 100% over animDuration
-        const popScale = 1.4
-        fontSizeExpr = `if(lt(t\,${(startTime + animDuration).toFixed(3)})\,${Math.round(fontSize * popScale)}\,${fontSize})`
+        // FFmpeg 8.x drawtext fontsize= doesn't safely support per-frame
+        // expressions (segfault with if()/lt()). Use a slightly larger static
+        // size to approximate the pop effect.
+        fontSizeExpr = `${Math.round(fontSize * 1.15)}`
       }
 
-      return `drawtext=text='${text}':fontsize=${fontSizeExpr}:fontcolor=${color}${fontFile}:x=${position.x}:y=${yExpr}${bgColor}${alphaExpr}:${enable}`
+      return `drawtext=text=${text}:fontsize=${fontSizeExpr}:fontcolor=${color}${fontFile}:x=${position.x}:y=${yExpr}${bgColor}${alphaExpr}:${enable}`
     }
 
     case 'highlight_region': {
@@ -417,23 +546,52 @@ function compileEffect(
       const enable = endTime ? `enable='between(t,${startTime.toFixed(3)},${endTime.toFixed(3)})'` : `enable='gte(t,${startTime.toFixed(3)})'`
       const animation = p.animation ?? 'none'
 
-      // Support normalized coordinates (0-1 range) — convert to pixel expressions
+      // Start with source-space coordinates (normalized 0-1 or pixel)
       const isNormalized = p.x <= 1.0 && p.y <= 1.0 && p.width <= 1.0 && p.height <= 1.0
-      const xExpr = isNormalized ? `iw*${p.x.toFixed(3)}` : `${p.x}`
-      const yExpr = isNormalized ? `ih*${p.y.toFixed(3)}` : `${p.y}`
-      const wExpr = isNormalized ? `iw*${p.width.toFixed(3)}` : `${p.width}`
-      const hExpr = isNormalized ? `ih*${p.height.toFixed(3)}` : `${p.height}`
+      let cx = isNormalized ? p.x : p.x / 1920 // normalize pixel coords to 0-1
+      let cy = isNormalized ? p.y : p.y / 1080
+      let cw = isNormalized ? p.width : p.width / 1920
+      let ch = isNormalized ? p.height : p.height / 1080
+
+      // Transform coordinates if a zoom layout is active during this effect
+      if (zoomSegments && zoomSegments.length > 0) {
+        const midTime = endTime ? (startTime + endTime) / 2 : startTime
+        const activeZoom = zoomSegments.find(z => midTime >= z.concatStart && midTime < z.concatEnd)
+        if (activeZoom) {
+          const zoomRect = getZoomCropRect(activeZoom.layout, activeZoom.params, activeZoom.webcamRegion, activeZoom.sourceWidth)
+          if (zoomRect) {
+            const transformed = transformCoordsForZoom({ x: cx, y: cy, w: cw, h: ch }, zoomRect)
+            if (!transformed) {
+              // Region is completely outside zoom crop — skip this effect
+              logger.debug(`[EDL Compiler] highlight_region at t=${startTime.toFixed(3)} is outside zoom crop, skipping`)
+              return ''
+            }
+            cx = transformed.x
+            cy = transformed.y
+            cw = transformed.w
+            ch = transformed.h
+            logger.debug(`[EDL Compiler] highlight_region transformed for zoom: (${p.x},${p.y}) → (${cx.toFixed(3)},${cy.toFixed(3)})`)
+          }
+        }
+      }
+
+      // Convert to FFmpeg expressions (always normalized after transform)
+      const xExpr = `iw*${cx.toFixed(3)}`
+      const yExpr = `ih*${cy.toFixed(3)}`
+      const wExpr = `iw*${cw.toFixed(3)}`
+      const hExpr = `ih*${ch.toFixed(3)}`
 
       let filter: string
 
       if (animation === 'pulse') {
-        // Oscillating border width for pulse effect (cycles ~2Hz)
+        // FFmpeg drawbox t= doesn't support expression functions (abs/sin).
+        // Use a fixed max thickness for the pulse effect instead.
         const maxThickness = borderWidth * 3
-        filter = `drawbox=x=${xExpr}:y=${yExpr}:w=${wExpr}:h=${hExpr}:color=${color}:t=${borderWidth}+${maxThickness - borderWidth}*abs(sin(t*6.28)):${enable}`
+        filter = `drawbox=x=${xExpr}:y=${yExpr}:w=${wExpr}:h=${hExpr}:color=${color}:t=${maxThickness}:${enable}`
       } else if (animation === 'draw') {
         // Progressive border reveal — animate width from 0 to full over 0.5s
         const drawDur = 0.5
-        const animW = `min(${wExpr}\,(${wExpr})*(t-${startTime.toFixed(3)})/${drawDur.toFixed(3)})`
+        const animW = `min(${wExpr}\\,(${wExpr})*(t-${startTime.toFixed(3)})/${drawDur.toFixed(3)})`
         filter = `drawbox=x=${xExpr}:y=${yExpr}:w=${animW}:h=${hExpr}:color=${color}:t=${borderWidth}:${enable}`
       } else {
         filter = `drawbox=x=${xExpr}:y=${yExpr}:w=${wExpr}:h=${hExpr}:color=${color}:t=${borderWidth}:${enable}`
@@ -681,6 +839,45 @@ export function compileEdl(edl: EditDecisionList): CompileResult {
   // Determine the video output label before effects
   let videoOutput = segmentLabels.length === 1 ? segmentLabels[0] : 'vmerged'
 
+  // Build zoom context for coordinate transformation of highlight_region effects.
+  // Maps each segment's time range in the concat timeline to its layout/zoom params.
+  const zoomSegments: ZoomSegment[] = []
+  if (layouts.length > 0) {
+    const segDurations: number[] = []
+    for (let i = 0; i < layouts.length; i++) {
+      const layout = layouts[i]
+      const nextLayout = layouts[i + 1]
+      segDurations.push((layout.endTime ?? nextLayout?.startTime ?? (metadata?.sourceDuration ?? 3600)) - layout.startTime)
+    }
+
+    let concatOffset = 0
+    for (let i = 0; i < layouts.length; i++) {
+      const layout = layouts[i]
+      const segEnd = concatOffset + segDurations[i]
+
+      // Account for xfade overlap reducing concat duration
+      let xfadeDur = 0
+      if (i > 0) {
+        const boundary = layout.startTime
+        const tr = transitions.find(t => Math.abs(t.startTime - boundary) < 0.5)
+        if (tr && tr.tool !== 'cut') {
+          xfadeDur = (tr.params as FadeParams).duration ?? 0.5
+        }
+      }
+
+      const actualStart = i === 0 ? 0 : concatOffset - xfadeDur
+      zoomSegments.push({
+        concatStart: actualStart,
+        concatEnd: actualStart + segDurations[i],
+        layout: layout.tool as LayoutType,
+        params: layout.params,
+        webcamRegion,
+        sourceWidth: metadata?.sourceWidth,
+      })
+      concatOffset = segEnd - xfadeDur
+    }
+  }
+
   // Apply effects as overlay filters
   if (effects.length > 0) {
     const effectFilters: string[] = []
@@ -692,6 +889,7 @@ export function compileEdl(edl: EditDecisionList): CompileResult {
         effect.startTime,
         effect.endTime,
         metadata?.fontPath,
+        zoomSegments,
       )
       if (effectFilter) {
         logger.debug(`[EDL Compiler] EFFECT (${effect.tool}): t=${effect.startTime.toFixed(3)}-${effect.endTime?.toFixed(3) ?? '?'} → ${effectFilter}`)

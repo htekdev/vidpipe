@@ -7,10 +7,11 @@
  */
 import { MainVideoAsset } from './src/assets/MainVideoAsset.js'
 import { setVerbose } from './src/config/logger.js'
+import type { AspectRatio } from './src/types/index.js'
 
 setVerbose()
 
-const videoDir = process.argv[2] || 'recordings/bandicam-2026-02-10-18-37-56-001'
+const videoDir = process.argv[2] || 'recordings/bandicam-2026-02-13-16-48-11-858'
 
 console.log('=== ProducerAgent Test (VideoAsset Architecture) ===\n')
 console.log(`Loading video from: ${videoDir}`)
@@ -39,13 +40,22 @@ try {
   const chapters = await video.getChapters()
   console.log(`  Chapters: ${chapters.length}`)
   
-  // Run the producer to create the final video
-  console.log(`\n=== Running ProducerAgent ===\n`)
-  const producedPath = await video.getProducedVideo({force: true}, '9:16')
-  
-  console.log(`\n=== Result ===`)
-  console.log(`Produced video: ${producedPath}`)
-  
+  // Run the producer for all aspect ratios
+  const aspectRatios: AspectRatio[] = ['16:9', '9:16', '1:1', '4:5']
+  const results: { ratio: AspectRatio; path: string }[] = []
+
+  for (const ratio of aspectRatios) {
+    console.log(`\n=== Running ProducerAgent (${ratio}) ===\n`)
+    const producedPath = await video.getProducedVideo({force: true}, ratio)
+    results.push({ ratio, path: producedPath })
+    console.log(`  ✓ ${ratio} → ${producedPath}`)
+  }
+
+  console.log(`\n=== Results ===`)
+  for (const { ratio, path } of results) {
+    console.log(`  ${ratio.padEnd(5)} → ${path}`)
+  }
+  process.exit(0)
 } catch (error) {
   console.error('\n=== Error ===')
   console.error(error instanceof Error ? error.message : String(error))

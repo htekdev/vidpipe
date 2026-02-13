@@ -14,6 +14,9 @@ import type { AspectRatio } from '../types/index.js'
 import type { VideoAsset } from '../assets/VideoAsset.js'
 import { fontsDir, join } from '../core/paths.js'
 import logger from '../config/logger.js'
+import { writeFile, unlink } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join as pathJoin } from 'node:path'
 
 // ── System prompt ───────────────────────────────────────────────────────────
 
@@ -446,13 +449,18 @@ export class ProducerAgent extends BaseAgent {
     logger.info(`[ProducerAgent] Filter complex generated (${compiled.filterComplex.length} chars)`)
     logger.debug(`[ProducerAgent] Filter complex:\n${compiled.filterComplex}`)
 
-    // Build FFmpeg args (inject b_roll inputs before -filter_complex)
+    // Build FFmpeg args — write filter_complex to a temp file to avoid
+    // two-level escaping issues with -filter_complex (filtergraph + option levels)
+    const scriptPath = pathJoin(tmpdir(), `vidpipe-fc-${Date.now()}.txt`)
+    await writeFile(scriptPath, compiled.filterComplex, 'utf8')
+    logger.debug(`[ProducerAgent] Filter script written to: ${scriptPath}`)
+
     const ffmpegArgs = [
       '-i',
       this.video.videoPath,
       ...compiled.inputArgs,
-      '-filter_complex',
-      compiled.filterComplex,
+      '-filter_complex_script',
+      scriptPath,
       ...compiled.outputArgs,
       '-y',
       this.outputPath,
@@ -461,7 +469,16 @@ export class ProducerAgent extends BaseAgent {
     logger.info(`[ProducerAgent] Executing FFmpeg render...`)
 
     // Execute FFmpeg
-    const result: FfmpegResult = await runFfmpeg(ffmpegArgs)
+    let result: FfmpegResult
+    try {
+      result = await runFfmpeg(ffmpegArgs)
+    } finally {
+      if (result!.success) {
+        await unlink(scriptPath).catch(() => {})
+      } else {
+        logger.warn(`[ProducerAgent] Filter script preserved for debugging: ${scriptPath}`)
+      }
+    }
 
     if (result.success) {
       logger.info(`[ProducerAgent] Render complete: ${this.outputPath}`)
@@ -562,6 +579,8 @@ Be creative but purposeful — every edit should improve viewer engagement.`
         success: false,
         error: message,
       }
+    } finally {
+      await this.destroy()
     }
   }
 }

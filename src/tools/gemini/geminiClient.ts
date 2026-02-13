@@ -9,11 +9,14 @@
  */
 import { GoogleGenAI, createUserContent, createPartFromUri, createPartFromBase64 } from '@google/genai'
 import fs from 'node:fs'
+import path from 'node:path'
+import os from 'node:os'
 import { getConfig } from '../../config/environment.js'
 import logger from '../../config/logger.js'
 import { costTracker } from '../../services/costTracker.js'
 import { execCommand } from '../../core/process.js'
 import { getFFprobePath } from '../../core/ffmpeg.js'
+import { sharp } from '../../core/media.js'
 
 
 /** Tokens per second of video footage (~263 tokens/s per Gemini docs) */
@@ -139,9 +142,20 @@ export interface DetectedElement {
   height: number
 }
 
-const IMAGE_ANALYSIS_PROMPT = `You are a precise visual analysis assistant. Analyze this screenshot and identify all distinct UI elements, text blocks, and interactive regions.
+const GRID_SPACING = 100
 
-For EACH element, return its bounding box in PIXEL coordinates. The image is IMAGE_WIDTH x IMAGE_HEIGHT pixels.
+const IMAGE_ANALYSIS_PROMPT = `You are a precise visual analysis assistant. This screenshot has a coordinate grid overlay:
+- RED vertical lines with X-axis pixel labels (at top and bottom edges)
+- BLUE horizontal lines with Y-axis pixel labels (at left and right edges)
+- Grid lines are spaced every ${GRID_SPACING}px. Major lines (every ${GRID_SPACING * 2}px) are thicker.
+- Each grid line is labeled with its exact pixel coordinate in a black box.
+
+CRITICAL: Use the grid lines as ANCHORS to determine exact pixel positions.
+- For example, if an element's left edge aligns with the red line labeled "400", its x coordinate is 400.
+- If an element sits between grid lines labeled "200" and "300", estimate proportionally (e.g., 240 if it's about 40% of the way).
+- ALWAYS cross-reference both X and Y grid lines to triangulate each corner.
+
+The image is IMAGE_WIDTH x IMAGE_HEIGHT pixels.
 
 Return ONLY a JSON array (no markdown fences, no explanation) with this structure:
 [
@@ -149,15 +163,63 @@ Return ONLY a JSON array (no markdown fences, no explanation) with this structur
 ]
 
 Rules:
-- Coordinates MUST be in pixels for a IMAGE_WIDTH x IMAGE_HEIGHT image
-- x, y = top-left corner of the bounding box
+- x, y = top-left corner of the bounding box, determined by nearest grid lines
 - width, height = size of the bounding box
 - x + width must not exceed IMAGE_WIDTH
 - y + height must not exceed IMAGE_HEIGHT
+- VERIFY each coordinate against the visible grid lines before returning
 - Be PRECISE — the box should tightly fit the element
 - Include: text blocks, buttons, panels, terminal output, code regions, webcam overlays, menus, tabs, icons
 - Label each element descriptively (e.g., "terminal output showing git status", "VS Code editor tab bar")
 - If a query is provided, prioritize elements matching the query but still include other notable elements`
+
+/**
+ * Overlay a coordinate grid on an image for Gemini reference.
+ * Returns the path to a temporary gridded image.
+ */
+async function overlayGrid(imagePath: string, spacing: number): Promise<string> {
+  const meta = await sharp(imagePath).metadata()
+  const w = meta.width!, h = meta.height!
+  const fontSize = 16
+  const bgPad = 4
+
+  const lines: string[] = []
+  const labels: string[] = []
+
+  for (let x = 0; x <= w; x += spacing) {
+    const isMajor = x % (spacing * 2) === 0
+    lines.push(`<line x1="${x}" y1="0" x2="${x}" y2="${h}" stroke="rgba(255,0,0,${isMajor ? 0.7 : 0.4})" stroke-width="${isMajor ? 2 : 1}"/>`)
+    const labelText = String(x)
+    const labelW = labelText.length * (fontSize * 0.6) + bgPad * 2
+    labels.push(`<rect x="${x + 1}" y="0" width="${labelW}" height="${fontSize + bgPad}" fill="rgba(0,0,0,0.7)" rx="2"/>`)
+    labels.push(`<text x="${x + bgPad + 1}" y="${fontSize}" font-size="${fontSize}" fill="#FF6666" font-family="monospace" font-weight="bold">${labelText}</text>`)
+    labels.push(`<rect x="${x + 1}" y="${h - fontSize - bgPad}" width="${labelW}" height="${fontSize + bgPad}" fill="rgba(0,0,0,0.7)" rx="2"/>`)
+    labels.push(`<text x="${x + bgPad + 1}" y="${h - bgPad}" font-size="${fontSize}" fill="#FF6666" font-family="monospace" font-weight="bold">${labelText}</text>`)
+  }
+
+  for (let y = 0; y <= h; y += spacing) {
+    const isMajor = y % (spacing * 2) === 0
+    lines.push(`<line x1="0" y1="${y}" x2="${w}" y2="${y}" stroke="rgba(0,100,255,${isMajor ? 0.7 : 0.4})" stroke-width="${isMajor ? 2 : 1}"/>`)
+    const labelText = String(y)
+    const labelW = labelText.length * (fontSize * 0.6) + bgPad * 2
+    labels.push(`<rect x="0" y="${y + 1}" width="${labelW}" height="${fontSize + bgPad}" fill="rgba(0,0,0,0.7)" rx="2"/>`)
+    labels.push(`<text x="${bgPad}" y="${y + fontSize + 1}" font-size="${fontSize}" fill="#6699FF" font-family="monospace" font-weight="bold">${labelText}</text>`)
+    labels.push(`<rect x="${w - labelW}" y="${y + 1}" width="${labelW}" height="${fontSize + bgPad}" fill="rgba(0,0,0,0.7)" rx="2"/>`)
+    labels.push(`<text x="${w - labelW + bgPad}" y="${y + fontSize + 1}" font-size="${fontSize}" fill="#6699FF" font-family="monospace" font-weight="bold">${labelText}</text>`)
+  }
+
+  const svg = Buffer.from(
+    `<svg width="${w}" height="${h}" xmlns="http://www.w3.org/2000/svg">${lines.join('\n')}${labels.join('\n')}</svg>`
+  )
+
+  const gridPath = path.join(os.tmpdir(), `grid-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`)
+  await sharp(imagePath)
+    .composite([{ input: svg, top: 0, left: 0 }])
+    .jpeg({ quality: 90 })
+    .toFile(gridPath)
+
+  return gridPath
+}
 
 /**
  * Get image dimensions using FFprobe.
@@ -213,10 +275,14 @@ export async function analyzeImageElements(
   const { width: imgWidth, height: imgHeight } = await getImageDimensions(imagePath)
   logger.info(`[Gemini] Image dimensions: ${imgWidth}x${imgHeight}`)
 
-  // Read image as base64
-  const imageBuffer = fs.readFileSync(imagePath)
+  // Overlay coordinate grid for better spatial accuracy
+  const gridPath = await overlayGrid(imagePath, GRID_SPACING)
+  logger.info(`[Gemini] Grid overlay created: ${gridPath}`)
+
+  // Read gridded image as base64
+  const imageBuffer = fs.readFileSync(gridPath)
   const base64 = imageBuffer.toString('base64')
-  const ext = imagePath.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg'
+  const ext = 'image/jpeg'
 
   const imagePart = createPartFromBase64(base64, ext)
 
@@ -262,27 +328,17 @@ export async function analyzeImageElements(
       typeof e.height === 'number',
   )
 
-  // Detect if Gemini returned coordinates in a normalized/smaller space and rescale.
-  // Gemini often returns coords in a [0, 1000] normalized space regardless of prompt.
-  if (imgWidth > 0 && imgHeight > 0 && elements.length > 0) {
-    const maxX = Math.max(...elements.map(e => e.x + e.width))
-    const maxY = Math.max(...elements.map(e => e.y + e.height))
+  // Clamp coordinates to image bounds
+  elements = elements.map(e => ({
+    ...e,
+    x: Math.max(0, Math.round(e.x)),
+    y: Math.max(0, Math.round(e.y)),
+    width: Math.round(Math.min(e.width, imgWidth - Math.max(0, e.x))),
+    height: Math.round(Math.min(e.height, imgHeight - Math.max(0, e.y))),
+  }))
 
-    // If all coordinates fit within ~1000 but the image is much larger,
-    // Gemini likely returned normalized [0, 1000] coordinates
-    if (maxX <= 1050 && maxY <= 1050 && (imgWidth > 1500 || imgHeight > 1500)) {
-      logger.info(`[Gemini] Detected normalized coords (max extent: ${maxX}x${maxY}), rescaling to ${imgWidth}x${imgHeight}`)
-      const scaleX = imgWidth / 1000
-      const scaleY = imgHeight / 1000
-      elements = elements.map(e => ({
-        ...e,
-        x: Math.round(e.x * scaleX),
-        y: Math.round(e.y * scaleY),
-        width: Math.round(e.width * scaleX),
-        height: Math.round(e.height * scaleY),
-      }))
-    }
-  }
+  // Clean up temp grid file
+  try { fs.unlinkSync(gridPath) } catch { /* ignore */ }
 
   logger.info(`[Gemini] Detected ${elements.length} elements`)
 
