@@ -21,6 +21,7 @@ export const AGENT_MODEL_MAP: Record<string, string> = {
   ChapterAgent: PREMIUM_MODEL,
   ShortPostsAgent: PREMIUM_MODEL,
   MediumClipPostsAgent: PREMIUM_MODEL,
+  ProducerAgent: PREMIUM_MODEL,
 };
 
 /**

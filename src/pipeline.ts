@@ -2,7 +2,7 @@ import { join, dirname, basename } from './core/paths.js'
 import { ensureDirectory, writeJsonFile, writeTextFile, copyFile, removeFile } from './core/fileSystem.js'
 import logger from './config/logger'
 import { getConfig } from './config/environment'
-import { ingestVideo } from './services/videoIngestion'
+import { MainVideoAsset } from './assets/MainVideoAsset.js'
 import { transcribeVideo } from './services/transcription'
 import { generateCaptions } from './services/captionGeneration'
 import { generateSummary } from './agents/SummaryAgent'
@@ -155,12 +155,16 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   logger.info(`Pipeline starting for: ${videoPath}`)
 
   // 1. Ingestion — required for all subsequent stages
-  const video = await runStage<VideoFile>(Stage.Ingestion, () => ingestVideo(videoPath), stageResults)
-  if (!video) {
+  // Use MainVideoAsset for ingestion, then convert to VideoFile for compatibility
+  const videoAsset = await runStage<MainVideoAsset>(Stage.Ingestion, () => MainVideoAsset.ingest(videoPath), stageResults)
+  if (!videoAsset) {
     const totalDuration = Date.now() - pipelineStart
     logger.error('Ingestion failed — cannot proceed without video metadata')
     return { video: { originalPath: videoPath, repoPath: '', videoDir: '', slug: '', filename: '', duration: 0, size: 0, createdAt: new Date() }, transcript: undefined, editedVideoPath: undefined, captions: undefined, captionedVideoPath: undefined, summary: undefined, shorts: [], mediumClips: [], socialPosts: [], blogPost: undefined, stageResults, totalDuration }
   }
+
+  // Convert to VideoFile for backward compatibility with existing agents/services
+  const video = await videoAsset.toVideoFile()
 
   // 2. Transcription
   let transcript: Transcript | undefined

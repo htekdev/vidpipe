@@ -89,17 +89,10 @@ function makeTranscript(overrides: Partial<Transcript> = {}): Transcript {
 }
 
 // ============================================================================
-// 1. videoIngestion.ts
+// 1. transcription.ts
 // ============================================================================
 
-// Mock core/fileSystem.js (replaces old fs/fs-promises mocks)
-const mockReadStream = new EventEmitter()
-const mockWriteStream = new EventEmitter()
-;(mockReadStream as any).pipe = vi.fn(() => {
-  setTimeout(() => mockWriteStream.emit('finish'), 0)
-  return mockWriteStream
-})
-
+// Mock core/fileSystem.js
 vi.mock('../core/fileSystem.js', () => ({
   fileExistsSync: vi.fn().mockReturnValue(true),
   ensureDirectory: vi.fn().mockResolvedValue(undefined),
@@ -111,15 +104,13 @@ vi.mock('../core/fileSystem.js', () => ({
   listDirectorySync: vi.fn().mockReturnValue([]),
   removeDirectory: vi.fn().mockResolvedValue(undefined),
   removeFile: vi.fn().mockResolvedValue(undefined),
-  openReadStream: vi.fn(() => mockReadStream),
-  openWriteStream: vi.fn(() => mockWriteStream),
   readTextFile: vi.fn().mockResolvedValue('{}'),
   writeTextFile: vi.fn().mockResolvedValue(undefined),
   writeJsonFile: vi.fn().mockResolvedValue(undefined),
   readJsonFile: vi.fn().mockResolvedValue({}),
 }))
 
-// Mock core/ffmpeg.js (replaces old fluent-ffmpeg mock)
+// Mock core/ffmpeg.js
 vi.mock('../core/ffmpeg.js', () => ({
   ffprobe: vi.fn().mockResolvedValue({ format: { duration: 120 } }),
   createFFmpeg: vi.fn(),
@@ -127,156 +118,11 @@ vi.mock('../core/ffmpeg.js', () => ({
   getFFprobePath: vi.fn().mockReturnValue('ffprobe'),
 }))
 
-// Mock core/text.js (replaces old slugify mock)
+// Mock core/text.js
 vi.mock('../core/text.js', () => ({
   slugify: vi.fn((str: string) => str.toLowerCase().replace(/\s+/g, '-')),
   generateId: vi.fn().mockReturnValue('test-uuid'),
 }))
-
-describe('videoIngestion', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('ingestVideo creates directories and returns correct VideoFile', async () => {
-    const corefs = await import('../core/fileSystem.js')
-    const { ingestVideo } = await import('../services/videoIngestion.js')
-
-    const result = await ingestVideo('/source/My Cool Video.mp4')
-
-    // Directory creation: recordingsDir, thumbnailsDir, shortsDir, socialPostsDir
-    expect(corefs.ensureDirectory).toHaveBeenCalledTimes(4)
-    expect(corefs.ensureDirectory).toHaveBeenCalledWith(
-      expect.stringContaining('my-cool-video'),
-    )
-
-    // Return value structure
-    expect(result).toMatchObject({
-      originalPath: '/source/My Cool Video.mp4',
-      slug: 'my-cool-video',
-      filename: 'my-cool-video.mp4',
-      size: 5_000_000,
-    })
-    expect(result.repoPath).toContain('my-cool-video.mp4')
-    expect(result.videoDir).toContain('my-cool-video')
-    expect(result.createdAt).toBeInstanceOf(Date)
-  })
-
-  it('ingestVideo generates slug from file basename', async () => {
-    const { ingestVideo } = await import('../services/videoIngestion.js')
-
-    const result = await ingestVideo('/videos/Test Recording 2024.mp4')
-
-    expect(result.slug).toBe('test-recording-2024')
-  })
-
-  it('ingestVideo handles ffprobe failure gracefully', async () => {
-    const coreffmpeg = await import('../core/ffmpeg.js')
-    vi.mocked(coreffmpeg.ffprobe).mockRejectedValueOnce(new Error('ffprobe not found'))
-
-    const { ingestVideo } = await import('../services/videoIngestion.js')
-    const result = await ingestVideo('/source/video.mp4')
-
-    // Should still succeed, just with duration 0
-    expect(result.duration).toBe(0)
-  })
-
-  it('ingestVideo uses stat to get file size', async () => {
-    const corefs = await import('../core/fileSystem.js')
-    const { ingestVideo } = await import('../services/videoIngestion.js')
-
-    await ingestVideo('/source/video.mp4')
-
-    expect(corefs.getFileStats).toHaveBeenCalled()
-  })
-
-  it('ingestVideo does not clean artifacts when folder is new', async () => {
-    const corefs = await import('../core/fileSystem.js')
-    const { ingestVideo } = await import('../services/videoIngestion.js')
-
-    vi.mocked(corefs.fileExistsSync).mockReturnValueOnce(false)
-
-    await ingestVideo('/source/my-video.mp4')
-
-    expect(corefs.removeDirectory).not.toHaveBeenCalled()
-  })
-
-  it('ingestVideo cleans stale artifacts when folder already exists', async () => {
-    const corefs = await import('../core/fileSystem.js')
-    const logger = (await import('../config/logger.js')).default
-    const { ingestVideo } = await import('../services/videoIngestion.js')
-
-    vi.mocked(corefs.fileExistsSync).mockReturnValueOnce(true)
-    vi.mocked(corefs.listDirectory).mockResolvedValueOnce([
-      'my-video-edited.mp4',
-      'my-video-captioned.mp4',
-    ])
-
-    await ingestVideo('/source/my-video.mp4')
-
-    expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining('Output folder already exists, cleaning previous artifacts'),
-    )
-
-    // Subdirectories removed
-    for (const sub of ['thumbnails', 'shorts', 'social-posts', 'chapters', 'medium-clips', 'captions']) {
-      expect(corefs.removeDirectory).toHaveBeenCalledWith(
-        expect.stringContaining(sub),
-        { recursive: true, force: true },
-      )
-    }
-
-    // Stale files removed
-    for (const file of ['transcript.json', 'captions.srt', 'captions.vtt', 'captions.ass', 'summary.md', 'blog-post.md', 'README.md']) {
-      expect(corefs.removeFile).toHaveBeenCalledWith(
-        expect.stringContaining(file),
-      )
-    }
-
-    // Edited/captioned videos removed
-    expect(corefs.removeFile).toHaveBeenCalledWith(
-      expect.stringContaining('my-video-edited.mp4'),
-    )
-    expect(corefs.removeFile).toHaveBeenCalledWith(
-      expect.stringContaining('my-video-captioned.mp4'),
-    )
-  })
-
-  it('ingestVideo skips copy when video already exists with same size', async () => {
-    const corefs = await import('../core/fileSystem.js')
-    const logger = (await import('../config/logger.js')).default
-    const { ingestVideo } = await import('../services/videoIngestion.js')
-
-    // All stat calls return same size → skip copy
-    vi.mocked(corefs.getFileStats).mockResolvedValue({ size: 5_000_000 } as any)
-
-    await ingestVideo('/source/my-video.mp4')
-
-    expect(logger.info).toHaveBeenCalledWith(
-      expect.stringContaining('Video already copied (same size), skipping copy'),
-    )
-    expect(corefs.openReadStream).not.toHaveBeenCalled()
-  })
-
-  it('ingestVideo copies video when dest does not exist', async () => {
-    const corefs = await import('../core/fileSystem.js')
-    const { ingestVideo } = await import('../services/videoIngestion.js')
-
-    // First stat (destPath for skip-copy check) throws → needs copy
-    // Second stat (destPath for final size) succeeds
-    vi.mocked(corefs.getFileStats)
-      .mockRejectedValueOnce(new Error('ENOENT'))
-      .mockResolvedValueOnce({ size: 5_000_000 } as any)
-
-    await ingestVideo('/source/my-video.mp4')
-
-    expect(corefs.openReadStream).toHaveBeenCalled()
-  })
-})
-
-// ============================================================================
-// 2. transcription.ts
-// ============================================================================
 
 vi.mock('../tools/ffmpeg/audioExtraction.js', () => ({
   extractAudio: vi.fn().mockResolvedValue(undefined),

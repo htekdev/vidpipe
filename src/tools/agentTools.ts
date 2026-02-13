@@ -64,6 +64,19 @@ export interface ImageGenerationResult {
   imagePath: string
 }
 
+export interface DrawRegion {
+  x: number
+  y: number
+  width: number
+  height: number
+  label: string
+  color?: string // Default: red for first, blue for second, etc.
+}
+
+export interface DrawRegionsResult {
+  imagePath: string
+}
+
 // ============================================================================
 // FRAME CAPTURE
 // ============================================================================
@@ -103,6 +116,76 @@ export async function captureFrame(
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     throw new Error(`Frame capture failed at ${timestamp}s: ${message}`)
+  }
+}
+
+// ============================================================================
+// DRAW REGIONS (for visual verification before encoding)
+// ============================================================================
+
+const REGION_COLORS = ['red', 'blue', 'green', 'yellow', 'cyan', 'magenta']
+
+/**
+ * Draw labeled rectangles on an image to visualize crop regions.
+ *
+ * Use this to verify coordinates BEFORE running expensive FFmpeg encode.
+ * The agent can see the annotated frame and confirm regions are correct.
+ *
+ * @param imagePath - Path to the source image (frame)
+ * @param regions - Array of regions to draw with x, y, width, height, label
+ * @returns Object containing the path to the annotated image
+ */
+export async function drawRegions(
+  imagePath: string,
+  regions: DrawRegion[],
+): Promise<DrawRegionsResult> {
+  const uuid = crypto.randomUUID()
+  const outputPath = join(os.tmpdir(), `annotated-${uuid}.jpg`)
+
+  logger.debug(`[agentTools] Drawing ${regions.length} regions on ${imagePath}`)
+
+  // Build FFmpeg drawbox and drawtext filters
+  const filters: string[] = []
+
+  for (let i = 0; i < regions.length; i++) {
+    const r = regions[i]
+    const color = r.color ?? REGION_COLORS[i % REGION_COLORS.length]
+
+    // Draw rectangle outline (thickness 4)
+    filters.push(`drawbox=x=${r.x}:y=${r.y}:w=${r.width}:h=${r.height}:color=${color}:t=4`)
+
+    // Escape label for FFmpeg drawtext filter (colons, quotes, backslashes, brackets)
+    const safeLabel = r.label
+      .replace(/\\/g, '/')
+      .replace(/'/g, '')
+      .replace(/:/g, ' ')
+      .replace(/\[/g, '(')
+      .replace(/\]/g, ')')
+      .replace(/;/g, ' ')
+      .replace(/%/g, '')
+
+    // Draw label at top-left of rectangle with background
+    filters.push(
+      `drawtext=text='${safeLabel}':x=${r.x + 5}:y=${r.y + 5}:fontsize=24:fontcolor=white:box=1:boxcolor=${color}@0.7:boxborderw=5`
+    )
+  }
+
+  const ffmpegPath = getFFmpegPath()
+  const args = [
+    '-i', imagePath,
+    '-vf', filters.join(','),
+    '-q:v', '2',
+    '-y',
+    outputPath,
+  ]
+
+  try {
+    await execCommand(ffmpegPath, args, { timeout: 30000 })
+    logger.debug(`[agentTools] Annotated frame saved: ${outputPath}`)
+    return { imagePath: outputPath }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    throw new Error(`Failed to draw regions: ${message}`)
   }
 }
 
@@ -249,10 +332,22 @@ export async function runFfmpeg(args: string[]): Promise<FfmpegResult> {
       { maxBuffer: 50 * 1024 * 1024, timeout: 600000 },
       (error, _stdout, stderr) => {
         if (error) {
-          logger.error(`[agentTools] FFmpeg failed: ${stderr}`)
+          // Extract just the meaningful error lines from FFmpeg's verbose stderr
+          const errorLines = (stderr || error.message)
+            .split('\n')
+            .filter((line: string) => {
+              const trimmed = line.trim()
+              if (!trimmed) return false
+              if (trimmed.startsWith('Fontconfig error')) return false
+              return /^\[|^Error|^Invalid|No such/.test(trimmed)
+            })
+          const shortError = errorLines.length > 0
+            ? errorLines.join('\n')
+            : (stderr || error.message).split('\n').slice(-5).join('\n')
+          logger.error(`[agentTools] FFmpeg failed:\n${shortError}`)
           resolve({
             success: false,
-            error: stderr || error.message,
+            error: shortError,
           })
           return
         }

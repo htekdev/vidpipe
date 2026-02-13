@@ -7,7 +7,6 @@ import { PipelineStage } from '../types/index.js'
 const {
   mockLogger,
   mockGetConfig,
-  mockIngestVideo,
   mockTranscribeVideo,
   mockGenerateCaptions,
   mockGenerateSummary,
@@ -25,7 +24,6 @@ const {
 } = vi.hoisted(() => ({
   mockLogger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
   mockGetConfig: vi.fn(),
-  mockIngestVideo: vi.fn(),
   mockTranscribeVideo: vi.fn(),
   mockGenerateCaptions: vi.fn(),
   mockGenerateSummary: vi.fn(),
@@ -46,7 +44,6 @@ const {
 
 vi.mock('../config/logger.js', () => ({ default: mockLogger }))
 vi.mock('../config/environment.js', () => ({ getConfig: mockGetConfig }))
-vi.mock('../services/videoIngestion.js', () => ({ ingestVideo: mockIngestVideo }))
 vi.mock('../services/transcription.js', () => ({ transcribeVideo: mockTranscribeVideo }))
 vi.mock('../services/captionGeneration.js', () => ({ generateCaptions: mockGenerateCaptions }))
 vi.mock('../agents/SummaryAgent.js', () => ({ generateSummary: mockGenerateSummary }))
@@ -63,6 +60,15 @@ vi.mock('../agents/SilenceRemovalAgent.js', () => ({ removeDeadSilence: mockRemo
 vi.mock('../tools/ffmpeg/captionBurning.js', () => ({ burnCaptions: mockBurnCaptions }))
 vi.mock('../tools/ffmpeg/singlePassEdit.js', () => ({ singlePassEditAndCaption: mockSinglePassEditAndCaption }))
 vi.mock('../services/queueBuilder.js', () => ({ buildPublishQueue: mockBuildPublishQueue }))
+
+// Mock MainVideoAsset to avoid loading faceDetection at module load time
+vi.mock('../assets/MainVideoAsset.js', () => {
+  return {
+    MainVideoAsset: {
+      ingest: vi.fn(),
+    },
+  }
+})
 
 vi.mock('fs', async (importOriginal) => {
   const actual = await importOriginal<typeof import('fs')>()
@@ -81,6 +87,10 @@ vi.mock('fs', async (importOriginal) => {
 // ---- Import after mocks ----
 
 import { adjustTranscript, runStage, processVideo, processVideoSafe } from '../pipeline.js'
+import { MainVideoAsset } from '../assets/MainVideoAsset.js'
+
+// Get reference to mocked ingest for use in tests
+const mockMainVideoAssetIngest = vi.mocked(MainVideoAsset.ingest)
 
 // ---- Helpers ----
 
@@ -284,7 +294,9 @@ describe('processVideo', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetConfig.mockReturnValue(defaultConfig())
-    mockIngestVideo.mockResolvedValue(video)
+    mockMainVideoAssetIngest.mockResolvedValue({
+      toVideoFile: () => video,
+    })
     mockTranscribeVideo.mockResolvedValue(transcript)
     mockRemoveDeadSilence.mockResolvedValue({ editedPath: '/edited.mp4', removals: [], keepSegments: [], wasEdited: false })
     mockGenerateCaptions.mockResolvedValue(['/captions.ass'])
@@ -312,7 +324,7 @@ describe('processVideo', () => {
 
   it('calls stages in correct order', async () => {
     const callOrder: string[] = []
-    mockIngestVideo.mockImplementation(async () => { callOrder.push('ingest'); return video })
+    mockMainVideoAssetIngest.mockImplementation(async () => { callOrder.push('ingest'); return { toVideoFile: () => video } })
     mockTranscribeVideo.mockImplementation(async () => { callOrder.push('transcribe'); return transcript })
     mockRemoveDeadSilence.mockImplementation(async () => { callOrder.push('silence'); return { editedPath: '', removals: [], keepSegments: [], wasEdited: false } })
     mockGenerateCaptions.mockImplementation(async () => { callOrder.push('captions'); return ['/captions.ass'] })
@@ -335,7 +347,7 @@ describe('processVideo', () => {
   })
 
   it('aborts early when ingestion fails', async () => {
-    mockIngestVideo.mockRejectedValue(new Error('ingest failed'))
+    mockMainVideoAssetIngest.mockRejectedValue(new Error('ingest failed'))
 
     const result = await processVideo('/videos/test.mp4')
 
@@ -548,7 +560,9 @@ describe('processVideoSafe', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetConfig.mockReturnValue(defaultConfig())
-    mockIngestVideo.mockResolvedValue(makeVideoFile())
+    mockMainVideoAssetIngest.mockResolvedValue({
+      toVideoFile: () => makeVideoFile(),
+    })
     mockTranscribeVideo.mockResolvedValue(makeTranscript())
     mockRemoveDeadSilence.mockResolvedValue({ editedPath: '', removals: [], keepSegments: [], wasEdited: false })
     mockGenerateCaptions.mockResolvedValue([])
