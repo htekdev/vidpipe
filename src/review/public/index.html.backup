@@ -1,0 +1,684 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>vidpipe — Review Queue</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            surface: '#1a1a2e',
+            card: '#16213e',
+            cardHover: '#1a2744',
+            accent: '#0f3460',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes fadeOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-12px); } }
+    @keyframes slideInRight { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes toastIn { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+    @keyframes toastOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-20px); } }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+
+    .card-enter { animation: fadeIn 0.3s ease-out forwards; }
+    .card-exit { animation: fadeOut 0.25s ease-in forwards; }
+    .slide-in { animation: slideInRight 0.3s ease-out forwards; }
+    .toast-enter { animation: toastIn 0.3s ease-out forwards; }
+    .toast-exit { animation: toastOut 0.3s ease-in forwards; }
+    .spinner { animation: spin 0.7s linear infinite; }
+    .skeleton { animation: pulse 1.5s ease-in-out infinite; }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: #1a1a2e; }
+    ::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 3px; }
+
+    /* Character count bar */
+    .char-bar { transition: width 0.3s ease, background-color 0.3s ease; }
+
+    /* Action button hover effects */
+    .action-btn { transition: all 0.15s ease; }
+    .action-btn:hover { transform: translateY(-2px); }
+    .action-btn:active { transform: translateY(0); }
+
+    /* Focus ring for keyboard navigation */
+    .action-btn:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+
+    /* Platform filter tab */
+    .platform-tab { transition: all 0.2s ease; }
+    .platform-tab.active { border-bottom: 2px solid currentColor; }
+
+    body { background: #0f0f23; }
+  </style>
+</head>
+<body class="h-full text-gray-100 overflow-hidden">
+  <div id="app" role="main" aria-label="Social media post review application"></div>
+
+  <script type="module">
+    import { h, render } from 'https://esm.sh/preact@10'
+    import { useState, useEffect, useCallback, useRef } from 'https://esm.sh/preact@10/hooks'
+    import htm from 'https://esm.sh/htm@3'
+    const html = htm.bind(h)
+
+    // ── Platform config ──
+    const PLATFORMS = {
+      tiktok:    { icon: '🎵', color: '#00f2ea', name: 'TikTok' },
+      youtube:   { icon: '▶️',  color: '#ff0000', name: 'YouTube' },
+      instagram: { icon: '📸', color: '#e1306c', name: 'Instagram' },
+      linkedin:  { icon: '💼', color: '#0077b5', name: 'LinkedIn' },
+      twitter:   { icon: '🐦', color: '#1da1f2', name: 'X/Twitter' },
+    }
+
+    // ── Helpers ──
+    function normalizePlatform(raw) {
+      if (!raw) return 'unknown'
+      const lower = raw.toLowerCase()
+      if (lower.includes('tiktok') || lower === 'tik-tok') return 'tiktok'
+      if (lower.includes('youtube') || lower === 'yt') return 'youtube'
+      if (lower.includes('instagram') || lower === 'ig') return 'instagram'
+      if (lower.includes('linkedin')) return 'linkedin'
+      if (lower.includes('twitter') || lower === 'x') return 'twitter'
+      return lower
+    }
+
+    function truncate(str, max) {
+      if (!str) return ''
+      return str.length > max ? str.slice(0, max) + '…' : str
+    }
+
+    function formatDate(iso) {
+      try {
+        const d = new Date(iso)
+        return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) +
+          ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+      } catch { return iso }
+    }
+
+    // ── Toast Container (imperative, lives outside Preact tree) ──
+    const toastContainer = document.createElement('div')
+    toastContainer.className = 'fixed top-4 right-4 z-50 flex flex-col gap-2'
+    document.body.appendChild(toastContainer)
+
+    function showToast(message, type = 'info') {
+      const colors = {
+        success: 'bg-green-500/20 border-green-500/30 text-green-300',
+        error:   'bg-red-500/20 border-red-500/30 text-red-300',
+        info:    'bg-blue-500/20 border-blue-500/30 text-blue-300',
+      }
+      const icons = { success: '✅', error: '⚠️', info: 'ℹ️' }
+      const toast = document.createElement('div')
+      toast.className = `toast-enter flex items-center gap-2 px-4 py-2.5 rounded-xl border backdrop-blur-sm text-sm shadow-lg ${colors[type] || colors.info}`
+      const iconSpan = document.createElement('span')
+      iconSpan.textContent = icons[type] || ''
+      const msgSpan = document.createElement('span')
+      msgSpan.textContent = message
+      toast.appendChild(iconSpan)
+      toast.appendChild(msgSpan)
+      toastContainer.appendChild(toast)
+      setTimeout(() => {
+        toast.classList.remove('toast-enter')
+        toast.classList.add('toast-exit')
+        setTimeout(() => toast.remove(), 300)
+      }, 4000)
+    }
+
+    // ── Components ──
+
+    function LoadingOverlay({ busy, text }) {
+      if (!busy) return null
+      return html`
+        <div class="fixed inset-0 z-40 bg-black/50 flex items-center justify-center">
+          <div class="bg-card rounded-2xl p-8 flex flex-col items-center gap-3 shadow-2xl">
+            <div class="w-8 h-8 border-3 border-blue-400 border-t-transparent rounded-full spinner" style="border-width:3px"></div>
+            <span class="text-sm text-gray-400">${text}</span>
+          </div>
+        </div>`
+    }
+
+    function Header({ profileName }) {
+      const subtitle = profileName ? `Review Queue — ${profileName}` : 'Review Queue'
+      return html`
+        <header class="flex-shrink-0 border-b border-white/10 bg-surface/80 backdrop-blur-sm">
+          <div class="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <span class="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">vidpipe</span>
+              <span class="text-gray-500 text-sm">${subtitle}</span>
+            </div>
+            <div class="flex items-center gap-2 text-xs text-gray-500" aria-label="Keyboard shortcuts: Left arrow to reject, Right arrow to approve, E to edit, Space to skip">
+              <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">←</kbd> Reject
+              <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">→</kbd> Approve
+              <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">E</kbd> Edit
+              <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">Space</kbd> Skip
+            </div>
+          </div>
+        </header>`
+    }
+
+    function PlatformTabs({ items, filter, onFilter }) {
+      const platforms = ['all', ...new Set(items.map(i => normalizePlatform(i.metadata.platform)))]
+      return html`
+        <nav class="flex-shrink-0 border-b border-white/5 bg-surface/50">
+          <div class="max-w-4xl mx-auto px-4 flex gap-1 overflow-x-auto">
+            ${platforms.map(p => {
+              const cfg = p === 'all' ? { icon: '📋', name: 'All' } : (PLATFORMS[p] || { icon: '❓', name: p })
+              const count = p === 'all' ? items.length : items.filter(i => normalizePlatform(i.metadata.platform) === p).length
+              const active = filter === p
+              const color = p === 'all' ? '#60a5fa' : cfg.color
+              const textColor = p === 'all' ? '#93c5fd' : cfg.color
+              return html`
+                <button
+                  class="platform-tab flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium text-gray-400 hover:text-gray-200 transition-colors border-b-2 border-transparent whitespace-nowrap ${active ? 'active text-gray-100' : ''}"
+                  style=${active ? `border-color: ${color}; color: ${textColor}` : ''}
+                  onClick=${() => onFilter(p)}>
+                  <span>${cfg.icon}</span> ${cfg.name} <span class="text-gray-600">${count}</span>
+                </button>`
+            })}
+          </div>
+        </nav>`
+    }
+
+    function SkeletonCard() {
+      return html`
+        <div class="w-full max-w-2xl">
+          <div class="bg-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden">
+            <div class="flex items-center justify-between px-5 pt-4 pb-2">
+              <div class="flex items-center gap-2">
+                <div class="w-6 h-6 bg-white/10 rounded skeleton"></div>
+                <div class="w-20 h-4 bg-white/10 rounded skeleton"></div>
+                <div class="w-16 h-3 bg-white/5 rounded skeleton"></div>
+              </div>
+              <div class="w-16 h-5 bg-white/10 rounded-full skeleton"></div>
+            </div>
+            <div class="px-5 pb-3">
+              <div class="rounded-xl bg-white/5 aspect-video skeleton"></div>
+            </div>
+            <div class="px-5 pb-3 space-y-2">
+              <div class="h-3 bg-white/10 rounded w-full skeleton"></div>
+              <div class="h-3 bg-white/10 rounded w-5/6 skeleton"></div>
+              <div class="h-3 bg-white/10 rounded w-4/6 skeleton"></div>
+            </div>
+            <div class="px-5 pb-3 flex gap-1.5">
+              <div class="w-16 h-5 bg-white/5 rounded-full skeleton"></div>
+              <div class="w-20 h-5 bg-white/5 rounded-full skeleton"></div>
+              <div class="w-14 h-5 bg-white/5 rounded-full skeleton"></div>
+            </div>
+            <div class="px-5 pb-3">
+              <div class="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                <div class="h-full w-1/2 bg-white/10 rounded-full skeleton"></div>
+              </div>
+            </div>
+            <div class="px-5 pb-4 flex gap-3">
+              <div class="w-24 h-3 bg-white/5 rounded skeleton"></div>
+              <div class="w-32 h-3 bg-white/5 rounded skeleton"></div>
+            </div>
+            <div class="border-t border-white/5"></div>
+            <div class="px-5 py-4 flex items-center justify-center gap-3">
+              <div class="w-24 h-10 bg-white/5 rounded-xl skeleton"></div>
+              <div class="w-20 h-10 bg-white/5 rounded-xl skeleton"></div>
+              <div class="w-20 h-10 bg-white/5 rounded-xl skeleton"></div>
+              <div class="w-24 h-10 bg-white/5 rounded-xl skeleton"></div>
+            </div>
+          </div>
+        </div>`
+    }
+
+    function EmptyState() {
+      return html`
+        <div class="flex flex-col items-center justify-center gap-4 text-center mt-20">
+          <div class="text-6xl">🎬</div>
+          <h2 class="text-xl font-semibold text-gray-300">No posts pending review</h2>
+          <p class="text-gray-500">Run your pipeline first!</p>
+        </div>`
+    }
+
+    function SummaryState({ stats }) {
+      return html`
+        <div class="flex flex-col items-center justify-center gap-6 text-center mt-20">
+          <div class="text-6xl">🎉</div>
+          <h2 class="text-2xl font-bold text-gray-200">All caught up!</h2>
+          <div class="flex gap-6 text-sm">
+            ${stats.approved > 0 && html`
+              <div class="flex flex-col items-center px-4 py-2 bg-green-500/10 rounded-xl border border-green-500/20">
+                <span class="text-2xl font-bold text-green-400">${stats.approved}</span>
+                <span class="text-green-400/70">approved</span>
+              </div>`}
+            ${stats.rejected > 0 && html`
+              <div class="flex flex-col items-center px-4 py-2 bg-red-500/10 rounded-xl border border-red-500/20">
+                <span class="text-2xl font-bold text-red-400">${stats.rejected}</span>
+                <span class="text-red-400/70">rejected</span>
+              </div>`}
+            ${stats.skipped > 0 && html`
+              <div class="flex flex-col items-center px-4 py-2 bg-white/5 rounded-xl border border-white/10">
+                <span class="text-2xl font-bold text-gray-400">${stats.skipped}</span>
+                <span class="text-gray-500">skipped</span>
+              </div>`}
+            ${stats.approved === 0 && stats.rejected === 0 && stats.skipped === 0 && html`
+              <div class="text-gray-400">Nothing to show</div>`}
+          </div>
+          <button onClick=${() => location.reload()} class="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors text-sm font-medium">
+            Refresh Queue
+          </button>
+        </div>`
+    }
+
+    function PlatformBadge({ platform, accounts, accountId }) {
+      const cfg = PLATFORMS[platform] || { icon: '❓', color: '#888', name: platform }
+      const connAcct = accounts[platform]
+      let accountDisplay = null
+      if (connAcct) {
+        const displayUser = connAcct.username || connAcct.displayName || connAcct._id
+        accountDisplay = html`<span class="text-xs text-gray-500">@${displayUser}</span>`
+      } else if (Object.keys(accounts).length > 0) {
+        accountDisplay = html`<span class="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">⚠ Not connected</span>`
+      } else if (accountId) {
+        accountDisplay = html`<span class="text-xs text-gray-500">@${accountId}</span>`
+      }
+      return html`
+        <div class="flex items-center gap-2">
+          <span class="text-lg">${cfg.icon}</span>
+          <span class="text-sm font-semibold" style="color: ${cfg.color}">${cfg.name}</span>
+          ${accountDisplay}
+        </div>`
+    }
+
+    function ClipTypeBadge({ clipType }) {
+      const labels = { 'video': '📹 Full Video', 'short': '⚡ Short', 'medium-clip': '🎬 Medium Clip' }
+      return html`<span class="text-xs px-2 py-0.5 rounded-full bg-white/10 text-gray-400">${labels[clipType] || clipType}</span>`
+    }
+
+    function VideoPlayer({ item }) {
+      const videoRef = useRef(null)
+      const prevIdRef = useRef(null)
+
+      useEffect(() => {
+        if (item.hasMedia && videoRef.current && prevIdRef.current !== item.id) {
+          videoRef.current.load()
+          prevIdRef.current = item.id
+        }
+      }, [item.id, item.hasMedia])
+
+      if (!item.hasMedia) {
+        return html`
+          <div class="px-5 pb-3">
+            <div class="rounded-xl overflow-hidden bg-black/40 aspect-video relative">
+              <div class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-purple-500/10 to-blue-500/10">
+                <div class="text-center">
+                  <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 border border-white/10 mb-2">
+                    <span class="text-lg">📝</span>
+                    <span class="text-sm font-semibold text-gray-300">Text Only</span>
+                  </div>
+                  <div class="text-xs text-gray-500">No media attachment needed</div>
+                </div>
+              </div>
+            </div>
+          </div>`
+      }
+
+      const mediaUrl = `/media/queue/${encodeURIComponent(item.id)}/media.mp4`
+      return html`
+        <div class="px-5 pb-3">
+          <div class="rounded-xl overflow-hidden bg-black/40 aspect-video relative">
+            <video ref=${videoRef} class="w-full h-full object-contain" controls autoplay muted loop playsinline>
+              <source src=${mediaUrl} type="video/mp4" />
+            </video>
+          </div>
+        </div>`
+    }
+
+    function PostContent({ item, editing, editText, onEditTextChange, onSave, onCancel }) {
+      const limit = item.metadata.platformCharLimit || 280
+
+      if (editing) {
+        const len = editText.length
+        return html`
+          <div class="px-5 pb-3">
+            <textarea
+              class="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-sm text-gray-200 leading-relaxed resize-y focus:outline-none focus:border-blue-500/50 transition-colors"
+              rows="6"
+              value=${editText}
+              onInput=${e => onEditTextChange(e.target.value)}
+              ref=${el => el && setTimeout(() => el.focus(), 0)}
+            ></textarea>
+            <div class="flex items-center justify-between mt-2">
+              <span class=${`text-xs ${len > limit ? 'text-red-400' : 'text-gray-500'}`}>${len} / ${limit}</span>
+              <div class="flex gap-2">
+                <button onClick=${onCancel} class="px-3 py-1.5 text-xs bg-white/5 hover:bg-white/10 rounded-lg transition-colors">Cancel</button>
+                <button onClick=${onSave} class="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors font-medium">Save</button>
+              </div>
+            </div>
+          </div>`
+      }
+
+      return html`
+        <div class="px-5 pb-3">
+          <div class="text-sm leading-relaxed text-gray-200 whitespace-pre-wrap break-words">${item.postContent || ''}</div>
+        </div>`
+    }
+
+    function HashtagRow({ hashtags, color }) {
+      if (!hashtags || hashtags.length === 0) return null
+      return html`
+        <div class="px-5 pb-3 flex flex-wrap gap-1.5">
+          ${hashtags.map(tag => html`
+            <span class="inline-block px-2 py-0.5 text-xs rounded-full font-medium"
+              style="background:${color}20;color:${color};border:1px solid ${color}30">
+              #${tag.replace(/^#/, '')}
+            </span>`)}
+        </div>`
+    }
+
+    function CharacterBar({ item }) {
+      const count = item.metadata.characterCount || (item.postContent || '').length
+      const limit = item.metadata.platformCharLimit || 280
+      const pct = Math.min((count / limit) * 100, 100)
+      const barColor = pct > 95 ? '#ef4444' : pct > 80 ? '#f59e0b' : '#22c55e'
+      return html`
+        <div class="px-5 pb-3">
+          <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
+            <span>Characters</span>
+            <span>${count} / ${limit}</span>
+          </div>
+          <div class="h-1.5 bg-white/5 rounded-full overflow-hidden">
+            <div class="char-bar h-full rounded-full" style="width: ${pct}%; background-color: ${barColor}"></div>
+          </div>
+        </div>`
+    }
+
+    function MetaRow({ item }) {
+      const sourceVideo = item.metadata.sourceVideo || 'Unknown'
+      const schedule = item.metadata.suggestedSlot
+      return html`
+        <div class="px-5 pb-4 flex items-center justify-between text-xs text-gray-500">
+          <div class="flex items-center gap-3">
+            <span title="Source video">📹 ${truncate(sourceVideo, 40)}</span>
+            ${schedule && html`<span title="Suggested schedule">🕐 ${formatDate(schedule)}</span>`}
+          </div>
+        </div>`
+    }
+
+    function ActionButtons({ editing, onReject, onEdit, onSkip, onApprove }) {
+      return html`
+        <div class=${`px-5 py-4 flex items-center justify-center gap-3 ${editing ? 'opacity-50 pointer-events-none' : ''}`}>
+          <button onClick=${onReject} class="action-btn flex items-center gap-2 px-5 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl text-sm font-medium border border-red-500/20" title="Reject (←)">
+            <span>❌</span> Reject
+          </button>
+          <button onClick=${onEdit} class="action-btn flex items-center gap-2 px-5 py-2.5 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 rounded-xl text-sm font-medium border border-yellow-500/20" title="Edit (E)">
+            <span>✏️</span> Edit
+          </button>
+          <button onClick=${onSkip} class="action-btn flex items-center gap-2 px-5 py-2.5 bg-white/5 hover:bg-white/10 text-gray-400 rounded-xl text-sm font-medium border border-white/10" title="Skip (Space)">
+            <span>⏭️</span> Skip
+          </button>
+          <button onClick=${onApprove} class="action-btn flex items-center gap-2 px-5 py-2.5 bg-green-500/10 hover:bg-green-500/20 text-green-400 rounded-xl text-sm font-medium border border-green-500/20" title="Approve (→)">
+            <span>✅</span> Approve
+          </button>
+        </div>`
+    }
+
+    function PostCard({ item, accounts, editing, editText, onEditTextChange, animClass, onReject, onEdit, onSkip, onApprove, onSaveEdit, onCancelEdit }) {
+      const platform = normalizePlatform(item.metadata.platform)
+      const cfg = PLATFORMS[platform] || { icon: '❓', color: '#888', name: platform }
+      return html`
+        <div class="w-full max-w-2xl" style="max-height: calc(100vh - 160px); display: flex; flex-direction: column;">
+          <div class="bg-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden flex flex-col ${animClass}" style="max-height: 100%;" key=${item.id}>
+            <!-- Fixed top: platform badge -->
+            <div class="flex-shrink-0 flex items-center justify-between px-5 pt-4 pb-2">
+              <${PlatformBadge} platform=${platform} accounts=${accounts} accountId=${item.metadata.accountId} />
+              <div class="flex items-center gap-2">
+                <${ClipTypeBadge} clipType=${item.metadata.clipType} />
+              </div>
+            </div>
+            <!-- Scrollable middle: video + content + meta -->
+            <div class="flex-1 overflow-y-auto min-h-0">
+              <${VideoPlayer} item=${item} />
+              <${PostContent} item=${item} editing=${editing} editText=${editText}
+                onEditTextChange=${onEditTextChange} onSave=${onSaveEdit} onCancel=${onCancelEdit} />
+              <${HashtagRow} hashtags=${item.metadata.hashtags} color=${cfg.color} />
+              <${CharacterBar} item=${item} />
+              <${MetaRow} item=${item} />
+            </div>
+            <!-- Fixed bottom: action buttons -->
+            <div class="flex-shrink-0 border-t border-white/5">
+              <${ActionButtons} editing=${editing} onReject=${onReject} onEdit=${onEdit} onSkip=${onSkip} onApprove=${onApprove} />
+            </div>
+          </div>
+        </div>`
+    }
+
+    function Footer({ items, index, stats, allDone }) {
+      const total = items.length
+      const current = Math.min(index + 1, total)
+      const progressText = allDone ? 'Review complete' : (total > 0 ? `Post ${current} of ${total}` : '')
+      return html`
+        <footer class="flex-shrink-0 border-t border-white/5 bg-surface/50">
+          <div class="max-w-4xl mx-auto px-4 py-2.5 flex items-center justify-between text-xs text-gray-500">
+            <span>${progressText}</span>
+            <div class="flex items-center gap-3">
+              ${stats.approved > 0 && html`<span class="text-green-400/70">✅ ${stats.approved}</span>`}
+              ${stats.rejected > 0 && html`<span class="text-red-400/70">❌ ${stats.rejected}</span>`}
+              ${stats.skipped > 0 && html`<span class="text-gray-500">⏭️ ${stats.skipped}</span>`}
+            </div>
+          </div>
+        </footer>`
+    }
+
+    // ── App ──
+    function App() {
+      const [allItems, setAllItems] = useState(null) // null = loading
+      const [accounts, setAccounts] = useState({})
+      const [profileName, setProfileName] = useState(null)
+      const [filter, setFilter] = useState('all')
+      const [index, setIndex] = useState(0)
+      const [editing, setEditing] = useState(false)
+      const [editText, setEditText] = useState('')
+      const [busy, setBusy] = useState(false)
+      const [busyText, setBusyText] = useState('Processing…')
+      const [stats, setStats] = useState({ approved: 0, rejected: 0, skipped: 0 })
+      const [animClass, setAnimClass] = useState('card-enter')
+
+      // Parallel data loading via combined init endpoint
+      useEffect(() => {
+        const fetchAll = async () => {
+          try {
+            const res = await fetch('/api/init')
+            if (!res.ok) throw new Error(`HTTP ${res.status}`)
+            const data = await res.json()
+
+            setAllItems(data.items || [])
+
+            const acctMap = {}
+            for (const acct of (data.accounts || [])) {
+              if (acct.platform) acctMap[acct.platform] = acct
+            }
+            setAccounts(acctMap)
+
+            if (data.profile && data.profile.name) setProfileName(data.profile.name)
+          } catch (err) {
+            showToast(`Failed to load: ${err.message}`, 'error')
+            setAllItems([])
+          }
+        }
+        fetchAll()
+      }, [])
+
+      // Compute filtered items
+      const filteredItems = allItems === null ? [] :
+        filter === 'all' ? [...allItems] :
+        allItems.filter(i => normalizePlatform(i.metadata.platform) === filter)
+
+      const currentItem = filteredItems[index] || null
+      const isLoading = allItems === null
+      const isEmpty = allItems !== null && allItems.length === 0
+      const allDone = !isEmpty && !isLoading && (filteredItems.length === 0 || index >= filteredItems.length)
+
+      const onFilter = useCallback((p) => {
+        setFilter(p)
+        setIndex(0)
+        setEditing(false)
+      }, [])
+
+      const animateOut = useCallback((cb) => {
+        setAnimClass('card-exit')
+        setTimeout(() => {
+          cb()
+          setAnimClass('card-enter')
+        }, 250)
+      }, [])
+
+      const approvePost = useCallback(async () => {
+        if (busy || editing || !currentItem) return
+        setBusy(true)
+        setBusyText('Scheduling post…')
+        try {
+          const res = await fetch(`/api/posts/${currentItem.id}/approve`, { method: 'POST' })
+          const data = await res.json()
+          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+          setStats(s => ({ ...s, approved: s.approved + 1 }))
+          showToast(`Approved! Scheduled for ${data.scheduledFor ? formatDate(data.scheduledFor) : 'publishing'}`, 'success')
+          animateOut(() => {
+            setAllItems(prev => prev.filter(i => i.id !== currentItem.id))
+          })
+        } catch (err) {
+          showToast(`Approve failed: ${err.message}`, 'error')
+        } finally {
+          setBusy(false)
+        }
+      }, [busy, editing, currentItem, animateOut])
+
+      const rejectPost = useCallback(async () => {
+        if (busy || editing || !currentItem) return
+        setBusy(true)
+        setBusyText('Rejecting…')
+        try {
+          const res = await fetch(`/api/posts/${currentItem.id}/reject`, { method: 'POST' })
+          if (!res.ok) {
+            const data = await res.json()
+            throw new Error(data.error || `HTTP ${res.status}`)
+          }
+          setStats(s => ({ ...s, rejected: s.rejected + 1 }))
+          showToast('Post rejected', 'info')
+          animateOut(() => {
+            setAllItems(prev => prev.filter(i => i.id !== currentItem.id))
+          })
+        } catch (err) {
+          showToast(`Reject failed: ${err.message}`, 'error')
+        } finally {
+          setBusy(false)
+        }
+      }, [busy, editing, currentItem, animateOut])
+
+      const skipPost = useCallback(() => {
+        if (busy || editing) return
+        setStats(s => ({ ...s, skipped: s.skipped + 1 }))
+        setIndex(i => i + 1)
+      }, [busy, editing])
+
+      const startEdit = useCallback(() => {
+        if (busy || editing || !currentItem) return
+        setEditText(currentItem.postContent || '')
+        setEditing(true)
+      }, [busy, editing, currentItem])
+
+      const cancelEdit = useCallback(() => {
+        setEditing(false)
+      }, [])
+
+      const saveEdit = useCallback(async () => {
+        if (!currentItem) return
+        setBusy(true)
+        setBusyText('Saving…')
+        try {
+          const res = await fetch(`/api/posts/${currentItem.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ postContent: editText }),
+          })
+          if (!res.ok) {
+            const data = await res.json()
+            throw new Error(data.error || `HTTP ${res.status}`)
+          }
+          const updated = await res.json()
+          const newContent = updated.postContent || editText
+          setAllItems(prev => prev.map(i =>
+            i.id === currentItem.id
+              ? { ...i, postContent: newContent, metadata: { ...i.metadata, characterCount: newContent.length } }
+              : i
+          ))
+          showToast('Post updated', 'success')
+          setEditing(false)
+        } catch (err) {
+          showToast(`Save failed: ${err.message}`, 'error')
+        } finally {
+          setBusy(false)
+        }
+      }, [currentItem, editText])
+
+      // Keyboard shortcuts
+      useEffect(() => {
+        const handler = (e) => {
+          if (editing) {
+            if (e.key === 'Escape') cancelEdit()
+            return
+          }
+          if (busy) return
+          switch (e.key) {
+            case 'ArrowLeft':  e.preventDefault(); rejectPost(); break
+            case 'ArrowRight': e.preventDefault(); approvePost(); break
+            case 'e': case 'E': e.preventDefault(); startEdit(); break
+            case ' ':          e.preventDefault(); skipPost(); break
+          }
+        }
+        document.addEventListener('keydown', handler)
+        return () => document.removeEventListener('keydown', handler)
+      }, [editing, busy, rejectPost, approvePost, startEdit, skipPost, cancelEdit])
+
+      // Main content
+      let mainContent
+      if (isLoading) {
+        mainContent = html`<${SkeletonCard} />`
+      } else if (isEmpty) {
+        mainContent = html`<${EmptyState} />`
+      } else if (allDone) {
+        mainContent = html`<${SummaryState} stats=${stats} />`
+      } else if (currentItem) {
+        mainContent = html`
+          <${PostCard}
+            item=${currentItem}
+            accounts=${accounts}
+            editing=${editing}
+            editText=${editText}
+            onEditTextChange=${setEditText}
+            animClass=${animClass}
+            onReject=${rejectPost}
+            onEdit=${startEdit}
+            onSkip=${skipPost}
+            onApprove=${approvePost}
+            onSaveEdit=${saveEdit}
+            onCancelEdit=${cancelEdit}
+          />`
+      }
+
+      return html`
+        <div class="h-full flex flex-col">
+          <${LoadingOverlay} busy=${busy} text=${busyText} />
+          <${Header} profileName=${profileName} />
+          ${allItems !== null && html`<${PlatformTabs} items=${allItems} filter=${filter} onFilter=${onFilter} />`}
+          <main class="flex-1 overflow-y-auto flex items-start justify-center pt-6 pb-4 px-4">
+            ${mainContent}
+          </main>
+          <${Footer} items=${filteredItems} index=${index} stats=${stats} allDone=${allDone || isEmpty} />
+        </div>`
+    }
+
+    render(html`<${App} />`, document.getElementById('app'))
+  </script>
+</body>
+</html>
