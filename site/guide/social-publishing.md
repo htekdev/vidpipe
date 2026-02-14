@@ -98,18 +98,44 @@ This walks you through:
 vidpipe review
 ```
 
-This opens a web app at `http://localhost:3847` with a card-based review interface:
+This opens a web app at `http://localhost:3847` with a **grouped card-based review interface**:
 
-- **✅ Approve** — Schedules the post at the next optimal time
-- **❌ Reject** — Removes the post from the queue
-- **✏️ Edit** — Inline text editing with character count
+### Grouped Approval
+
+Posts are automatically grouped by their source video/clip. Instead of reviewing each platform separately, you now:
+
+1. **See one card per video/clip** with platform checkboxes
+2. **Select which platforms to publish to** using checkboxes
+3. **Approve once** to publish to all selected platforms
+
+**Benefits:**
+- Review the same video once instead of 5 times
+- Flexible platform selection per video
+- Platforms without connected accounts are automatically disabled
+
+### Review Actions
+
+- **✅ Approve** — Schedules posts to all selected platforms at optimal times
+- **❌ Reject All** — Removes all posts in the group from the queue
 - **⏭️ Skip** — Leave for later review
 
 **Keyboard shortcuts:**
-- `→` (Right Arrow) = Approve
-- `←` (Left Arrow) = Reject
-- `E` = Edit
+- `→` (Right Arrow) = Approve selected
+- `←` (Left Arrow) = Reject all
 - `Space` = Skip
+
+### Platform Selection
+
+Each group card shows checkboxes for all available platforms:
+- ✅ **Auto-selected**: Platforms with connected accounts are pre-selected
+- ⚠️ **Disabled**: Platforms without connected accounts cannot be selected
+- **Count badge**: Approve button shows how many platforms are selected
+
+**Example workflow:**
+1. Card loads with 5 platform checkboxes (TikTok, YouTube, Instagram, LinkedIn, X)
+2. Connected accounts (e.g., TikTok, YouTube, Instagram) are auto-selected
+3. Uncheck any platforms you don't want to post to
+4. Click "Approve (3)" to schedule posts to the 3 selected platforms
 
 ## Schedule Configuration
 
@@ -169,7 +195,18 @@ publish-queue/
 │   └── post.md          # Post text content
 ```
 
+Each post folder contains:
+- **sourceVideo**: Path to the original video directory
+- **sourceClip**: Path to the short/medium clip directory (null for full video posts)
+- **clipType**: `video`, `short`, or `medium-clip`
+
+Posts with the same `sourceVideo` + `sourceClip` are automatically grouped in the review UI.
+
 Approved posts move to `published/`. Rejected posts are deleted.
+
+### Backward Compatibility
+
+The original single-post review UI is preserved at `src/review/public/index-single.html` for reference. The new grouped UI is fully backward compatible with existing queue data.
 
 ## Troubleshooting
 

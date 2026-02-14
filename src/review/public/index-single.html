@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>vidpipe — Review Queue (Grouped)</title>
+  <title>vidpipe — Review Queue</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -42,39 +42,15 @@
     ::-webkit-scrollbar-track { background: #1a1a2e; }
     ::-webkit-scrollbar-thumb { background: #0f3460; border-radius: 3px; }
 
-    /* Checkbox styling */
-    .platform-checkbox {
-      appearance: none;
-      width: 20px;
-      height: 20px;
-      border: 2px solid rgba(255, 255, 255, 0.2);
-      border-radius: 4px;
-      cursor: pointer;
-      position: relative;
-      transition: all 0.2s ease;
-    }
-    .platform-checkbox:checked {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      border-color: #667eea;
-    }
-    .platform-checkbox:checked::after {
-      content: '✓';
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      color: white;
-      font-size: 14px;
-      font-weight: bold;
-    }
-    .platform-checkbox:hover {
-      border-color: rgba(255, 255, 255, 0.4);
-    }
+    /* Character count bar */
+    .char-bar { transition: width 0.3s ease, background-color 0.3s ease; }
 
     /* Action button hover effects */
     .action-btn { transition: all 0.15s ease; }
     .action-btn:hover { transform: translateY(-2px); }
     .action-btn:active { transform: translateY(0); }
+
+    /* Focus ring for keyboard navigation */
     .action-btn:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
 
     /* Platform filter tab */
@@ -177,13 +153,37 @@
               <span class="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">vidpipe</span>
               <span class="text-gray-500 text-sm">${subtitle}</span>
             </div>
-            <div class="flex items-center gap-2 text-xs text-gray-500" aria-label="Keyboard shortcuts">
+            <div class="flex items-center gap-2 text-xs text-gray-500" aria-label="Keyboard shortcuts: Left arrow to reject, Right arrow to approve, E to edit, Space to skip">
               <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">←</kbd> Reject
               <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">→</kbd> Approve
+              <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">E</kbd> Edit
               <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">Space</kbd> Skip
             </div>
           </div>
         </header>`
+    }
+
+    function PlatformTabs({ items, filter, onFilter }) {
+      const platforms = ['all', ...new Set(items.map(i => normalizePlatform(i.metadata.platform)))]
+      return html`
+        <nav class="flex-shrink-0 border-b border-white/5 bg-surface/50">
+          <div class="max-w-4xl mx-auto px-4 flex gap-1 overflow-x-auto">
+            ${platforms.map(p => {
+              const cfg = p === 'all' ? { icon: '📋', name: 'All' } : (PLATFORMS[p] || { icon: '❓', name: p })
+              const count = p === 'all' ? items.length : items.filter(i => normalizePlatform(i.metadata.platform) === p).length
+              const active = filter === p
+              const color = p === 'all' ? '#60a5fa' : cfg.color
+              const textColor = p === 'all' ? '#93c5fd' : cfg.color
+              return html`
+                <button
+                  class="platform-tab flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium text-gray-400 hover:text-gray-200 transition-colors border-b-2 border-transparent whitespace-nowrap ${active ? 'active text-gray-100' : ''}"
+                  style=${active ? `border-color: ${color}; color: ${textColor}` : ''}
+                  onClick=${() => onFilter(p)}>
+                  <span>${cfg.icon}</span> ${cfg.name} <span class="text-gray-600">${count}</span>
+                </button>`
+            })}
+          </div>
+        </nav>`
     }
 
     function SkeletonCard() {
@@ -194,6 +194,7 @@
               <div class="flex items-center gap-2">
                 <div class="w-6 h-6 bg-white/10 rounded skeleton"></div>
                 <div class="w-20 h-4 bg-white/10 rounded skeleton"></div>
+                <div class="w-16 h-3 bg-white/5 rounded skeleton"></div>
               </div>
               <div class="w-16 h-5 bg-white/10 rounded-full skeleton"></div>
             </div>
@@ -203,6 +204,28 @@
             <div class="px-5 pb-3 space-y-2">
               <div class="h-3 bg-white/10 rounded w-full skeleton"></div>
               <div class="h-3 bg-white/10 rounded w-5/6 skeleton"></div>
+              <div class="h-3 bg-white/10 rounded w-4/6 skeleton"></div>
+            </div>
+            <div class="px-5 pb-3 flex gap-1.5">
+              <div class="w-16 h-5 bg-white/5 rounded-full skeleton"></div>
+              <div class="w-20 h-5 bg-white/5 rounded-full skeleton"></div>
+              <div class="w-14 h-5 bg-white/5 rounded-full skeleton"></div>
+            </div>
+            <div class="px-5 pb-3">
+              <div class="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                <div class="h-full w-1/2 bg-white/10 rounded-full skeleton"></div>
+              </div>
+            </div>
+            <div class="px-5 pb-4 flex gap-3">
+              <div class="w-24 h-3 bg-white/5 rounded skeleton"></div>
+              <div class="w-32 h-3 bg-white/5 rounded skeleton"></div>
+            </div>
+            <div class="border-t border-white/5"></div>
+            <div class="px-5 py-4 flex items-center justify-center gap-3">
+              <div class="w-24 h-10 bg-white/5 rounded-xl skeleton"></div>
+              <div class="w-20 h-10 bg-white/5 rounded-xl skeleton"></div>
+              <div class="w-20 h-10 bg-white/5 rounded-xl skeleton"></div>
+              <div class="w-24 h-10 bg-white/5 rounded-xl skeleton"></div>
             </div>
           </div>
         </div>`
@@ -238,10 +261,32 @@
                 <span class="text-2xl font-bold text-gray-400">${stats.skipped}</span>
                 <span class="text-gray-500">skipped</span>
               </div>`}
+            ${stats.approved === 0 && stats.rejected === 0 && stats.skipped === 0 && html`
+              <div class="text-gray-400">Nothing to show</div>`}
           </div>
           <button onClick=${() => location.reload()} class="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors text-sm font-medium">
             Refresh Queue
           </button>
+        </div>`
+    }
+
+    function PlatformBadge({ platform, accounts, accountId }) {
+      const cfg = PLATFORMS[platform] || { icon: '❓', color: '#888', name: platform }
+      const connAcct = accounts[platform]
+      let accountDisplay = null
+      if (connAcct) {
+        const displayUser = connAcct.username || connAcct.displayName || connAcct._id
+        accountDisplay = html`<span class="text-xs text-gray-500">@${displayUser}</span>`
+      } else if (Object.keys(accounts).length > 0) {
+        accountDisplay = html`<span class="text-xs px-2 py-0.5 rounded-full bg-red-500/20 text-red-400 border border-red-500/30">⚠ Not connected</span>`
+      } else if (accountId) {
+        accountDisplay = html`<span class="text-xs text-gray-500">@${accountId}</span>`
+      }
+      return html`
+        <div class="flex items-center gap-2">
+          <span class="text-lg">${cfg.icon}</span>
+          <span class="text-sm font-semibold" style="color: ${cfg.color}">${cfg.name}</span>
+          ${accountDisplay}
         </div>`
     }
 
@@ -250,21 +295,18 @@
       return html`<span class="text-xs px-2 py-0.5 rounded-full bg-white/10 text-gray-400">${labels[clipType] || clipType}</span>`
     }
 
-    function VideoPlayer({ group }) {
+    function VideoPlayer({ item }) {
       const videoRef = useRef(null)
-      const prevKeyRef = useRef(null)
-      
-      const firstItem = group.items[0]
-      const hasMedia = group.hasMedia
+      const prevIdRef = useRef(null)
 
       useEffect(() => {
-        if (hasMedia && videoRef.current && prevKeyRef.current !== group.groupKey) {
+        if (item.hasMedia && videoRef.current && prevIdRef.current !== item.id) {
           videoRef.current.load()
-          prevKeyRef.current = group.groupKey
+          prevIdRef.current = item.id
         }
-      }, [group.groupKey, hasMedia])
+      }, [item.id, item.hasMedia])
 
-      if (!hasMedia) {
+      if (!item.hasMedia) {
         return html`
           <div class="px-5 pb-3">
             <div class="rounded-xl overflow-hidden bg-black/40 aspect-video relative">
@@ -281,7 +323,7 @@
           </div>`
       }
 
-      const mediaUrl = `/media/queue/${encodeURIComponent(firstItem.id)}/media.mp4`
+      const mediaUrl = `/media/queue/${encodeURIComponent(item.id)}/media.mp4`
       return html`
         <div class="px-5 pb-3">
           <div class="rounded-xl overflow-hidden bg-black/40 aspect-video relative">
@@ -292,142 +334,129 @@
         </div>`
     }
 
-    function PlatformCheckboxes({ group, selectedPlatforms, onToggle, accounts }) {
-      return html`
-        <div class="px-5 pb-3">
-          <div class="text-xs font-semibold text-gray-400 mb-2">Select platforms to publish:</div>
-          <div class="flex flex-wrap gap-2">
-            ${group.items.map(item => {
-              const platform = normalizePlatform(item.metadata.platform)
-              const cfg = PLATFORMS[platform] || { icon: '❓', color: '#888', name: platform }
-              const isSelected = selectedPlatforms.includes(item.id)
-              const connAcct = accounts[platform]
-              const hasAccount = !!connAcct
-              
-              return html`
-                <label 
-                  class="flex items-center gap-2 px-3 py-2 rounded-lg border cursor-pointer transition-all ${
-                    isSelected 
-                      ? 'bg-white/10 border-white/20' 
-                      : 'bg-white/5 border-white/10 hover:bg-white/8'
-                  }"
-                  style=${isSelected ? `border-color: ${cfg.color}40` : ''}
-                >
-                  <input 
-                    type="checkbox"
-                    class="platform-checkbox"
-                    checked=${isSelected}
-                    onChange=${() => onToggle(item.id)}
-                    disabled=${!hasAccount}
-                  />
-                  <span class="text-lg">${cfg.icon}</span>
-                  <span class="text-sm font-medium" style="color: ${cfg.color}">${cfg.name}</span>
-                  ${!hasAccount && html`
-                    <span class="text-xs px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">⚠</span>
-                  `}
-                </label>
-              `
-            })}
-          </div>
-          <div class="mt-2 text-xs text-gray-500">
-            ${selectedPlatforms.length} of ${group.items.length} selected
-          </div>
-        </div>`
-    }
+    function PostContent({ item, editing, editText, onEditTextChange, onSave, onCancel }) {
+      const limit = item.metadata.platformCharLimit || 280
 
-    function PostContentPreview({ group }) {
-      const firstItem = group.items[0]
-      const content = firstItem.postContent || ''
-      return html`
-        <div class="px-5 pb-3">
-          <div class="text-xs font-semibold text-gray-400 mb-1">Post preview:</div>
-          <div class="text-sm leading-relaxed text-gray-200 whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
-            ${truncate(content, 300)}
-          </div>
-        </div>`
-    }
-
-    function MetaRow({ group }) {
-      const sourceVideo = group.sourceVideo || 'Unknown'
-      return html`
-        <div class="px-5 pb-4 text-xs text-gray-500">
-          <span title="Source video">📹 ${truncate(sourceVideo, 60)}</span>
-        </div>`
-    }
-
-    function ActionButtons({ onReject, onSkip, onApprove, selectedCount }) {
-      const approveDisabled = selectedCount === 0
-      return html`
-        <div class="px-5 py-4 flex items-center justify-center gap-3">
-          <button 
-            onClick=${onReject} 
-            class="action-btn flex items-center gap-2 px-5 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl text-sm font-medium border border-red-500/20" 
-            title="Reject all (←)"
-          >
-            <span>❌</span> Reject All
-          </button>
-          <button 
-            onClick=${onSkip} 
-            class="action-btn flex items-center gap-2 px-5 py-2.5 bg-white/5 hover:bg-white/10 text-gray-400 rounded-xl text-sm font-medium border border-white/10" 
-            title="Skip (Space)"
-          >
-            <span>⏭️</span> Skip
-          </button>
-          <button 
-            onClick=${onApprove} 
-            class="action-btn flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium border ${
-              approveDisabled 
-                ? 'bg-gray-500/10 text-gray-500 border-gray-500/20 cursor-not-allowed opacity-50' 
-                : 'bg-green-500/10 hover:bg-green-500/20 text-green-400 border-green-500/20'
-            }" 
-            title="Approve selected (→)"
-            disabled=${approveDisabled}
-          >
-            <span>✅</span> Approve ${selectedCount > 0 ? `(${selectedCount})` : ''}
-          </button>
-        </div>`
-    }
-
-    function GroupedPostCard({ group, accounts, selectedPlatforms, onTogglePlatform, animClass, onReject, onSkip, onApprove }) {
-      const selectedCount = selectedPlatforms.length
-      return html`
-        <div class="w-full max-w-2xl" style="max-height: calc(100vh - 160px); display: flex; flex-direction: column;">
-          <div class="bg-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden flex flex-col ${animClass}" style="max-height: 100%;" key=${group.groupKey}>
-            <!-- Fixed top: clip type badge -->
-            <div class="flex-shrink-0 flex items-center justify-between px-5 pt-4 pb-2">
-              <div class="flex items-center gap-2">
-                <${ClipTypeBadge} clipType=${group.clipType} />
+      if (editing) {
+        const len = editText.length
+        return html`
+          <div class="px-5 pb-3">
+            <textarea
+              class="w-full bg-black/30 border border-white/10 rounded-xl p-3 text-sm text-gray-200 leading-relaxed resize-y focus:outline-none focus:border-blue-500/50 transition-colors"
+              rows="6"
+              value=${editText}
+              onInput=${e => onEditTextChange(e.target.value)}
+              ref=${el => el && setTimeout(() => el.focus(), 0)}
+            ></textarea>
+            <div class="flex items-center justify-between mt-2">
+              <span class=${`text-xs ${len > limit ? 'text-red-400' : 'text-gray-500'}`}>${len} / ${limit}</span>
+              <div class="flex gap-2">
+                <button onClick=${onCancel} class="px-3 py-1.5 text-xs bg-white/5 hover:bg-white/10 rounded-lg transition-colors">Cancel</button>
+                <button onClick=${onSave} class="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-500 rounded-lg transition-colors font-medium">Save</button>
               </div>
             </div>
-            <!-- Scrollable middle: video + checkboxes + preview -->
+          </div>`
+      }
+
+      return html`
+        <div class="px-5 pb-3">
+          <div class="text-sm leading-relaxed text-gray-200 whitespace-pre-wrap break-words">${item.postContent || ''}</div>
+        </div>`
+    }
+
+    function HashtagRow({ hashtags, color }) {
+      if (!hashtags || hashtags.length === 0) return null
+      return html`
+        <div class="px-5 pb-3 flex flex-wrap gap-1.5">
+          ${hashtags.map(tag => html`
+            <span class="inline-block px-2 py-0.5 text-xs rounded-full font-medium"
+              style="background:${color}20;color:${color};border:1px solid ${color}30">
+              #${tag.replace(/^#/, '')}
+            </span>`)}
+        </div>`
+    }
+
+    function CharacterBar({ item }) {
+      const count = item.metadata.characterCount || (item.postContent || '').length
+      const limit = item.metadata.platformCharLimit || 280
+      const pct = Math.min((count / limit) * 100, 100)
+      const barColor = pct > 95 ? '#ef4444' : pct > 80 ? '#f59e0b' : '#22c55e'
+      return html`
+        <div class="px-5 pb-3">
+          <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
+            <span>Characters</span>
+            <span>${count} / ${limit}</span>
+          </div>
+          <div class="h-1.5 bg-white/5 rounded-full overflow-hidden">
+            <div class="char-bar h-full rounded-full" style="width: ${pct}%; background-color: ${barColor}"></div>
+          </div>
+        </div>`
+    }
+
+    function MetaRow({ item }) {
+      const sourceVideo = item.metadata.sourceVideo || 'Unknown'
+      const schedule = item.metadata.suggestedSlot
+      return html`
+        <div class="px-5 pb-4 flex items-center justify-between text-xs text-gray-500">
+          <div class="flex items-center gap-3">
+            <span title="Source video">📹 ${truncate(sourceVideo, 40)}</span>
+            ${schedule && html`<span title="Suggested schedule">🕐 ${formatDate(schedule)}</span>`}
+          </div>
+        </div>`
+    }
+
+    function ActionButtons({ editing, onReject, onEdit, onSkip, onApprove }) {
+      return html`
+        <div class=${`px-5 py-4 flex items-center justify-center gap-3 ${editing ? 'opacity-50 pointer-events-none' : ''}`}>
+          <button onClick=${onReject} class="action-btn flex items-center gap-2 px-5 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl text-sm font-medium border border-red-500/20" title="Reject (←)">
+            <span>❌</span> Reject
+          </button>
+          <button onClick=${onEdit} class="action-btn flex items-center gap-2 px-5 py-2.5 bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 rounded-xl text-sm font-medium border border-yellow-500/20" title="Edit (E)">
+            <span>✏️</span> Edit
+          </button>
+          <button onClick=${onSkip} class="action-btn flex items-center gap-2 px-5 py-2.5 bg-white/5 hover:bg-white/10 text-gray-400 rounded-xl text-sm font-medium border border-white/10" title="Skip (Space)">
+            <span>⏭️</span> Skip
+          </button>
+          <button onClick=${onApprove} class="action-btn flex items-center gap-2 px-5 py-2.5 bg-green-500/10 hover:bg-green-500/20 text-green-400 rounded-xl text-sm font-medium border border-green-500/20" title="Approve (→)">
+            <span>✅</span> Approve
+          </button>
+        </div>`
+    }
+
+    function PostCard({ item, accounts, editing, editText, onEditTextChange, animClass, onReject, onEdit, onSkip, onApprove, onSaveEdit, onCancelEdit }) {
+      const platform = normalizePlatform(item.metadata.platform)
+      const cfg = PLATFORMS[platform] || { icon: '❓', color: '#888', name: platform }
+      return html`
+        <div class="w-full max-w-2xl" style="max-height: calc(100vh - 160px); display: flex; flex-direction: column;">
+          <div class="bg-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden flex flex-col ${animClass}" style="max-height: 100%;" key=${item.id}>
+            <!-- Fixed top: platform badge -->
+            <div class="flex-shrink-0 flex items-center justify-between px-5 pt-4 pb-2">
+              <${PlatformBadge} platform=${platform} accounts=${accounts} accountId=${item.metadata.accountId} />
+              <div class="flex items-center gap-2">
+                <${ClipTypeBadge} clipType=${item.metadata.clipType} />
+              </div>
+            </div>
+            <!-- Scrollable middle: video + content + meta -->
             <div class="flex-1 overflow-y-auto min-h-0">
-              <${VideoPlayer} group=${group} />
-              <${PlatformCheckboxes} 
-                group=${group} 
-                selectedPlatforms=${selectedPlatforms} 
-                onToggle=${onTogglePlatform}
-                accounts=${accounts}
-              />
-              <${PostContentPreview} group=${group} />
-              <${MetaRow} group=${group} />
+              <${VideoPlayer} item=${item} />
+              <${PostContent} item=${item} editing=${editing} editText=${editText}
+                onEditTextChange=${onEditTextChange} onSave=${onSaveEdit} onCancel=${onCancelEdit} />
+              <${HashtagRow} hashtags=${item.metadata.hashtags} color=${cfg.color} />
+              <${CharacterBar} item=${item} />
+              <${MetaRow} item=${item} />
             </div>
             <!-- Fixed bottom: action buttons -->
             <div class="flex-shrink-0 border-t border-white/5">
-              <${ActionButtons} 
-                onReject=${onReject} 
-                onSkip=${onSkip} 
-                onApprove=${onApprove}
-                selectedCount=${selectedCount}
-              />
+              <${ActionButtons} editing=${editing} onReject=${onReject} onEdit=${onEdit} onSkip=${onSkip} onApprove=${onApprove} />
             </div>
           </div>
         </div>`
     }
 
-    function Footer({ groups, index, stats, allDone }) {
-      const total = groups.length
+    function Footer({ items, index, stats, allDone }) {
+      const total = items.length
       const current = Math.min(index + 1, total)
-      const progressText = allDone ? 'Review complete' : (total > 0 ? `Group ${current} of ${total}` : '')
+      const progressText = allDone ? 'Review complete' : (total > 0 ? `Post ${current} of ${total}` : '')
       return html`
         <footer class="flex-shrink-0 border-t border-white/5 bg-surface/50">
           <div class="max-w-4xl mx-auto px-4 py-2.5 flex items-center justify-between text-xs text-gray-500">
@@ -443,11 +472,13 @@
 
     // ── App ──
     function App() {
-      const [allGroups, setAllGroups] = useState(null) // null = loading
+      const [allItems, setAllItems] = useState(null) // null = loading
       const [accounts, setAccounts] = useState({})
       const [profileName, setProfileName] = useState(null)
+      const [filter, setFilter] = useState('all')
       const [index, setIndex] = useState(0)
-      const [selectedPlatforms, setSelectedPlatforms] = useState([])
+      const [editing, setEditing] = useState(false)
+      const [editText, setEditText] = useState('')
       const [busy, setBusy] = useState(false)
       const [busyText, setBusyText] = useState('Processing…')
       const [stats, setStats] = useState({ approved: 0, rejected: 0, skipped: 0 })
@@ -461,7 +492,7 @@
             if (!res.ok) throw new Error(`HTTP ${res.status}`)
             const data = await res.json()
 
-            setAllGroups(data.groups || [])
+            setAllItems(data.items || [])
 
             const acctMap = {}
             for (const acct of (data.accounts || [])) {
@@ -472,36 +503,26 @@
             if (data.profile && data.profile.name) setProfileName(data.profile.name)
           } catch (err) {
             showToast(`Failed to load: ${err.message}`, 'error')
-            setAllGroups([])
+            setAllItems([])
           }
         }
         fetchAll()
       }, [])
 
-      const currentGroup = allGroups && allGroups[index] || null
-      const isLoading = allGroups === null
-      const isEmpty = allGroups !== null && allGroups.length === 0
-      const allDone = !isEmpty && !isLoading && index >= allGroups.length
+      // Compute filtered items
+      const filteredItems = allItems === null ? [] :
+        filter === 'all' ? [...allItems] :
+        allItems.filter(i => normalizePlatform(i.metadata.platform) === filter)
 
-      // Auto-select all platforms with connected accounts when group changes
-      useEffect(() => {
-        if (currentGroup) {
-          const availableIds = currentGroup.items
-            .filter(item => {
-              const platform = normalizePlatform(item.metadata.platform)
-              return !!accounts[platform]
-            })
-            .map(item => item.id)
-          setSelectedPlatforms(availableIds)
-        }
-      }, [currentGroup, accounts])
+      const currentItem = filteredItems[index] || null
+      const isLoading = allItems === null
+      const isEmpty = allItems !== null && allItems.length === 0
+      const allDone = !isEmpty && !isLoading && (filteredItems.length === 0 || index >= filteredItems.length)
 
-      const togglePlatform = useCallback((itemId) => {
-        setSelectedPlatforms(prev => 
-          prev.includes(itemId) 
-            ? prev.filter(id => id !== itemId)
-            : [...prev, itemId]
-        )
+      const onFilter = useCallback((p) => {
+        setFilter(p)
+        setIndex(0)
+        setEditing(false)
       }, [])
 
       const animateOut = useCallback((cb) => {
@@ -512,88 +533,112 @@
         }, 250)
       }, [])
 
-      const approveGroup = useCallback(async () => {
-        if (busy || !currentGroup || selectedPlatforms.length === 0) return
-        
+      const approvePost = useCallback(async () => {
+        if (busy || editing || !currentItem) return
         setBusy(true)
-        setBusyText(`Scheduling ${selectedPlatforms.length} post(s)…`)
-        
+        setBusyText('Scheduling post…')
         try {
-          const res = await fetch('/api/posts/bulk-approve', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ itemIds: selectedPlatforms }),
-          })
-          
+          const res = await fetch(`/api/posts/${currentItem.id}/approve`, { method: 'POST' })
           const data = await res.json()
           if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-          
-          setStats(s => ({ ...s, approved: s.approved + selectedPlatforms.length }))
-          showToast(`Approved ${selectedPlatforms.length} post(s)!`, 'success')
-          
+          setStats(s => ({ ...s, approved: s.approved + 1 }))
+          showToast(`Approved! Scheduled for ${data.scheduledFor ? formatDate(data.scheduledFor) : 'publishing'}`, 'success')
           animateOut(() => {
-            setAllGroups(prev => prev.filter(g => g.groupKey !== currentGroup.groupKey))
-            setSelectedPlatforms([])
+            setAllItems(prev => prev.filter(i => i.id !== currentItem.id))
           })
         } catch (err) {
           showToast(`Approve failed: ${err.message}`, 'error')
         } finally {
           setBusy(false)
         }
-      }, [busy, currentGroup, selectedPlatforms, animateOut])
+      }, [busy, editing, currentItem, animateOut])
 
-      const rejectGroup = useCallback(async () => {
-        if (busy || !currentGroup) return
-        
-        const allIds = currentGroup.items.map(i => i.id)
+      const rejectPost = useCallback(async () => {
+        if (busy || editing || !currentItem) return
         setBusy(true)
         setBusyText('Rejecting…')
-        
         try {
-          const res = await fetch('/api/posts/bulk-reject', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ itemIds: allIds }),
-          })
-          
-          const data = await res.json()
-          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-          
-          setStats(s => ({ ...s, rejected: s.rejected + allIds.length }))
-          showToast('Group rejected', 'info')
-          
+          const res = await fetch(`/api/posts/${currentItem.id}/reject`, { method: 'POST' })
+          if (!res.ok) {
+            const data = await res.json()
+            throw new Error(data.error || `HTTP ${res.status}`)
+          }
+          setStats(s => ({ ...s, rejected: s.rejected + 1 }))
+          showToast('Post rejected', 'info')
           animateOut(() => {
-            setAllGroups(prev => prev.filter(g => g.groupKey !== currentGroup.groupKey))
-            setSelectedPlatforms([])
+            setAllItems(prev => prev.filter(i => i.id !== currentItem.id))
           })
         } catch (err) {
           showToast(`Reject failed: ${err.message}`, 'error')
         } finally {
           setBusy(false)
         }
-      }, [busy, currentGroup, animateOut])
+      }, [busy, editing, currentItem, animateOut])
 
-      const skipGroup = useCallback(() => {
-        if (busy) return
-        const itemCount = currentGroup ? currentGroup.items.length : 0
-        setStats(s => ({ ...s, skipped: s.skipped + itemCount }))
+      const skipPost = useCallback(() => {
+        if (busy || editing) return
+        setStats(s => ({ ...s, skipped: s.skipped + 1 }))
         setIndex(i => i + 1)
-        setSelectedPlatforms([])
-      }, [busy, currentGroup])
+      }, [busy, editing])
+
+      const startEdit = useCallback(() => {
+        if (busy || editing || !currentItem) return
+        setEditText(currentItem.postContent || '')
+        setEditing(true)
+      }, [busy, editing, currentItem])
+
+      const cancelEdit = useCallback(() => {
+        setEditing(false)
+      }, [])
+
+      const saveEdit = useCallback(async () => {
+        if (!currentItem) return
+        setBusy(true)
+        setBusyText('Saving…')
+        try {
+          const res = await fetch(`/api/posts/${currentItem.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ postContent: editText }),
+          })
+          if (!res.ok) {
+            const data = await res.json()
+            throw new Error(data.error || `HTTP ${res.status}`)
+          }
+          const updated = await res.json()
+          const newContent = updated.postContent || editText
+          setAllItems(prev => prev.map(i =>
+            i.id === currentItem.id
+              ? { ...i, postContent: newContent, metadata: { ...i.metadata, characterCount: newContent.length } }
+              : i
+          ))
+          showToast('Post updated', 'success')
+          setEditing(false)
+        } catch (err) {
+          showToast(`Save failed: ${err.message}`, 'error')
+        } finally {
+          setBusy(false)
+        }
+      }, [currentItem, editText])
 
       // Keyboard shortcuts
       useEffect(() => {
         const handler = (e) => {
+          if (editing) {
+            if (e.key === 'Escape') cancelEdit()
+            return
+          }
           if (busy) return
           switch (e.key) {
-            case 'ArrowLeft':  e.preventDefault(); rejectGroup(); break
-            case 'ArrowRight': e.preventDefault(); approveGroup(); break
-            case ' ':          e.preventDefault(); skipGroup(); break
+            case 'ArrowLeft':  e.preventDefault(); rejectPost(); break
+            case 'ArrowRight': e.preventDefault(); approvePost(); break
+            case 'e': case 'E': e.preventDefault(); startEdit(); break
+            case ' ':          e.preventDefault(); skipPost(); break
           }
         }
         document.addEventListener('keydown', handler)
         return () => document.removeEventListener('keydown', handler)
-      }, [busy, rejectGroup, approveGroup, skipGroup])
+      }, [editing, busy, rejectPost, approvePost, startEdit, skipPost, cancelEdit])
 
       // Main content
       let mainContent
@@ -603,17 +648,21 @@
         mainContent = html`<${EmptyState} />`
       } else if (allDone) {
         mainContent = html`<${SummaryState} stats=${stats} />`
-      } else if (currentGroup) {
+      } else if (currentItem) {
         mainContent = html`
-          <${GroupedPostCard}
-            group=${currentGroup}
+          <${PostCard}
+            item=${currentItem}
             accounts=${accounts}
-            selectedPlatforms=${selectedPlatforms}
-            onTogglePlatform=${togglePlatform}
+            editing=${editing}
+            editText=${editText}
+            onEditTextChange=${setEditText}
             animClass=${animClass}
-            onReject=${rejectGroup}
-            onSkip=${skipGroup}
-            onApprove=${approveGroup}
+            onReject=${rejectPost}
+            onEdit=${startEdit}
+            onSkip=${skipPost}
+            onApprove=${approvePost}
+            onSaveEdit=${saveEdit}
+            onCancelEdit=${cancelEdit}
           />`
       }
 
@@ -621,10 +670,11 @@
         <div class="h-full flex flex-col">
           <${LoadingOverlay} busy=${busy} text=${busyText} />
           <${Header} profileName=${profileName} />
+          ${allItems !== null && html`<${PlatformTabs} items=${allItems} filter=${filter} onFilter=${onFilter} />`}
           <main class="flex-1 overflow-y-auto flex items-start justify-center pt-6 pb-4 px-4">
             ${mainContent}
           </main>
-          <${Footer} groups=${allGroups || []} index=${index} stats=${stats} allDone=${allDone || isEmpty} />
+          <${Footer} items=${filteredItems} index=${index} stats=${stats} allDone=${allDone || isEmpty} />
         </div>`
     }
 
