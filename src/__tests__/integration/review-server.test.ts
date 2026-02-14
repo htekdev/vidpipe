@@ -307,6 +307,138 @@ describe('Review Server API', () => {
       expect(res.body.nextSlot).toBe('2026-02-15T19:00:00-06:00')
     })
   })
+
+  // ─── GET /api/posts/grouped ─────────────────────────────────────────
+
+  describe('GET /api/posts/grouped', () => {
+    it('returns empty array when no items', async () => {
+      const res = await request(app).get('/api/posts/grouped')
+      expect(res.status).toBe(200)
+      expect(res.body.groups).toHaveLength(0)
+      expect(res.body.total).toBe(0)
+    })
+
+    it('groups posts by sourceVideo and sourceClip', async () => {
+      // Create 2 posts for same video/clip (different platforms)
+      await createTestItem('video1-tiktok', { 
+        platform: 'tiktok',
+        sourceVideo: '/videos/video1',
+        sourceClip: '/clips/short1',
+        clipType: 'short',
+      })
+      await createTestItem('video1-youtube', { 
+        platform: 'youtube',
+        sourceVideo: '/videos/video1',
+        sourceClip: '/clips/short1',
+        clipType: 'short',
+      })
+      
+      // Create 1 post for different video
+      await createTestItem('video2-tiktok', { 
+        platform: 'tiktok',
+        sourceVideo: '/videos/video2',
+        sourceClip: null,
+        clipType: 'video',
+      })
+
+      const res = await request(app).get('/api/posts/grouped')
+      expect(res.status).toBe(200)
+      expect(res.body.groups).toHaveLength(2)
+      expect(res.body.total).toBe(2)
+
+      // Find the video1 group
+      const video1Group = res.body.groups.find((g: { sourceVideo: string }) => 
+        g.sourceVideo === '/videos/video1'
+      )
+      expect(video1Group).toBeDefined()
+      expect(video1Group.items).toHaveLength(2)
+      expect(video1Group.clipType).toBe('short')
+      expect(video1Group.sourceClip).toBe('/clips/short1')
+
+      // Find the video2 group
+      const video2Group = res.body.groups.find((g: { sourceVideo: string }) => 
+        g.sourceVideo === '/videos/video2'
+      )
+      expect(video2Group).toBeDefined()
+      expect(video2Group.items).toHaveLength(1)
+      expect(video2Group.clipType).toBe('video')
+      expect(video2Group.sourceClip).toBeNull()
+    })
+  })
+
+  // ─── POST /api/posts/bulk-approve ─────────────────────────────────────
+
+  describe('POST /api/posts/bulk-approve', () => {
+    it('returns 400 when itemIds is missing', async () => {
+      const res = await request(app)
+        .post('/api/posts/bulk-approve')
+        .send({})
+      expect(res.status).toBe(400)
+      expect(res.body.error).toContain('itemIds')
+    })
+
+    it('returns 400 when itemIds is empty array', async () => {
+      const res = await request(app)
+        .post('/api/posts/bulk-approve')
+        .send({ itemIds: [] })
+      expect(res.status).toBe(400)
+      expect(res.body.error).toContain('itemIds')
+    })
+
+    it('approves multiple items at once', async () => {
+      await createTestItem('bulk-1')
+      await createTestItem('bulk-2')
+      await createTestItem('bulk-3')
+
+      const res = await request(app)
+        .post('/api/posts/bulk-approve')
+        .send({ itemIds: ['bulk-1', 'bulk-2', 'bulk-3'] })
+      
+      expect(res.status).toBe(200)
+      expect(res.body.success).toBe(true)
+      expect(res.body.results).toHaveLength(3)
+      expect(res.body.count).toBe(3)
+
+      // Verify all items are gone from queue
+      const check1 = await request(app).get('/api/posts/bulk-1')
+      const check2 = await request(app).get('/api/posts/bulk-2')
+      const check3 = await request(app).get('/api/posts/bulk-3')
+      expect(check1.status).toBe(404)
+      expect(check2.status).toBe(404)
+      expect(check3.status).toBe(404)
+    })
+  })
+
+  // ─── POST /api/posts/bulk-reject ───────────────────────────────────────
+
+  describe('POST /api/posts/bulk-reject', () => {
+    it('returns 400 when itemIds is missing', async () => {
+      const res = await request(app)
+        .post('/api/posts/bulk-reject')
+        .send({})
+      expect(res.status).toBe(400)
+      expect(res.body.error).toContain('itemIds')
+    })
+
+    it('rejects multiple items at once', async () => {
+      await createTestItem('reject-bulk-1')
+      await createTestItem('reject-bulk-2')
+
+      const res = await request(app)
+        .post('/api/posts/bulk-reject')
+        .send({ itemIds: ['reject-bulk-1', 'reject-bulk-2'] })
+      
+      expect(res.status).toBe(200)
+      expect(res.body.success).toBe(true)
+      expect(res.body.count).toBe(2)
+
+      // Verify all items are gone
+      const check1 = await request(app).get('/api/posts/reject-bulk-1')
+      const check2 = await request(app).get('/api/posts/reject-bulk-2')
+      expect(check1.status).toBe(404)
+      expect(check2.status).toBe(404)
+    })
+  })
 })
 
 // ── Server startup test ─────────────────────────────────────────────
