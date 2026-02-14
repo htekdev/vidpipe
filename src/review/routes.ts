@@ -1,7 +1,7 @@
 import { fileExists } from '../core/fileSystem.js'
 import { Router } from '../core/http.js'
 import { rateLimit } from '../core/http.js'
-import { getPendingItems, getItem, updateItem, approveItem, rejectItem } from '../services/postStore'
+import { getPendingItems, getGroupedPendingItems, getItem, updateItem, approveItem, rejectItem, approveBulk, type BulkApprovalResult } from '../services/postStore'
 import { findNextSlot, getScheduleCalendar } from '../services/scheduler'
 import { getAccountId } from '../services/accountMapping'
 import { LateApiClient, type LateAccount, type LateProfile } from '../services/lateApi'
@@ -35,10 +35,16 @@ export function createRouter(): Router {
     res.json({ items, total: items.length })
   })
 
+  // GET /api/posts/grouped — list pending items grouped by video/clip
+  router.get('/api/posts/grouped', async (req, res) => {
+    const groups = await getGroupedPendingItems()
+    res.json({ groups, total: groups.length })
+  })
+
   // GET /api/init — combined endpoint for initial page load (1 request instead of 3)
   router.get('/api/init', async (req, res) => {
-    const [itemsResult, accountsResult, profileResult] = await Promise.allSettled([
-      getPendingItems(),
+    const [groupsResult, accountsResult, profileResult] = await Promise.allSettled([
+      getGroupedPendingItems(),
       (async () => {
         const cached = getCached<LateAccount[]>('accounts')
         if (cached) return cached
@@ -58,11 +64,11 @@ export function createRouter(): Router {
       })(),
     ])
 
-    const items = itemsResult.status === 'fulfilled' ? itemsResult.value : []
+    const groups = groupsResult.status === 'fulfilled' ? groupsResult.value : []
     const accounts = accountsResult.status === 'fulfilled' ? accountsResult.value : []
     const profile = profileResult.status === 'fulfilled' ? profileResult.value : null
 
-    res.json({ items, total: items.length, accounts, profile })
+    res.json({ groups, total: groups.length, accounts, profile })
   })
 
   // GET /api/posts/:id — get single post with full content
@@ -143,6 +149,94 @@ export function createRouter(): Router {
     }
   })
 
+  // POST /api/posts/bulk-approve — approve multiple posts at once (grouped by video/clip)
+  router.post('/api/posts/bulk-approve', async (req, res) => {
+    try {
+      const { itemIds } = req.body
+      if (!Array.isArray(itemIds) || itemIds.length === 0) {
+        return res.status(400).json({ error: 'itemIds must be a non-empty array' })
+      }
+
+      const client = new LateApiClient()
+      const schedConfig = await loadScheduleConfig()
+      const publishDataMap = new Map<string, { latePostId: string; scheduledFor: string; publishedUrl?: string; accountId?: string }>()
+      
+      // Process each item
+      for (const itemId of itemIds) {
+        const item = await getItem(itemId)
+        if (!item) {
+          logger.warn(`Bulk approve: item ${String(itemId).replace(/[\r\n]/g, '')} not found`)
+          continue
+        }
+
+        const latePlatform = normalizePlatformString(item.metadata.platform)
+        
+        // Find next slot
+        const slot = await findNextSlot(latePlatform)
+        if (!slot) {
+          logger.warn(`Bulk approve: no slot available for ${latePlatform}`)
+          continue
+        }
+
+        // Resolve account ID
+        const platform = fromLatePlatform(latePlatform)
+        const accountId = item.metadata.accountId || await getAccountId(platform)
+        if (!accountId) {
+          logger.warn(`Bulk approve: no account connected for ${latePlatform}`)
+          continue
+        }
+
+        // Upload media if exists
+        let mediaItems: Array<{ type: 'image' | 'video'; url: string }> | undefined
+        const effectiveMediaPath = item.mediaPath ?? item.metadata.sourceMediaPath
+        if (effectiveMediaPath) {
+          const mediaExists = await fileExists(effectiveMediaPath)
+          if (mediaExists) {
+            const upload = await client.uploadMedia(effectiveMediaPath)
+            mediaItems = [{ type: upload.type, url: upload.url }]
+          }
+        }
+
+        // Create scheduled post in Late
+        const isTikTok = latePlatform === 'tiktok'
+        const tiktokSettings = isTikTok ? {
+          privacy_level: 'PUBLIC_TO_EVERYONE',
+          allow_comment: true,
+          allow_duet: true,
+          allow_stitch: true,
+          content_preview_confirmed: true,
+          express_consent_given: true,
+        } : undefined
+
+        const latePost = await client.createPost({
+          content: item.postContent,
+          platforms: [{ platform: latePlatform, accountId }],
+          scheduledFor: slot,
+          timezone: schedConfig.timezone,
+          mediaItems,
+          platformSpecificData: item.metadata.platformSpecificData,
+          tiktokSettings,
+        })
+
+        publishDataMap.set(itemId, {
+          latePostId: latePost._id,
+          scheduledFor: slot,
+          publishedUrl: undefined,
+          accountId,
+        })
+      }
+
+      // Approve all items
+      const results = await approveBulk(itemIds, publishDataMap)
+      
+      res.json({ success: true, results, count: results.length })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      logger.error(`Bulk approve failed: ${String(msg).replace(/[\r\n]/g, '')}`)
+      res.status(500).json({ error: msg })
+    }
+  })
+
   // POST /api/posts/:id/reject — delete from queue
   router.post('/api/posts/:id/reject', async (req, res) => {
     try {
@@ -150,6 +244,34 @@ export function createRouter(): Router {
       res.json({ success: true })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
+      res.status(500).json({ error: msg })
+    }
+  })
+
+  // POST /api/posts/bulk-reject — reject multiple posts at once
+  router.post('/api/posts/bulk-reject', async (req, res) => {
+    try {
+      const { itemIds } = req.body
+      if (!Array.isArray(itemIds) || itemIds.length === 0) {
+        return res.status(400).json({ error: 'itemIds must be a non-empty array' })
+      }
+
+      const results = []
+      for (const itemId of itemIds) {
+        try {
+          await rejectItem(itemId)
+          results.push({ itemId, success: true })
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          results.push({ itemId, success: false, error: msg })
+          logger.error(`Bulk reject failed for ${String(itemId).replace(/[\r\n]/g, '')}: ${String(msg).replace(/[\r\n]/g, '')}`)
+        }
+      }
+
+      res.json({ success: true, results, count: results.filter(r => r.success).length })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      logger.error(`Bulk reject failed: ${String(msg).replace(/[\r\n]/g, '')}`)
       res.status(500).json({ error: msg })
     }
   })
