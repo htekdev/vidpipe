@@ -10,8 +10,7 @@
  * - Image generation (DALL-E)
  */
 
-import os from 'os'
-import crypto from 'crypto'
+import tmp from 'tmp'
 import { join } from '../core/paths.js'
 import { readJsonFile, ensureDirectory } from '../core/fileSystem.js'
 import { execCommand, execFileRaw } from '../core/process.js'
@@ -94,8 +93,7 @@ export async function captureFrame(
   videoPath: string,
   timestamp: number,
 ): Promise<FrameCaptureResult> {
-  const uuid = crypto.randomUUID()
-  const outputPath = join(os.tmpdir(), `frame-${uuid}.jpg`)
+  const outputPath = tmp.fileSync({ postfix: '.jpg' }).name
 
   logger.debug(`[agentTools] Capturing frame at ${timestamp}s from ${videoPath}`)
 
@@ -145,8 +143,7 @@ export async function drawRegions(
   imagePath: string,
   regions: DrawRegion[],
 ): Promise<DrawRegionsResult> {
-  const uuid = crypto.randomUUID()
-  const outputPath = join(os.tmpdir(), `annotated-${uuid}.jpg`)
+  const outputPath = tmp.fileSync({ postfix: '.jpg' }).name
 
   logger.debug(`[agentTools] Drawing ${regions.length} regions on ${imagePath}`)
 

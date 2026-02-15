@@ -22,7 +22,6 @@ if (!config.GEMINI_API_KEY) {
   console.error('GEMINI_API_KEY is not set in .env — cannot run test.')
   process.exit(1)
 }
-console.log(`GEMINI_API_KEY: [REDACTED - ${config.GEMINI_API_KEY.length} characters]`)
 
 try {
   // Load existing video
