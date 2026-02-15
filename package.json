@@ -22,8 +22,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:integration": "vitest run --testPathPattern=integration",
-    "test:unit": "vitest run --testPathPattern='__tests__/(?!integration)'",
+    "test:integration": "vitest run src/__tests__/integration/",
+    "test:unit": "vitest run --exclude 'src/__tests__/integration/**'",
     "push": "tsx cicd/push.ts"
   },
   "keywords": [
