@@ -262,6 +262,13 @@
           videoRef.current.load()
           prevKeyRef.current = group.groupKey
         }
+        // Unmute after autoplay starts (browsers require muted for autoplay)
+        if (videoRef.current) {
+          videoRef.current.muted = false
+        }
+        // Cleanup: pause video when switching groups or unmounting
+        const vid = videoRef.current
+        return () => { if (vid) { vid.pause(); vid.muted = true } }
       }, [group.groupKey, hasMedia])
 
       if (!hasMedia) {
@@ -515,62 +522,45 @@
       const approveGroup = useCallback(async () => {
         if (busy || !currentGroup || selectedPlatforms.length === 0) return
         
-        setBusy(true)
-        setBusyText(`Scheduling ${selectedPlatforms.length} post(s)…`)
+        const count = selectedPlatforms.length
+        const groupKey = currentGroup.groupKey
         
-        try {
-          const res = await fetch('/api/posts/bulk-approve', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ itemIds: selectedPlatforms }),
-          })
-          
-          const data = await res.json()
-          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-          
-          setStats(s => ({ ...s, approved: s.approved + selectedPlatforms.length }))
-          showToast(`Approved ${selectedPlatforms.length} post(s)!`, 'success')
-          
-          animateOut(() => {
-            setAllGroups(prev => prev.filter(g => g.groupKey !== currentGroup.groupKey))
-            setSelectedPlatforms([])
-          })
-        } catch (err) {
-          showToast(`Approve failed: ${err.message}`, 'error')
-        } finally {
-          setBusy(false)
-        }
+        // Fire and forget — send request, don't wait
+        fetch('/api/posts/bulk-approve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ itemIds: selectedPlatforms }),
+        }).catch(err => showToast(`Approve failed: ${err.message}`, 'error'))
+        
+        setStats(s => ({ ...s, approved: s.approved + count }))
+        showToast(`Scheduling ${count} post(s)…`, 'success')
+        
+        animateOut(() => {
+          setAllGroups(prev => prev.filter(g => g.groupKey !== groupKey))
+          setSelectedPlatforms([])
+        })
       }, [busy, currentGroup, selectedPlatforms, animateOut])
 
       const rejectGroup = useCallback(async () => {
         if (busy || !currentGroup) return
         
         const allIds = currentGroup.items.map(i => i.id)
-        setBusy(true)
-        setBusyText('Rejecting…')
+        const groupKey = currentGroup.groupKey
         
-        try {
-          const res = await fetch('/api/posts/bulk-reject', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ itemIds: allIds }),
-          })
-          
-          const data = await res.json()
-          if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-          
-          setStats(s => ({ ...s, rejected: s.rejected + allIds.length }))
-          showToast('Group rejected', 'info')
-          
-          animateOut(() => {
-            setAllGroups(prev => prev.filter(g => g.groupKey !== currentGroup.groupKey))
-            setSelectedPlatforms([])
-          })
-        } catch (err) {
-          showToast(`Reject failed: ${err.message}`, 'error')
-        } finally {
-          setBusy(false)
-        }
+        // Fire and forget — send request, don't wait
+        fetch('/api/posts/bulk-reject', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ itemIds: allIds }),
+        }).catch(err => showToast(`Reject failed: ${err.message}`, 'error'))
+        
+        setStats(s => ({ ...s, rejected: s.rejected + allIds.length }))
+        showToast('Group rejected', 'info')
+        
+        animateOut(() => {
+          setAllGroups(prev => prev.filter(g => g.groupKey !== groupKey))
+          setSelectedPlatforms([])
+        })
       }, [busy, currentGroup, animateOut])
 
       const skipGroup = useCallback(() => {

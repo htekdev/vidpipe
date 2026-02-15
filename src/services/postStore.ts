@@ -119,11 +119,17 @@ export async function getPendingItems(): Promise<QueueItem[]> {
 export async function getGroupedPendingItems(): Promise<GroupedQueueItem[]> {
   const items = await getPendingItems()
   
-  // Group items by sourceVideo + sourceClip (null for full video posts)
+  // Group by clip slug — strip the platform suffix from item ID so platform
+  // variants of the same clip (e.g. "my-clip-youtube", "my-clip-instagram")
+  // land in the same group.
   const groups = new Map<string, QueueItem[]>()
   
   for (const item of items) {
-    const groupKey = `${item.metadata.sourceVideo}::${item.metadata.sourceClip ?? 'video'}`
+    const platform = item.metadata.platform.toLowerCase()
+    const clipSlug = item.id.endsWith(`-${platform}`)
+      ? item.id.slice(0, -(platform.length + 1))
+      : item.id
+    const groupKey = `${item.metadata.sourceVideo}::${clipSlug}`
     if (!groups.has(groupKey)) {
       groups.set(groupKey, [])
     }
