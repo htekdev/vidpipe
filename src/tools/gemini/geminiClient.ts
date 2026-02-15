@@ -11,6 +11,7 @@ import { GoogleGenAI, createUserContent, createPartFromUri } from '@google/genai
 import { getConfig } from '../../config/environment.js'
 import logger from '../../config/logger.js'
 import { costTracker } from '../../services/costTracker.js'
+import type { EnhancementOpportunity } from '../../types/index.js'
 
 
 /** Tokens per second of video footage (~263 tokens/s per Gemini docs) */
@@ -266,4 +267,148 @@ export async function analyzeVideoClipDirection(
   return text
 }
 
+const ENHANCEMENT_ANALYSIS_PROMPT = `You are a visual content strategist analyzing a video to identify moments where an AI-generated image overlay would enhance viewer comprehension.
 
+The speaker's transcript is provided below for context. Your job is to find moments where:
+1. The speaker explains an abstract concept (architecture, workflow, algorithm) that would benefit from a diagram or illustration
+2. The speaker references something not visible on screen
+3. The speaker is teaching a concept where a visual metaphor would help retention
+4. The screen is showing something generic (terminal, text editor) while discussing something visual
+
+Do NOT suggest images when:
+- The screen already shows relevant visual content (diagrams, UI, demos)
+- The speaker is doing a live demonstration that viewers need to see clearly
+- The moment is too brief (< 5 seconds) for an overlay to register
+- The topic is too simple to need visual aid
+
+Analyze the video layout to determine safe overlay placement:
+- If a webcam overlay is visible, note its position and avoid it
+- Prefer placing images in areas with less visual activity
+- Consider the main content area (code editor, terminal, browser) and avoid obscuring it
+
+Return a JSON array of enhancement opportunities. Each object must have:
+- timestampStart: number (seconds from video start)
+- timestampEnd: number (seconds, when to stop showing — typically 5-12 seconds after start)
+- topic: string (what the speaker is explaining)
+- imagePrompt: string (detailed prompt for AI image generation — describe the image to create)
+- reason: string (why this visual aid helps the viewer)
+- placement: { region: string (one of: "top-left", "top-right", "bottom-left", "bottom-right", "center-right", "center-left"), avoidAreas: string[] (e.g. ["webcam", "code-editor"]), sizePercent: number (15-30, percentage of video width) }
+- confidence: number (0.0-1.0, how confident this enhancement is valuable)
+
+Return ONLY the JSON array, no markdown fences, no explanation. Identify 3-8 opportunities maximum.
+If no good opportunities exist, return an empty array [].
+
+TRANSCRIPT:
+`
+
+/**
+ * Upload a video to Gemini and identify moments where AI-generated image
+ * overlays would enhance viewer comprehension.
+ *
+ * @param videoPath - Path to the video file (mp4, webm, mov, etc.)
+ * @param durationSeconds - Video duration in seconds (for cost estimation)
+ * @param transcript - Full transcript text for context
+ * @param model - Gemini model to use (default: gemini-2.5-flash)
+ * @returns Filtered array of enhancement opportunities
+ */
+export async function analyzeVideoForEnhancements(
+  videoPath: string,
+  durationSeconds: number,
+  transcript: string,
+  model: string = 'gemini-2.5-flash',
+): Promise<EnhancementOpportunity[]> {
+  const config = getConfig()
+  const apiKey = config.GEMINI_API_KEY
+
+  if (!apiKey) {
+    throw new Error(
+      'GEMINI_API_KEY is required for video enhancement analysis. ' +
+        'Get a key at https://aistudio.google.com/apikey',
+    )
+  }
+
+  const ai = new GoogleGenAI({ apiKey })
+
+  logger.info(`[Gemini] Uploading video for enhancement analysis: ${videoPath}`)
+
+  // 1. Upload the video file
+  const file = await ai.files.upload({
+    file: videoPath,
+    config: { mimeType: 'video/mp4' },
+  })
+
+  if (!file.uri || !file.mimeType || !file.name) {
+    throw new Error('Gemini file upload failed — no URI returned')
+  }
+
+  // 2. Wait for file to become ACTIVE (Gemini processes uploads async)
+  logger.info(`[Gemini] Waiting for file processing to complete...`)
+  let fileState = file.state
+  while (fileState === 'PROCESSING') {
+    await new Promise(resolve => setTimeout(resolve, 2000))
+    const updated = await ai.files.get({ name: file.name })
+    fileState = updated.state
+    logger.debug(`[Gemini] File state: ${fileState}`)
+  }
+  if (fileState !== 'ACTIVE') {
+    throw new Error(`Gemini file processing failed — state: ${fileState}`)
+  }
+
+  logger.info(`[Gemini] Video ready, requesting enhancement analysis (model: ${model})`)
+
+  // 3. Request enhancement analysis with video + transcript
+  const response = await ai.models.generateContent({
+    model,
+    contents: createUserContent([
+      createPartFromUri(file.uri, file.mimeType),
+      ENHANCEMENT_ANALYSIS_PROMPT + transcript,
+    ]),
+  })
+
+  const text = response.text ?? ''
+
+  if (!text) {
+    throw new Error('Gemini returned empty response')
+  }
+
+  // 4. Track cost
+  const estimatedInputTokens = Math.ceil(durationSeconds * VIDEO_TOKENS_PER_SECOND)
+  const estimatedOutputTokens = Math.ceil(text.length / 4) // rough token estimate
+  costTracker.recordServiceUsage('gemini', 0, {
+    model,
+    durationSeconds,
+    estimatedInputTokens,
+    estimatedOutputTokens,
+    videoFile: videoPath,
+  })
+
+  logger.info(`[Gemini] Enhancement analysis complete (${text.length} chars)`)
+
+  // Parse JSON response
+  let opportunities: EnhancementOpportunity[]
+  try {
+    // Strip markdown fences if Gemini adds them despite instructions
+    const cleaned = text.replace(/^```(?:json)?\n?/gm, '').replace(/\n?```$/gm, '').trim()
+    opportunities = JSON.parse(cleaned) as EnhancementOpportunity[]
+  } catch {
+    logger.warn('[Gemini] Failed to parse enhancement analysis as JSON, returning empty')
+    return []
+  }
+
+  // Filter by confidence threshold
+  opportunities = opportunities.filter(o => o.confidence >= 0.7)
+
+  // Cap at 8
+  opportunities = opportunities.slice(0, 8)
+
+  // Ensure minimum 10s gap between consecutive overlays
+  const filtered: EnhancementOpportunity[] = []
+  for (const opp of opportunities) {
+    const lastEnd = filtered.length > 0 ? filtered[filtered.length - 1].timestampEnd : -Infinity
+    if (opp.timestampStart >= lastEnd + 10) {
+      filtered.push(opp)
+    }
+  }
+
+  return filtered
+}

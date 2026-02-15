@@ -110,7 +110,8 @@ const defaultCmd = program
   .option('--no-medium-clips', 'Skip medium clip generation')
   .option('--no-social', 'Skip social media post generation')
   .option('--no-captions', 'Skip caption generation/burning')
-  .option('--no-social-publish', 'Skip social media publishing/queue-build stage')
+  .option('--no-visual-enhancement', 'Skip visual enhancement (AI image overlays)')
+  .option('--no-social-publish','Skip social media publishing/queue-build stage')
   .option('--late-api-key <key>', 'Late API key (default: env LATE_API_KEY)')
   .option('--late-profile-id <id>', 'Late profile ID (default: env LATE_PROFILE_ID)')
   .option('-v, --verbose', 'Verbose logging')
@@ -139,6 +140,7 @@ const defaultCmd = program
       mediumClips: opts.mediumClips,
       social: opts.social,
       captions: opts.captions,
+      visualEnhancement: opts.visualEnhancement,
       socialPublish: opts.socialPublish,
       lateApiKey: opts.lateApiKey,
       lateProfileId: opts.lateProfileId,

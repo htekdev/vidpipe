@@ -315,6 +315,47 @@ export interface VideoSummary {
 }
 
 // ============================================================================
+// VISUAL ENHANCEMENT
+// ============================================================================
+
+/** Placement region for an image overlay on video */
+export type OverlayRegion = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'center-right' | 'center-left'
+
+/** Where on screen to place an overlay image */
+export interface OverlayPlacement {
+  region: OverlayRegion;
+  avoidAreas: string[];
+  sizePercent: number;
+}
+
+/** A moment in the video identified by Gemini as needing a visual aid */
+export interface EnhancementOpportunity {
+  timestampStart: number;
+  timestampEnd: number;
+  topic: string;
+  imagePrompt: string;
+  reason: string;
+  placement: OverlayPlacement;
+  confidence: number;
+}
+
+/** A generated image overlay ready for FFmpeg compositing */
+export interface GeneratedOverlay {
+  opportunity: EnhancementOpportunity;
+  imagePath: string;
+  width: number;
+  height: number;
+}
+
+/** Result of the visual enhancement stage */
+export interface VisualEnhancementResult {
+  enhancedVideoPath: string;
+  overlays: GeneratedOverlay[];
+  analysisTokens: number;
+  imageGenCost: number;
+}
+
+// ============================================================================
 // PIPELINE
 // ============================================================================
 
@@ -322,6 +363,7 @@ export enum PipelineStage {
   Ingestion = 'ingestion',
   Transcription = 'transcription',
   SilenceRemoval = 'silence-removal',
+  VisualEnhancement = 'visual-enhancement',
   Chapters = 'chapters',
   Captions = 'captions',
   CaptionBurn = 'caption-burn',
@@ -365,6 +407,7 @@ export interface PipelineResult {
   editedVideoPath?: string;
   captions?: string[];
   captionedVideoPath?: string;
+  enhancedVideoPath?: string;
   summary?: VideoSummary;
   chapters?: Chapter[];
   shorts: ShortClip[];

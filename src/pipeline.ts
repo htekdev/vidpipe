@@ -17,6 +17,7 @@ import type { QueueBuildResult } from './services/queueBuilder'
 import { ProducerAgent, type ProduceResult } from './agents/ProducerAgent.js'
 import { burnCaptions } from './tools/ffmpeg/captionBurning'
 import { singlePassEditAndCaption } from './tools/ffmpeg/singlePassEdit'
+import { enhanceVideo } from './stages/visualEnhancement.js'
 import { getModelForAgent } from './config/modelConfig.js'
 import { costTracker } from './services/costTracker.js'
 import type { CostReport } from './services/costTracker.js'
@@ -31,6 +32,7 @@ import type {
   PipelineResult,
   PipelineStage,
   Chapter,
+  VisualEnhancementResult,
 } from './types'
 import { PipelineStage as Stage } from './types'
 
@@ -230,6 +232,24 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   // Use adjusted transcript for captions (if silence was removed), original otherwise
   const captionTranscript = adjustedTranscript ?? transcript
 
+  // 3.5. Visual Enhancement — AI-generated image overlays
+  let enhancedVideoPath: string | undefined
+  if (!cfg.SKIP_VISUAL_ENHANCEMENT && captionTranscript) {
+    const videoToEnhance = editedVideoPath ?? video.repoPath
+    const enhancementResult = await runStage<VisualEnhancementResult>(
+      Stage.VisualEnhancement,
+      async () => {
+        const result = await enhanceVideo(videoToEnhance, captionTranscript, video)
+        if (!result) throw new Error('Visual enhancement returned no result')
+        return result
+      },
+      stageResults,
+    )
+    if (enhancementResult) {
+      enhancedVideoPath = enhancementResult.enhancedVideoPath
+    }
+  }
+
   // 4. Captions (fast, no AI needed) — generate from the right transcript
   let captions: string[] | undefined
   if (captionTranscript && !cfg.SKIP_CAPTIONS) {
@@ -240,9 +260,9 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   let captionedVideoPath: string | undefined
   if (captions && !cfg.SKIP_CAPTIONS) {
     const assFile = captions.find((p) => p.endsWith('.ass'))
-    if (assFile && cleaningKeepSegments) {
+    if (assFile && cleaningKeepSegments && !enhancedVideoPath) {
       // Single-pass: re-do cleaning + burn captions from ORIGINAL video in one encode
-      // This guarantees frame-accurate cuts with perfectly aligned captions
+      // Skip single-pass when enhanced video exists (it already has cleaning baked in)
       const captionedOutput = join(video.videoDir, `${video.slug}-captioned.mp4`)
       captionedVideoPath = await runStage<string>(
         Stage.CaptionBurn,
@@ -251,7 +271,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
       )
     } else if (assFile) {
       // No cleaning — just burn captions into original video
-      const videoToBurn = editedVideoPath ?? video.repoPath
+      const videoToBurn = enhancedVideoPath ?? editedVideoPath ?? video.repoPath
       const captionedOutput = join(video.videoDir, `${video.slug}-captioned.mp4`)
       captionedVideoPath = await runStage<string>(
         Stage.CaptionBurn,
@@ -410,6 +430,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
     video,
     transcript,
     editedVideoPath,
+    enhancedVideoPath,
     captions,
     captionedVideoPath,
     summary,
