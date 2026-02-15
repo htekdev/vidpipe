@@ -304,6 +304,13 @@
           videoRef.current.load()
           prevIdRef.current = item.id
         }
+        // Unmute after autoplay starts (browsers require muted for autoplay)
+        if (videoRef.current) {
+          videoRef.current.muted = false
+        }
+        // Cleanup: pause video when switching items or unmounting
+        const vid = videoRef.current
+        return () => { if (vid) { vid.pause(); vid.muted = true } }
       }, [item.id, item.hasMedia])
 
       if (!item.hasMedia) {

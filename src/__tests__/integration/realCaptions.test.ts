@@ -76,7 +76,7 @@ describe.skipIf(!ffmpegOk)('Real Video Caption Tests', () => {
     it('ASS file contains karaoke \\k tags via active-word font-size overrides', async () => {
       const ass = await fs.readFile(assPath, 'utf-8');
       // Active-word highlighting uses \fs (font-size) and \c (color) overrides
-      expect(ass).toContain('\\fs54');
+      expect(ass).toContain('\\fs72');
       expect(ass).toContain('\\c&H00FFFF&'); // yellow active color
     });
 
@@ -116,18 +116,18 @@ describe.skipIf(!ffmpegOk)('Real Video Caption Tests', () => {
   // ── 2. Caption Style Variants ───────────────────────────────────────────
 
   describe('Caption style variants', () => {
-    it('shorts style uses larger font sizes (54 / 42)', () => {
+    it('shorts style uses larger font sizes (72 / 58)', () => {
       const ass = generateStyledASS(transcript, 'shorts');
-      expect(ass).toMatch(/Style: Default,Montserrat,42/);
-      expect(ass).toContain('\\fs54');
-      expect(ass).toContain('\\fs42');
+      expect(ass).toMatch(/Style: Default,Montserrat,58/);
+      expect(ass).toContain('\\fs72');
+      expect(ass).toContain('\\fs58');
     });
 
-    it('medium style uses smaller font sizes (40 / 32)', () => {
+    it('medium style uses smaller font sizes (54 / 44)', () => {
       const ass = generateStyledASS(transcript, 'medium');
-      expect(ass).toMatch(/Style: Default,Montserrat,32/);
-      expect(ass).toContain('\\fs40');
-      expect(ass).toContain('\\fs32');
+      expect(ass).toMatch(/Style: Default,Montserrat,44/);
+      expect(ass).toContain('\\fs54');
+      expect(ass).toContain('\\fs44');
     });
   });
 

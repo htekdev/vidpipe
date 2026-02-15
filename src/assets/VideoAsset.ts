@@ -76,6 +76,11 @@ export abstract class VideoAsset extends Asset<string> {
     return join(this.videoDir, 'editorial-direction.md')
   }
 
+  /** Path to clip direction markdown file */
+  get clipDirectionPath(): string {
+    return join(this.videoDir, 'clip-direction.md')
+  }
+
   /** Directory containing caption files */
   get captionsDir(): string {
     return join(this.videoDir, 'captions')
@@ -229,6 +234,50 @@ export abstract class VideoAsset extends Asset<string> {
 
       // Save to disk as markdown
       await writeTextFile(this.editorialDirectionPath, direction)
+
+      return direction
+    })
+  }
+
+  // ── Clip Direction ──────────────────────────────────────────────────────────
+
+  /**
+   * Get AI-generated clip direction from Gemini video analysis (pass 2).
+   * Runs on the cleaned video to provide detailed direction for shorts
+   * and medium clip extraction.
+   *
+   * Returns null if GEMINI_API_KEY is not configured (optional feature).
+   *
+   * @param opts - Options controlling generation behavior
+   * @returns Clip direction as markdown text
+   */
+  async getClipDirection(opts?: AssetOptions): Promise<string | null> {
+    if (opts?.force) {
+      this.cache.delete('clipDirection')
+    }
+    return this.cached('clipDirection', async () => {
+      // Check disk first
+      if (!opts?.force && (await fileExists(this.clipDirectionPath))) {
+        return readTextFile(this.clipDirectionPath)
+      }
+
+      // Check if Gemini is configured
+      const { getConfig } = await import('../config/environment.js')
+      const config = getConfig()
+      if (!config.GEMINI_API_KEY) {
+        return null
+      }
+
+      // Analyze video via Gemini
+      const { analyzeVideoClipDirection } = await loadGeminiClient()
+      const metadata = await this.getMetadata()
+      const direction = await analyzeVideoClipDirection(
+        this.videoPath,
+        metadata.duration,
+      )
+
+      // Save to disk as markdown
+      await writeTextFile(this.clipDirectionPath, direction)
 
       return direction
     })

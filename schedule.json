@@ -3,37 +3,47 @@
   "platforms": {
     "linkedin": {
       "slots": [
-        { "days": ["tue", "wed"], "time": "08:00", "label": "Morning thought leadership" },
-        { "days": ["tue", "wed", "thu"], "time": "12:00", "label": "Lunch break engagement" }
+        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "08:00", "label": "Morning thought leadership" },
+        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "12:00", "label": "Lunch break engagement" },
+        { "days": ["sat", "sun"], "time": "09:00", "label": "Weekend morning catch-up" },
+        { "days": ["sat", "sun"], "time": "17:00", "label": "Weekend afternoon wind-down" }
       ],
-      "avoidDays": ["sat", "sun"]
+      "avoidDays": []
     },
     "tiktok": {
       "slots": [
-        { "days": ["tue", "wed", "thu"], "time": "19:00", "label": "Prime entertainment hours" },
-        { "days": ["fri", "sat"], "time": "21:00", "label": "Weekend evening" }
+        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "07:00", "label": "Early morning scroll" },
+        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "19:00", "label": "Prime evening entertainment" },
+        { "days": ["sat", "sun"], "time": "10:00", "label": "Weekend morning binge" },
+        { "days": ["sat", "sun"], "time": "20:00", "label": "Weekend night entertainment" }
       ],
       "avoidDays": []
     },
     "instagram": {
       "slots": [
-        { "days": ["tue", "wed", "thu"], "time": "10:00", "label": "Morning scroll" },
-        { "days": ["wed", "thu", "fri"], "time": "19:30", "label": "Evening couch time" }
+        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "09:00", "label": "Morning feed scroll" },
+        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "19:00", "label": "Evening couch time" },
+        { "days": ["sat", "sun"], "time": "10:00", "label": "Weekend morning scroll" },
+        { "days": ["sat", "sun"], "time": "19:30", "label": "Weekend evening wind-down" }
       ],
       "avoidDays": []
     },
     "youtube": {
       "slots": [
-        { "days": ["fri"], "time": "15:00", "label": "Afternoon pre-weekend" },
-        { "days": ["thu", "fri"], "time": "20:00", "label": "Prime evening viewing" }
+        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "15:00", "label": "Afternoon discovery" },
+        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "20:00", "label": "Prime evening viewing" },
+        { "days": ["sat", "sun"], "time": "14:00", "label": "Weekend afternoon viewing" },
+        { "days": ["sat", "sun"], "time": "20:00", "label": "Weekend evening binge" }
       ],
-      "avoidDays": ["mon"]
+      "avoidDays": []
     },
     "twitter": {
       "slots": [
         { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "08:30", "label": "Morning news check" },
-        { "days": ["tue", "wed", "thu"], "time": "12:00", "label": "Lunch scroll" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "17:00", "label": "Commute home" }
+        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "12:00", "label": "Lunch scroll" },
+        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "17:00", "label": "Commute home" },
+        { "days": ["sat", "sun"], "time": "09:00", "label": "Weekend morning news" },
+        { "days": ["sat", "sun"], "time": "17:00", "label": "Weekend evening catch-up" }
       ],
       "avoidDays": []
     }

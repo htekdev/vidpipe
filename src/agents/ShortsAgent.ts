@@ -51,7 +51,13 @@ const SYSTEM_PROMPT = `You are a short-form video content strategist. Your job i
 6. Tags should be lowercase, no hashes, 3–6 per short.
 7. A 1-second buffer is automatically added before and after each segment boundary during extraction, so plan segments based on content timestamps without worrying about clipping words at the edges.
 
-When you have identified the shorts, call the **plan_shorts** tool with your complete plan.`
+When you have identified the shorts, call the **plan_shorts** tool with your complete plan.
+
+## Using Clip Direction
+You may receive AI-generated clip direction with suggested shorts. Use these as a starting point but make your own decisions:
+- The suggestions are based on visual + audio analysis and may identify moments you'd miss from transcript alone
+- Feel free to adjust timestamps, combine suggestions, or ignore ones that don't work
+- You may also find good shorts NOT in the suggestions — always analyze the full transcript`
 
 // ── JSON Schema for the plan_shorts tool ────────────────────────────────────
 
@@ -138,6 +144,7 @@ export async function generateShorts(
   video: VideoFile,
   transcript: Transcript,
   model?: string,
+  clipDirection?: string,
 ): Promise<ShortClip[]> {
   const agent = new ShortsAgent(model)
 
@@ -149,14 +156,24 @@ export async function generateShorts(
     return `[${seg.start.toFixed(2)}s – ${seg.end.toFixed(2)}s] ${seg.text}\nWords: ${words}`
   })
 
-  const prompt = [
+  const promptParts = [
     `Analyze the following transcript (${transcript.duration.toFixed(0)}s total) and plan shorts.\n`,
     `Video: ${video.filename}`,
     `Duration: ${transcript.duration.toFixed(1)}s\n`,
     '--- TRANSCRIPT ---\n',
     transcriptLines.join('\n\n'),
     '\n--- END TRANSCRIPT ---',
-  ].join('\n')
+  ]
+
+  if (clipDirection) {
+    promptParts.push(
+      '\n--- CLIP DIRECTION (AI-generated suggestions — use as reference, make your own decisions) ---\n',
+      clipDirection,
+      '\n--- END CLIP DIRECTION ---',
+    )
+  }
+
+  const prompt = promptParts.join('\n')
 
   try {
     await agent.run(prompt)
@@ -233,22 +250,45 @@ export async function generateShorts(
 
       // Burn portrait-style captions (green highlight, centered, hook overlay) onto portrait variant
       if (variants) {
-        const portraitVariant = variants.find(v => v.aspectRatio === '9:16')
-        if (portraitVariant) {
+        // Burn captions for 9:16 portrait variants (tiktok, youtube-shorts, instagram-reels)
+        const portraitVariants = variants.filter(v => v.aspectRatio === '9:16')
+        if (portraitVariants.length > 0) {
           try {
             const portraitAssContent = segments.length === 1
               ? generatePortraitASSWithHook(transcript, plan.title, segments[0].start, segments[0].end)
               : generatePortraitASSWithHookComposite(transcript, segments, plan.title)
             const portraitAssPath = join(shortsDir, `${shortSlug}-portrait.ass`)
             await writeTextFile(portraitAssPath, portraitAssContent)
-            const portraitCaptionedPath = portraitVariant.path.replace('.mp4', '-captioned.mp4')
-            await burnCaptions(portraitVariant.path, portraitAssPath, portraitCaptionedPath)
-            // Update the variant path to point to the captioned version
-            portraitVariant.path = portraitCaptionedPath
+            // All 9:16 variants share the same source file — burn once, update all paths
+            const portraitCaptionedPath = portraitVariants[0].path.replace('.mp4', '-captioned.mp4')
+            await burnCaptions(portraitVariants[0].path, portraitAssPath, portraitCaptionedPath)
+            for (const v of portraitVariants) {
+              v.path = portraitCaptionedPath
+            }
             logger.info(`[ShortsAgent] Burned portrait captions with hook for: ${plan.title}`)
           } catch (err) {
             const message = err instanceof Error ? err.message : String(err)
             logger.warn(`[ShortsAgent] Portrait caption burning failed for ${plan.title}: ${message}`)
+          }
+        }
+
+        // Burn captions for non-portrait variants (4:5 feed, 1:1 square)
+        const nonPortraitVariants = variants.filter(v => v.aspectRatio !== '9:16')
+        for (const variant of nonPortraitVariants) {
+          try {
+            const variantAssContent = segments.length === 1
+              ? generateStyledASSForSegment(transcript, segments[0].start, segments[0].end)
+              : generateStyledASSForComposite(transcript, segments)
+            const suffix = variant.aspectRatio === '4:5' ? 'feed' : 'square'
+            const variantAssPath = join(shortsDir, `${shortSlug}-${suffix}.ass`)
+            await writeTextFile(variantAssPath, variantAssContent)
+            const variantCaptionedPath = variant.path.replace('.mp4', '-captioned.mp4')
+            await burnCaptions(variant.path, variantAssPath, variantCaptionedPath)
+            variant.path = variantCaptionedPath
+            logger.info(`[ShortsAgent] Burned ${suffix} captions for: ${plan.title}`)
+          } catch (err) {
+            const message = err instanceof Error ? err.message : String(err)
+            logger.warn(`[ShortsAgent] ${variant.aspectRatio} caption burning failed for ${plan.title}: ${message}`)
           }
         }
       }

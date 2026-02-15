@@ -39,7 +39,7 @@ const emptyTranscript: Transcript = {
   duration: 0,
 };
 
-/** Words with a silence gap > 0.8s between "world" and "next". */
+/** Words with a silence gap > 0.4s between "world" and "next". */
 const wordsWithGap: Word[] = [
   { word: 'Hello', start: 0.0, end: 0.5 },
   { word: 'world', start: 0.6, end: 1.0 },
@@ -58,7 +58,7 @@ const transcriptWithWords: Transcript = {
   duration: 3.8,
 };
 
-/** 10 words to verify max-group splitting (MAX_WORDS_PER_GROUP = 8). */
+/** 10 words to verify max-group splitting (MAX_WORDS_PER_GROUP = 5). */
 const manyWords: Word[] = Array.from({ length: 10 }, (_, i) => ({
   word: `w${i}`,
   start: i * 0.3,
@@ -173,7 +173,7 @@ describe('generateStyledASS', () => {
     expect(hasMultiline).toBe(true);
   });
 
-  it('creates separate groups when silence gap > 0.8s', () => {
+  it('creates separate groups when silence gap > 0.4s', () => {
     const ass = generateStyledASS(transcriptWithWords);
     const dialogueLines = ass.split('\n').filter((l) => l.startsWith('Dialogue:'));
     // Extract ASS timestamps from dialogue lines
@@ -198,21 +198,21 @@ describe('generateStyledASS', () => {
 
   it('shorts style uses larger font sizes', () => {
     const ass = generateStyledASS(transcriptWithWords, 'shorts');
-    expect(ass).toContain('\\fs54');  // active font size
-    expect(ass).toContain('\\fs42');  // base font size
+    expect(ass).toContain('\\fs72');  // active font size
+    expect(ass).toContain('\\fs58');  // base font size
   });
 
   it('medium style uses smaller font sizes', () => {
     const ass = generateStyledASS(transcriptWithWords, 'medium');
-    expect(ass).toContain('\\fs40');  // medium active font size
-    expect(ass).toContain('\\fs32');  // medium base font size
+    expect(ass).toContain('\\fs54');  // medium active font size
+    expect(ass).toContain('\\fs44');  // medium base font size
   });
 
   it('medium style uses different header with smaller default font', () => {
     const ass = generateStyledASS(transcriptWithWords, 'medium');
-    // Medium header has Fontsize 32 in style line
+    // Medium header has Fontsize 44 in style line
     const styleLine = ass.split('\n').find((l) => l.startsWith('Style: Default'));
-    expect(styleLine).toContain('Montserrat,32');
+    expect(styleLine).toContain('Montserrat,44');
   });
 });
 
@@ -265,7 +265,7 @@ describe('generateStyledASSForSegment', () => {
 
   it('respects the style parameter', () => {
     const ass = generateStyledASSForSegment(fullTranscript, 5.0, 6.0, 0.5, 'medium');
-    expect(ass).toContain('\\fs40');
+    expect(ass).toContain('\\fs54');
   });
 });
 
@@ -312,17 +312,17 @@ describe('generateStyledASSForComposite', () => {
 // ---------------------------------------------------------------------------
 
 describe('word grouping logic', () => {
-  it('groups do not exceed MAX_GROUP_WORDS (8)', () => {
+  it('groups do not exceed MAX_GROUP_WORDS (5)', () => {
     const ass = generateStyledASS(manyWordsTranscript);
     const dialogueLines = ass.split('\n').filter((l) => l.startsWith('Dialogue:'));
     // Count words per dialogue group by checking how many words appear in a single line
     for (const line of dialogueLines) {
       const wordTokens = line.match(/\\fs\d+\}[^{]+/g) || [];
-      expect(wordTokens.length).toBeLessThanOrEqual(8);
+      expect(wordTokens.length).toBeLessThanOrEqual(5);
     }
   });
 
-  it('silence gaps > 0.8s split groups', () => {
+  it('silence gaps > 0.4s split groups', () => {
     // wordsWithGap: 4 words, gap, 2 words → should produce 2 groups
     const ass = generateStyledASS(transcriptWithWords);
     const dialogueLines = ass.split('\n').filter((l) => l.startsWith('Dialogue:'));
@@ -331,7 +331,7 @@ describe('word grouping logic', () => {
     expect(dialogueLines).toHaveLength(6);
   });
 
-  it('lines within a group do not exceed WORDS_PER_LINE (4) per display line', () => {
+  it('lines within a group do not exceed WORDS_PER_LINE (3) per display line', () => {
     const ass = generateStyledASS(manyWordsTranscript);
     const dialogueLines = ass.split('\n').filter((l) => l.startsWith('Dialogue:'));
     for (const line of dialogueLines) {
@@ -340,7 +340,7 @@ describe('word grouping logic', () => {
       const displayLines = textPart.split('\\N');
       for (const dLine of displayLines) {
         const wordCount = (dLine.match(/\\fs\d+\}/g) || []).length;
-        expect(wordCount).toBeLessThanOrEqual(4);
+        expect(wordCount).toBeLessThanOrEqual(3);
       }
     }
   });
@@ -389,18 +389,18 @@ describe('generateStyledASS – portrait style', () => {
     expect(ass).toContain('\\t(0,150,\\fscx100\\fscy100)');
   });
 
-  it('portrait active word font size is 78', () => {
+  it('portrait active word font size is 144', () => {
     const ass = generateStyledASS(transcriptWithWords, 'portrait');
-    expect(ass).toContain('\\fs78');
+    expect(ass).toContain('\\fs144');
   });
 
-  it('portrait inactive words use white color at size 66', () => {
+  it('portrait inactive words use white color at size 120', () => {
     const ass = generateStyledASS(transcriptWithWords, 'portrait');
     const dialogueLines = ass.split('\n').filter((l) => l.startsWith('Dialogue:'));
-    const hasWhite66 = dialogueLines.some(
-      (l) => l.includes('\\c&HFFFFFF&') && l.includes('\\fs66'),
+    const hasWhite120 = dialogueLines.some(
+      (l) => l.includes('\\c&HFFFFFF&') && l.includes('\\fs120'),
     );
-    expect(hasWhite66).toBe(true);
+    expect(hasWhite120).toBe(true);
   });
 });
 

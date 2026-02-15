@@ -151,7 +151,7 @@ describe('adjustTranscript', () => {
 // ── Keep segments logic ──────────────────────────────────────────────────────
 
 describe('keep segments from removals', () => {
-  // Reimplements the keep-segment logic from SilenceRemovalAgent.ts
+  // Reimplements the keep-segment logic from ProducerAgent.ts/SilenceRemovalAgent.ts
   function computeKeepSegments(
     removals: { start: number; end: number }[],
     videoDuration: number,
