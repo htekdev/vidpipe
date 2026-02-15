@@ -99,6 +99,12 @@ export async function captureFrame(
 
   logger.debug(`[agentTools] Capturing frame at ${timestamp}s from ${videoPath}`)
 
+  // Validate timestamp against video duration to avoid FFmpeg silently outputting last frame
+  const info = await getVideoInfo(videoPath)
+  if (info.duration > 0 && timestamp > info.duration) {
+    throw new Error(`Frame capture failed at ${timestamp}s: timestamp exceeds video duration (${info.duration}s)`)
+  }
+
   const ffmpegPath = getFFmpegPath()
   const args = [
     '-ss', String(timestamp),
