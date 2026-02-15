@@ -11,8 +11,11 @@ import {
   closeSync,
 } from 'fs'
 import type { Stats, Dirent, ReadStream, WriteStream } from 'fs'
-import os from 'os'
+import tmp from 'tmp'
 import { join, dirname } from './paths.js'
+
+// Enable graceful cleanup of all tmp resources on process exit
+tmp.setGracefulCleanup()
 
 export type { Stats, Dirent, ReadStream, WriteStream }
 
@@ -231,12 +234,18 @@ export function closeFileDescriptor(fd: number): void {
 
 /** Create a temporary directory with the given prefix. Caller is responsible for cleanup. */
 export async function makeTempDir(prefix: string): Promise<string> {
-  return fsp.mkdtemp(join(os.tmpdir(), prefix))
+  return new Promise((resolve, reject) => {
+    // mode 0o700 ensures only the owner can access the directory (secure)
+    tmp.dir({ prefix, mode: 0o700 }, (err, path) => {
+      if (err) reject(err)
+      else resolve(path)
+    })
+  })
 }
 
 /** Run fn inside a temp directory, auto-cleanup on completion or error. */
 export async function withTempDir<T>(prefix: string, fn: (tempDir: string) => Promise<T>): Promise<T> {
-  const tempDir = await fsp.mkdtemp(join(os.tmpdir(), prefix))
+  const tempDir = await makeTempDir(prefix)
   try {
     return await fn(tempDir)
   } finally {
