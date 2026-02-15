@@ -25,3 +25,13 @@ recordings/
 
 # Late account cache
 .vidpipe-cache.json
+
+# Development test scripts (not for version control)
+test-*.ts
+draw-test.ts
+fc-debug.txt
+review.bat
+review.ico
+*.png
+!assets/**/*.png
+!docs/**/*.png
