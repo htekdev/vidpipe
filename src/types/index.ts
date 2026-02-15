@@ -21,6 +21,7 @@ export enum Platform {
   Instagram = 'instagram',
   LinkedIn = 'linkedin',
   X = 'x',
+  Facebook = 'facebook',
 }
 
 // ============================================================================
