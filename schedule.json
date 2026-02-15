@@ -5,6 +5,7 @@
       "slots": [
         { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "08:00", "label": "Morning thought leadership" },
         { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "12:00", "label": "Lunch break engagement" },
+        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "17:00", "label": "End of workday wind-down" },
         { "days": ["sat", "sun"], "time": "09:00", "label": "Weekend morning catch-up" },
         { "days": ["sat", "sun"], "time": "17:00", "label": "Weekend afternoon wind-down" }
       ],
@@ -13,6 +14,7 @@
     "tiktok": {
       "slots": [
         { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "07:00", "label": "Early morning scroll" },
+        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "12:30", "label": "Lunch break entertainment" },
         { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "19:00", "label": "Prime evening entertainment" },
         { "days": ["sat", "sun"], "time": "10:00", "label": "Weekend morning binge" },
         { "days": ["sat", "sun"], "time": "20:00", "label": "Weekend night entertainment" }
@@ -22,6 +24,7 @@
     "instagram": {
       "slots": [
         { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "09:00", "label": "Morning feed scroll" },
+        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "12:30", "label": "Midday inspiration" },
         { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "19:00", "label": "Evening couch time" },
         { "days": ["sat", "sun"], "time": "10:00", "label": "Weekend morning scroll" },
         { "days": ["sat", "sun"], "time": "19:30", "label": "Weekend evening wind-down" }
@@ -30,6 +33,7 @@
     },
     "youtube": {
       "slots": [
+        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "09:00", "label": "Morning commute watch" },
         { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "15:00", "label": "Afternoon discovery" },
         { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "20:00", "label": "Prime evening viewing" },
         { "days": ["sat", "sun"], "time": "14:00", "label": "Weekend afternoon viewing" },

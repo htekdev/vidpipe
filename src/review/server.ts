@@ -20,7 +20,7 @@ export async function startReviewServer(options: ReviewServerOptions = {}): Prom
   // Middleware
   app.use(express.json())
 
-  // API routes (has its own rate limiter)
+  // API routes
   app.use(createRouter())
 
   // Serve media files from publish-queue and published directories

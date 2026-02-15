@@ -36,6 +36,15 @@ export interface QueueItem {
   folderPath: string
 }
 
+export interface GroupedQueueItem {
+  groupKey: string
+  sourceVideo: string
+  sourceClip: string | null
+  clipType: 'video' | 'short' | 'medium-clip'
+  hasMedia: boolean
+  items: QueueItem[]
+}
+
 function getQueueDir(): string {
   const { OUTPUT_DIR } = getConfig()
   return join(OUTPUT_DIR, 'publish-queue')
@@ -105,6 +114,47 @@ export async function getPendingItems(): Promise<QueueItem[]> {
     return a.metadata.createdAt.localeCompare(b.metadata.createdAt)
   })
   return items
+}
+
+export async function getGroupedPendingItems(): Promise<GroupedQueueItem[]> {
+  const items = await getPendingItems()
+  
+  // Group items by sourceVideo + sourceClip (null for full video posts)
+  const groups = new Map<string, QueueItem[]>()
+  
+  for (const item of items) {
+    const groupKey = `${item.metadata.sourceVideo}::${item.metadata.sourceClip ?? 'video'}`
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, [])
+    }
+    groups.get(groupKey)!.push(item)
+  }
+  
+  // Convert to GroupedQueueItem array
+  const result: GroupedQueueItem[] = []
+  for (const [groupKey, groupItems] of groups) {
+    if (groupItems.length === 0) continue
+    
+    const first = groupItems[0]
+    result.push({
+      groupKey,
+      sourceVideo: first.metadata.sourceVideo,
+      sourceClip: first.metadata.sourceClip,
+      clipType: first.metadata.clipType,
+      hasMedia: first.hasMedia,
+      items: groupItems,
+    })
+  }
+  
+  // Sort groups: media first, then by earliest createdAt in group
+  result.sort((a, b) => {
+    if (a.hasMedia !== b.hasMedia) return a.hasMedia ? -1 : 1
+    const aDate = Math.min(...a.items.map(i => new Date(i.metadata.createdAt).getTime()))
+    const bDate = Math.min(...b.items.map(i => new Date(i.metadata.createdAt).getTime()))
+    return aDate - bDate
+  })
+  
+  return result
 }
 
 export async function getItem(id: string): Promise<QueueItem | null> {
@@ -303,6 +353,52 @@ export async function approveItem(
   }
 
   logger.debug(`Approved and moved queue item: ${String(id).replace(/[\r\n]/g, '')}`)
+}
+
+export interface BulkApprovalResult {
+  itemId: string
+  platform: string
+  latePostId: string
+  scheduledFor: string
+  publishedUrl?: string
+}
+
+export async function approveBulk(
+  itemIds: string[],
+  publishDataMap: Map<string, { latePostId: string; scheduledFor: string; publishedUrl?: string; accountId?: string }>,
+): Promise<BulkApprovalResult[]> {
+  const results: BulkApprovalResult[] = []
+  const errors: Array<{ itemId: string; error: string }> = []
+  
+  for (const id of itemIds) {
+    try {
+      const publishData = publishDataMap.get(id)
+      if (!publishData) {
+        errors.push({ itemId: id, error: 'No publish data provided' })
+        continue
+      }
+      
+      await approveItem(id, publishData)
+      
+      results.push({
+        itemId: id,
+        platform: id.split('-').pop() || 'unknown',
+        latePostId: publishData.latePostId,
+        scheduledFor: publishData.scheduledFor,
+        publishedUrl: publishData.publishedUrl,
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      errors.push({ itemId: id, error: msg })
+      logger.error(`Bulk approve failed for ${String(id).replace(/[\r\n]/g, '')}: ${msg}`)
+    }
+  }
+  
+  if (errors.length > 0) {
+    logger.warn(`Bulk approval completed with ${errors.length} errors`)
+  }
+  
+  return results
 }
 
 export async function rejectItem(id: string): Promise<void> {
