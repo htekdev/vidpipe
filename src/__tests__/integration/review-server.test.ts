@@ -309,30 +309,6 @@ describe('Review Server API', () => {
   })
 })
 
-// ── Rate limiting test ──────────────────────────────────────────────
-
-describe('Rate limiting', () => {
-  it('enforces rate limits on API endpoints', async () => {
-    const app = buildApp()
-    await createTestItem('rate-test-item')
-
-    // Make 101 requests (limit is 100 per 15 minutes)
-    const requests = []
-    for (let i = 0; i < 101; i++) {
-      requests.push(request(app).get('/api/posts/pending'))
-    }
-
-    const responses = await Promise.all(requests)
-    
-    // First 100 should succeed, 101st should be rate limited
-    const successCount = responses.filter(r => r.status === 200).length
-    const rateLimitedCount = responses.filter(r => r.status === 429).length
-
-    expect(successCount).toBeLessThanOrEqual(100)
-    expect(rateLimitedCount).toBeGreaterThan(0)
-  })
-})
-
 // ── Server startup test ─────────────────────────────────────────────
 
 describe('startReviewServer', () => {

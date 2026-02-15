@@ -1,6 +1,5 @@
 import { fileExists } from '../core/fileSystem.js'
 import { Router } from '../core/http.js'
-import rateLimit from 'express-rate-limit'
 import { getPendingItems, getGroupedPendingItems, getItem, updateItem, approveItem, rejectItem, approveBulk, type BulkApprovalResult } from '../services/postStore.js'
 import { findNextSlot, getScheduleCalendar } from '../services/scheduler'
 import { getAccountId } from '../services/accountMapping'
@@ -26,9 +25,6 @@ function setCache(key: string, data: unknown, ttl = CACHE_TTL_MS): void {
 
 export function createRouter(): Router {
   const router = Router()
-
-  // Rate limiting to prevent abuse of API endpoints
-  router.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }))
 
   // GET /api/posts/pending — list all pending review items
   router.get('/api/posts/pending', async (req, res) => {

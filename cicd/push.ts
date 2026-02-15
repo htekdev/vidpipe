@@ -77,10 +77,14 @@ console.log('  ⏳ Running type check...');
 run('npx tsc --noEmit', 'Type check');
 console.log('  ✓ Type check passed');
 
-// tests
+// tests (unit + integration)
 console.log('  ⏳ Running tests...');
 run('npm run test:coverage', 'Tests');
 console.log('  ✓ Tests passed');
+
+console.log('  ⏳ Running integration tests...');
+run('npm run test:integration', 'Integration tests');
+console.log('  ✓ Integration tests passed');
 
 // build
 console.log('  ⏳ Building...');
