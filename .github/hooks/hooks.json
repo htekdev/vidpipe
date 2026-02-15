@@ -1,37 +1,48 @@
 {
+  "version": 1,
   "hooks": {
-    "PreToolUse": [
+    "preToolUse": [
       {
         "type": "command",
-        "command": ".github/hooks/pre-push-block.sh",
-        "windows": "powershell -File .github\\hooks\\pre-push-block.ps1",
-        "timeout": 5
+        "bash": ".github/hooks/pre-push-block.sh",
+        "powershell": ".github/hooks/pre-push-block.ps1",
+        "cwd": ".",
+        "timeoutSec": 5,
+        "comment": "Block git push — must use npm run push instead"
       },
       {
         "type": "command",
-        "command": ".github/hooks/pre-amend-block.sh",
-        "windows": "powershell -File .github\\hooks\\pre-amend-block.ps1",
-        "timeout": 5
+        "bash": ".github/hooks/pre-amend-block.sh",
+        "powershell": ".github/hooks/pre-amend-block.ps1",
+        "cwd": ".",
+        "timeoutSec": 5,
+        "comment": "Block git commit --amend when HEAD is already pushed to remote"
       },
       {
         "type": "command",
-        "command": ".github/hooks/pre-force-push-block.sh",
-        "windows": "powershell -File .github\\hooks\\pre-force-push-block.ps1",
-        "timeout": 5
+        "bash": ".github/hooks/pre-force-push-block.sh",
+        "powershell": ".github/hooks/pre-force-push-block.ps1",
+        "cwd": ".",
+        "timeoutSec": 5,
+        "comment": "Block git push --force / --force-with-lease"
       },
       {
         "type": "command",
-        "command": ".github/hooks/pre-import-ban.sh",
-        "windows": "powershell -File .github\\hooks\\pre-import-ban.ps1",
-        "timeout": 5
+        "bash": ".github/hooks/pre-import-ban.sh",
+        "powershell": ".github/hooks/pre-import-ban.ps1",
+        "cwd": ".",
+        "timeoutSec": 5,
+        "comment": "Block non-relative imports outside src/core/ — all external deps must go through core modules"
       }
     ],
-    "PostToolUse": [
+    "postToolUse": [
       {
         "type": "command",
-        "command": ".github/hooks/post-edit-invalidate.sh",
-        "windows": "powershell -File .github\\hooks\\post-edit-invalidate.ps1",
-        "timeout": 5
+        "bash": ".github/hooks/post-edit-invalidate.sh",
+        "powershell": ".github/hooks/post-edit-invalidate.ps1",
+        "cwd": ".",
+        "timeoutSec": 5,
+        "comment": "Delete .github/reviewed.md when code is edited/created (invalidates review)"
       }
     ]
   }
