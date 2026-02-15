@@ -29,11 +29,8 @@ export default defineConfig({
     for (const f of fontFiles) {
       copyFileSync(`assets/fonts/${f}`, `dist/fonts/${f}`)
     }
-    // Copy face detection model
+    // Copy face detection model (only ultraface, not unused large models)
     mkdirSync('dist/models', { recursive: true })
-    const modelFiles = readdirSync('assets/models').filter(f => statSync(`assets/models/${f}`).isFile())
-    for (const f of modelFiles) {
-      copyFileSync(`assets/models/${f}`, `dist/models/${f}`)
-    }
+    copyFileSync('assets/models/ultraface-320.onnx', 'dist/models/ultraface-320.onnx')
   },
 })

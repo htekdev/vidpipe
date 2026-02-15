@@ -10,7 +10,7 @@
   "files": [
     "dist",
     "!dist/__tests__",
-    "assets/",
+    "assets/fonts/",
     "README.md",
     "LICENSE"
   ],
