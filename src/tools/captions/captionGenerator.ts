@@ -58,37 +58,37 @@ function toASS(seconds: number): string {
 // ---------------------------------------------------------------------------
 
 /** Silence gap threshold in seconds – gaps longer than this split caption groups. */
-const SILENCE_GAP_THRESHOLD = 0.8
+const SILENCE_GAP_THRESHOLD = 0.4
 /** Maximum words displayed simultaneously in a caption group. */
-const MAX_WORDS_PER_GROUP = 8
+const MAX_WORDS_PER_GROUP = 5
 /** Target words per display line within a group (splits into 2 lines above this). */
-const WORDS_PER_LINE = 4
+const WORDS_PER_LINE = 3
 /** ASS BGR color for the active (currently-spoken) word – yellow. */
 const ACTIVE_COLOR = '\\c&H00FFFF&'
 /** ASS BGR color for inactive words – white. */
 const BASE_COLOR = '\\c&HFFFFFF&'
 /** Font size for the active word. */
-const ACTIVE_FONT_SIZE = 54
+const ACTIVE_FONT_SIZE = 72
 /** Font size for inactive words (matches style default). */
-const BASE_FONT_SIZE = 42
+const BASE_FONT_SIZE = 58
 
 // ---------------------------------------------------------------------------
 // Medium caption constants (smaller, bottom-positioned for longer content)
 // ---------------------------------------------------------------------------
 
 /** Font size for the active word in medium style. */
-const MEDIUM_ACTIVE_FONT_SIZE = 40
+const MEDIUM_ACTIVE_FONT_SIZE = 54
 /** Font size for inactive words in medium style. */
-const MEDIUM_BASE_FONT_SIZE = 32
+const MEDIUM_BASE_FONT_SIZE = 44
 
 // ---------------------------------------------------------------------------
 // Portrait caption constants (Opus Clips style)
 // ---------------------------------------------------------------------------
 
 /** Font size for the active word in portrait style. */
-const PORTRAIT_ACTIVE_FONT_SIZE = 78
+const PORTRAIT_ACTIVE_FONT_SIZE = 144
 /** Font size for inactive words in portrait style. */
-const PORTRAIT_BASE_FONT_SIZE = 66
+const PORTRAIT_BASE_FONT_SIZE = 120
 /** ASS BGR color for the active word in portrait style – green. */
 const PORTRAIT_ACTIVE_COLOR = '\\c&H00FF00&'
 /** ASS BGR color for inactive words in portrait style – white. */
@@ -138,7 +138,7 @@ export function generateVTT(transcript: Transcript): string {
  * ### Style fields explained (comma-separated in the Style line):
  * - `Fontname: Montserrat` — bundled with the project; FFmpeg's `ass` filter
  *   uses `fontsdir=.` so libass finds the .ttf files next to the .ass file.
- * - `Fontsize: 42` — base size for inactive words
+ * - `Fontsize: 58` — base size for inactive words
  * - `PrimaryColour: &H00FFFFFF` — white (ASS uses `&HAABBGGRR` — alpha, blue, green, red)
  * - `OutlineColour: &H00000000` — black outline for readability on any background
  * - `BackColour: &H80000000` — 50% transparent black shadow
@@ -160,7 +160,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Montserrat,42,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,2,20,20,40,1
+Style: Default,Montserrat,58,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,2,20,20,40,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -171,9 +171,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
  *
  * Key differences from the landscape header:
  * - `PlayResX/Y: 1080×1920` — matches portrait video dimensions
- * - `Fontsize: 78` — larger base font for vertical video viewing (small screens)
- * - `MarginV: 700` — pushes captions to the center-bottom area, leaving room
- *   for the hook overlay at the top
+ * - `Fontsize: 120` — larger base font for vertical video viewing (small screens)
+ * - `MarginV: 770` — pushes captions toward lower-center of the frame (above
+ *   bottom dead zones: TikTok=320px, Reels=310px, Shorts=300px)
+ * - Hook `MarginV: 250` — below all platform top dead zones (TikTok=108px,
+ *   Instagram=210px, YouTube=120px)
  * - Includes a `Hook` style: semi-transparent pill/badge background
  *   (`BorderStyle: 3` = opaque box) for the opening hook text overlay
  */
@@ -186,8 +188,8 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Montserrat,78,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,2,30,30,700,1
-Style: Hook,Montserrat,56,&H00333333,&H00333333,&H60D0D0D0,&H60E0E0E0,1,0,0,0,100,100,2,0,3,18,2,8,80,80,60,1
+Style: Default,Montserrat,120,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,2,30,30,770,1
+Style: Hook,Montserrat,56,&H00333333,&H00333333,&H60D0D0D0,&H60E0E0E0,1,0,0,0,100,100,2,0,3,18,2,8,80,80,250,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -197,7 +199,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
  * ASS header for medium-style captions (1920×1080 but smaller font).
  *
  * Used for longer clips where large captions would be distracting.
- * - `Fontsize: 32` — smaller than the shorts style
+ * - `Fontsize: 44` — smaller than the shorts style
  * - `Alignment: 2` — bottom-center
  * - `MarginV: 60` — slightly higher from the bottom edge to avoid UI overlaps
  */
@@ -210,7 +212,7 @@ WrapStyle: 0
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,Montserrat,32,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,1,2,20,20,60,1
+Style: Default,Montserrat,44,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,1,2,20,20,60,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -277,9 +279,10 @@ function buildPremiumDialogueLines(words: Word[], style: CaptionStyle = 'shorts'
       const activeWord = group[activeIdx]
 
       // Contiguous timing: end = next word's start, or this word's own end
+      // BUT cap the gap — don't stretch across pauses > 0.3s
       const endTime =
         activeIdx < group.length - 1
-          ? group[activeIdx + 1].start
+          ? Math.min(group[activeIdx + 1].start, activeWord.end + 0.3)
           : activeWord.end
 
       // Render all words across display lines with the active word highlighted
@@ -320,7 +323,7 @@ function buildPremiumDialogueLines(words: Word[], style: CaptionStyle = 'shorts'
  *
  * ### How it works
  * Words are grouped by speech bursts (split on silence gaps > 0.8s or after
- * 8 words). Within each group, one Dialogue line is emitted per word — the
+ * 5 words). Within each group, one Dialogue line is emitted per word — the
  * full group is shown each time, but the "active" word gets a different color
  * and larger font size. This creates a karaoke-style bounce effect.
  *

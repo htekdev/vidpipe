@@ -86,6 +86,14 @@ export interface ProviderEvent {
 /** Tool handler function - executes tool logic and returns result */
 export type ToolHandler = (args: Record<string, unknown>) => Promise<unknown>
 
+/** Image content that can be injected into LLM messages */
+export type ImageContent =
+  | { path: string }
+  | { base64: string; mimeType: 'image/png' | 'image/jpeg' }
+
+/** Supported image MIME types */
+export type ImageMimeType = 'image/png' | 'image/jpeg'
+
 /** Tool with its handler attached */
 export interface ToolWithHandler extends ToolDefinition {
   handler: ToolHandler

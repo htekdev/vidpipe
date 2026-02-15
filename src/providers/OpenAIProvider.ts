@@ -9,6 +9,7 @@ import { OpenAI } from '../core/ai.js';
 import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,
+  ChatCompletionContentPart,
 } from 'openai/resources/chat/completions.js';
 import type {
   LLMProvider,
@@ -23,6 +24,7 @@ import type {
 import { calculateTokenCost } from '../config/pricing.js';
 import logger from '../config/logger.js';
 import { getConfig } from '../config/environment.js';
+import { hasImagePath, extractImage } from './imageUtils.js';
 
 const MAX_TOOL_ROUNDS = 50;
 
@@ -140,6 +142,8 @@ class OpenAISession implements LLMSession {
       }
 
       // Execute each tool call and feed results back
+      const pendingImageMessages: ChatCompletionMessageParam[] = [];
+
       for (const tc of toolCalls) {
         if (tc.type !== 'function') continue;
 
@@ -162,11 +166,34 @@ class OpenAISession implements LLMSession {
           this.emit('tool_end', { name: fnName, result });
         }
 
+        // Add the tool result message
         this.messages.push({
           role: 'tool',
           tool_call_id: tc.id,
           content: typeof result === 'string' ? result : JSON.stringify(result),
         });
+
+        // Check if result contains an image path and queue it for injection
+        if (hasImagePath(result)) {
+          const extracted = await extractImage(result);
+          if (extracted) {
+            const imageContent: ChatCompletionContentPart[] = [
+              { type: 'text', text: `[Image from tool ${fnName}: ${extracted.path}]` },
+              {
+                type: 'image_url',
+                image_url: { url: `data:${extracted.mimeType};base64,${extracted.base64}` },
+              },
+            ];
+            pendingImageMessages.push({ role: 'user', content: imageContent });
+          }
+        }
+      }
+
+      // Inject any images as a follow-up user message
+      if (pendingImageMessages.length > 0) {
+        for (const imgMsg of pendingImageMessages) {
+          this.messages.push(imgMsg);
+        }
       }
       // Loop back to call the LLM again with tool results
     }

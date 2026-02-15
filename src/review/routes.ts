@@ -1,7 +1,6 @@
 import { fileExists } from '../core/fileSystem.js'
 import { Router } from '../core/http.js'
-import { rateLimit } from '../core/http.js'
-import { getPendingItems, getItem, updateItem, approveItem, rejectItem } from '../services/postStore'
+import { getPendingItems, getGroupedPendingItems, getItem, updateItem, approveItem, rejectItem, approveBulk, type BulkApprovalResult } from '../services/postStore.js'
 import { findNextSlot, getScheduleCalendar } from '../services/scheduler'
 import { getAccountId } from '../services/accountMapping'
 import { LateApiClient, type LateAccount, type LateProfile } from '../services/lateApi'
@@ -27,18 +26,22 @@ function setCache(key: string, data: unknown, ttl = CACHE_TTL_MS): void {
 export function createRouter(): Router {
   const router = Router()
 
-  router.use(rateLimit({ windowMs: 15 * 60 * 1000, max: 100 }))
-
   // GET /api/posts/pending — list all pending review items
   router.get('/api/posts/pending', async (req, res) => {
     const items = await getPendingItems()
     res.json({ items, total: items.length })
   })
 
+  // GET /api/posts/grouped — list pending items grouped by video/clip
+  router.get('/api/posts/grouped', async (req, res) => {
+    const groups = await getGroupedPendingItems()
+    res.json({ groups, total: groups.length })
+  })
+
   // GET /api/init — combined endpoint for initial page load (1 request instead of 3)
   router.get('/api/init', async (req, res) => {
-    const [itemsResult, accountsResult, profileResult] = await Promise.allSettled([
-      getPendingItems(),
+    const [groupsResult, accountsResult, profileResult] = await Promise.allSettled([
+      getGroupedPendingItems(),
       (async () => {
         const cached = getCached<LateAccount[]>('accounts')
         if (cached) return cached
@@ -58,11 +61,11 @@ export function createRouter(): Router {
       })(),
     ])
 
-    const items = itemsResult.status === 'fulfilled' ? itemsResult.value : []
+    const groups = groupsResult.status === 'fulfilled' ? groupsResult.value : []
     const accounts = accountsResult.status === 'fulfilled' ? accountsResult.value : []
     const profile = profileResult.status === 'fulfilled' ? profileResult.value : null
 
-    res.json({ items, total: items.length, accounts, profile })
+    res.json({ groups, total: groups.length, accounts, profile })
   })
 
   // GET /api/posts/:id — get single post with full content
@@ -143,6 +146,91 @@ export function createRouter(): Router {
     }
   })
 
+  // POST /api/posts/bulk-approve — fire-and-forget: returns 202 immediately, processes in background
+  router.post('/api/posts/bulk-approve', (req, res) => {
+    const { itemIds } = req.body
+    if (!Array.isArray(itemIds) || itemIds.length === 0) {
+      return res.status(400).json({ error: 'itemIds must be a non-empty array' })
+    }
+
+    res.status(202).json({ accepted: true, count: itemIds.length })
+
+    // Process in background — errors are logged, not sent to client
+    ;(async () => {
+      try {
+        const client = new LateApiClient()
+        const schedConfig = await loadScheduleConfig()
+        const publishDataMap = new Map<string, { latePostId: string; scheduledFor: string; publishedUrl?: string; accountId?: string }>()
+
+        for (const itemId of itemIds) {
+          const item = await getItem(itemId)
+          if (!item) {
+            logger.warn(`Bulk approve: item ${String(itemId).replace(/[\r\n]/g, '')} not found`)
+            continue
+          }
+
+          const latePlatform = normalizePlatformString(item.metadata.platform)
+
+          const slot = await findNextSlot(latePlatform)
+          if (!slot) {
+            logger.warn(`Bulk approve: no slot available for ${latePlatform}`)
+            continue
+          }
+
+          const platform = fromLatePlatform(latePlatform)
+          const accountId = item.metadata.accountId || await getAccountId(platform)
+          if (!accountId) {
+            logger.warn(`Bulk approve: no account connected for ${latePlatform}`)
+            continue
+          }
+
+          let mediaItems: Array<{ type: 'image' | 'video'; url: string }> | undefined
+          const effectiveMediaPath = item.mediaPath ?? item.metadata.sourceMediaPath
+          if (effectiveMediaPath) {
+            const mediaExists = await fileExists(effectiveMediaPath)
+            if (mediaExists) {
+              const upload = await client.uploadMedia(effectiveMediaPath)
+              mediaItems = [{ type: upload.type, url: upload.url }]
+            }
+          }
+
+          const isTikTok = latePlatform === 'tiktok'
+          const tiktokSettings = isTikTok ? {
+            privacy_level: 'PUBLIC_TO_EVERYONE',
+            allow_comment: true,
+            allow_duet: true,
+            allow_stitch: true,
+            content_preview_confirmed: true,
+            express_consent_given: true,
+          } : undefined
+
+          const latePost = await client.createPost({
+            content: item.postContent,
+            platforms: [{ platform: latePlatform, accountId }],
+            scheduledFor: slot,
+            timezone: schedConfig.timezone,
+            mediaItems,
+            platformSpecificData: item.metadata.platformSpecificData,
+            tiktokSettings,
+          })
+
+          publishDataMap.set(itemId, {
+            latePostId: latePost._id,
+            scheduledFor: slot,
+            publishedUrl: undefined,
+            accountId,
+          })
+        }
+
+        const results = await approveBulk(itemIds, publishDataMap)
+        logger.info(`Bulk approve completed: ${results.length} of ${itemIds.length} scheduled`)
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        logger.error(`Bulk approve background failed: ${String(msg).replace(/[\r\n]/g, '')}`)
+      }
+    })()
+  })
+
   // POST /api/posts/:id/reject — delete from queue
   router.post('/api/posts/:id/reject', async (req, res) => {
     try {
@@ -152,6 +240,31 @@ export function createRouter(): Router {
       const msg = err instanceof Error ? err.message : String(err)
       res.status(500).json({ error: msg })
     }
+  })
+
+  // POST /api/posts/bulk-reject — fire-and-forget: returns 202 immediately, deletes in background
+  router.post('/api/posts/bulk-reject', (req, res) => {
+    const { itemIds } = req.body
+    if (!Array.isArray(itemIds) || itemIds.length === 0) {
+      return res.status(400).json({ error: 'itemIds must be a non-empty array' })
+    }
+
+    res.status(202).json({ accepted: true, count: itemIds.length })
+
+    // Process in background
+    ;(async () => {
+      let succeeded = 0
+      for (const itemId of itemIds) {
+        try {
+          await rejectItem(itemId)
+          succeeded++
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err)
+          logger.error(`Bulk reject failed for ${String(itemId).replace(/[\r\n]/g, '')}: ${String(msg).replace(/[\r\n]/g, '')}`)
+        }
+      }
+      logger.info(`Bulk reject completed: ${succeeded} of ${itemIds.length} removed`)
+    })()
   })
 
   // PUT /api/posts/:id — edit post content

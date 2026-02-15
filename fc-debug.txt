@@ -1,0 +1,25 @@
+[dotenv@17.2.4] injecting env (2) from .env -- tip: ΓÜÖ∩╕Å  specify custom .env file path with { path: '/custom/path/.env' }
+=== ProducerAgent Test (VideoAsset Architecture) ===
+
+Loading video from: recordings/bandicam-2026-02-10-18-37-56-001
+
+Video loaded:
+  Slug: bandicam-2026-02-10-18-37-56-001
+  Path: recordings\bandicam-2026-02-10-18-37-56-001\bandicam-2026-02-10-18-37-56-001.mp4
+
+Detecting layout...
+  Dimensions: 2304x1536
+  Webcam: bottom-right (0.8)
+
+Loading transcript...
+  Duration: 122.94000244140625s
+  Segments: 30
+
+Loading chapters...
+  Chapters: 3
+
+=== Running ProducerAgent ===
+
+
+=== Result ===
+Produced video: recordings\bandicam-2026-02-10-18-37-56-001\bandicam-2026-02-10-18-37-56-001-produced.mp4

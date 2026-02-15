@@ -1,8 +1,8 @@
 import { join, dirname, basename } from './core/paths.js'
-import { ensureDirectory, writeJsonFile, writeTextFile, copyFile, removeFile } from './core/fileSystem.js'
+import { ensureDirectory, writeJsonFile, writeTextFile, copyFile, removeFile, fileExists, readTextFile } from './core/fileSystem.js'
 import logger from './config/logger'
 import { getConfig } from './config/environment'
-import { ingestVideo } from './services/videoIngestion'
+import { MainVideoAsset } from './assets/MainVideoAsset.js'
 import { transcribeVideo } from './services/transcription'
 import { generateCaptions } from './services/captionGeneration'
 import { generateSummary } from './agents/SummaryAgent'
@@ -14,7 +14,7 @@ import { generateChapters } from './agents/ChapterAgent'
 import { commitAndPush } from './services/gitOperations'
 import { buildPublishQueue } from './services/queueBuilder'
 import type { QueueBuildResult } from './services/queueBuilder'
-import { removeDeadSilence } from './agents/SilenceRemovalAgent'
+import { ProducerAgent, type ProduceResult } from './agents/ProducerAgent.js'
 import { burnCaptions } from './tools/ffmpeg/captionBurning'
 import { singlePassEditAndCaption } from './tools/ffmpeg/singlePassEdit'
 import { getModelForAgent } from './config/modelConfig.js'
@@ -30,7 +30,6 @@ import type {
   StageResult,
   PipelineResult,
   PipelineStage,
-  SilenceRemovalResult,
   Chapter,
 } from './types'
 import { PipelineStage as Stage } from './types'
@@ -126,8 +125,8 @@ export function adjustTranscript(
  * ### Stage ordering and data flow
  * 1. **Ingest** — extracts metadata (slug, duration, paths). Required; aborts if failed.
  * 2. **Transcribe** — Whisper transcription with word-level timestamps.
- * 3. **Silence removal** — trims dead air from the video and adjusts the transcript
- *    timestamps accordingly. Produces an `adjustedTranscript` for captions.
+ * 3. **Video cleaning** — ProducerAgent trims dead air / bad segments and adjusts
+ *    the transcript timestamps accordingly. Produces an `adjustedTranscript` for captions.
  * 4. **Captions** — generates SRT/VTT/ASS files from the (adjusted) transcript.
  * 5. **Caption burn** — renders captions into the video using FFmpeg. Prefers a
  *    single-pass approach (silence removal + captions in one encode) when possible.
@@ -155,42 +154,76 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   logger.info(`Pipeline starting for: ${videoPath}`)
 
   // 1. Ingestion — required for all subsequent stages
-  const video = await runStage<VideoFile>(Stage.Ingestion, () => ingestVideo(videoPath), stageResults)
-  if (!video) {
+  // Use MainVideoAsset for ingestion, then convert to VideoFile for compatibility
+  const videoAsset = await runStage<MainVideoAsset>(Stage.Ingestion, () => MainVideoAsset.ingest(videoPath), stageResults)
+  if (!videoAsset) {
     const totalDuration = Date.now() - pipelineStart
     logger.error('Ingestion failed — cannot proceed without video metadata')
     return { video: { originalPath: videoPath, repoPath: '', videoDir: '', slug: '', filename: '', duration: 0, size: 0, createdAt: new Date() }, transcript: undefined, editedVideoPath: undefined, captions: undefined, captionedVideoPath: undefined, summary: undefined, shorts: [], mediumClips: [], socialPosts: [], blogPost: undefined, stageResults, totalDuration }
   }
 
+  // Convert to VideoFile for backward compatibility with existing agents/services
+  const video = await videoAsset.toVideoFile()
+
   // 2. Transcription
   let transcript: Transcript | undefined
   transcript = await runStage<Transcript>(Stage.Transcription, () => transcribeVideo(video), stageResults)
 
-  // 3. Silence Removal (context-aware)
+  // 3. Video Cleaning (ProducerAgent-based)
   let editedVideoPath: string | undefined
   let adjustedTranscript: Transcript | undefined
-  let silenceRemovals: { start: number; end: number }[] = []
-  let silenceKeepSegments: { start: number; end: number }[] | undefined
+  let cleaningKeepSegments: { start: number; end: number }[] | undefined
 
   if (transcript && !cfg.SKIP_SILENCE_REMOVAL) {
-    const result = await runStage<SilenceRemovalResult>(Stage.SilenceRemoval, () => removeDeadSilence(video, transcript!, getModelForAgent('SilenceRemovalAgent')), stageResults)
-    if (result && result.wasEdited) {
-      editedVideoPath = result.editedPath
-      silenceRemovals = result.removals
-      silenceKeepSegments = result.keepSegments
-      adjustedTranscript = adjustTranscript(transcript, silenceRemovals)
+    // Trigger Gemini editorial direction (cached for ProducerAgent use)
+    await videoAsset.getEditorialDirection().catch(err => {
+      logger.warn(`[Pipeline] Editorial direction unavailable: ${err instanceof Error ? err.message : String(err)}`)
+    })
+
+    const cleaningResult = await runStage<ProduceResult>(
+      Stage.SilenceRemoval,
+      async () => {
+        const agent = new ProducerAgent(videoAsset, getModelForAgent('ProducerAgent'))
+        const editedPath = join(video.videoDir, `${video.slug}-edited.mp4`)
+        return agent.produce(editedPath)
+      },
+      stageResults,
+    )
+
+    if (cleaningResult && cleaningResult.success && cleaningResult.removals.length > 0) {
+      editedVideoPath = cleaningResult.outputPath
+      cleaningKeepSegments = cleaningResult.keepSegments
+      adjustedTranscript = adjustTranscript(transcript, cleaningResult.removals)
 
       // Validate: check that adjusted transcript duration is close to edited video duration
-      const totalRemoved = silenceRemovals.reduce((sum, r) => sum + (r.end - r.start), 0)
+      const totalRemoved = cleaningResult.removals.reduce((sum, r) => sum + (r.end - r.start), 0)
       const expectedDuration = transcript.duration - totalRemoved
       const adjustedDuration = adjustedTranscript.duration
       const drift = Math.abs(expectedDuration - adjustedDuration)
-      logger.info(`[Pipeline] Silence removal: original=${transcript.duration.toFixed(1)}s, removed=${totalRemoved.toFixed(1)}s, expected=${expectedDuration.toFixed(1)}s, adjusted=${adjustedDuration.toFixed(1)}s, drift=${drift.toFixed(1)}s`)
+      logger.info(`[Pipeline] Video cleaning: original=${transcript.duration.toFixed(1)}s, removed=${totalRemoved.toFixed(1)}s, expected=${expectedDuration.toFixed(1)}s, adjusted=${adjustedDuration.toFixed(1)}s, drift=${drift.toFixed(1)}s`)
 
       await writeJsonFile(
         join(video.videoDir, 'transcript-edited.json'),
         adjustedTranscript,
       )
+    }
+  }
+
+  // Gemini Pass 2: Analyze cleaned video for clip direction
+  // This provides short/medium clip suggestions to downstream agents
+  if (editedVideoPath && !cfg.SKIP_SHORTS) {
+    try {
+      if (cfg.GEMINI_API_KEY) {
+        logger.info('[Pipeline] Running Gemini Pass 2: clip direction analysis on cleaned video')
+        const { analyzeVideoClipDirection } = await import('./tools/gemini/geminiClient.js')
+        const metadata = await videoAsset.getMetadata()
+        const clipDirection = await analyzeVideoClipDirection(editedVideoPath, metadata.duration)
+        await writeTextFile(join(video.videoDir, 'clip-direction.md'), clipDirection)
+        logger.info(`[Pipeline] Clip direction saved (${clipDirection.length} chars)`)
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      logger.warn(`[Pipeline] Gemini clip direction failed (non-fatal): ${msg}`)
     }
   }
 
@@ -207,17 +240,17 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   let captionedVideoPath: string | undefined
   if (captions && !cfg.SKIP_CAPTIONS) {
     const assFile = captions.find((p) => p.endsWith('.ass'))
-    if (assFile && silenceKeepSegments) {
-      // Single-pass: re-do silence removal + burn captions from ORIGINAL video in one encode
+    if (assFile && cleaningKeepSegments) {
+      // Single-pass: re-do cleaning + burn captions from ORIGINAL video in one encode
       // This guarantees frame-accurate cuts with perfectly aligned captions
       const captionedOutput = join(video.videoDir, `${video.slug}-captioned.mp4`)
       captionedVideoPath = await runStage<string>(
         Stage.CaptionBurn,
-        () => singlePassEditAndCaption(video.repoPath, silenceKeepSegments!, assFile, captionedOutput),
+        () => singlePassEditAndCaption(video.repoPath, cleaningKeepSegments!, assFile, captionedOutput),
         stageResults,
       )
     } else if (assFile) {
-      // No silence removal — just burn captions into original video
+      // No cleaning — just burn captions into original video
       const videoToBurn = editedVideoPath ?? video.repoPath
       const captionedOutput = join(video.videoDir, `${video.slug}-captioned.mp4`)
       captionedVideoPath = await runStage<string>(
@@ -228,50 +261,71 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
     }
   }
 
-  // 6. Shorts — use ORIGINAL transcript (shorts reference original video timestamps)
+  // 6. Shorts — use adjusted transcript + cleaned video (clips cut from cleaned video)
   let shorts: ShortClip[] = []
   if (transcript && !cfg.SKIP_SHORTS) {
-    const result = await runStage<ShortClip[]>(Stage.Shorts, () => generateShorts(video, transcript, getModelForAgent('ShortsAgent')), stageResults)
+    const shortsTranscript = adjustedTranscript ?? transcript
+    const shortsVideo: VideoFile = editedVideoPath ? { ...video, repoPath: editedVideoPath } : video
+    let clipDirection: string | undefined
+    try {
+      const clipDirPath = join(video.videoDir, 'clip-direction.md')
+      if (await fileExists(clipDirPath)) {
+        clipDirection = await readTextFile(clipDirPath)
+      }
+    } catch { /* clip direction is optional */ }
+    const result = await runStage<ShortClip[]>(Stage.Shorts, () => generateShorts(shortsVideo, shortsTranscript, getModelForAgent('ShortsAgent'), clipDirection), stageResults)
     if (result) shorts = result
   }
 
-  // 7. Medium Clips — use ORIGINAL transcript (medium clips reference original video timestamps)
+  // 7. Medium Clips — use adjusted transcript + cleaned video (clips cut from cleaned video)
   let mediumClips: MediumClip[] = []
   if (transcript && !cfg.SKIP_MEDIUM_CLIPS) {
-    const result = await runStage<MediumClip[]>(Stage.MediumClips, () => generateMediumClips(video, transcript, getModelForAgent('MediumVideoAgent')), stageResults)
+    const mediumTranscript = adjustedTranscript ?? transcript
+    const mediumVideo: VideoFile = editedVideoPath ? { ...video, repoPath: editedVideoPath } : video
+    let mediumClipDirection: string | undefined
+    try {
+      const clipDirPath = join(video.videoDir, 'clip-direction.md')
+      if (await fileExists(clipDirPath)) {
+        mediumClipDirection = await readTextFile(clipDirPath)
+      }
+    } catch { /* clip direction is optional */ }
+    const result = await runStage<MediumClip[]>(Stage.MediumClips, () => generateMediumClips(mediumVideo, mediumTranscript, getModelForAgent('MediumVideoAgent'), mediumClipDirection), stageResults)
     if (result) mediumClips = result
   }
 
+  // All downstream stages use the adjusted transcript (post-cleaning) when available
+  const downstreamTranscript = adjustedTranscript ?? transcript
+
   // 8. Chapters — analyse transcript for topic boundaries
   let chapters: Chapter[] | undefined
-  if (transcript) {
-    chapters = await runStage<Chapter[]>(Stage.Chapters, () => generateChapters(video, transcript, getModelForAgent('ChapterAgent')), stageResults)
+  if (downstreamTranscript) {
+    chapters = await runStage<Chapter[]>(Stage.Chapters, () => generateChapters(video, downstreamTranscript, getModelForAgent('ChapterAgent')), stageResults)
   }
 
   // 9. Summary (after shorts, medium clips, and chapters so the README can reference them)
   let summary: VideoSummary | undefined
-  if (transcript) {
-    summary = await runStage<VideoSummary>(Stage.Summary, () => generateSummary(video, transcript, shorts, chapters, getModelForAgent('SummaryAgent')), stageResults)
+  if (downstreamTranscript) {
+    summary = await runStage<VideoSummary>(Stage.Summary, () => generateSummary(video, downstreamTranscript, shorts, chapters, getModelForAgent('SummaryAgent')), stageResults)
   }
 
   // 10. Social Media
   let socialPosts: SocialPost[] = []
-  if (transcript && summary && !cfg.SKIP_SOCIAL) {
+  if (downstreamTranscript && summary && !cfg.SKIP_SOCIAL) {
     const result = await runStage<SocialPost[]>(
       Stage.SocialMedia,
-      () => generateSocialPosts(video, transcript, summary, join(video.videoDir, 'social-posts'), getModelForAgent('SocialMediaAgent')),
+      () => generateSocialPosts(video, downstreamTranscript, summary, join(video.videoDir, 'social-posts'), getModelForAgent('SocialMediaAgent')),
       stageResults,
     )
     if (result) socialPosts = result
   }
 
   // 11. Short Posts — generate social posts per short clip
-  if (transcript && shorts.length > 0 && !cfg.SKIP_SOCIAL) {
+  if (downstreamTranscript && shorts.length > 0 && !cfg.SKIP_SOCIAL) {
     await runStage<void>(
       Stage.ShortPosts,
       async () => {
         for (const short of shorts) {
-          const posts = await generateShortPosts(video, short, transcript, getModelForAgent('ShortPostsAgent'))
+          const posts = await generateShortPosts(video, short, downstreamTranscript, getModelForAgent('ShortPostsAgent'))
           socialPosts.push(...posts)
         }
       },
@@ -280,7 +334,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   }
 
   // 12. Medium Clip Posts — generate social posts per medium clip
-  if (transcript && mediumClips.length > 0 && !cfg.SKIP_SOCIAL) {
+  if (downstreamTranscript && mediumClips.length > 0 && !cfg.SKIP_SOCIAL) {
     await runStage<void>(
       Stage.MediumClipPosts,
       async () => {
@@ -296,7 +350,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
             description: clip.description,
             tags: clip.tags,
           }
-          const posts = await generateShortPosts(video, asShortClip, transcript, getModelForAgent('MediumClipPostsAgent'))
+          const posts = await generateShortPosts(video, asShortClip, downstreamTranscript, getModelForAgent('MediumClipPostsAgent'))
           // Move posts to medium-clips/{slug}/posts/
           const clipsDir = join(dirname(video.repoPath), 'medium-clips')
           const postsDir = join(clipsDir, clip.slug, 'posts')
@@ -325,10 +379,10 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
 
   // 14. Blog Post
   let blogPost: string | undefined
-  if (transcript && summary) {
+  if (downstreamTranscript && summary) {
     blogPost = await runStage<string>(
       Stage.Blog,
-      () => generateBlogPost(video, transcript, summary, getModelForAgent('BlogAgent')),
+      () => generateBlogPost(video, downstreamTranscript, summary, getModelForAgent('BlogAgent')),
       stageResults,
     )
   }

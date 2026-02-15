@@ -67,7 +67,14 @@ const SYSTEM_PROMPT = `You are a medium-form video content strategist. Your job 
 - Look for segments that work as standalone mini-tutorials or explanations.
 - Avoid overlap with content that would work better as a short (punchy, viral, single-moment).
 
-When you have identified the clips, call the **plan_medium_clips** tool with your complete plan.`
+When you have identified the clips, call the **plan_medium_clips** tool with your complete plan.
+
+## Using Clip Direction
+You may receive AI-generated clip direction with suggested medium clips. Use these as a starting point but make your own decisions:
+- The suggestions are based on visual + audio analysis and may identify narrative arcs you'd miss from transcript alone
+- Feel free to adjust timestamps, combine suggestions, or ignore ones that don't work
+- You may also find good clips NOT in the suggestions — always analyze the full transcript
+- Pay special attention to suggested hooks and topic arcs — they come from multimodal analysis`
 
 // ── JSON Schema for the plan_medium_clips tool ──────────────────────────────
 
@@ -157,6 +164,7 @@ export async function generateMediumClips(
   video: VideoFile,
   transcript: Transcript,
   model?: string,
+  clipDirection?: string,
 ): Promise<MediumClip[]> {
   const agent = new MediumVideoAgent(model)
 
@@ -168,14 +176,24 @@ export async function generateMediumClips(
     return `[${seg.start.toFixed(2)}s – ${seg.end.toFixed(2)}s] ${seg.text}\nWords: ${words}`
   })
 
-  const prompt = [
+  const promptParts = [
     `Analyze the following transcript (${transcript.duration.toFixed(0)}s total) and plan medium-length clips (1–3 minutes each).\n`,
     `Video: ${video.filename}`,
     `Duration: ${transcript.duration.toFixed(1)}s\n`,
     '--- TRANSCRIPT ---\n',
     transcriptLines.join('\n\n'),
     '\n--- END TRANSCRIPT ---',
-  ].join('\n')
+  ]
+
+  if (clipDirection) {
+    promptParts.push(
+      '\n--- CLIP DIRECTION (AI-generated suggestions — use as reference, make your own decisions) ---\n',
+      clipDirection,
+      '\n--- END CLIP DIRECTION ---',
+    )
+  }
+
+  const prompt = promptParts.join('\n')
 
   try {
     await agent.run(prompt)

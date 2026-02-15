@@ -50,7 +50,7 @@ describe.skipIf(!ffmpegOk)('Caption Burn Integration', () => {
     it('generateStyledASS with medium style uses smaller font sizes', () => {
       const assDefault = generateStyledASS(transcript, 'shorts');
       const assMedium = generateStyledASS(transcript, 'medium');
-      // Medium header has Fontsize 32 vs default 42
+      // Medium header has Fontsize 44 vs default 58
       expect(assMedium).toContain('Fontsize');
       // Extract base font size from Style line
       const defaultStyleMatch = assDefault.match(/Style: Default,Montserrat,(\d+)/);

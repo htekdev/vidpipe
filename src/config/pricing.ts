@@ -47,6 +47,7 @@ export const MODEL_PRICING: Record<string, ModelPricing> = {
 
   // === Google Models (from Copilot model picker) ===
   'gemini-2.5-pro': { inputPer1M: 1.25, outputPer1M: 5.00, pruMultiplier: 1 },
+  'gemini-2.5-flash': { inputPer1M: 0.15, outputPer1M: 0.60 },
   'gemini-3-flash': { inputPer1M: 0.10, outputPer1M: 0.40, pruMultiplier: 0.33 },
   'gemini-3-pro': { inputPer1M: 1.25, outputPer1M: 5.00, pruMultiplier: 1 },
 };

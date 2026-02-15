@@ -27,6 +27,13 @@ vi.mock('fs', async (importOriginal) => {
   }
 })
 
+vi.mock('tmp', () => ({
+  default: {
+    setGracefulCleanup: vi.fn(),
+    dir: vi.fn((_opts: any, cb: any) => cb(null, '/tmp/face-detect-abc')),
+  },
+}))
+
 vi.mock('sharp', () => ({
   default: vi.fn(),
 }))

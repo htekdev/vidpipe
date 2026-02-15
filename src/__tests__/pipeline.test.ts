@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { Transcript, VideoFile, StageResult, SilenceRemovalResult, VideoSummary, ShortClip, MediumClip, SocialPost, Chapter } from '../types/index.js'
+import type { Transcript, VideoFile, StageResult, VideoSummary, ShortClip, MediumClip, SocialPost, Chapter } from '../types/index.js'
+import type { ProduceResult } from '../agents/ProducerAgent.js'
 import { PipelineStage } from '../types/index.js'
 
 // ---- Hoisted mock variables (vi.mock is hoisted above imports) ----
@@ -7,7 +8,6 @@ import { PipelineStage } from '../types/index.js'
 const {
   mockLogger,
   mockGetConfig,
-  mockIngestVideo,
   mockTranscribeVideo,
   mockGenerateCaptions,
   mockGenerateSummary,
@@ -18,14 +18,18 @@ const {
   mockGenerateBlogPost,
   mockGenerateChapters,
   mockCommitAndPush,
-  mockRemoveDeadSilence,
+  mockProducerProduce,
   mockBurnCaptions,
   mockSinglePassEditAndCaption,
   mockBuildPublishQueue,
+  mockGetModelForAgent,
+  mockFileExists,
+  mockReadTextFile,
+  mockWriteTextFile,
+  mockWriteJsonFile,
 } = vi.hoisted(() => ({
   mockLogger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
   mockGetConfig: vi.fn(),
-  mockIngestVideo: vi.fn(),
   mockTranscribeVideo: vi.fn(),
   mockGenerateCaptions: vi.fn(),
   mockGenerateSummary: vi.fn(),
@@ -36,17 +40,21 @@ const {
   mockGenerateBlogPost: vi.fn(),
   mockGenerateChapters: vi.fn(),
   mockCommitAndPush: vi.fn(),
-  mockRemoveDeadSilence: vi.fn(),
+  mockProducerProduce: vi.fn(),
   mockBurnCaptions: vi.fn(),
   mockSinglePassEditAndCaption: vi.fn(),
   mockBuildPublishQueue: vi.fn(),
+  mockGetModelForAgent: vi.fn().mockReturnValue(undefined),
+  mockFileExists: vi.fn().mockResolvedValue(false),
+  mockReadTextFile: vi.fn().mockResolvedValue(''),
+  mockWriteTextFile: vi.fn().mockResolvedValue(undefined),
+  mockWriteJsonFile: vi.fn().mockResolvedValue(undefined),
 }))
 
 // ---- Mock all external dependencies ----
 
 vi.mock('../config/logger.js', () => ({ default: mockLogger }))
 vi.mock('../config/environment.js', () => ({ getConfig: mockGetConfig }))
-vi.mock('../services/videoIngestion.js', () => ({ ingestVideo: mockIngestVideo }))
 vi.mock('../services/transcription.js', () => ({ transcribeVideo: mockTranscribeVideo }))
 vi.mock('../services/captionGeneration.js', () => ({ generateCaptions: mockGenerateCaptions }))
 vi.mock('../agents/SummaryAgent.js', () => ({ generateSummary: mockGenerateSummary }))
@@ -59,21 +67,45 @@ vi.mock('../agents/SocialMediaAgent.js', () => ({
 vi.mock('../agents/BlogAgent.js', () => ({ generateBlogPost: mockGenerateBlogPost }))
 vi.mock('../agents/ChapterAgent.js', () => ({ generateChapters: mockGenerateChapters }))
 vi.mock('../services/gitOperations.js', () => ({ commitAndPush: mockCommitAndPush }))
-vi.mock('../agents/SilenceRemovalAgent.js', () => ({ removeDeadSilence: mockRemoveDeadSilence }))
+vi.mock('../agents/ProducerAgent.js', () => {
+  const MockProducerAgent = function() {
+    return {
+      produce: mockProducerProduce,
+      destroy: async () => {},
+    }
+  }
+  return { ProducerAgent: MockProducerAgent }
+})
 vi.mock('../tools/ffmpeg/captionBurning.js', () => ({ burnCaptions: mockBurnCaptions }))
 vi.mock('../tools/ffmpeg/singlePassEdit.js', () => ({ singlePassEditAndCaption: mockSinglePassEditAndCaption }))
 vi.mock('../services/queueBuilder.js', () => ({ buildPublishQueue: mockBuildPublishQueue }))
+vi.mock('../config/modelConfig.js', () => ({ getModelForAgent: mockGetModelForAgent }))
+vi.mock('../services/costTracker.js', () => ({
+  costTracker: { reset: vi.fn(), setStage: vi.fn(), getReport: vi.fn().mockReturnValue({ records: [] }), formatReport: vi.fn().mockReturnValue('') },
+}))
+vi.mock('../core/paths.js', () => ({
+  join: (...args: string[]) => args.join('/'),
+  dirname: (p: string) => p.split('/').slice(0, -1).join('/'),
+  basename: (p: string) => p.split('/').pop() ?? p,
+}))
+vi.mock('../core/fileSystem.js', () => ({
+  ensureDirectory: vi.fn().mockResolvedValue(undefined),
+  writeJsonFile: mockWriteJsonFile,
+  writeTextFile: mockWriteTextFile,
+  copyFile: vi.fn().mockResolvedValue(undefined),
+  removeFile: vi.fn().mockResolvedValue(undefined),
+  fileExists: mockFileExists,
+  readTextFile: mockReadTextFile,
+}))
+vi.mock('../tools/gemini/geminiClient.js', () => ({
+  analyzeVideoClipDirection: vi.fn().mockResolvedValue('## Clip Direction\nSome suggestions'),
+}))
 
-vi.mock('fs', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('fs')>()
+// Mock MainVideoAsset to avoid loading faceDetection at module load time
+vi.mock('../assets/MainVideoAsset.js', () => {
   return {
-    ...actual,
-    promises: {
-      ...actual.promises,
-      writeFile: vi.fn().mockResolvedValue(undefined),
-      mkdir: vi.fn().mockResolvedValue(undefined),
-      copyFile: vi.fn().mockResolvedValue(undefined),
-      unlink: vi.fn().mockResolvedValue(undefined),
+    MainVideoAsset: {
+      ingest: vi.fn(),
     },
   }
 })
@@ -81,6 +113,10 @@ vi.mock('fs', async (importOriginal) => {
 // ---- Import after mocks ----
 
 import { adjustTranscript, runStage, processVideo, processVideoSafe } from '../pipeline.js'
+import { MainVideoAsset } from '../assets/MainVideoAsset.js'
+
+// Get reference to mocked ingest for use in tests
+const mockMainVideoAssetIngest = vi.mocked(MainVideoAsset.ingest)
 
 // ---- Helpers ----
 
@@ -126,6 +162,7 @@ function defaultConfig(overrides: Record<string, unknown> = {}) {
     SKIP_CAPTIONS: false,
     SKIP_GIT: false,
     SKIP_SOCIAL_PUBLISH: false,
+    GEMINI_API_KEY: '',
     ...overrides,
   }
 }
@@ -284,9 +321,14 @@ describe('processVideo', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetConfig.mockReturnValue(defaultConfig())
-    mockIngestVideo.mockResolvedValue(video)
+    mockMainVideoAssetIngest.mockResolvedValue({
+      toVideoFile: () => video,
+      getEditorialDirection: vi.fn().mockResolvedValue('editorial direction text'),
+      getMetadata: vi.fn().mockResolvedValue({ width: 1920, height: 1080, duration: 120 }),
+      videoPath: video.repoPath,
+    } as any)
     mockTranscribeVideo.mockResolvedValue(transcript)
-    mockRemoveDeadSilence.mockResolvedValue({ editedPath: '/edited.mp4', removals: [], keepSegments: [], wasEdited: false })
+    mockProducerProduce.mockResolvedValue({ summary: 'Clean', outputPath: undefined, success: true, editCount: 0, removals: [], keepSegments: [] } as ProduceResult)
     mockGenerateCaptions.mockResolvedValue(['/captions.ass'])
     mockBurnCaptions.mockResolvedValue('/captioned.mp4')
     mockSinglePassEditAndCaption.mockResolvedValue('/captioned.mp4')
@@ -312,9 +354,9 @@ describe('processVideo', () => {
 
   it('calls stages in correct order', async () => {
     const callOrder: string[] = []
-    mockIngestVideo.mockImplementation(async () => { callOrder.push('ingest'); return video })
+    mockMainVideoAssetIngest.mockImplementation(async () => { callOrder.push('ingest'); return { toVideoFile: () => video, getEditorialDirection: vi.fn().mockResolvedValue(''), getMetadata: vi.fn().mockResolvedValue({ width: 1920, height: 1080, duration: 120 }), videoPath: video.repoPath } as any })
     mockTranscribeVideo.mockImplementation(async () => { callOrder.push('transcribe'); return transcript })
-    mockRemoveDeadSilence.mockImplementation(async () => { callOrder.push('silence'); return { editedPath: '', removals: [], keepSegments: [], wasEdited: false } })
+    mockProducerProduce.mockImplementation(async () => { callOrder.push('cleaning'); return { summary: '', success: true, editCount: 0, removals: [], keepSegments: [] } })
     mockGenerateCaptions.mockImplementation(async () => { callOrder.push('captions'); return ['/captions.ass'] })
     mockGenerateShorts.mockImplementation(async () => { callOrder.push('shorts'); return [] })
     mockGenerateMediumClips.mockImplementation(async () => { callOrder.push('mediumClips'); return [] })
@@ -326,8 +368,8 @@ describe('processVideo', () => {
     await processVideo('/videos/test.mp4')
 
     expect(callOrder.indexOf('ingest')).toBeLessThan(callOrder.indexOf('transcribe'))
-    expect(callOrder.indexOf('transcribe')).toBeLessThan(callOrder.indexOf('silence'))
-    expect(callOrder.indexOf('silence')).toBeLessThan(callOrder.indexOf('captions'))
+    expect(callOrder.indexOf('transcribe')).toBeLessThan(callOrder.indexOf('cleaning'))
+    expect(callOrder.indexOf('cleaning')).toBeLessThan(callOrder.indexOf('captions'))
     expect(callOrder.indexOf('captions')).toBeLessThan(callOrder.indexOf('shorts'))
     expect(callOrder.indexOf('shorts')).toBeLessThan(callOrder.indexOf('summary'))
     expect(callOrder.indexOf('summary')).toBeLessThan(callOrder.indexOf('blog'))
@@ -335,7 +377,7 @@ describe('processVideo', () => {
   })
 
   it('aborts early when ingestion fails', async () => {
-    mockIngestVideo.mockRejectedValue(new Error('ingest failed'))
+    mockMainVideoAssetIngest.mockRejectedValue(new Error('ingest failed'))
 
     const result = await processVideo('/videos/test.mp4')
 
@@ -359,21 +401,23 @@ describe('processVideo', () => {
     expect(shortsResult?.error).toBe('shorts failed')
   })
 
-  it('passes transcript from transcription to silence removal', async () => {
+  it('calls ProducerAgent for video cleaning', async () => {
     await processVideo('/videos/test.mp4')
 
-    expect(mockRemoveDeadSilence).toHaveBeenCalledWith(video, transcript, expect.any(String))
+    expect(mockProducerProduce).toHaveBeenCalled()
   })
 
-  it('uses adjusted transcript for captions after silence removal', async () => {
+  it('uses adjusted transcript for captions after video cleaning', async () => {
     const removals = [{ start: 5, end: 10 }]
     const keepSegments = [{ start: 0, end: 5 }, { start: 10, end: 30 }]
-    mockRemoveDeadSilence.mockResolvedValue({
-      editedPath: '/edited.mp4',
+    mockProducerProduce.mockResolvedValue({
+      summary: 'Cleaned',
+      outputPath: '/edited.mp4',
+      success: true,
+      editCount: 1,
       removals,
       keepSegments,
-      wasEdited: true,
-    } as SilenceRemovalResult)
+    } as ProduceResult)
 
     await processVideo('/videos/test.mp4')
 
@@ -386,12 +430,14 @@ describe('processVideo', () => {
 
   it('uses singlePassEditAndCaption when keepSegments are available', async () => {
     const keepSegments = [{ start: 0, end: 5 }, { start: 10, end: 30 }]
-    mockRemoveDeadSilence.mockResolvedValue({
-      editedPath: '/edited.mp4',
+    mockProducerProduce.mockResolvedValue({
+      summary: 'Cleaned',
+      outputPath: '/edited.mp4',
+      success: true,
+      editCount: 1,
       removals: [{ start: 5, end: 10 }],
       keepSegments,
-      wasEdited: true,
-    })
+    } as ProduceResult)
     mockGenerateCaptions.mockResolvedValue(['/captions.ass'])
 
     await processVideo('/videos/test.mp4')
@@ -405,13 +451,14 @@ describe('processVideo', () => {
     expect(mockBurnCaptions).not.toHaveBeenCalled()
   })
 
-  it('uses burnCaptions when no keepSegments (no silence removal)', async () => {
-    mockRemoveDeadSilence.mockResolvedValue({
-      editedPath: '/edited.mp4',
+  it('uses burnCaptions when no keepSegments (no video cleaning)', async () => {
+    mockProducerProduce.mockResolvedValue({
+      summary: 'Clean',
+      success: true,
+      editCount: 0,
       removals: [],
       keepSegments: [],
-      wasEdited: false,
-    })
+    } as ProduceResult)
     mockGenerateCaptions.mockResolvedValue(['/captions.ass'])
 
     await processVideo('/videos/test.mp4')
@@ -426,12 +473,12 @@ describe('processVideo', () => {
 
   // ---- Skip flag tests ----
 
-  it('skips silence removal when SKIP_SILENCE_REMOVAL is true', async () => {
+  it('skips video cleaning when SKIP_SILENCE_REMOVAL is true', async () => {
     mockGetConfig.mockReturnValue(defaultConfig({ SKIP_SILENCE_REMOVAL: true }))
 
     const result = await processVideo('/videos/test.mp4')
 
-    expect(mockRemoveDeadSilence).not.toHaveBeenCalled()
+    expect(mockProducerProduce).not.toHaveBeenCalled()
     expect(result.editedVideoPath).toBeUndefined()
   })
 
@@ -484,7 +531,7 @@ describe('processVideo', () => {
     const result = await processVideo('/videos/test.mp4')
 
     expect(result.transcript).toBeUndefined()
-    expect(mockRemoveDeadSilence).not.toHaveBeenCalled()
+    expect(mockProducerProduce).not.toHaveBeenCalled()
     expect(mockGenerateCaptions).not.toHaveBeenCalled()
     expect(mockGenerateShorts).not.toHaveBeenCalled()
     expect(mockGenerateSummary).not.toHaveBeenCalled()
@@ -516,7 +563,7 @@ describe('processVideo', () => {
 
     const result = await processVideo('/videos/test.mp4')
 
-    expect(mockGenerateShortPosts).toHaveBeenCalledWith(video, shorts[0], transcript, expect.any(String))
+    expect(mockGenerateShortPosts).toHaveBeenCalledWith(video, shorts[0], transcript, undefined)
     expect(result.socialPosts.length).toBeGreaterThanOrEqual(1)
   })
 
@@ -534,7 +581,7 @@ describe('processVideo', () => {
       video,
       expect.objectContaining({ id: 'm1', title: 'Medium 1', slug: 'medium-1' }),
       transcript,
-      expect.any(String),
+      undefined,
     )
     expect(result.socialPosts.length).toBeGreaterThanOrEqual(1)
   })
@@ -548,9 +595,14 @@ describe('processVideoSafe', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetConfig.mockReturnValue(defaultConfig())
-    mockIngestVideo.mockResolvedValue(makeVideoFile())
+    mockMainVideoAssetIngest.mockResolvedValue({
+      toVideoFile: () => makeVideoFile(),
+      getEditorialDirection: vi.fn().mockResolvedValue(''),
+      getMetadata: vi.fn().mockResolvedValue({ width: 1920, height: 1080, duration: 120 }),
+      videoPath: '/repo/recordings/test-video/test.mp4',
+    } as any)
     mockTranscribeVideo.mockResolvedValue(makeTranscript())
-    mockRemoveDeadSilence.mockResolvedValue({ editedPath: '', removals: [], keepSegments: [], wasEdited: false })
+    mockProducerProduce.mockResolvedValue({ summary: '', success: true, editCount: 0, removals: [], keepSegments: [] })
     mockGenerateCaptions.mockResolvedValue([])
     mockGenerateShorts.mockResolvedValue([])
     mockGenerateMediumClips.mockResolvedValue([])

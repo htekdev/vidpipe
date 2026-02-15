@@ -22,8 +22,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:integration": "vitest run --testPathPattern=integration",
-    "test:unit": "vitest run --testPathPattern='__tests__/(?!integration)'",
+    "test:integration": "vitest run src/__tests__/integration/",
+    "test:unit": "vitest run --exclude 'src/__tests__/integration/**'",
     "push": "tsx cicd/push.ts"
   },
   "keywords": [
@@ -44,11 +44,11 @@
     "@anthropic-ai/sdk": "^0.74.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@github/copilot-sdk": "^0.1.23",
+    "@google/genai": "^1.41.0",
     "chokidar": "^5.0.0",
     "commander": "^14.0.3",
     "dotenv": "^17.2.4",
     "express": "^5.2.1",
-    "express-rate-limit": "^8.2.1",
     "fluent-ffmpeg": "^2.1.3",
     "onnxruntime-node": "^1.24.1",
     "open": "^11.0.0",

@@ -11,8 +11,11 @@ import {
   closeSync,
 } from 'fs'
 import type { Stats, Dirent, ReadStream, WriteStream } from 'fs'
-import os from 'os'
+import tmp from 'tmp'
 import { join, dirname } from './paths.js'
+
+// Enable graceful cleanup of all tmp resources on process exit
+tmp.setGracefulCleanup()
 
 export type { Stats, Dirent, ReadStream, WriteStream }
 
@@ -146,21 +149,21 @@ export function openReadStream(filePath: string): ReadStream {
 /** Write data as JSON. Creates parent dirs. */
 export async function writeJsonFile(filePath: string, data: unknown): Promise<void> {
   await fsp.mkdir(dirname(filePath), { recursive: true })
-  await fsp.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8')
+  await fsp.writeFile(filePath, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600 })
 }
 
 /** Write text file. Creates parent dirs. */
 export async function writeTextFile(filePath: string, content: string): Promise<void> {
   if (typeof content !== 'string') throw new TypeError('content must be a string')
   await fsp.mkdir(dirname(filePath), { recursive: true })
-  await fsp.writeFile(filePath, content, 'utf-8')
+  await fsp.writeFile(filePath, content, { encoding: 'utf-8', mode: 0o600 })
 }
 
 /** Sync variant of writeTextFile. */
 export function writeTextFileSync(filePath: string, content: string): void {
   if (typeof content !== 'string') throw new TypeError('content must be a string')
   mkdirSync(dirname(filePath), { recursive: true })
-  writeFileSync(filePath, content, 'utf-8')
+  writeFileSync(filePath, content, { encoding: 'utf-8', mode: 0o600 })
 }
 
 /** Ensure directory exists (recursive). */
@@ -231,12 +234,18 @@ export function closeFileDescriptor(fd: number): void {
 
 /** Create a temporary directory with the given prefix. Caller is responsible for cleanup. */
 export async function makeTempDir(prefix: string): Promise<string> {
-  return fsp.mkdtemp(join(os.tmpdir(), prefix))
+  return new Promise((resolve, reject) => {
+    // mode 0o700 ensures only the owner can access the directory (secure)
+    tmp.dir({ prefix, mode: 0o700 }, (err, path) => {
+      if (err) reject(err)
+      else resolve(path)
+    })
+  })
 }
 
 /** Run fn inside a temp directory, auto-cleanup on completion or error. */
 export async function withTempDir<T>(prefix: string, fn: (tempDir: string) => Promise<T>): Promise<T> {
-  const tempDir = await fsp.mkdtemp(join(os.tmpdir(), prefix))
+  const tempDir = await makeTempDir(prefix)
   try {
     return await fn(tempDir)
   } finally {

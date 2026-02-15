@@ -327,6 +327,94 @@ describe('Real SilenceRemovalAgent', () => {
   });
 });
 
+// ── ProducerAgent (REAL) ────────────────────────────────────────────────────
+
+describe('Real ProducerAgent', () => {
+  beforeEach(() => {
+    mockState.capturedTools.length = 0;
+  });
+
+  it('plan_cuts tool: schema accepts removals with start/end/reason', async () => {
+    const { ProducerAgent } = await import('../agents/ProducerAgent.js');
+
+    const mockVideoAsset = {
+      videoPath: '/tmp/test.mp4',
+      getMetadata: async () => ({ width: 1920, height: 1080, duration: 300 }),
+      getTranscript: async () => mockTranscriptWithWords,
+      getEditorialDirection: async () => 'No issues found',
+    } as any;
+
+    const agent = new ProducerAgent(mockVideoAsset);
+    const result = await agent.produce('/tmp/output.mp4');
+
+    // Mock session returns no tool calls → no removals → clean video
+    expect(result.success).toBe(true);
+    expect(result.editCount).toBe(0);
+    expect(result.removals).toEqual([]);
+
+    // Verify captured tools
+    const planTool = findCapturedTool('plan_cuts');
+    expect(planTool.description).toContain('removals');
+
+    // Verify plan_cuts schema
+    const schema = planTool.parameters as any;
+    expect(schema.required).toContain('removals');
+    expect(schema.properties.removals.items.required).toEqual(
+      expect.arrayContaining(['start', 'end', 'reason']),
+    );
+    expect(schema.properties.removals.items.properties.start.type).toBe('number');
+    expect(schema.properties.removals.items.properties.end.type).toBe('number');
+    expect(schema.properties.removals.items.properties.reason.type).toBe('string');
+  });
+
+  it('exposes get_video_info, get_transcript, get_editorial_direction, and plan_cuts tools', async () => {
+    const { ProducerAgent } = await import('../agents/ProducerAgent.js');
+
+    const mockVideoAsset = {
+      videoPath: '/tmp/test.mp4',
+      getMetadata: async () => ({ width: 1920, height: 1080, duration: 300 }),
+      getTranscript: async () => mockTranscriptWithWords,
+      getEditorialDirection: async () => 'No issues found',
+    } as any;
+
+    const agent = new ProducerAgent(mockVideoAsset);
+    await agent.produce('/tmp/output.mp4');
+
+    const toolNames = mockState.capturedTools.map((t: any) => t.name);
+    expect(toolNames).toContain('get_video_info');
+    expect(toolNames).toContain('get_transcript');
+    expect(toolNames).toContain('get_editorial_direction');
+    expect(toolNames).toContain('plan_cuts');
+  });
+
+  it('plan_cuts handler stores removals and returns confirmation', async () => {
+    const { ProducerAgent } = await import('../agents/ProducerAgent.js');
+
+    const mockVideoAsset = {
+      videoPath: '/tmp/test.mp4',
+      getMetadata: async () => ({ width: 1920, height: 1080, duration: 300 }),
+      getTranscript: async () => mockTranscriptWithWords,
+      getEditorialDirection: async () => null,
+    } as any;
+
+    const agent = new ProducerAgent(mockVideoAsset);
+    await agent.produce('/tmp/output.mp4');
+
+    const planTool = findCapturedTool('plan_cuts');
+    const handlerResult = await planTool.handler!(
+      {
+        removals: [
+          { start: 10, end: 15, reason: 'Dead air' },
+          { start: 30, end: 37, reason: 'Long pause' },
+        ],
+      },
+      mockInvocation,
+    );
+
+    expect(handlerResult).toContain('2 removals');
+  });
+});
+
 // ── ChapterAgent (REAL) ─────────────────────────────────────────────────────
 
 describe('Real ChapterAgent', () => {
