@@ -149,21 +149,21 @@ export function openReadStream(filePath: string): ReadStream {
 /** Write data as JSON. Creates parent dirs. */
 export async function writeJsonFile(filePath: string, data: unknown): Promise<void> {
   await fsp.mkdir(dirname(filePath), { recursive: true })
-  await fsp.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8')
+  await fsp.writeFile(filePath, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600 })
 }
 
 /** Write text file. Creates parent dirs. */
 export async function writeTextFile(filePath: string, content: string): Promise<void> {
   if (typeof content !== 'string') throw new TypeError('content must be a string')
   await fsp.mkdir(dirname(filePath), { recursive: true })
-  await fsp.writeFile(filePath, content, 'utf-8')
+  await fsp.writeFile(filePath, content, { encoding: 'utf-8', mode: 0o600 })
 }
 
 /** Sync variant of writeTextFile. */
 export function writeTextFileSync(filePath: string, content: string): void {
   if (typeof content !== 'string') throw new TypeError('content must be a string')
   mkdirSync(dirname(filePath), { recursive: true })
-  writeFileSync(filePath, content, 'utf-8')
+  writeFileSync(filePath, content, { encoding: 'utf-8', mode: 0o600 })
 }
 
 /** Ensure directory exists (recursive). */
