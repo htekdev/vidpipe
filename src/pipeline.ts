@@ -36,6 +36,7 @@ import type {
   VideoLayout,
 } from './types'
 import { PipelineStage as Stage } from './types'
+import { markProcessing, markCompleted, markFailed, markPending } from './services/processingState.js'
 
 /**
  * Execute a single pipeline stage with error isolation and timing.
@@ -496,11 +497,19 @@ function generateCostMarkdown(report: CostReport): string {
 }
 
 export async function processVideoSafe(videoPath: string): Promise<PipelineResult | null> {
+  // Derive slug from filename for state tracking (same logic as MainVideoAsset.ingest)
+  const slug = basename(videoPath, '.mp4')
+  await markPending(slug, videoPath)
+  await markProcessing(slug)
+
   try {
-    return await processVideo(videoPath)
+    const result = await processVideo(videoPath)
+    await markCompleted(slug)
+    return result
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     logger.error(`Pipeline failed with uncaught error: ${message}`)
+    await markFailed(slug, message)
     return null
   }
 }

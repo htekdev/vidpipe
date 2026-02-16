@@ -11,6 +11,7 @@ import { startReviewServer } from './review/server'
 import { openUrl } from './core/cli.js'
 import { readTextFileSync } from './core/fileSystem.js'
 import { projectRoot, join, resolve } from './core/paths.js'
+import { isCompleted, getUnprocessed } from './services/processingState.js'
 
 const pkg = JSON.parse(readTextFileSync(join(projectRoot(), 'package.json')))
 
@@ -203,12 +204,32 @@ const defaultCmd = program
     process.on('SIGINT', () => shutdown())
     process.on('SIGTERM', () => shutdown())
 
-    watcher.on('new-video', (filePath: string) => {
+    watcher.on('new-video', async (filePath: string) => {
+      // Dedup: skip videos already completed
+      const slug = filePath.replace(/\\/g, '/').split('/').pop()?.replace('.mp4', '') ?? ''
+      if (slug && await isCompleted(slug)) {
+        logger.info(`Skipping already-processed video: ${filePath}`)
+        return
+      }
       queue.push(filePath)
       logger.info(`Queued video: ${filePath} (queue length: ${queue.length})`)
       processQueue().catch(err => logger.error('Queue processing error:', err))
     })
     watcher.start()
+
+    // Startup reconciliation: check for unprocessed videos from previous runs
+    const unprocessed = await getUnprocessed()
+    const unprocessedEntries = Object.entries(unprocessed)
+    if (unprocessedEntries.length > 0) {
+      logger.info(`Found ${unprocessedEntries.length} unprocessed video(s) from previous runs`)
+      for (const [slug, state] of unprocessedEntries) {
+        if (!queue.includes(state.sourcePath)) {
+          queue.push(state.sourcePath)
+          logger.info(`Re-queued: ${slug} (${state.status})`)
+        }
+      }
+      processQueue().catch(err => logger.error('Queue processing error:', err))
+    }
 
     if (onceMode) {
       logger.info('Running in --once mode. Will exit after processing the next video.')

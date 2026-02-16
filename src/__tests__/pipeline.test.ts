@@ -27,6 +27,10 @@ const {
   mockReadTextFile,
   mockWriteTextFile,
   mockWriteJsonFile,
+  mockMarkPending,
+  mockMarkProcessing,
+  mockMarkCompleted,
+  mockMarkFailed,
 } = vi.hoisted(() => ({
   mockLogger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
   mockGetConfig: vi.fn(),
@@ -49,6 +53,10 @@ const {
   mockReadTextFile: vi.fn().mockResolvedValue(''),
   mockWriteTextFile: vi.fn().mockResolvedValue(undefined),
   mockWriteJsonFile: vi.fn().mockResolvedValue(undefined),
+  mockMarkPending: vi.fn().mockResolvedValue(undefined),
+  mockMarkProcessing: vi.fn().mockResolvedValue(undefined),
+  mockMarkCompleted: vi.fn().mockResolvedValue(undefined),
+  mockMarkFailed: vi.fn().mockResolvedValue(undefined),
 }))
 
 // ---- Mock all external dependencies ----
@@ -82,6 +90,12 @@ vi.mock('../services/queueBuilder.js', () => ({ buildPublishQueue: mockBuildPubl
 vi.mock('../config/modelConfig.js', () => ({ getModelForAgent: mockGetModelForAgent }))
 vi.mock('../services/costTracker.js', () => ({
   costTracker: { reset: vi.fn(), setStage: vi.fn(), getReport: vi.fn().mockReturnValue({ records: [] }), formatReport: vi.fn().mockReturnValue('') },
+}))
+vi.mock('../services/processingState.js', () => ({
+  markPending: mockMarkPending,
+  markProcessing: mockMarkProcessing,
+  markCompleted: mockMarkCompleted,
+  markFailed: mockMarkFailed,
 }))
 vi.mock('../core/paths.js', () => ({
   join: (...args: string[]) => args.join('/'),

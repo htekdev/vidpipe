@@ -225,7 +225,7 @@ describe('Real ShortsAgent', () => {
     mockState.capturedTools.length = 0;
   });
 
-  it('plan_shorts tool: schema, handler stores shorts and returns count', async () => {
+  it('add_shorts tool: schema, handler accumulates shorts incrementally', async () => {
     const { generateShorts } = await import('../agents/ShortsAgent.js');
 
     // generateShorts calls agent.run() → createSession captures tools
@@ -234,12 +234,18 @@ describe('Real ShortsAgent', () => {
     // Mock session returns no tool calls, so no shorts planned
     expect(result).toEqual([]);
 
-    // Verify captured tool
-    const planTool = findCapturedTool('plan_shorts');
-    expect(planTool.description).toContain('planned shorts');
+    // Verify captured tools
+    const addTool = findCapturedTool('add_shorts');
+    expect(addTool.description).toContain('Add one or more shorts');
+
+    const reviewTool = findCapturedTool('review_shorts');
+    expect(reviewTool.description).toContain('Review all shorts');
+
+    const finalizeTool = findCapturedTool('finalize_shorts');
+    expect(finalizeTool.description).toContain('Finalize');
 
     // Verify schema
-    const schema = planTool.parameters as any;
+    const schema = addTool.parameters as any;
     expect(schema.required).toContain('shorts');
     expect(schema.properties.shorts.type).toBe('array');
     expect(schema.properties.shorts.items.required).toEqual(
@@ -252,8 +258,8 @@ describe('Real ShortsAgent', () => {
     );
     expect(segmentSchema.properties.start.type).toBe('number');
 
-    // Call the REAL handler
-    const handlerResult = await planTool.handler!(
+    // Call the REAL handler — first batch
+    const handlerResult = await addTool.handler!(
       {
         shorts: [
           {
@@ -262,6 +268,18 @@ describe('Real ShortsAgent', () => {
             tags: ['test'],
             segments: [{ start: 5, end: 20, description: 'segment 1' }],
           },
+        ],
+      },
+      mockInvocation,
+    );
+
+    expect(handlerResult).toContain('Added 1 shorts');
+    expect(handlerResult).toContain('Total planned: 1');
+
+    // Call again — second batch (accumulates)
+    const handlerResult2 = await addTool.handler!(
+      {
+        shorts: [
           {
             title: 'Another Short',
             description: 'Another test',
@@ -276,7 +294,13 @@ describe('Real ShortsAgent', () => {
       mockInvocation,
     );
 
-    expect(handlerResult).toEqual({ success: true, count: 2 });
+    expect(handlerResult2).toContain('Total planned: 2');
+
+    // Review shows both shorts
+    const reviewResult = await reviewTool.handler!({}, mockInvocation);
+    expect(reviewResult).toContain('2 total');
+    expect(reviewResult).toContain('Test Short');
+    expect(reviewResult).toContain('Another Short');
   });
 });
 
@@ -485,22 +509,28 @@ describe('Real MediumVideoAgent', () => {
     mockState.capturedTools.length = 0;
   });
 
-  it('plan_medium_clips tool: schema and handler stores clips', async () => {
+  it('add_medium_clips tool: schema and handler accumulates clips', async () => {
     const { generateMediumClips } = await import('../agents/MediumVideoAgent.js');
 
     const result = await generateMediumClips(mockVideo, mockTranscriptWithWords);
     expect(result).toEqual([]);
 
-    const clipTool = findCapturedTool('plan_medium_clips');
+    const addTool = findCapturedTool('add_medium_clips');
+    const reviewTool = findCapturedTool('review_medium_clips');
+    const finalizeTool = findCapturedTool('finalize_medium_clips');
 
-    const schema = clipTool.parameters as any;
+    expect(addTool.description).toContain('Add one or more medium clips');
+    expect(reviewTool.description).toContain('Review all medium clips');
+    expect(finalizeTool.description).toContain('Finalize');
+
+    const schema = addTool.parameters as any;
     expect(schema.required).toContain('clips');
     expect(schema.properties.clips.items.required).toEqual(
       expect.arrayContaining(['title', 'description', 'tags', 'segments', 'totalDuration', 'hook', 'topic']),
     );
 
     // Call the REAL handler
-    const handlerResult = await clipTool.handler!(
+    const handlerResult = await addTool.handler!(
       {
         clips: [
           {
@@ -517,7 +547,13 @@ describe('Real MediumVideoAgent', () => {
       mockInvocation,
     );
 
-    expect(handlerResult).toEqual({ success: true, count: 1 });
+    expect(handlerResult).toContain('Added 1 clips');
+    expect(handlerResult).toContain('Total planned: 1');
+
+    // Review shows the clip
+    const reviewResult = await reviewTool.handler!({}, mockInvocation);
+    expect(reviewResult).toContain('1 total');
+    expect(reviewResult).toContain('Deep Dive into Testing');
   });
 });
 

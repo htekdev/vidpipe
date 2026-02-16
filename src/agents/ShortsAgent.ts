@@ -28,7 +28,23 @@ interface PlannedShort {
 
 // ── System prompt ───────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a short-form video content strategist. Your job is to analyze a video transcript with word-level timestamps and identify the most compelling moments to extract as shorts (15–60 seconds each).
+const SYSTEM_PROMPT = `You are a short-form video content strategist. Your job is to **exhaustively** analyze a video transcript with word-level timestamps and extract every compelling moment as a short (15–60 seconds each).
+
+## Your workflow
+1. Read the transcript and note the total duration.
+2. Work through the transcript **section by section** (roughly 3–5 minute chunks). For each chunk, identify every possible short.
+3. Call **add_shorts** for each batch of shorts you find. You can call it as many times as needed.
+4. After your first pass, call **review_shorts** to see everything you've planned so far.
+5. Review for gaps: are there sections of the transcript with no shorts? Could any moments be combined into composites? Did you miss any humor, insights, or quotable moments?
+6. Add any additional shorts you find.
+7. When you are confident you've exhausted all opportunities, call **finalize_shorts**.
+
+## Target quantity
+Scale your output by video duration:
+- **~1 short per 2–3 minutes** of video content.
+- A 10-minute video → 4–6 shorts. A 30-minute video → 12–18 shorts. A 60-minute video → 20–30 shorts.
+- These are guidelines, not hard caps — if the content is rich, find more. If it's sparse, find fewer.
+- **Never stop at 3–8 shorts for a long video.** Your job is to be thorough.
 
 ## What to look for
 - **Key insights** — concise, quotable takeaways
@@ -36,22 +52,22 @@ const SYSTEM_PROMPT = `You are a short-form video content strategist. Your job i
 - **Controversial takes** — bold opinions that spark discussion
 - **Educational nuggets** — clear explanations of complex topics
 - **Emotional peaks** — passion, vulnerability, excitement
-- **Topic compilations** — multiple brief mentions of one theme that can be stitched together
+- **Audience hooks** — moments that would make someone stop scrolling
+- **Before/after reveals** — showing a transformation or result
+- **Mistakes & corrections** — relatable "oops" moments that humanize the speaker
 
 ## Short types
 - **Single segment** — one contiguous section of the video
-- **Composite** — multiple non-contiguous segments combined into one short (great for topic compilations or building a narrative arc)
+- **Composite** — multiple non-contiguous segments combined into one short (great for topic compilations, building narrative arcs, or "every time X happens" montages). **Actively look for composite opportunities** — they often make the best shorts.
 
 ## Rules
 1. Each short must be 15–60 seconds total duration.
 2. Timestamps must align to word boundaries from the transcript.
 3. Prefer natural sentence boundaries for clean cuts.
-4. Aim for 3–8 shorts per video, depending on length and richness.
-5. Every short needs a catchy, descriptive title (5–10 words).
-6. Tags should be lowercase, no hashes, 3–6 per short.
-7. A 1-second buffer is automatically added before and after each segment boundary during extraction, so plan segments based on content timestamps without worrying about clipping words at the edges.
-
-When you have identified the shorts, call the **plan_shorts** tool with your complete plan.
+4. Every short needs a catchy, descriptive title (5–10 words).
+5. Tags should be lowercase, no hashes, 3–6 per short.
+6. A 1-second buffer is automatically added before and after each segment boundary during extraction, so plan segments based on content timestamps without worrying about clipping words at the edges.
+7. Avoid significant timestamp overlap between shorts — each short should bring unique content. Small overlaps (a few seconds of shared context) are OK.
 
 ## Using Clip Direction
 You may receive AI-generated clip direction with suggested shorts. Use these as a starting point but make your own decisions:
@@ -59,14 +75,14 @@ You may receive AI-generated clip direction with suggested shorts. Use these as 
 - Feel free to adjust timestamps, combine suggestions, or ignore ones that don't work
 - You may also find good shorts NOT in the suggestions — always analyze the full transcript`
 
-// ── JSON Schema for the plan_shorts tool ────────────────────────────────────
+// ── JSON Schema for the add_shorts tool ──────────────────────────────────────
 
-const PLAN_SHORTS_SCHEMA = {
+const ADD_SHORTS_SCHEMA = {
   type: 'object',
   properties: {
     shorts: {
       type: 'array',
-      description: 'Array of planned short clips',
+      description: 'Array of short clips to add to the plan',
       items: {
         type: 'object',
         properties: {
@@ -102,6 +118,7 @@ const PLAN_SHORTS_SCHEMA = {
 
 class ShortsAgent extends BaseAgent {
   private plannedShorts: PlannedShort[] = []
+  private isFinalized = false
 
   constructor(model?: string) {
     super('ShortsAgent', SYSTEM_PROMPT, undefined, model)
@@ -110,12 +127,33 @@ class ShortsAgent extends BaseAgent {
   protected getTools(): ToolWithHandler[] {
     return [
       {
-        name: 'plan_shorts',
+        name: 'add_shorts',
         description:
-          'Submit the planned shorts as a structured JSON array. Call this once with all planned shorts.',
-        parameters: PLAN_SHORTS_SCHEMA,
+          'Add one or more shorts to your plan. ' +
+          'You can call this multiple times to build your list incrementally as you analyze each section of the transcript.',
+        parameters: ADD_SHORTS_SCHEMA,
         handler: async (args: unknown) => {
-          return this.handleToolCall('plan_shorts', args as Record<string, unknown>)
+          return this.handleToolCall('add_shorts', args as Record<string, unknown>)
+        },
+      },
+      {
+        name: 'review_shorts',
+        description:
+          'Review all shorts planned so far. Returns a summary of every short in your current plan. ' +
+          'Use this to check for gaps, overlaps, or missed opportunities before finalizing.',
+        parameters: { type: 'object', properties: {} },
+        handler: async () => {
+          return this.handleToolCall('review_shorts', {})
+        },
+      },
+      {
+        name: 'finalize_shorts',
+        description:
+          'Finalize your short clip plan and trigger extraction. ' +
+          'Call this ONCE after you have added all shorts and reviewed them for completeness.',
+        parameters: { type: 'object', properties: {} },
+        handler: async () => {
+          return this.handleToolCall('finalize_shorts', {})
         },
       },
     ]
@@ -125,16 +163,44 @@ class ShortsAgent extends BaseAgent {
     toolName: string,
     args: Record<string, unknown>,
   ): Promise<unknown> {
-    if (toolName === 'plan_shorts') {
-      this.plannedShorts = args.shorts as PlannedShort[]
-      logger.info(`[ShortsAgent] Planned ${this.plannedShorts.length} shorts`)
-      return { success: true, count: this.plannedShorts.length }
+    switch (toolName) {
+      case 'add_shorts': {
+        const newShorts = args.shorts as PlannedShort[]
+        this.plannedShorts.push(...newShorts)
+        logger.info(`[ShortsAgent] Added ${newShorts.length} shorts (total: ${this.plannedShorts.length})`)
+        return `Added ${newShorts.length} shorts. Total planned: ${this.plannedShorts.length}. Call add_shorts for more, review_shorts to check your plan, or finalize_shorts when done.`
+      }
+
+      case 'review_shorts': {
+        if (this.plannedShorts.length === 0) {
+          return 'No shorts planned yet. Analyze the transcript and call add_shorts to start planning.'
+        }
+        const summary = this.plannedShorts.map((s, i) => {
+          const totalDur = s.segments.reduce((sum, seg) => sum + (seg.end - seg.start), 0)
+          const timeRanges = s.segments.map(seg => `${seg.start.toFixed(1)}s–${seg.end.toFixed(1)}s`).join(', ')
+          const type = s.segments.length > 1 ? 'composite' : 'single'
+          return `${i + 1}. "${s.title}" (${totalDur.toFixed(1)}s, ${type}) [${timeRanges}] — ${s.description}`
+        }).join('\n')
+        return `## Planned shorts (${this.plannedShorts.length} total)\n\n${summary}\n\nLook for gaps in transcript coverage, missed composite opportunities, and any additional compelling moments.`
+      }
+
+      case 'finalize_shorts': {
+        this.isFinalized = true
+        logger.info(`[ShortsAgent] Finalized ${this.plannedShorts.length} shorts`)
+        return `Finalized ${this.plannedShorts.length} shorts. Extraction will begin.`
+      }
+
+      default:
+        throw new Error(`Unknown tool: ${toolName}`)
     }
-    throw new Error(`Unknown tool: ${toolName}`)
   }
 
   getPlannedShorts(): PlannedShort[] {
     return this.plannedShorts
+  }
+
+  getIsFinalized(): boolean {
+    return this.isFinalized
   }
 }
 
@@ -160,7 +226,8 @@ export async function generateShorts(
   const promptParts = [
     `Analyze the following transcript (${transcript.duration.toFixed(0)}s total) and plan shorts.\n`,
     `Video: ${video.filename}`,
-    `Duration: ${transcript.duration.toFixed(1)}s\n`,
+    `Duration: ${transcript.duration.toFixed(1)}s`,
+    `Target: ~${Math.max(3, Math.round(transcript.duration / 150))}–${Math.max(5, Math.round(transcript.duration / 120))} shorts (scale by content richness)\n`,
     '--- TRANSCRIPT ---\n',
     transcriptLines.join('\n\n'),
     '\n--- END TRANSCRIPT ---',
