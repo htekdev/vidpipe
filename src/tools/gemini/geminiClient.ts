@@ -24,13 +24,13 @@ Cover these areas with specific timestamps (use MM:SS format):
 List every moment where a cut or transition should occur. For each, explain WHY this cut improves the edit and what transition type to use (hard cut, crossfade, dissolve, J-cut, L-cut, jump cut, fade to black).
 
 ## Pacing Analysis
-Flag sections that are too slow, too fast, or have dead air. Give start/end timestamps and what to do about each issue. If a section is flagged as "Too Slow" or "Dead Air", recommend removing the ENTIRE section — don't just trim parts of it.
+Flag sections that are too slow, too fast, or have dead air. Give start/end timestamps and what to do about each issue.
 
 ## B-Roll & Graphics Suggestions
 Identify moments where text overlays, graphics, zoom-ins, or visual emphasis would improve engagement.
 
 ## Hook & Retention
-Rate the first 3 seconds (1-10) and suggest specific improvements for viewer retention.
+Rate the first 3 seconds (1-10) and suggest specific improvements for viewer retention. If the video has a weak opening (meta-commentary, dead air, false starts), recommend where the actual content begins so an editor can start the video there.
 
 ## Content Structure
 Break the video into intro/body sections/outro with timestamps and topic for each section.
@@ -40,13 +40,11 @@ Highlight the most engaging, surprising, or important moments that should be emp
 
 ## Cleaning Recommendations
 Identify sections that should be trimmed or removed entirely to produce a tighter edit. For each:
-- Give start/end timestamps (MM:SS.s format, e.g. 00:14.3 - 00:37.0)
+- Give start/end timestamps (MM:SS.s format with decimal precision, e.g. 00:14.3 - 00:37.0)
 - Explain why it should be removed (dead air, filler words, false starts, repeated explanations, off-topic tangents, excessive pauses)
 - Rate the confidence (high/medium/low) — high means definitely remove, low means optional
 
-IMPORTANT: If the Pacing Analysis flags a range as "Too Slow" or "Dead Air", include that FULL range as a single cut — do NOT break it into smaller pieces. For example, if pacing says "00:00-00:15 is too slow", add one cut for the full 0-15 second range, not separate cuts for 0-2 and 13-15.
-
-After listing the recommendations in markdown, also provide a machine-readable JSON block with ALL cuts. This MUST include every cut from the list above. Format it exactly like this:
+After listing the recommendations in markdown, also provide a machine-readable JSON block summarizing all suggested cuts:
 
 \`\`\`json:cuts
 [
@@ -55,12 +53,7 @@ After listing the recommendations in markdown, also provide a machine-readable J
 ]
 \`\`\`
 
-Rules for the JSON block:
-- Times are in SECONDS with decimal precision (e.g. 14.3, not 14). Use at least one decimal place.
-- Include EVERY cut from the markdown list — do not skip any
-- If the Pacing Analysis recommends removing an entire segment, include that as a single cut covering the full range
-- The JSON block is consumed by an automated editing agent, so accuracy is critical
-- Place cut boundaries precisely at word boundaries — do NOT cut in the middle of a word
+Times in the JSON block should be in seconds with decimal precision. Place cut boundaries at word boundaries.
 
 ## Hook Snippets for Short Videos
 Identify the 3-5 best moments (3-8 seconds each) that could serve as attention-grabbing hooks for the beginning of short-form videos. For each:

@@ -334,7 +334,7 @@ describe('Real ProducerAgent', () => {
     mockState.capturedTools.length = 0;
   });
 
-  it('plan_cuts tool: schema accepts removals with start/end/reason', async () => {
+  it('add_cuts tool: schema accepts removals with start/end/reason', async () => {
     const { ProducerAgent } = await import('../agents/ProducerAgent.js');
 
     const mockVideoAsset = {
@@ -353,11 +353,11 @@ describe('Real ProducerAgent', () => {
     expect(result.removals).toEqual([]);
 
     // Verify captured tools
-    const planTool = findCapturedTool('plan_cuts');
-    expect(planTool.description).toContain('removals');
+    const addTool = findCapturedTool('add_cuts');
+    expect(addTool.description).toContain('remove');
 
-    // Verify plan_cuts schema
-    const schema = planTool.parameters as any;
+    // Verify add_cuts schema
+    const schema = addTool.parameters as any;
     expect(schema.required).toContain('removals');
     expect(schema.properties.removals.items.required).toEqual(
       expect.arrayContaining(['start', 'end', 'reason']),
@@ -367,7 +367,7 @@ describe('Real ProducerAgent', () => {
     expect(schema.properties.removals.items.properties.reason.type).toBe('string');
   });
 
-  it('exposes get_video_info, get_transcript, get_editorial_direction, and plan_cuts tools', async () => {
+  it('exposes get_video_info, get_transcript, get_editorial_direction, add_cuts, and finalize_cuts tools', async () => {
     const { ProducerAgent } = await import('../agents/ProducerAgent.js');
 
     const mockVideoAsset = {
@@ -384,10 +384,11 @@ describe('Real ProducerAgent', () => {
     expect(toolNames).toContain('get_video_info');
     expect(toolNames).toContain('get_transcript');
     expect(toolNames).toContain('get_editorial_direction');
-    expect(toolNames).toContain('plan_cuts');
+    expect(toolNames).toContain('add_cuts');
+    expect(toolNames).toContain('finalize_cuts');
   });
 
-  it('plan_cuts handler stores removals and returns confirmation', async () => {
+  it('add_cuts handler accumulates removals across multiple calls', async () => {
     const { ProducerAgent } = await import('../agents/ProducerAgent.js');
 
     const mockVideoAsset = {
@@ -400,18 +401,26 @@ describe('Real ProducerAgent', () => {
     const agent = new ProducerAgent(mockVideoAsset);
     await agent.produce('/tmp/output.mp4');
 
-    const planTool = findCapturedTool('plan_cuts');
-    const handlerResult = await planTool.handler!(
+    const addTool = findCapturedTool('add_cuts');
+    const result1 = await addTool.handler!(
       {
         removals: [
           { start: 10, end: 15, reason: 'Dead air' },
+        ],
+      },
+      mockInvocation,
+    );
+    expect(result1).toContain('1 cuts');
+
+    const result2 = await addTool.handler!(
+      {
+        removals: [
           { start: 30, end: 37, reason: 'Long pause' },
         ],
       },
       mockInvocation,
     );
-
-    expect(handlerResult).toContain('2 removals');
+    expect(result2).toContain('Total queued: 2');
   });
 });
 
