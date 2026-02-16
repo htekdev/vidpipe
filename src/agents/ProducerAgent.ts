@@ -50,9 +50,54 @@ interface Removal {
   reason: string
 }
 
+interface MandatoryCut {
+  start: number
+  end: number
+  reason: string
+  confidence: string
+}
+
 interface GetTranscriptArgs {
   start?: number
   end?: number
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Parse mandatory cuts from editorial direction.
+ * Looks for the ```json:cuts block first (structured output from Gemini),
+ * falls back to regex parsing of markdown timestamps.
+ */
+function parseMandatoryCuts(direction: string): MandatoryCut[] {
+  // Try structured JSON block first
+  const jsonMatch = direction.match(/```json:cuts\s*\n([\s\S]*?)```/)
+  if (jsonMatch) {
+    try {
+      const parsed = JSON.parse(jsonMatch[1]) as MandatoryCut[]
+      return parsed.filter(c => c.end > c.start)
+    } catch {
+      logger.warn('[ProducerAgent] Failed to parse json:cuts block, falling back to regex')
+    }
+  }
+
+  // Fallback: parse markdown timestamps from Cleaning Recommendations
+  const cuts: MandatoryCut[] = []
+  const sectionMatch = direction.match(/#{2,3}\s*Cleaning Recommendations\s*\n([\s\S]*?)(?=\n#{2,3}\s|\n---|\n$|$)/)
+  if (!sectionMatch) return cuts
+
+  const section = sectionMatch[1]
+  const linePattern = /\*\*(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2}):\*\*/g
+  let match
+  while ((match = linePattern.exec(section)) !== null) {
+    const start = parseInt(match[1]) * 60 + parseInt(match[2])
+    const end = parseInt(match[3]) * 60 + parseInt(match[4])
+    if (end > start) {
+      cuts.push({ start, end, reason: 'Flagged by editorial direction', confidence: 'High' })
+    }
+  }
+
+  return cuts
 }
 
 // ── JSON Schemas ─────────────────────────────────────────────────────────────
@@ -203,9 +248,16 @@ export class ProducerAgent extends BaseAgent {
           }
         }
 
+        // Parse mandatory cuts from Cleaning Recommendations section
+        const mandatoryCuts = parseMandatoryCuts(direction)
+
         return {
           available: true,
           editorialDirection: direction,
+          mandatoryCuts,
+          instructions: mandatoryCuts.length > 0
+            ? `MANDATORY: The following ${mandatoryCuts.length} cuts were identified by Gemini video AI. You MUST include ALL of them in your plan_cuts call. You may add additional cuts you find, but these are non-negotiable.`
+            : 'No mandatory cuts identified. Use your judgment based on the editorial direction.',
         }
       }
 

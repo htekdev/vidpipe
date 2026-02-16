@@ -44,6 +44,21 @@ Identify sections that should be trimmed or removed entirely to produce a tighte
 - Explain why it should be removed (dead air, filler words, false starts, repeated explanations, off-topic tangents, excessive pauses)
 - Rate the confidence (high/medium/low) — high means definitely remove, low means optional
 
+After listing the recommendations in markdown, also provide a machine-readable JSON block with ALL cuts. This MUST include every cut from the list above. Format it exactly like this:
+
+\`\`\`json:cuts
+[
+  { "start": 0, "end": 1, "reason": "Dead air", "confidence": "high" },
+  { "start": 14, "end": 37, "reason": "Meta-commentary for editor", "confidence": "high" }
+]
+\`\`\`
+
+Rules for the JSON block:
+- Times are in SECONDS (not MM:SS)
+- Include EVERY cut from the markdown list — do not skip any
+- If the Pacing Analysis recommends removing an entire segment, include that as a single cut covering the full range
+- The JSON block is consumed by an automated editing agent, so accuracy is critical
+
 ## Hook Snippets for Short Videos
 Identify the 3-5 best moments (3-8 seconds each) that could serve as attention-grabbing hooks for the beginning of short-form videos. For each:
 - Give start/end timestamps
