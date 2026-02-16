@@ -297,11 +297,12 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
     if (result) shorts = result
   }
 
-  // 7. Medium Clips — use adjusted transcript + cleaned video (clips cut from cleaned video)
+  // 7. Medium Clips — use enhanced video if available (carries overlay images), else cleaned video
   let mediumClips: MediumClip[] = []
   if (transcript && !cfg.SKIP_MEDIUM_CLIPS) {
     const mediumTranscript = adjustedTranscript ?? transcript
-    const mediumVideo: VideoFile = editedVideoPath ? { ...video, repoPath: editedVideoPath } : video
+    const mediumVideoPath = enhancedVideoPath ?? editedVideoPath
+    const mediumVideo: VideoFile = mediumVideoPath ? { ...video, repoPath: mediumVideoPath } : video
     let mediumClipDirection: string | undefined
     try {
       const clipDirPath = join(video.videoDir, 'clip-direction.md')
