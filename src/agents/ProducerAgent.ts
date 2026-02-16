@@ -68,36 +68,62 @@ interface GetTranscriptArgs {
  * Parse mandatory cuts from editorial direction.
  * Looks for the ```json:cuts block first (structured output from Gemini),
  * falls back to regex parsing of markdown timestamps.
+ * Merges overlapping/adjacent cuts (within 2s gap) to avoid fragmented removals.
  */
 function parseMandatoryCuts(direction: string): MandatoryCut[] {
+  let cuts: MandatoryCut[] = []
+
   // Try structured JSON block first
   const jsonMatch = direction.match(/```json:cuts\s*\n([\s\S]*?)```/)
   if (jsonMatch) {
     try {
       const parsed = JSON.parse(jsonMatch[1]) as MandatoryCut[]
-      return parsed.filter(c => c.end > c.start)
+      cuts = parsed.filter(c => c.end > c.start)
     } catch {
       logger.warn('[ProducerAgent] Failed to parse json:cuts block, falling back to regex')
     }
   }
 
   // Fallback: parse markdown timestamps from Cleaning Recommendations
-  const cuts: MandatoryCut[] = []
-  const sectionMatch = direction.match(/#{2,3}\s*Cleaning Recommendations\s*\n([\s\S]*?)(?=\n#{2,3}\s|\n---|\n$|$)/)
-  if (!sectionMatch) return cuts
+  if (cuts.length === 0) {
+    const sectionMatch = direction.match(/#{2,3}\s*Cleaning Recommendations\s*\n([\s\S]*?)(?=\n#{2,3}\s|\n---|\n$|$)/)
+    if (!sectionMatch) return cuts
 
-  const section = sectionMatch[1]
-  const linePattern = /\*\*(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2}):\*\*/g
-  let match
-  while ((match = linePattern.exec(section)) !== null) {
-    const start = parseInt(match[1]) * 60 + parseInt(match[2])
-    const end = parseInt(match[3]) * 60 + parseInt(match[4])
-    if (end > start) {
-      cuts.push({ start, end, reason: 'Flagged by editorial direction', confidence: 'High' })
+    const section = sectionMatch[1]
+    const linePattern = /\*\*(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2}):\*\*/g
+    let match
+    while ((match = linePattern.exec(section)) !== null) {
+      const start = parseInt(match[1]) * 60 + parseInt(match[2])
+      const end = parseInt(match[3]) * 60 + parseInt(match[4])
+      if (end > start) {
+        cuts.push({ start, end, reason: 'Flagged by editorial direction', confidence: 'High' })
+      }
     }
   }
 
-  return cuts
+  return mergeMandatoryCuts(cuts)
+}
+
+/** Merge overlapping or adjacent cuts (gap <= 2 seconds) into larger ranges. */
+function mergeMandatoryCuts(cuts: MandatoryCut[]): MandatoryCut[] {
+  if (cuts.length <= 1) return cuts
+
+  const sorted = [...cuts].sort((a, b) => a.start - b.start)
+  const merged: MandatoryCut[] = [sorted[0]]
+
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = merged[merged.length - 1]
+    const curr = sorted[i]
+    if (curr.start <= prev.end + 2) {
+      // Merge: extend the previous cut
+      prev.end = Math.max(prev.end, curr.end)
+      prev.reason = `${prev.reason}; ${curr.reason}`
+    } else {
+      merged.push({ ...curr })
+    }
+  }
+
+  return merged
 }
 
 // ── JSON Schemas ─────────────────────────────────────────────────────────────

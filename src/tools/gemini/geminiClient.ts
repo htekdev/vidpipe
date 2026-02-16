@@ -40,27 +40,27 @@ Highlight the most engaging, surprising, or important moments that should be emp
 
 ## Cleaning Recommendations
 Identify sections that should be trimmed or removed entirely to produce a tighter edit. For each:
-- Give start/end timestamps (MM:SS format)
+- Give start/end timestamps (MM:SS.s format, e.g. 00:14.3 - 00:37.0)
 - Explain why it should be removed (dead air, filler words, false starts, repeated explanations, off-topic tangents, excessive pauses)
 - Rate the confidence (high/medium/low) — high means definitely remove, low means optional
 
-IMPORTANT: If the Pacing Analysis flags a range as "Too Slow" or "Dead Air", include that FULL range as a single cut — do NOT break it into smaller pieces. For example, if pacing says "00:00-00:15 is too slow", add one cut for the full 0-15 second range, not separate cuts for 0-2 and 13-15. Merge adjacent or overlapping cut points into larger ranges when they are close together (within 3 seconds).
+IMPORTANT: If the Pacing Analysis flags a range as "Too Slow" or "Dead Air", include that FULL range as a single cut — do NOT break it into smaller pieces. For example, if pacing says "00:00-00:15 is too slow", add one cut for the full 0-15 second range, not separate cuts for 0-2 and 13-15.
 
 After listing the recommendations in markdown, also provide a machine-readable JSON block with ALL cuts. This MUST include every cut from the list above. Format it exactly like this:
 
 \`\`\`json:cuts
 [
-  { "start": 0, "end": 15, "reason": "Opening too slow - dead air and filler", "confidence": "high" },
-  { "start": 26, "end": 37, "reason": "Meta-commentary for editor", "confidence": "high" }
+  { "start": 0.0, "end": 15.2, "reason": "Opening too slow - dead air and filler", "confidence": "high" },
+  { "start": 26.5, "end": 37.0, "reason": "Meta-commentary for editor", "confidence": "high" }
 ]
 \`\`\`
 
 Rules for the JSON block:
-- Times are in SECONDS (not MM:SS)
+- Times are in SECONDS with decimal precision (e.g. 14.3, not 14). Use at least one decimal place.
 - Include EVERY cut from the markdown list — do not skip any
-- Merge adjacent cuts (within 3 seconds of each other) into single larger cuts
 - If the Pacing Analysis recommends removing an entire segment, include that as a single cut covering the full range
 - The JSON block is consumed by an automated editing agent, so accuracy is critical
+- Place cut boundaries precisely at word boundaries — do NOT cut in the middle of a word
 
 ## Hook Snippets for Short Videos
 Identify the 3-5 best moments (3-8 seconds each) that could serve as attention-grabbing hooks for the beginning of short-form videos. For each:
