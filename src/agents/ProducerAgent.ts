@@ -286,7 +286,7 @@ Focus on removing dead air, filler words, bad takes, and redundant content. Be c
         summary: response,
         outputPath,
         success: true,
-        editCount: cappedRemovals.length,
+        editCount: this.removals.length,
         removals: sortedRemovals.map(r => ({ start: r.start, end: r.end })),
         keepSegments,
       }
