@@ -239,13 +239,16 @@ async function convertWithSmartLayout(
   const resolution = await getVideoResolution(inputPath)
 
   // Determine screen crop region (exclude webcam area using detected bounds)
+  // Add a small margin (2% of width) to ensure the webcam overlay is fully excluded
+  // even when face detection bounding boxes aren't pixel-perfect
+  const margin = Math.round(resolution.width * 0.02)
   let screenCropX: number
   let screenCropW: number
   if (webcam.position === 'top-right' || webcam.position === 'bottom-right') {
     screenCropX = 0
-    screenCropW = webcam.x
+    screenCropW = Math.max(0, webcam.x - margin)
   } else {
-    screenCropX = webcam.x + webcam.width
+    screenCropX = webcam.x + webcam.width + margin
     screenCropW = Math.max(0, resolution.width - screenCropX)
   }
 
