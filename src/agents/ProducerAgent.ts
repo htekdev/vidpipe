@@ -256,29 +256,9 @@ Focus on removing dead air, filler words, bad takes, and redundant content. Be c
         }
       }
 
-      // Safety cap: limit removals to 20% of video duration
-      const maxRemoval = this.videoDuration * 0.20
-      let totalRemoval = 0
-      const sortedByDuration = [...this.removals].sort(
-        (a, b) => (b.end - b.start) - (a.end - a.start),
-      )
-      const cappedRemovals: Removal[] = []
-      for (const r of sortedByDuration) {
-        const dur = r.end - r.start
-        if (totalRemoval + dur <= maxRemoval) {
-          cappedRemovals.push(r)
-          totalRemoval += dur
-        }
-      }
-
-      if (cappedRemovals.length < this.removals.length) {
-        logger.warn(
-          `[ProducerAgent] Safety cap: reduced ${this.removals.length} removals to ${cappedRemovals.length} (max 20% of ${this.videoDuration}s = ${maxRemoval.toFixed(1)}s)`,
-        )
-      }
-
       // Sort by start time for keepSegment construction
-      const sortedRemovals = [...cappedRemovals].sort((a, b) => a.start - b.start)
+      const totalRemoval = this.removals.reduce((sum, r) => sum + (r.end - r.start), 0)
+      const sortedRemovals = [...this.removals].sort((a, b) => a.start - b.start)
 
       // Convert removals to keepSegments (inverse)
       const keepSegments: KeepSegment[] = []
@@ -294,7 +274,7 @@ Focus on removing dead air, filler words, bad takes, and redundant content. Be c
       }
 
       logger.info(
-        `[ProducerAgent] ${cappedRemovals.length} removals → ${keepSegments.length} keep segments, removing ${totalRemoval.toFixed(1)}s`,
+        `[ProducerAgent] ${this.removals.length} removals → ${keepSegments.length} keep segments, removing ${totalRemoval.toFixed(1)}s`,
       )
 
       // Render via singlePassEdit

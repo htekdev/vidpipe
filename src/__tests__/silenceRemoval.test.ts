@@ -275,68 +275,8 @@ describe('effective removals from keep segments', () => {
   });
 });
 
-// ── 20% safety cap ──────────────────────────────────────────────────────────
-
-describe('20% safety cap', () => {
-  function applySafetyCap(
-    removals: { start: number; end: number; reason: string }[],
-    videoDuration: number,
-  ): { start: number; end: number; reason: string }[] {
-    const maxRemoval = videoDuration * 0.20;
-    let totalRemoval = 0;
-    const capped: { start: number; end: number; reason: string }[] = [];
-    const byDuration = [...removals].sort((a, b) => (b.end - b.start) - (a.end - a.start));
-    for (const r of byDuration) {
-      const dur = r.end - r.start;
-      if (totalRemoval + dur <= maxRemoval) {
-        capped.push(r);
-        totalRemoval += dur;
-      }
-    }
-    return capped;
-  }
-
-  it('keeps all removals under 20%', () => {
-    const removals = [
-      { start: 10, end: 12, reason: 'dead air' },  // 2s
-      { start: 30, end: 33, reason: 'gap' },        // 3s
-    ];
-    // Total = 5s out of 100s = 5% → all kept
-    const result = applySafetyCap(removals, 100);
-    expect(result).toHaveLength(2);
-  });
-
-  it('caps when total exceeds 20%', () => {
-    const removals = [
-      { start: 0, end: 10, reason: 'start' },       // 10s
-      { start: 20, end: 35, reason: 'big gap' },     // 15s
-      { start: 50, end: 55, reason: 'small gap' },   // 5s
-    ];
-    // Total = 30s out of 100s = 30% → must cap at 20s
-    // Sorted by duration desc: 15s, 10s, 5s
-    // Takes 15s (15 total), then 10s would be 25 > 20 → skip, then 5s = 20 → take
-    const result = applySafetyCap(removals, 100);
-    const totalDur = result.reduce((s, r) => s + (r.end - r.start), 0);
-    expect(totalDur).toBeLessThanOrEqual(20);
-    expect(result).toHaveLength(2);
-  });
-
-  it('returns empty when single removal exceeds 20%', () => {
-    const removals = [
-      { start: 0, end: 25, reason: 'huge gap' },    // 25s out of 100 = 25%
-    ];
-    const result = applySafetyCap(removals, 100);
-    expect(result).toHaveLength(0);
-  });
-
-  it('prefers largest removals first', () => {
-    const removals = [
-      { start: 0, end: 3, reason: 'small' },        // 3s
-      { start: 10, end: 20, reason: 'big' },         // 10s
-      { start: 30, end: 35, reason: 'medium' },      // 5s
-    ];
-    // 20% of 100 = 20s. Sorted by dur: 10, 5, 3. Takes 10+5+3=18 ≤ 20 → all
-    const result = applySafetyCap(removals, 100);
-    expect(result).toHaveLength(3);
-  });
-});
+// ── 20% safety cap (removed) ────────────────────────────────────────────────
+// The 20% safety cap was removed because it prevented the producer from
+// applying editorial direction that recommended cutting more than 20% of
+// the video (e.g., dead air, filler words, meta-commentary). The agent
+// is trusted to make good editorial decisions based on Gemini's direction.
