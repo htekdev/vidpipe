@@ -9,6 +9,8 @@ import { costTracker } from '../../services/costTracker.js'
 const MAX_FILE_SIZE_MB = 25
 const WHISPER_COST_PER_MINUTE = 0.006  // $0.006/minute for whisper-1
 const WARN_FILE_SIZE_MB = 20
+const MAX_RETRIES = 3
+const RETRY_DELAY_MS = 5000
 
 export async function transcribeAudio(audioPath: string): Promise<Transcript> {
   logger.info(`Starting Whisper transcription: ${audioPath}`)
@@ -36,13 +38,29 @@ export async function transcribeAudio(audioPath: string): Promise<Transcript> {
 
   try {
     const prompt = getWhisperPrompt()
-    const response = await openai.audio.transcriptions.create({
-      model: 'whisper-1',
-      file: openReadStream(audioPath),
-      response_format: 'verbose_json',
-      timestamp_granularities: ['word', 'segment'],
-      ...(prompt && { prompt }),
-    })
+
+    let response: Awaited<ReturnType<typeof openai.audio.transcriptions.create>> | undefined
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      try {
+        response = await openai.audio.transcriptions.create({
+          model: 'whisper-1',
+          file: openReadStream(audioPath),
+          response_format: 'verbose_json',
+          timestamp_granularities: ['word', 'segment'],
+          ...(prompt && { prompt }),
+        })
+        break
+      } catch (retryError: unknown) {
+        const status = (retryError as { status?: number }).status
+        if (status === 401 || status === 400 || status === 429) throw retryError
+        if (attempt === MAX_RETRIES) throw retryError
+        const msg = retryError instanceof Error ? retryError.message : String(retryError)
+        logger.warn(`Whisper attempt ${attempt}/${MAX_RETRIES} failed: ${msg} — retrying in ${RETRY_DELAY_MS / 1000}s`)
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS))
+      }
+    }
+
+    if (!response) throw new Error('Whisper transcription failed after all retries')
 
     // The verbose_json response includes segments and words at the top level,
     // but the OpenAI SDK types don't expose them — cast to access raw fields.
