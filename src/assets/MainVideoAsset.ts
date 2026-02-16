@@ -160,6 +160,13 @@ export class MainVideoAsset extends VideoAsset {
       logger.warn(`Output folder already exists, cleaning previous artifacts: ${videoDir}`)
 
       const subDirs = ['thumbnails', 'shorts', 'social-posts', 'chapters', 'medium-clips', 'captions', 'enhancements']
+      // Also clean test script output directories ({slug}-enhance-test)
+      const allEntries = await listDirectory(videoDir)
+      for (const entry of allEntries) {
+        if (entry.endsWith('-enhance-test')) {
+          await removeDirectory(join(videoDir, entry), { recursive: true, force: true })
+        }
+      }
       for (const sub of subDirs) {
         await removeDirectory(join(videoDir, sub), { recursive: true, force: true })
       }
@@ -173,6 +180,10 @@ export class MainVideoAsset extends VideoAsset {
         'summary.md',
         'blog-post.md',
         'README.md',
+        'clip-direction.md',
+        'editorial-direction.md',
+        'cost-report.md',
+        'layout.json',
       ]
       for (const pattern of stalePatterns) {
         await removeFile(join(videoDir, pattern))
