@@ -12,6 +12,7 @@ import type { AssetOptions } from './Asset.js'
 import type { ShortClip, Platform, Transcript, Segment, Word } from '../types/index.js'
 import { Platform as PlatformEnum } from '../types/index.js'
 import { extractCompositeClip } from '../tools/ffmpeg/clipExtraction.js'
+import type { MainVideoAsset } from './MainVideoAsset.js'
 
 /**
  * A short video clip extracted from a parent video.
@@ -128,8 +129,9 @@ export class ShortVideoAsset extends VideoAsset {
     // Ensure output directory exists
     await ensureDirectory(this.videoDir)
 
-    // Get parent video path
-    const parentVideo = await this.parent.getResult()
+    // Get edited video (no overlays, no captions — shorts get their own processing)
+    const mainParent = this.parent as MainVideoAsset
+    const parentVideo = await mainParent.getEditedVideo()
 
     // Extract clip using FFmpeg (handles single and composite segments)
     await extractCompositeClip(parentVideo, this.clip.segments, this.videoPath)

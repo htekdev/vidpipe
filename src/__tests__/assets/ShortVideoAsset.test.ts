@@ -49,6 +49,7 @@ function makeClip(overrides?: Partial<ShortClip>): ShortClip {
 function makeParent(): VideoAsset {
   const parent = {
     getResult: vi.fn().mockResolvedValue('/videos/source.mp4'),
+    getEditedVideo: vi.fn().mockResolvedValue('/videos/source-edited.mp4'),
     getTranscript: vi.fn().mockResolvedValue({
       text: 'Hello world this is a test of the system',
       segments: [
@@ -126,9 +127,9 @@ describe('ShortVideoAsset', () => {
       const result = await asset.getResult()
       expect(result).toBe('/shorts/test-short/media.mp4')
       expect(mockEnsureDirectory).toHaveBeenCalledWith('/shorts/test-short')
-      expect(parent.getResult).toHaveBeenCalled()
+      expect((parent as Record<string, unknown>).getEditedVideo).toHaveBeenCalled()
       expect(mockExtractCompositeClip).toHaveBeenCalledWith(
-        '/videos/source.mp4',
+        '/videos/source-edited.mp4',
         clip.segments,
         '/shorts/test-short/media.mp4',
       )

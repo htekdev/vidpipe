@@ -9,10 +9,12 @@
 import { VideoAsset } from './VideoAsset.js'
 import { SocialPostAsset } from './SocialPostAsset.js'
 import { join } from '../core/paths.js'
-import { fileExists, listDirectory } from '../core/fileSystem.js'
+import { fileExists, ensureDirectory } from '../core/fileSystem.js'
 import type { MediumClip, Platform } from '../types/index.js'
 import { Platform as PlatformEnum } from '../types/index.js'
 import type { AssetOptions } from './Asset.js'
+import { extractCompositeClip } from '../tools/ffmpeg/clipExtraction.js'
+import type { MainVideoAsset } from './MainVideoAsset.js'
 
 /**
  * Asset representing a medium-length clip extracted from a longer video.
@@ -94,19 +96,27 @@ export class MediumClipAsset extends VideoAsset {
   }
 
   /**
-   * Get the rendered clip video path.
+   * Get the rendered clip video path, extracting from parent if needed.
+   * Extracts from the enhanced video so AI-generated overlays carry through.
    *
-   * @param opts - Asset options (force not used - clip must be pre-rendered)
+   * @param opts - Asset options (force regeneration, etc.)
    * @returns Path to the rendered video file
-   * @throws Error if clip hasn't been rendered yet
    */
   async getResult(opts?: AssetOptions): Promise<string> {
-    if (!(await this.exists())) {
-      throw new Error(
-        `Medium clip "${this.slug}" not found at ${this.videoPath}. ` +
-          `Run the medium-clips stage first.`,
-      )
+    if (!opts?.force && (await this.exists())) {
+      return this.videoPath
     }
+
+    // Ensure output directory exists
+    await ensureDirectory(this.videoDir)
+
+    // Get enhanced video (with overlays, no captions — medium clips get their own captioning)
+    const mainParent = this.parent as MainVideoAsset
+    const parentVideo = await mainParent.getEnhancedVideo()
+
+    // Extract clip using FFmpeg (handles single and composite segments)
+    await extractCompositeClip(parentVideo, this.clip.segments, this.videoPath)
+
     return this.videoPath
   }
 }
