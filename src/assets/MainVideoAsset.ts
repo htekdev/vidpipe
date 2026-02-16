@@ -5,7 +5,7 @@
  * being processed through all pipeline stages.
  *
  * Provides lazy-loading access to:
- * - Video variants (original, edited, captioned, produced)
+ * - Video variants (original, edited, enhanced, captioned, produced)
  * - Child assets (shorts, medium clips, chapters)
  * - Text assets (summary, blog)
  */
@@ -41,6 +41,7 @@ import {
   loadMediumVideoAgent,
   loadChapterAgent,
   loadProducerAgent,
+  loadVisualEnhancement,
 } from './loaders.js'
 import { getConfig } from '../config/environment.js'
 import logger from '../config/logger.js'
@@ -83,6 +84,11 @@ export class MainVideoAsset extends VideoAsset {
   /** Path to the edited (silence-removed) video: videoDir/{slug}-edited.mp4 */
   get editedVideoPath(): string {
     return join(this.videoDir, `${this.slug}-edited.mp4`)
+  }
+
+  /** Path to the enhanced (visual overlays) video: videoDir/{slug}-enhanced.mp4 */
+  get enhancedVideoPath(): string {
+    return join(this.videoDir, `${this.slug}-enhanced.mp4`)
   }
 
   /** Path to the captioned video: videoDir/{slug}-captioned.mp4 */
@@ -153,7 +159,7 @@ export class MainVideoAsset extends VideoAsset {
     if (await fileExists(videoDir)) {
       logger.warn(`Output folder already exists, cleaning previous artifacts: ${videoDir}`)
 
-      const subDirs = ['thumbnails', 'shorts', 'social-posts', 'chapters', 'medium-clips', 'captions']
+      const subDirs = ['thumbnails', 'shorts', 'social-posts', 'chapters', 'medium-clips', 'captions', 'enhancements']
       for (const sub of subDirs) {
         await removeDirectory(join(videoDir, sub), { recursive: true, force: true })
       }
@@ -174,7 +180,7 @@ export class MainVideoAsset extends VideoAsset {
 
       const files = await listDirectory(videoDir)
       for (const file of files) {
-        if (file.endsWith('-edited.mp4') || file.endsWith('-captioned.mp4') || file.endsWith('-produced.mp4')) {
+        if (file.endsWith('-edited.mp4') || file.endsWith('-enhanced.mp4') || file.endsWith('-captioned.mp4') || file.endsWith('-produced.mp4')) {
           await removeFile(join(videoDir, file))
         }
       }
@@ -330,8 +336,45 @@ export class MainVideoAsset extends VideoAsset {
   }
 
   /**
+   * Get the enhanced (visual overlays) video.
+   * If not already generated, runs the visual enhancement stage.
+   * Falls back to the edited video if enhancement is skipped or finds no opportunities.
+   *
+   * @param opts - Options controlling generation
+   * @returns Path to the enhanced or edited video
+   */
+  async getEnhancedVideo(opts?: AssetOptions): Promise<string> {
+    // Check if enhanced video already exists
+    if (!opts?.force && (await fileExists(this.enhancedVideoPath))) {
+      return this.enhancedVideoPath
+    }
+
+    const config = getConfig()
+    if (config.SKIP_VISUAL_ENHANCEMENT) {
+      return this.getEditedVideo(opts)
+    }
+
+    // Get edited video and transcript
+    const editedPath = await this.getEditedVideo(opts)
+    const transcript = await this.getTranscript()
+    const videoFile = await this.toVideoFile()
+
+    // Run visual enhancement
+    const { enhanceVideo } = await loadVisualEnhancement()
+    const result = await enhanceVideo(editedPath, transcript, videoFile)
+
+    if (result) {
+      logger.info(`Visual enhancement completed: ${result.overlays.length} overlays composited`)
+      return result.enhancedVideoPath
+    }
+
+    logger.info('No visual enhancements generated, using edited video')
+    return editedPath
+  }
+
+  /**
    * Get the captioned video.
-   * If not already generated, burns captions into the edited video.
+   * If not already generated, burns captions into the enhanced video.
    *
    * @param opts - Options controlling generation
    * @returns Path to the captioned video
@@ -342,13 +385,13 @@ export class MainVideoAsset extends VideoAsset {
       return this.captionedVideoPath
     }
 
-    // Get edited video and captions
-    const editedPath = await this.getEditedVideo(opts)
+    // Get enhanced video (includes editing + overlays) and captions
+    const enhancedPath = await this.getEnhancedVideo(opts)
     const captions = await this.getCaptions()
 
     // Burn captions into video
     const { burnCaptions } = await loadCaptionBurning()
-    await burnCaptions(editedPath, captions.ass, this.captionedVideoPath)
+    await burnCaptions(enhancedPath, captions.ass, this.captionedVideoPath)
     logger.info(`Captions burned into video: ${this.captionedVideoPath}`)
     return this.captionedVideoPath
   }
