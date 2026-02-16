@@ -25,6 +25,9 @@ const COST_BY_QUALITY: Record<ImageQuality, number> = {
   high: 0.07,
 }
 
+/** Base styling appended to every image prompt to ensure overlays stand out on video */
+const IMAGE_BASE_PROMPT = `\n\nRendering requirements: The image MUST have a solid opaque background (not transparent). Include a thin border or subtle drop shadow around the entire image. Use a clean, flat design style suitable for overlaying on top of video content. The image should look like a polished infographic card that clearly separates from whatever is behind it.`
+
 /**
  * Generate an image using OpenAI's gpt-image-1.5 model.
  *
@@ -45,7 +48,7 @@ export async function generateImage(
 
   const size = options?.size ?? 'auto'
   const quality = options?.quality ?? 'high'
-  const fullPrompt = options?.style ? `${prompt}\n\nStyle: ${options.style}` : prompt
+  const fullPrompt = (options?.style ? `${prompt}\n\nStyle: ${options.style}` : prompt) + IMAGE_BASE_PROMPT
 
   logger.info(`[ImageGen] Generating image: ${prompt.substring(0, 100)}...`)
   logger.debug(`[ImageGen] Size: ${size}, Quality: ${quality}`)

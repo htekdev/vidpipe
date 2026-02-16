@@ -275,6 +275,7 @@ Watch the video carefully and read the transcript below. Write a natural editori
 2. **Enhancement opportunities** — For each moment you identify, describe:
    - The approximate timestamp range (in seconds) where the speaker is discussing the topic
    - What the speaker is explaining and what is currently visible on screen
+   - The dominant background colors and brightness level at that moment (e.g., dark IDE, white browser, terminal with dark background). This helps the image designer choose contrasting colors so the overlay stands out
    - What kind of image would help (diagram, flowchart, illustration, infographic, etc.)
    - A detailed description of the image to generate
    - Why showing this image at this moment helps the viewer understand

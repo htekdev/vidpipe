@@ -34,6 +34,7 @@ Guidelines for image prompts:
 - Use high contrast colors for visibility when overlaid on video
 - No text-heavy images — a few key labels at most
 - Let the image content dictate its natural aspect ratio — don't force square if the content is better as landscape or portrait
+- IMPORTANT: Every image MUST have a solid, opaque background (e.g., white, light gray, dark navy) — never transparent or borderless. The image will be overlaid on top of a video so it needs to stand out with clear visual separation. If the report mentions a dark video background, use a light image background (and vice versa). Add a subtle border or shadow effect in the prompt to ensure the image pops against the video content.
 
 Process the report and call generate_enhancement for each image worth creating, or call skip_opportunity for those not worth generating.`
 
