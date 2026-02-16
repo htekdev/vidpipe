@@ -24,7 +24,7 @@ Cover these areas with specific timestamps (use MM:SS format):
 List every moment where a cut or transition should occur. For each, explain WHY this cut improves the edit and what transition type to use (hard cut, crossfade, dissolve, J-cut, L-cut, jump cut, fade to black).
 
 ## Pacing Analysis
-Flag sections that are too slow, too fast, or have dead air. Give start/end timestamps and what to do about each issue.
+Flag sections that are too slow, too fast, or have dead air. Give start/end timestamps and what to do about each issue. If a section is flagged as "Too Slow" or "Dead Air", recommend removing the ENTIRE section — don't just trim parts of it.
 
 ## B-Roll & Graphics Suggestions
 Identify moments where text overlays, graphics, zoom-ins, or visual emphasis would improve engagement.
@@ -44,18 +44,21 @@ Identify sections that should be trimmed or removed entirely to produce a tighte
 - Explain why it should be removed (dead air, filler words, false starts, repeated explanations, off-topic tangents, excessive pauses)
 - Rate the confidence (high/medium/low) — high means definitely remove, low means optional
 
+IMPORTANT: If the Pacing Analysis flags a range as "Too Slow" or "Dead Air", include that FULL range as a single cut — do NOT break it into smaller pieces. For example, if pacing says "00:00-00:15 is too slow", add one cut for the full 0-15 second range, not separate cuts for 0-2 and 13-15. Merge adjacent or overlapping cut points into larger ranges when they are close together (within 3 seconds).
+
 After listing the recommendations in markdown, also provide a machine-readable JSON block with ALL cuts. This MUST include every cut from the list above. Format it exactly like this:
 
 \`\`\`json:cuts
 [
-  { "start": 0, "end": 1, "reason": "Dead air", "confidence": "high" },
-  { "start": 14, "end": 37, "reason": "Meta-commentary for editor", "confidence": "high" }
+  { "start": 0, "end": 15, "reason": "Opening too slow - dead air and filler", "confidence": "high" },
+  { "start": 26, "end": 37, "reason": "Meta-commentary for editor", "confidence": "high" }
 ]
 \`\`\`
 
 Rules for the JSON block:
 - Times are in SECONDS (not MM:SS)
 - Include EVERY cut from the markdown list — do not skip any
+- Merge adjacent cuts (within 3 seconds of each other) into single larger cuts
 - If the Pacing Analysis recommends removing an entire segment, include that as a single cut covering the full range
 - The JSON block is consumed by an automated editing agent, so accuracy is critical
 
