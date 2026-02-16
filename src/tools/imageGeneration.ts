@@ -5,7 +5,7 @@ import { getConfig } from '../config/environment.js'
 import { costTracker } from '../services/costTracker.js'
 import { ensureDirectory } from '../core/fileSystem.js'
 
-type ImageSize = '1024x1024' | '1536x1024' | '1024x1536'
+type ImageSize = '1024x1024' | '1536x1024' | '1024x1536' | 'auto'
 type ImageQuality = 'low' | 'medium' | 'high'
 
 interface ImageGenerationOptions {
@@ -43,7 +43,7 @@ export async function generateImage(
     throw new Error('[ImageGen] OPENAI_API_KEY is required for image generation')
   }
 
-  const size = options?.size ?? '1024x1024'
+  const size = options?.size ?? 'auto'
   const quality = options?.quality ?? 'high'
   const fullPrompt = options?.style ? `${prompt}\n\nStyle: ${options.style}` : prompt
 

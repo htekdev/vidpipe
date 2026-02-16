@@ -11,7 +11,6 @@ import { GoogleGenAI, createUserContent, createPartFromUri } from '@google/genai
 import { getConfig } from '../../config/environment.js'
 import logger from '../../config/logger.js'
 import { costTracker } from '../../services/costTracker.js'
-import type { EnhancementOpportunity } from '../../types/index.js'
 
 
 /** Tokens per second of video footage (~263 tokens/s per Gemini docs) */
@@ -267,56 +266,54 @@ export async function analyzeVideoClipDirection(
   return text
 }
 
-const ENHANCEMENT_ANALYSIS_PROMPT = `You are a visual content strategist analyzing a video to identify moments where an AI-generated image overlay would enhance viewer comprehension.
+const ENHANCEMENT_ANALYSIS_PROMPT = `You are a visual content strategist reviewing raw video footage. Write an editorial report identifying moments where an AI-generated image overlay would genuinely enhance viewer comprehension.
 
-The speaker's transcript is provided below for context. Your job is to find moments where:
-1. The speaker explains an abstract concept (architecture, workflow, algorithm) that would benefit from a diagram or illustration
-2. The speaker references something not visible on screen
-3. The speaker is teaching a concept where a visual metaphor would help retention
-4. The screen is showing something generic (terminal, text editor) while discussing something visual
+Watch the video carefully and read the transcript below. Write a natural editorial report covering:
 
-Do NOT suggest images when:
-- The screen already shows relevant visual content (diagrams, UI, demos)
-- The speaker is doing a live demonstration that viewers need to see clearly
-- The moment is too brief (< 5 seconds) for an overlay to register
-- The topic is too simple to need visual aid
+1. **Video layout observations** — What is on screen? Is there a webcam overlay? Where is the main content area (code editor, terminal, browser)? What areas of the screen have less visual activity and could safely hold an overlay without hiding important content?
 
-Analyze the video layout to determine safe overlay placement:
-- If a webcam overlay is visible, note its position and avoid it
-- Prefer placing images in areas with less visual activity
-- Consider the main content area (code editor, terminal, browser) and avoid obscuring it
+2. **Enhancement opportunities** — For each moment you identify, describe:
+   - The approximate timestamp range (in seconds) where the speaker is discussing the topic
+   - What the speaker is explaining and what is currently visible on screen
+   - What kind of image would help (diagram, flowchart, illustration, infographic, etc.)
+   - A detailed description of the image to generate
+   - Why showing this image at this moment helps the viewer understand
+   - Where on screen the image should go to avoid blocking important content
 
-Return a JSON array of enhancement opportunities. Each object must have:
-- timestampStart: number (seconds from video start)
-- timestampEnd: number (seconds, when to stop showing — typically 5-12 seconds after start)
-- topic: string (what the speaker is explaining)
-- imagePrompt: string (detailed prompt for AI image generation — describe the image to create)
-- reason: string (why this visual aid helps the viewer)
-- placement: { region: string (one of: "top-left", "top-right", "bottom-left", "bottom-right", "center-right", "center-left"), avoidAreas: string[] (e.g. ["webcam", "code-editor"]), sizePercent: number (15-30, percentage of video width) }
-- confidence: number (0.0-1.0, how confident this enhancement is valuable)
+3. **Timing guidance** — For each opportunity, note the natural start and end of the speaker's explanation. The image should appear when the topic begins and disappear when the speaker moves on. Typically 5-12 seconds is ideal — long enough to register, short enough to not overstay.
 
-Return ONLY the JSON array, no markdown fences, no explanation. Identify 3-8 opportunities maximum.
-If no good opportunities exist, return an empty array [].
+Important guidelines:
+- Do NOT force opportunities — if the video doesn't need visual aids, say so
+- Do NOT suggest images when the screen already shows relevant visuals (diagrams, UI demos, live coding that needs to be seen)
+- Do NOT suggest images for trivial topics that don't need visual explanation
+- Do NOT suggest images during live demonstrations where the viewer needs to see the screen clearly
+- Moments shorter than 5 seconds are too brief for an overlay to register
+- It's perfectly fine to identify 0 opportunities, 1, or several — quality over quantity
+
+Write your report in natural language with clear section headers. This report will be read by a graphics agent that will make final decisions about what to generate.
 
 TRANSCRIPT:
 `
 
 /**
- * Upload a video to Gemini and identify moments where AI-generated image
- * overlays would enhance viewer comprehension.
+ * Upload a video to Gemini and get an editorial report on moments where
+ * AI-generated image overlays would enhance viewer comprehension.
+ *
+ * Returns a raw natural-language report (not structured JSON) that the
+ * GraphicsAgent will use to make final editorial decisions.
  *
  * @param videoPath - Path to the video file (mp4, webm, mov, etc.)
  * @param durationSeconds - Video duration in seconds (for cost estimation)
  * @param transcript - Full transcript text for context
  * @param model - Gemini model to use (default: gemini-2.5-flash)
- * @returns Filtered array of enhancement opportunities
+ * @returns Raw editorial report text
  */
 export async function analyzeVideoForEnhancements(
   videoPath: string,
   durationSeconds: number,
   transcript: string,
   model: string = 'gemini-2.5-flash',
-): Promise<EnhancementOpportunity[]> {
+): Promise<string> {
   const config = getConfig()
   const apiKey = config.GEMINI_API_KEY
 
@@ -384,31 +381,5 @@ export async function analyzeVideoForEnhancements(
 
   logger.info(`[Gemini] Enhancement analysis complete (${text.length} chars)`)
 
-  // Parse JSON response
-  let opportunities: EnhancementOpportunity[]
-  try {
-    // Strip markdown fences if Gemini adds them despite instructions
-    const cleaned = text.replace(/^```(?:json)?\n?/gm, '').replace(/\n?```$/gm, '').trim()
-    opportunities = JSON.parse(cleaned) as EnhancementOpportunity[]
-  } catch {
-    logger.warn('[Gemini] Failed to parse enhancement analysis as JSON, returning empty')
-    return []
-  }
-
-  // Filter by confidence threshold
-  opportunities = opportunities.filter(o => o.confidence >= 0.7)
-
-  // Cap at 8
-  opportunities = opportunities.slice(0, 8)
-
-  // Ensure minimum 10s gap between consecutive overlays
-  const filtered: EnhancementOpportunity[] = []
-  for (const opp of opportunities) {
-    const lastEnd = filtered.length > 0 ? filtered[filtered.length - 1].timestampEnd : -Infinity
-    if (opp.timestampStart >= lastEnd + 10) {
-      filtered.push(opp)
-    }
-  }
-
-  return filtered
+  return text
 }

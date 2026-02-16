@@ -22,7 +22,7 @@ import { analyzeVideoForEnhancements } from './src/tools/gemini/geminiClient.js'
 import { generateEnhancementImages } from './src/agents/GraphicsAgent.js'
 import { compositeOverlays } from './src/tools/ffmpeg/overlayCompositing.js'
 import { costTracker } from './src/services/costTracker.js'
-import type { Transcript, VideoFile, EnhancementOpportunity, GeneratedOverlay } from './src/types/index.js'
+import type { Transcript, VideoFile, GeneratedOverlay } from './src/types/index.js'
 
 // ── Parse args ──────────────────────────────────────────────────────────────
 
@@ -104,25 +104,23 @@ async function main(): Promise<void> {
 
   // ── 3. Gemini enhancement analysis ──────────────────────────────────────
 
-  let opportunities: EnhancementOpportunity[]
+  let enhancementReport: string
   if (skipGemini && fileExistsSync(opportunitiesPath)) {
-    console.log('⏩ Reusing cached enhancement opportunities')
-    opportunities = JSON.parse(readTextFileSync(opportunitiesPath)) as EnhancementOpportunity[]
+    console.log('⏩ Reusing cached enhancement report')
+    enhancementReport = readTextFileSync(opportunitiesPath)
   } else {
     console.log('🔍 Analyzing video for enhancement opportunities (Gemini)...')
-    opportunities = await analyzeVideoForEnhancements(videoPath, duration, transcript.text)
-    writeTextFileSync(opportunitiesPath, JSON.stringify(opportunities, null, 2))
+    enhancementReport = await analyzeVideoForEnhancements(videoPath, duration, transcript.text)
+    writeTextFileSync(opportunitiesPath, enhancementReport)
   }
 
-  if (opportunities.length === 0) {
-    console.log('   ❌ No enhancement opportunities found — nothing to do')
+  if (!enhancementReport || enhancementReport.trim().length === 0) {
+    console.log('   ❌ No enhancement report generated — nothing to do')
     process.exit(0)
   }
 
-  console.log(`   Found ${opportunities.length} opportunities:`)
-  for (const opp of opportunities) {
-    console.log(`     ${opp.timestampStart.toFixed(1)}s–${opp.timestampEnd.toFixed(1)}s  [${opp.placement.region}]  "${opp.topic}" (${(opp.confidence * 100).toFixed(0)}%)`)
-  }
+  console.log(`   Report length: ${enhancementReport.length} chars`)
+  console.log(`   Preview: "${enhancementReport.substring(0, 200)}..."`)
   console.log()
 
   // ── 4. Generate images (GraphicsAgent) ──────────────────────────────────
@@ -137,8 +135,8 @@ async function main(): Promise<void> {
       process.exit(1)
     }
   } else {
-    console.log('🎨 Generating enhancement images (GraphicsAgent + OpenAI)...')
-    overlays = await generateEnhancementImages(opportunities, enhancementsDir)
+    console.log('🎨 GraphicsAgent making editorial decisions and generating images...')
+    overlays = await generateEnhancementImages(enhancementReport, enhancementsDir, duration)
     writeTextFileSync(overlaysPath, JSON.stringify(overlays, null, 2))
   }
 

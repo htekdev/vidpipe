@@ -58,12 +58,16 @@ export function buildOverlayFilterComplex(
 
     // Overlay with enable window — image appears/disappears at the specified timestamps
     const prev = i === 0 ? '[0:v]' : `[out_${i - 1}]`
-    const out = i === overlays.length - 1 ? '[outv]' : `[out_${i}]`
+    const isLast = i === overlays.length - 1
+    const out = isLast ? '[overlaid]' : `[out_${i}]`
     const pos = getOverlayPosition(overlay.opportunity.placement.region, margin)
     filters.push(
       `${prev}[img_${i}]overlay=x=${pos.x}:y=${pos.y}:enable='between(t,${start},${end})':format=auto${out}`,
     )
   }
+
+  // Convert back to yuv420p — overlay with RGBA images produces yuv444p which most players can't decode
+  filters.push('[overlaid]format=yuv420p[outv]')
 
   return filters.join(';')
 }

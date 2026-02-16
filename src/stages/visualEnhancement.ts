@@ -27,26 +27,27 @@ export async function enhanceVideo(
   const enhancementsDir = join(video.videoDir, 'enhancements')
   await ensureDirectory(enhancementsDir)
 
-  // Step 1: Gemini enhancement analysis
+  // Step 1: Gemini enhancement analysis (returns raw editorial report)
   logger.info('[VisualEnhancement] Step 1: Analyzing video for enhancement opportunities...')
-  const opportunities = await analyzeVideoForEnhancements(
+  const enhancementReport = await analyzeVideoForEnhancements(
     videoPath,
     video.duration,
     transcript.text,
   )
 
-  if (opportunities.length === 0) {
-    logger.info('[VisualEnhancement] No enhancement opportunities identified — skipping')
+  if (!enhancementReport || enhancementReport.trim().length === 0) {
+    logger.info('[VisualEnhancement] No enhancement report generated — skipping')
     return undefined
   }
 
-  logger.info(`[VisualEnhancement] Found ${opportunities.length} enhancement opportunities`)
+  logger.info(`[VisualEnhancement] Received editorial report (${enhancementReport.length} chars)`)
 
-  // Step 2: Generate images via GraphicsAgent
-  logger.info('[VisualEnhancement] Step 2: Generating enhancement images...')
+  // Step 2: GraphicsAgent makes editorial decisions and generates images
+  logger.info('[VisualEnhancement] Step 2: GraphicsAgent making editorial decisions and generating images...')
   const overlays = await generateEnhancementImages(
-    opportunities,
+    enhancementReport,
     enhancementsDir,
+    video.duration,
     getModelForAgent('GraphicsAgent'),
   )
 
