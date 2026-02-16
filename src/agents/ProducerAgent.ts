@@ -122,7 +122,7 @@ export class ProducerAgent extends BaseAgent {
   private readonly video: VideoAsset
   private videoDuration: number = 0
   private removals: Removal[] = []
-  private renderPromise: Promise<void> | null = null
+  private renderPromise: Promise<string | void> | null = null
   private outputPath: string = ''
 
   constructor(video: VideoAsset, model?: string) {

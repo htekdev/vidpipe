@@ -72,6 +72,9 @@ export async function transcribeAudio(audioPath: string): Promise<Transcript> {
       word: string; start: number; end: number
     }>
 
+    // Cast to access typed fields — the verbose_json format always returns an object, not a string
+    const typedResponse = response as unknown as { text: string; language?: string; duration?: number }
+
     const words: Word[] = rawWords.map((w) => ({
       word: w.word,
       start: w.start,
@@ -90,23 +93,23 @@ export async function transcribeAudio(audioPath: string): Promise<Transcript> {
 
     logger.info(
       `Transcription complete — ${segments.length} segments, ` +
-      `${words.length} words, language=${response.language}`
+      `${words.length} words, language=${typedResponse.language}`
     )
 
     // Track Whisper API cost
-    const durationMinutes = (response.duration ?? 0) / 60
+    const durationMinutes = (typedResponse.duration ?? 0) / 60
     costTracker.recordServiceUsage('whisper', durationMinutes * WHISPER_COST_PER_MINUTE, {
       model: 'whisper-1',
-      durationSeconds: response.duration ?? 0,
+      durationSeconds: typedResponse.duration ?? 0,
       audioFile: audioPath,
     })
 
     return {
-      text: response.text,
+      text: typedResponse.text,
       segments,
       words,
-      language: response.language ?? 'unknown',
-      duration: response.duration ?? 0,
+      language: typedResponse.language ?? 'unknown',
+      duration: typedResponse.duration ?? 0,
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error)

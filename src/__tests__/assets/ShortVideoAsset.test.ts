@@ -127,7 +127,7 @@ describe('ShortVideoAsset', () => {
       const result = await asset.getResult()
       expect(result).toBe('/shorts/test-short/media.mp4')
       expect(mockEnsureDirectory).toHaveBeenCalledWith('/shorts/test-short')
-      expect((parent as Record<string, unknown>).getEditedVideo).toHaveBeenCalled()
+      expect((parent as unknown as Record<string, unknown>).getEditedVideo).toHaveBeenCalled()
       expect(mockExtractCompositeClip).toHaveBeenCalledWith(
         '/videos/source-edited.mp4',
         clip.segments,
