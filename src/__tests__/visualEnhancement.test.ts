@@ -127,4 +127,21 @@ describe('buildOverlayFilterComplex', () => {
     // 30% of 1920 = 576
     expect(filter).toContain('scale=576:-1')
   })
+
+  it('ends with format=yuv420p conversion to prevent corrupted output', () => {
+    const overlay = makeOverlay({})
+    const filter = buildOverlayFilterComplex([overlay], 1920, 1080)
+    // Must end with yuv420p conversion — without this, RGBA overlays promote to yuv444p
+    expect(filter).toContain('[overlaid]format=yuv420p[outv]')
+  })
+
+  it('uses [overlaid] intermediate label before final yuv420p conversion', () => {
+    const o1 = makeOverlay({ timestampStart: 10, timestampEnd: 20 })
+    const o2 = makeOverlay({ timestampStart: 40, timestampEnd: 50 })
+    const filter = buildOverlayFilterComplex([o1, o2], 1920, 1080)
+    // Last overlay outputs [overlaid], then format conversion produces [outv]
+    const parts = filter.split(';')
+    const lastPart = parts[parts.length - 1]
+    expect(lastPart).toBe('[overlaid]format=yuv420p[outv]')
+  })
 })

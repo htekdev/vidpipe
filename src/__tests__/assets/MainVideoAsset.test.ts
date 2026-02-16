@@ -88,6 +88,13 @@ vi.mock('../../assets/loaders.js', () => ({
     detectWebcamRegion: vi.fn().mockResolvedValue(null),
     getVideoResolution: vi.fn().mockResolvedValue({ width: 1920, height: 1080 }),
   })),
+  loadVisualEnhancement: vi.fn(async () => ({
+    enhanceVideo: vi.fn().mockResolvedValue({
+      enhancedVideoPath: '/recordings/test/test-enhanced.mp4',
+      overlays: [{ imagePath: '/tmp/test.png', width: 1024, height: 1024, opportunity: {} }],
+      report: 'test report',
+    }),
+  })),
 }))
 
 describe('MainVideoAsset', () => {
@@ -147,6 +154,10 @@ describe('MainVideoAsset', () => {
 
     it('computes captionedVideoPath correctly', () => {
       expect(asset.captionedVideoPath).toMatch(/recordings[/\\]test-slug[/\\]test-slug-captioned\.mp4$/)
+    })
+
+    it('computes enhancedVideoPath correctly', () => {
+      expect(asset.enhancedVideoPath).toMatch(/recordings[/\\]test-slug[/\\]test-slug-enhanced\.mp4$/)
     })
 
     it('computes producedVideoPath correctly', () => {
@@ -262,6 +273,37 @@ describe('MainVideoAsset', () => {
 
       // Agent mock returns wasEdited: false, so original video path is returned
       expect(result).toMatch(/recordings[/\\]test[/\\]test\.mp4$/)
+    })
+  })
+
+  describe('getEnhancedVideo()', () => {
+    it('returns enhanced video path when file already exists', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      const asset = await MainVideoAsset.load('/recordings/test')
+
+      const result = await asset.getEnhancedVideo()
+
+      expect(result).toMatch(/recordings[/\\]test[/\\]test-enhanced\.mp4$/)
+    })
+
+    it('falls back to edited video when SKIP_VISUAL_ENHANCEMENT is set', async () => {
+      vi.mocked(fileSystem.fileExists)
+        .mockResolvedValueOnce(true) // load: dir exists
+        .mockResolvedValueOnce(true) // load: video exists
+        .mockResolvedValueOnce(false) // enhanced video does not exist
+        .mockResolvedValueOnce(true) // edited video exists (fallback)
+
+      vi.mocked(environment.getConfig).mockReturnValue({
+        OUTPUT_DIR: '/recordings',
+        WATCH_DIR: '/watch',
+        SKIP_VISUAL_ENHANCEMENT: true,
+      } as any)
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+      const result = await asset.getEnhancedVideo()
+
+      // Should return edited video path (skipping enhancement)
+      expect(result).toMatch(/recordings[/\\]test[/\\]test-edited\.mp4$/)
     })
   })
 
