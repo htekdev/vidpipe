@@ -47,6 +47,7 @@ const CONTENT_MATRIX: Record<Platform, Partial<Record<ClipType, MediaRule>>> = {
     'medium-clip':  { captions: true, variantKey: null },
   },
   [Platform.LinkedIn]: {
+    video:          { captions: true, variantKey: null },
     'medium-clip':  { captions: true, variantKey: null },
   },
   [Platform.TikTok]: {
