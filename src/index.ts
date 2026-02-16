@@ -9,9 +9,9 @@ import { runInit } from './commands/init'
 import { runSchedule } from './commands/schedule'
 import { startReviewServer } from './review/server'
 import { openUrl } from './core/cli.js'
-import { readTextFileSync } from './core/fileSystem.js'
-import { projectRoot, join, resolve } from './core/paths.js'
-import { isCompleted, getUnprocessed } from './services/processingState.js'
+import { readTextFileSync, listDirectorySync } from './core/fileSystem.js'
+import { projectRoot, join, resolve, extname } from './core/paths.js'
+import { isCompleted, getUnprocessed, getVideoStatus } from './services/processingState.js'
 
 const pkg = JSON.parse(readTextFileSync(join(projectRoot(), 'package.json')))
 
@@ -217,17 +217,36 @@ const defaultCmd = program
     })
     watcher.start()
 
-    // Startup reconciliation: check for unprocessed videos from previous runs
-    const unprocessed = await getUnprocessed()
-    const unprocessedEntries = Object.entries(unprocessed)
-    if (unprocessedEntries.length > 0) {
-      logger.info(`Found ${unprocessedEntries.length} unprocessed video(s) from previous runs`)
-      for (const [slug, state] of unprocessedEntries) {
-        if (!queue.includes(state.sourcePath)) {
-          queue.push(state.sourcePath)
-          logger.info(`Re-queued: ${slug} (${state.status})`)
+    // Startup reconciliation: scan watch folder for videos not yet tracked
+    try {
+      const watchFiles = listDirectorySync(config.WATCH_FOLDER)
+      for (const file of watchFiles) {
+        if (extname(file).toLowerCase() !== '.mp4') continue
+        const filePath = join(config.WATCH_FOLDER, file)
+        const slug = file.replace('.mp4', '')
+        const status = await getVideoStatus(slug)
+        if (!status || status.status === 'failed' || status.status === 'pending') {
+          if (!queue.includes(filePath)) {
+            queue.push(filePath)
+            logger.info(`Startup scan: queued ${slug}${status ? ` (was ${status.status})` : ' (new)'}`)
+          }
         }
       }
+    } catch (err) {
+      logger.warn(`Could not scan watch folder on startup: ${err instanceof Error ? err.message : String(err)}`)
+    }
+
+    // Also re-queue any videos tracked as unprocessed (pending/failed) from previous runs
+    const unprocessed = await getUnprocessed()
+    for (const [slug, state] of Object.entries(unprocessed)) {
+      if (!queue.includes(state.sourcePath)) {
+        queue.push(state.sourcePath)
+        logger.info(`Re-queued from state: ${slug} (${state.status})`)
+      }
+    }
+
+    if (queue.length > 0) {
+      logger.info(`Startup: ${queue.length} video(s) queued for processing`)
       processQueue().catch(err => logger.error('Queue processing error:', err))
     }
 
