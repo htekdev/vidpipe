@@ -33,6 +33,7 @@ export interface AppEnvironment {
   LATE_PROFILE_ID: string
   SKIP_SOCIAL_PUBLISH: boolean
   GEMINI_API_KEY: string
+  GEMINI_MODEL: string
 }
 
 export interface CLIOptions {
@@ -91,6 +92,7 @@ export function initConfig(cli: CLIOptions = {}): AppEnvironment {
     LATE_PROFILE_ID: cli.lateProfileId || process.env.LATE_PROFILE_ID || '',
     SKIP_SOCIAL_PUBLISH: cli.socialPublish === false,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
+    GEMINI_MODEL: process.env.GEMINI_MODEL || 'gemini-2.5-pro',
   }
 
   return config

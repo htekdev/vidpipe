@@ -116,16 +116,17 @@ Be precise with timestamps. Be opinionated about what works and what doesn't. Th
  *
  * @param videoPath - Path to the video file (mp4, webm, mov, etc.)
  * @param durationSeconds - Video duration in seconds (for cost estimation)
- * @param model - Gemini model to use (default: gemini-2.5-flash)
+ * @param model - Gemini model to use (default: from GEMINI_MODEL env or gemini-2.5-pro)
  * @returns Parsed editorial direction
  */
 export async function analyzeVideoEditorial(
   videoPath: string,
   durationSeconds: number,
-  model: string = 'gemini-2.5-flash',
+  model?: string,
 ): Promise<string> {
   const config = getConfig()
   const apiKey = config.GEMINI_API_KEY
+  const resolvedModel = model ?? config.GEMINI_MODEL
 
   if (!apiKey) {
     throw new Error(
@@ -161,11 +162,11 @@ export async function analyzeVideoEditorial(
     throw new Error(`Gemini file processing failed — state: ${fileState}`)
   }
 
-  logger.info(`[Gemini] Video ready, requesting editorial analysis (model: ${model})`)
+  logger.info(`[Gemini] Video ready, requesting editorial analysis (model: ${resolvedModel})`)
 
   // 3. Request editorial analysis
   const response = await ai.models.generateContent({
-    model,
+    model: resolvedModel,
     contents: createUserContent([
       createPartFromUri(file.uri, file.mimeType),
       EDITORIAL_PROMPT,
@@ -182,7 +183,7 @@ export async function analyzeVideoEditorial(
   const estimatedInputTokens = Math.ceil(durationSeconds * VIDEO_TOKENS_PER_SECOND)
   const estimatedOutputTokens = Math.ceil(text.length / 4) // rough token estimate
   costTracker.recordServiceUsage('gemini', 0, {
-    model,
+    model: resolvedModel,
     durationSeconds,
     estimatedInputTokens,
     estimatedOutputTokens,
@@ -199,16 +200,17 @@ export async function analyzeVideoEditorial(
  *
  * @param videoPath - Path to the cleaned video file (mp4, webm, mov, etc.)
  * @param durationSeconds - Video duration in seconds (for cost estimation)
- * @param model - Gemini model to use (default: gemini-2.5-flash)
+ * @param model - Gemini model to use (default: from GEMINI_MODEL env or gemini-2.5-pro)
  * @returns Clip direction as markdown text
  */
 export async function analyzeVideoClipDirection(
   videoPath: string,
   durationSeconds: number,
-  model: string = 'gemini-2.5-flash',
+  model?: string,
 ): Promise<string> {
   const config = getConfig()
   const apiKey = config.GEMINI_API_KEY
+  const resolvedModel = model ?? config.GEMINI_MODEL
 
   if (!apiKey) {
     throw new Error(
@@ -244,11 +246,11 @@ export async function analyzeVideoClipDirection(
     throw new Error(`Gemini file processing failed — state: ${fileState}`)
   }
 
-  logger.info(`[Gemini] Video ready, requesting clip direction analysis (model: ${model})`)
+  logger.info(`[Gemini] Video ready, requesting clip direction analysis (model: ${resolvedModel})`)
 
   // 3. Request clip direction analysis
   const response = await ai.models.generateContent({
-    model,
+    model: resolvedModel,
     contents: createUserContent([
       createPartFromUri(file.uri, file.mimeType),
       CLIP_DIRECTION_PROMPT,
@@ -265,7 +267,7 @@ export async function analyzeVideoClipDirection(
   const estimatedInputTokens = Math.ceil(durationSeconds * VIDEO_TOKENS_PER_SECOND)
   const estimatedOutputTokens = Math.ceil(text.length / 4) // rough token estimate
   costTracker.recordServiceUsage('gemini', 0, {
-    model,
+    model: resolvedModel,
     durationSeconds,
     estimatedInputTokens,
     estimatedOutputTokens,
@@ -317,17 +319,18 @@ TRANSCRIPT:
  * @param videoPath - Path to the video file (mp4, webm, mov, etc.)
  * @param durationSeconds - Video duration in seconds (for cost estimation)
  * @param transcript - Full transcript text for context
- * @param model - Gemini model to use (default: gemini-2.5-flash)
+ * @param model - Gemini model to use (default: from GEMINI_MODEL env or gemini-2.5-pro)
  * @returns Raw editorial report text
  */
 export async function analyzeVideoForEnhancements(
   videoPath: string,
   durationSeconds: number,
   transcript: string,
-  model: string = 'gemini-2.5-flash',
+  model?: string,
 ): Promise<string> {
   const config = getConfig()
   const apiKey = config.GEMINI_API_KEY
+  const resolvedModel = model ?? config.GEMINI_MODEL
 
   if (!apiKey) {
     throw new Error(
@@ -363,11 +366,11 @@ export async function analyzeVideoForEnhancements(
     throw new Error(`Gemini file processing failed — state: ${fileState}`)
   }
 
-  logger.info(`[Gemini] Video ready, requesting enhancement analysis (model: ${model})`)
+  logger.info(`[Gemini] Video ready, requesting enhancement analysis (model: ${resolvedModel})`)
 
   // 3. Request enhancement analysis with video + transcript
   const response = await ai.models.generateContent({
-    model,
+    model: resolvedModel,
     contents: createUserContent([
       createPartFromUri(file.uri, file.mimeType),
       ENHANCEMENT_ANALYSIS_PROMPT + transcript,
@@ -384,7 +387,7 @@ export async function analyzeVideoForEnhancements(
   const estimatedInputTokens = Math.ceil(durationSeconds * VIDEO_TOKENS_PER_SECOND)
   const estimatedOutputTokens = Math.ceil(text.length / 4) // rough token estimate
   costTracker.recordServiceUsage('gemini', 0, {
-    model,
+    model: resolvedModel,
     durationSeconds,
     estimatedInputTokens,
     estimatedOutputTokens,

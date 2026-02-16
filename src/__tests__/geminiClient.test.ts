@@ -43,7 +43,7 @@ describe('analyzeVideoClipDirection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    mockGetConfig.mockReturnValue({ GEMINI_API_KEY: 'test-key' })
+    mockGetConfig.mockReturnValue({ GEMINI_API_KEY: 'test-key', GEMINI_MODEL: 'gemini-2.5-pro' })
 
     mockUpload.mockResolvedValue({
       uri: 'https://gemini.test/file/123',
@@ -75,11 +75,11 @@ describe('analyzeVideoClipDirection', () => {
     )
   })
 
-  it('uses default model gemini-2.5-flash', async () => {
+  it('uses default model gemini-2.5-pro', async () => {
     await analyzeVideoClipDirection('/video/test.mp4', 300)
 
     expect(mockGenerateContent).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'gemini-2.5-flash' }),
+      expect.objectContaining({ model: 'gemini-2.5-pro' }),
     )
   })
 
@@ -90,7 +90,7 @@ describe('analyzeVideoClipDirection', () => {
       'gemini',
       0,
       expect.objectContaining({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.5-pro',
         durationSeconds: 300,
         estimatedInputTokens: expect.any(Number),
         estimatedOutputTokens: expect.any(Number),
@@ -160,7 +160,7 @@ describe('analyzeVideoEditorial', () => {
   beforeEach(() => {
     vi.clearAllMocks()
 
-    mockGetConfig.mockReturnValue({ GEMINI_API_KEY: 'test-key' })
+    mockGetConfig.mockReturnValue({ GEMINI_API_KEY: 'test-key', GEMINI_MODEL: 'gemini-2.5-pro' })
 
     mockUpload.mockResolvedValue({
       uri: 'https://gemini.test/file/123',
@@ -198,7 +198,7 @@ describe('analyzeVideoEditorial', () => {
       'gemini',
       0,
       expect.objectContaining({
-        model: 'gemini-2.5-flash',
+        model: 'gemini-2.5-pro',
         durationSeconds: 300,
       }),
     )
