@@ -75,9 +75,6 @@ describe('buildOverlayFilterComplex', () => {
 
     // Scale: 25% of 1920 = 480
     expect(filter).toContain('scale=480:-1')
-    // Fade in at start, fade out 0.5s before end
-    expect(filter).toContain('fade=t=in:st=10:d=0.5:alpha=1')
-    expect(filter).toContain('fade=t=out:st=19.5:d=0.5:alpha=1')
     // Enable window
     expect(filter).toContain("enable='between(t,10,20)'")
     // Single overlay outputs [outv] directly
@@ -116,13 +113,12 @@ describe('buildOverlayFilterComplex', () => {
     expect(filter).toContain('[2:v]scale=')
   })
 
-  it('clamps fade-out start to not go before start time', () => {
-    // Duration shorter than fade (0.3s < 0.5s)
+  it('uses enable between for time window', () => {
     const overlay = makeOverlay({ timestampStart: 10, timestampEnd: 10.3 })
     const filter = buildOverlayFilterComplex([overlay], 1920, 1080)
 
-    // fadeOutStart = max(10, 10.3 - 0.5) = max(10, 9.8) = 10
-    expect(filter).toContain('fade=t=out:st=10:d=0.5:alpha=1')
+    // Even for short overlays, enable window should be correct
+    expect(filter).toContain("enable='between(t,10,10.3)'")
   })
 
   it('calculates overlay scale from sizePercent and video width', () => {

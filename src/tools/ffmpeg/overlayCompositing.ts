@@ -52,22 +52,16 @@ export function buildOverlayFilterComplex(
     const overlayWidth = Math.round(videoWidth * overlay.opportunity.placement.sizePercent / 100)
     const start = overlay.opportunity.timestampStart
     const end = overlay.opportunity.timestampEnd
-    const fadeOutStart = Math.max(start, end - 0.5)
 
-    // Scale the overlay image
+    // Scale the image (input is looped via -loop 1 args, so it has a timeline)
     filters.push(`[${inputIdx}:v]scale=${overlayWidth}:-1,format=rgba[img_${i}]`)
 
-    // Fade in/out with alpha
-    filters.push(
-      `[img_${i}]fade=t=in:st=${start}:d=0.5:alpha=1,fade=t=out:st=${fadeOutStart}:d=0.5:alpha=1[faded_${i}]`,
-    )
-
-    // Overlay onto video chain
+    // Overlay with enable window — image appears/disappears at the specified timestamps
     const prev = i === 0 ? '[0:v]' : `[out_${i - 1}]`
     const out = i === overlays.length - 1 ? '[outv]' : `[out_${i}]`
     const pos = getOverlayPosition(overlay.opportunity.placement.region, margin)
     filters.push(
-      `${prev}[faded_${i}]overlay=x=${pos.x}:y=${pos.y}:enable='between(t,${start},${end})'${out}`,
+      `${prev}[img_${i}]overlay=x=${pos.x}:y=${pos.y}:enable='between(t,${start},${end})':format=auto${out}`,
     )
   }
 
@@ -100,7 +94,7 @@ export async function compositeOverlays(
 
   const args = ['-y', '-i', videoPath]
   for (const overlay of overlays) {
-    args.push('-i', overlay.imagePath)
+    args.push('-loop', '1', '-i', overlay.imagePath)
   }
   args.push(
     '-filter_complex', filterComplex,
@@ -111,6 +105,7 @@ export async function compositeOverlays(
     '-crf', '23',
     '-threads', '4',
     '-c:a', 'copy',
+    '-shortest',
     outputPath,
   )
 
