@@ -68,6 +68,7 @@ interface GetTranscriptArgs {
  * Parse mandatory cuts from editorial direction.
  * Looks for the ```json:cuts block first (structured output from Gemini),
  * falls back to regex parsing of markdown timestamps.
+ * Also parses Pacing Analysis for "remove entire segment" ranges.
  * Merges overlapping/adjacent cuts (within 2s gap) to avoid fragmented removals.
  */
 function parseMandatoryCuts(direction: string): MandatoryCut[] {
@@ -87,21 +88,49 @@ function parseMandatoryCuts(direction: string): MandatoryCut[] {
   // Fallback: parse markdown timestamps from Cleaning Recommendations
   if (cuts.length === 0) {
     const sectionMatch = direction.match(/#{2,3}\s*Cleaning Recommendations\s*\n([\s\S]*?)(?=\n#{2,3}\s|\n---|\n$|$)/)
-    if (!sectionMatch) return cuts
-
-    const section = sectionMatch[1]
-    const linePattern = /\*\*(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2}):\*\*/g
-    let match
-    while ((match = linePattern.exec(section)) !== null) {
-      const start = parseInt(match[1]) * 60 + parseInt(match[2])
-      const end = parseInt(match[3]) * 60 + parseInt(match[4])
-      if (end > start) {
-        cuts.push({ start, end, reason: 'Flagged by editorial direction', confidence: 'High' })
+    if (sectionMatch) {
+      const section = sectionMatch[1]
+      const linePattern = /\*\*(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2}):\*\*/g
+      let match
+      while ((match = linePattern.exec(section)) !== null) {
+        const start = parseInt(match[1]) * 60 + parseInt(match[2])
+        const end = parseInt(match[3]) * 60 + parseInt(match[4])
+        if (end > start) {
+          cuts.push({ start, end, reason: 'Flagged by editorial direction', confidence: 'High' })
+        }
       }
     }
   }
 
+  // Also parse Pacing Analysis for "Too Slow" / "Dead Air" / "Remove" ranges
+  const pacingCuts = parsePacingRanges(direction)
+  cuts.push(...pacingCuts)
+
   return mergeMandatoryCuts(cuts)
+}
+
+/**
+ * Parse Pacing Analysis section for ranges flagged as too slow, dead air, etc.
+ * These are broader ranges that should be merged with granular cleaning cuts.
+ */
+function parsePacingRanges(direction: string): MandatoryCut[] {
+  const cuts: MandatoryCut[] = []
+  const sectionMatch = direction.match(/#{2,3}\s*Pacing Analysis\s*\n([\s\S]*?)(?=\n#{2,3}\s|\n---|\n$|$)/)
+  if (!sectionMatch) return cuts
+
+  const section = sectionMatch[1]
+  // Match patterns like **00:00 - 00:36 (Too Slow / Dead Air):** or **00:00 - 00:36 (Too Slow):**
+  const linePattern = /\*\*(\d{2}):(\d{2})(?:\.?\d*)?\s*-\s*(\d{2}):(\d{2})(?:\.?\d*)?\s*\(([^)]*(?:Too Slow|Dead Air|Remove)[^)]*)\)/gi
+  let match
+  while ((match = linePattern.exec(section)) !== null) {
+    const start = parseInt(match[1]) * 60 + parseInt(match[2])
+    const end = parseInt(match[3]) * 60 + parseInt(match[4])
+    if (end > start) {
+      cuts.push({ start, end, reason: `Pacing: ${match[5].trim()}`, confidence: 'High' })
+    }
+  }
+
+  return cuts
 }
 
 /** Merge overlapping or adjacent cuts (gap <= 2 seconds) into larger ranges. */
