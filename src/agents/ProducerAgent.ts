@@ -239,7 +239,7 @@ export class ProducerAgent extends BaseAgent {
 3. Call get_transcript to understand what's being said and identify removable regions.
 4. Call **plan_cuts** with your list of regions to remove.
 
-Focus on removing dead air, filler words, bad takes, and redundant content. Be conservative — aim for 10-20% removal at most.`
+Focus on removing dead air, filler words, bad takes, and redundant content. Follow the editorial direction closely — if it identifies cut points, apply them. The editorial direction has been carefully analyzed by Gemini video AI, so trust its recommendations.`
 
     try {
       const response = await this.run(prompt)
