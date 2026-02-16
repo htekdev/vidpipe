@@ -3,7 +3,7 @@ import { ensureDirectory, copyFile } from '../../core/fileSystem.js'
 import { dirname, join } from '../../core/paths.js'
 import { getFFmpegPath } from '../../core/ffmpeg.js'
 import logger from '../../config/logger'
-import { detectWebcamRegion, getVideoResolution } from './faceDetection'
+import { detectWebcamRegion, getVideoResolution, type WebcamRegion } from './faceDetection'
 
 const ffmpegPath = getFFmpegPath()
 
@@ -224,12 +224,13 @@ async function convertWithSmartLayout(
   inputPath: string,
   outputPath: string,
   config: SmartLayoutConfig,
+  webcamOverride?: WebcamRegion | null,
 ): Promise<string> {
   const { label, targetW, screenH, camH, fallbackRatio } = config
   const outputDir = dirname(outputPath)
   await ensureDirectory(outputDir)
 
-  const webcam = await detectWebcamRegion(inputPath)
+  const webcam = webcamOverride !== undefined ? webcamOverride : await detectWebcamRegion(inputPath)
 
   if (!webcam) {
     logger.info(`[${label}] No webcam found, falling back to center-crop`)
@@ -322,6 +323,7 @@ async function convertWithSmartLayout(
 export async function convertToPortraitSmart(
   inputPath: string,
   outputPath: string,
+  webcamOverride?: WebcamRegion | null,
 ): Promise<string> {
   return convertWithSmartLayout(inputPath, outputPath, {
     label: 'SmartPortrait',
@@ -329,7 +331,7 @@ export async function convertToPortraitSmart(
     screenH: 1248,
     camH: 672,
     fallbackRatio: '9:16',
-  })
+  }, webcamOverride)
 }
 
 /**
@@ -346,6 +348,7 @@ export async function convertToPortraitSmart(
 export async function convertToSquareSmart(
   inputPath: string,
   outputPath: string,
+  webcamOverride?: WebcamRegion | null,
 ): Promise<string> {
   return convertWithSmartLayout(inputPath, outputPath, {
     label: 'SmartSquare',
@@ -353,7 +356,7 @@ export async function convertToSquareSmart(
     screenH: 700,
     camH: 380,
     fallbackRatio: '1:1',
-  })
+  }, webcamOverride)
 }
 
 /**
@@ -370,6 +373,7 @@ export async function convertToSquareSmart(
 export async function convertToFeedSmart(
   inputPath: string,
   outputPath: string,
+  webcamOverride?: WebcamRegion | null,
 ): Promise<string> {
   return convertWithSmartLayout(inputPath, outputPath, {
     label: 'SmartFeed',
@@ -377,7 +381,7 @@ export async function convertToFeedSmart(
     screenH: 878,
     camH: 472,
     fallbackRatio: '4:5',
-  })
+  }, webcamOverride)
 }
 
 /** Options for {@link generatePlatformVariants}. */
@@ -390,6 +394,9 @@ export interface GeneratePlatformVariantsOptions {
    * @deprecated Set to false; the LayoutAgent feature is experimental and disabled.
    */
   useAgent?: boolean
+  /** Pre-detected webcam region from the main video's layout.json.
+   * When provided, smart converters skip per-clip webcam detection. */
+  webcamOverride?: WebcamRegion | null
 }
 
 /**
@@ -449,11 +456,11 @@ export async function generatePlatformVariants(
         if (options.useAgent) {
           logger.warn(`[generatePlatformVariants] LayoutAgent is disabled, falling back to ONNX pipeline`)
         }
-        await convertToPortraitSmart(inputPath, outPath)
+        await convertToPortraitSmart(inputPath, outPath, options.webcamOverride)
       } else if (ratio === '1:1') {
-        await convertToSquareSmart(inputPath, outPath)
+        await convertToSquareSmart(inputPath, outPath, options.webcamOverride)
       } else if (ratio === '4:5') {
-        await convertToFeedSmart(inputPath, outPath)
+        await convertToFeedSmart(inputPath, outPath, options.webcamOverride)
       } else {
         await convertAspectRatio(inputPath, outPath, ratio)
       }

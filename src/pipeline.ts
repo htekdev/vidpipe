@@ -1,5 +1,5 @@
 import { join, dirname, basename } from './core/paths.js'
-import { ensureDirectory, writeJsonFile, writeTextFile, copyFile, removeFile, fileExists, readTextFile } from './core/fileSystem.js'
+import { ensureDirectory, writeJsonFile, writeTextFile, copyFile, removeFile, fileExists, readTextFile, readJsonFile } from './core/fileSystem.js'
 import logger from './config/logger'
 import { getConfig } from './config/environment'
 import { MainVideoAsset } from './assets/MainVideoAsset.js'
@@ -33,6 +33,7 @@ import type {
   PipelineStage,
   Chapter,
   VisualEnhancementResult,
+  VideoLayout,
 } from './types'
 import { PipelineStage as Stage } from './types'
 
@@ -293,7 +294,18 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
         clipDirection = await readTextFile(clipDirPath)
       }
     } catch { /* clip direction is optional */ }
-    const result = await runStage<ShortClip[]>(Stage.Shorts, () => generateShorts(shortsVideo, shortsTranscript, getModelForAgent('ShortsAgent'), clipDirection), stageResults)
+
+    // Read pre-detected webcam region from layout.json so shorts don't re-detect per clip
+    let webcamRegion: VideoLayout['webcam'] | undefined
+    try {
+      const layoutPath = join(video.videoDir, 'layout.json')
+      if (await fileExists(layoutPath)) {
+        const layout = await readJsonFile<VideoLayout>(layoutPath)
+        webcamRegion = layout.webcam
+      }
+    } catch { /* layout is optional — shorts will detect per clip if unavailable */ }
+
+    const result = await runStage<ShortClip[]>(Stage.Shorts, () => generateShorts(shortsVideo, shortsTranscript, getModelForAgent('ShortsAgent'), clipDirection, webcamRegion), stageResults)
     if (result) shorts = result
   }
 

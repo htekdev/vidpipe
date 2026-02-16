@@ -1,6 +1,6 @@
 import type { ToolWithHandler } from '../providers/types.js'
 import { BaseAgent } from './BaseAgent'
-import { VideoFile, Transcript, ShortClip, ShortSegment, ShortClipVariant } from '../types'
+import { VideoFile, Transcript, ShortClip, ShortSegment, ShortClipVariant, WebcamRegion } from '../types'
 import { extractClip, extractCompositeClip } from '../tools/ffmpeg/clipExtraction'
 import { generateStyledASSForSegment, generateStyledASSForComposite, generatePortraitASSWithHook, generatePortraitASSWithHookComposite } from '../tools/captions/captionGenerator'
 import { burnCaptions } from '../tools/ffmpeg/captionBurning'
@@ -145,6 +145,7 @@ export async function generateShorts(
   transcript: Transcript,
   model?: string,
   clipDirection?: string,
+  webcamOverride?: WebcamRegion | null,
 ): Promise<ShortClip[]> {
   const agent = new ShortsAgent(model)
 
@@ -213,7 +214,7 @@ export async function generateShorts(
       let variants: ShortClipVariant[] | undefined
       try {
         const defaultPlatforms: Platform[] = ['tiktok', 'youtube-shorts', 'instagram-reels', 'instagram-feed', 'linkedin']
-        const results = await generatePlatformVariants(outputPath, shortsDir, shortSlug, defaultPlatforms)
+        const results = await generatePlatformVariants(outputPath, shortsDir, shortSlug, defaultPlatforms, { webcamOverride })
         if (results.length > 0) {
           variants = results.map((v) => ({
             path: v.path,

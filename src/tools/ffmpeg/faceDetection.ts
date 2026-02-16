@@ -38,7 +38,7 @@ export interface WebcamRegion {
 // ── Constants ────────────────────────────────────────────────────────────────
 
 /** Number of frames sampled evenly across the video for analysis. */
-const SAMPLE_FRAMES = 5
+const SAMPLE_FRAMES = 15
 /** UltraFace model input dimensions. */
 const MODEL_WIDTH = 320
 const MODEL_HEIGHT = 240
@@ -56,10 +56,21 @@ const MIN_DETECTION_CONFIDENCE = 0.3
  * are treated as noise or soft gradients.
  */
 const REFINE_MIN_EDGE_DIFF = 3.0
+/**
+ * Adaptive retry thresholds — when the primary threshold fails (e.g. dark
+ * room + dark IDE → low contrast), retry with progressively lower thresholds
+ * to catch subtler edges.
+ */
+const REFINE_RETRY_THRESHOLDS = [2.0, 1.0]
 /** Webcam must be at least 5% of the frame in each dimension. */
 const REFINE_MIN_SIZE_FRAC = 0.05
 /** Webcam must be at most 55% of the frame in each dimension. */
 const REFINE_MAX_SIZE_FRAC = 0.55
+/**
+ * Minimum webcam width in original-resolution pixels to accept.
+ * Anything smaller (e.g. 208px) is clearly a face bounding box, not an overlay.
+ */
+const MIN_WEBCAM_WIDTH_PX = 300
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -106,11 +117,14 @@ export async function getVideoResolution(videoPath: string): Promise<{ width: nu
 
 async function extractSampleFrames(videoPath: string, tempDir: string): Promise<string[]> {
   const duration = await getVideoDuration(videoPath)
-  const interval = Math.max(1, Math.floor(duration / (SAMPLE_FRAMES + 1)))
+  // Cap sample count for short videos — need at least 1s between samples
+  const effectiveSamples = Math.min(SAMPLE_FRAMES, Math.max(1, Math.floor(duration) - 1))
+  const interval = Math.max(1, Math.floor(duration / (effectiveSamples + 1)))
 
   const timestamps: number[] = []
-  for (let i = 1; i <= SAMPLE_FRAMES; i++) {
-    timestamps.push(i * interval)
+  for (let i = 1; i <= effectiveSamples; i++) {
+    const ts = i * interval
+    if (ts < duration) timestamps.push(ts)
   }
 
   const framePaths: string[] = []
@@ -377,6 +391,7 @@ export function findPeakDiff(
 export async function refineBoundingBox(
   framePaths: string[],
   position: WebcamRegion['position'],
+  minEdgeDiff: number = REFINE_MIN_EDGE_DIFF,
 ): Promise<{ x: number; y: number; width: number; height: number } | null> {
   if (framePaths.length === 0) return null
 
@@ -408,11 +423,11 @@ export async function refineBoundingBox(
   // Search for the inner edge in the relevant portion of the frame
   const xFrom = isRight ? Math.floor(fw * 0.35) : Math.floor(fw * 0.05)
   const xTo   = isRight ? Math.floor(fw * 0.95) : Math.floor(fw * 0.65)
-  const xEdge = findPeakDiff(avgCols, xFrom, xTo, REFINE_MIN_EDGE_DIFF)
+  const xEdge = findPeakDiff(avgCols, xFrom, xTo, minEdgeDiff)
 
   const yFrom = isBottom ? Math.floor(fh * 0.35) : Math.floor(fh * 0.05)
   const yTo   = isBottom ? Math.floor(fh * 0.95) : Math.floor(fh * 0.65)
-  const yEdge = findPeakDiff(avgRows, yFrom, yTo, REFINE_MIN_EDGE_DIFF)
+  const yEdge = findPeakDiff(avgRows, yFrom, yTo, minEdgeDiff)
 
   if (xEdge.index < 0 || yEdge.index < 0) {
     logger.info(
@@ -541,31 +556,56 @@ export async function detectWebcamRegion(videoPath: string): Promise<WebcamRegio
       confidence: bestConfidence,
     }
 
-    // Try edge refinement for pixel-accurate webcam overlay boundaries
-    const refined = await refineBoundingBox(framePaths, bestPosition)
+    // Try edge refinement with adaptive thresholds for pixel-accurate webcam overlay boundaries
+    // Primary threshold catches sharp borders; retries with lower thresholds catch
+    // subtle edges (e.g. dark room webcam against dark IDE — similar brightness on both sides)
+    let refined: { x: number; y: number; width: number; height: number } | null = null
+    refined = await refineBoundingBox(framePaths, bestPosition, REFINE_MIN_EDGE_DIFF)
+    if (!refined) {
+      for (const threshold of REFINE_RETRY_THRESHOLDS) {
+        logger.info(`[FaceDetection] Retrying edge refinement with threshold=${threshold}`)
+        refined = await refineBoundingBox(framePaths, bestPosition, threshold)
+        if (refined) break
+      }
+    }
+
     const scaleX = resolution.width / MODEL_WIDTH
     const scaleY = resolution.height / MODEL_HEIGHT
 
-    let origX: number, origY: number, origW: number, origH: number
+    let origX = 0, origY = 0, origW = 0, origH = 0
 
     if (refined) {
       origX = Math.round(refined.x * scaleX)
       origY = Math.round(refined.y * scaleY)
       origW = Math.round(refined.width * scaleX)
       origH = Math.round(refined.height * scaleY)
-    } else {
-      // Use expanded face bounding box as webcam region estimate
-      // Webcam overlay is typically larger than the face (includes some background)
-      const expandFactor = 1.4
-      const faceCx = (avgBox.x1 + avgBox.x2) / 2
-      const faceCy = (avgBox.y1 + avgBox.y2) / 2
-      const faceW = (avgBox.x2 - avgBox.x1) * expandFactor
-      const faceH = (avgBox.y2 - avgBox.y1) * expandFactor
 
-      origX = Math.max(0, Math.round((faceCx - faceW / 2) * resolution.width))
-      origY = Math.max(0, Math.round((faceCy - faceH / 2) * resolution.height))
-      origW = Math.min(resolution.width - origX, Math.round(faceW * resolution.width))
-      origH = Math.min(resolution.height - origY, Math.round(faceH * resolution.height))
+      // Sanity check: reject if the refined result is still too small to be an overlay
+      if (origW < MIN_WEBCAM_WIDTH_PX) {
+        logger.info(
+          `[FaceDetection] Refined region too small (${origW}px wide < ${MIN_WEBCAM_WIDTH_PX}px), using proportional fallback`,
+        )
+        refined = null
+      }
+    }
+
+    if (!refined) {
+      // Proportional fallback: estimate webcam as ~33% of frame width, positioned
+      // in the detected corner. This is more reliable than the old 1.4x face
+      // expansion which produced face-sized boxes (208px) in low-contrast scenarios.
+      const webcamWidthFrac = 0.33
+      const webcamHeightFrac = 0.28
+      origW = Math.round(resolution.width * webcamWidthFrac)
+      origH = Math.round(resolution.height * webcamHeightFrac)
+
+      const isRight = bestPosition.includes('right')
+      const isBottom = bestPosition.includes('bottom')
+      origX = isRight ? resolution.width - origW : 0
+      origY = isBottom ? resolution.height - origH : 0
+
+      logger.info(
+        `[FaceDetection] Using proportional fallback: (${origX},${origY}) ${origW}x${origH}`,
+      )
     }
 
     const region: WebcamRegion = {
