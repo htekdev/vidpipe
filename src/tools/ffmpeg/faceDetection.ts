@@ -71,6 +71,18 @@ const REFINE_MAX_SIZE_FRAC = 0.55
  * Anything smaller (e.g. 208px) is clearly a face bounding box, not an overlay.
  */
 const MIN_WEBCAM_WIDTH_PX = 300
+/**
+ * Minimum webcam height in original-resolution pixels to accept.
+ * Catches edge-refinement failures that find a spurious horizontal edge near the
+ * frame bottom, producing impossibly flat regions (e.g. 814×77).
+ */
+const MIN_WEBCAM_HEIGHT_PX = 200
+/**
+ * Maximum width:height ratio for a plausible webcam overlay.
+ * Real webcam overlays range from ~1:2 portrait to ~16:9 landscape (≈1.78).
+ * Anything wider than 3:1 is a refinement artifact (e.g. a taskbar edge).
+ */
+const MAX_WEBCAM_ASPECT_RATIO = 3.0
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -580,10 +592,11 @@ export async function detectWebcamRegion(videoPath: string): Promise<WebcamRegio
       origW = Math.round(refined.width * scaleX)
       origH = Math.round(refined.height * scaleY)
 
-      // Sanity check: reject if the refined result is still too small to be an overlay
-      if (origW < MIN_WEBCAM_WIDTH_PX) {
+      // Sanity check: reject if the refined result is implausibly sized
+      const refinedAR = origW / origH
+      if (origW < MIN_WEBCAM_WIDTH_PX || origH < MIN_WEBCAM_HEIGHT_PX || refinedAR > MAX_WEBCAM_ASPECT_RATIO) {
         logger.info(
-          `[FaceDetection] Refined region too small (${origW}px wide < ${MIN_WEBCAM_WIDTH_PX}px), using proportional fallback`,
+          `[FaceDetection] Refined region implausible (${origW}x${origH}px, AR=${refinedAR.toFixed(1)}), using proportional fallback`,
         )
         refined = null
       }
