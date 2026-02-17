@@ -41,8 +41,10 @@ Highlight the most engaging, surprising, or important moments that should be emp
 ## Cleaning Recommendations
 Identify sections that should be trimmed or removed entirely to produce a tighter edit. For each:
 - Give start/end timestamps (MM:SS.s format with decimal precision, e.g. 00:14.3 - 00:37.0)
-- Explain why it should be removed (dead air, filler words, false starts, repeated explanations, off-topic tangents, excessive pauses)
+- Explain why it should be removed (dead air, filler words, false starts, repeated explanations, excessive pauses)
 - Rate the confidence (high/medium/low) — high means definitely remove, low means optional
+
+IMPORTANT: Do NOT recommend removing rants, passionate opinions, tangential discussions, or opinionated monologues. These are intentional content — they are engaging, authentic, and serve as excellent source material for short-form clips. Only cut truly dead content (silence, dead air, repeated false starts, filler). When in doubt, keep it in.
 
 After listing the recommendations in markdown, also provide a machine-readable JSON block summarizing all suggested cuts:
 
@@ -55,30 +57,7 @@ After listing the recommendations in markdown, also provide a machine-readable J
 
 Times in the JSON block should be in seconds with decimal precision. Place cut boundaries at word boundaries.
 
-## Hook Snippets for Short Videos
-Identify the 3-5 best moments (3-8 seconds each) that could serve as attention-grabbing hooks for the beginning of short-form videos. For each:
-- Give start/end timestamps
-- Transcribe the exact words spoken (or describe the visual action)
-- Explain why this would grab a viewer's attention in the first 3 seconds
-- Rate hook strength (1-10)
-
-## Short Video Suggestions
-Identify 3-8 potential short clips (15-60 seconds each) that would work well as standalone short-form content (TikTok, YouTube Shorts, Instagram Reels). For each:
-- Give start/end timestamps
-- Suggest a title (5-10 words)
-- Describe the topic/moment and why it works as a standalone clip
-- Note if it could be a composite (multiple non-contiguous segments edited together)
-- Rate viral potential (1-10)
-
-## Medium Clip Suggestions
-Identify 2-4 potential medium-length clips (60-180 seconds) that cover complete topics or narrative arcs. For each:
-- Give start/end timestamps (can be multiple segments for composites)
-- Suggest a title (5-12 words)
-- Describe the topic arc and why this stands alone as complete content
-- Suggest a hook line or concept for the opening
-- Note key moments within the clip that should be emphasized
-
-Be specific with timestamps. Be opinionated — say what works and what doesn't. Write as if briefing a human editor who will both clean the video AND extract clips from it.`
+Be specific with timestamps. Be opinionated — say what works and what doesn't. Write as if briefing a human editor who will clean and tighten the video.`
 
 const CLIP_DIRECTION_PROMPT = `You are a social media content strategist analyzing an edited video to identify the best clips for short-form and medium-form content.
 

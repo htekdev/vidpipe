@@ -238,6 +238,7 @@ export interface ShortClip {
   captionedPath?: string;
   description: string;
   tags: string[];
+  hook?: string;
   variants?: ShortClipVariant[];
 }
 

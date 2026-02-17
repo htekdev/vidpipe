@@ -8,6 +8,8 @@ import {
   generateHookOverlay,
   generatePortraitASSWithHook,
   generatePortraitASSWithHookComposite,
+  generateMediumASSWithHook,
+  generateMediumASSWithHookComposite,
 } from '../tools/captions/captionGenerator.js';
 import type { Transcript, Word, Segment } from '../types/index.js';
 
@@ -497,6 +499,86 @@ describe('generatePortraitASSWithHookComposite', () => {
     const ass = generatePortraitASSWithHookComposite(compositeTranscript, segments, 'Test');
     expect(ass).toContain('PlayResY: 1920');
     expect(ass).toContain('Style: Hook,');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Medium ASS with hook
+// ---------------------------------------------------------------------------
+
+describe('generateMediumASSWithHook', () => {
+  it('contains both Default and Hook style Dialogue lines', () => {
+    const ass = generateMediumASSWithHook(transcriptWithWords, 'Hook!', 0, 3.8);
+    const dialogueLines = ass.split('\n').filter((l) => l.startsWith('Dialogue:'));
+    const defaultLines = dialogueLines.filter((l) => l.includes(',Default,'));
+    const hookLines = dialogueLines.filter((l) => l.includes(',Hook,'));
+    expect(defaultLines.length).toBeGreaterThan(0);
+    expect(hookLines.length).toBeGreaterThan(0);
+  });
+
+  it('uses medium header with PlayResX 1920', () => {
+    const ass = generateMediumASSWithHook(transcriptWithWords, 'Hook!', 0, 3.8);
+    expect(ass).toContain('PlayResX: 1920');
+    expect(ass).toContain('PlayResY: 1080');
+  });
+
+  it('uses medium font sizes (not portrait)', () => {
+    const ass = generateMediumASSWithHook(transcriptWithWords, 'Hook!', 0, 3.8);
+    expect(ass).toContain('\\fs54');  // medium active
+    expect(ass).toContain('\\fs44');  // medium base
+    expect(ass).not.toContain('\\fs144');  // portrait active
+  });
+
+  it('contains Hook style definition in header', () => {
+    const ass = generateMediumASSWithHook(transcriptWithWords, 'Hook!', 0, 3.8);
+    expect(ass).toContain('Style: Hook,');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Medium composite with hook
+// ---------------------------------------------------------------------------
+
+describe('generateMediumASSWithHookComposite', () => {
+  const compositeTranscript: Transcript = {
+    text: '',
+    segments: [],
+    words: [
+      { word: 'intro', start: 1.0, end: 1.5 },
+      { word: 'middle', start: 10.0, end: 10.5 },
+    ],
+    language: 'en',
+    duration: 11.0,
+  };
+
+  it('contains caption and hook Dialogue lines', () => {
+    const segments = [
+      { start: 1.0, end: 1.5 },
+      { start: 10.0, end: 10.5 },
+    ];
+    const ass = generateMediumASSWithHookComposite(compositeTranscript, segments, 'Hook!');
+    const dialogueLines = ass.split('\n').filter((l) => l.startsWith('Dialogue:'));
+    const defaultLines = dialogueLines.filter((l) => l.includes(',Default,'));
+    const hookLines = dialogueLines.filter((l) => l.includes(',Hook,'));
+    expect(defaultLines.length).toBeGreaterThan(0);
+    expect(hookLines.length).toBeGreaterThan(0);
+  });
+
+  it('uses medium header', () => {
+    const segments = [{ start: 1.0, end: 1.5 }];
+    const ass = generateMediumASSWithHookComposite(compositeTranscript, segments, 'Test');
+    expect(ass).toContain('PlayResX: 1920');
+    expect(ass).toContain('PlayResY: 1080');
+    expect(ass).toContain('Style: Hook,');
+  });
+
+  it('uses medium active font size', () => {
+    const segments = [
+      { start: 1.0, end: 1.5 },
+      { start: 10.0, end: 10.5 },
+    ];
+    const ass = generateMediumASSWithHookComposite(compositeTranscript, segments, 'Test');
+    expect(ass).toContain('\\fs54');
   });
 });
 

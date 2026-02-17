@@ -213,6 +213,7 @@ WrapStyle: 0
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
 Style: Default,Montserrat,44,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,2,1,2,20,20,60,1
+Style: Hook,Montserrat,42,&H00333333,&H00333333,&H60D0D0D0,&H60E0E0E0,1,0,0,0,100,100,2,0,3,14,2,8,60,60,70,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -474,5 +475,34 @@ export function generatePortraitASSWithHookComposite(
 ): string {
   const baseASS = generateStyledASSForComposite(transcript, segments, buffer, 'portrait')
   const hookLine = generateHookOverlay(hookText, 4.0, 'portrait')
+  return baseASS + hookLine + '\n'
+}
+
+/**
+ * Generate a complete medium ASS file with captions AND hook text overlay.
+ */
+export function generateMediumASSWithHook(
+  transcript: Transcript,
+  hookText: string,
+  startTime: number,
+  endTime: number,
+  buffer?: number,
+): string {
+  const baseASS = generateStyledASSForSegment(transcript, startTime, endTime, buffer, 'medium')
+  const hookLine = generateHookOverlay(hookText, 4.0, 'medium')
+  return baseASS + hookLine + '\n'
+}
+
+/**
+ * Generate a complete medium ASS file for a composite clip with captions AND hook text overlay.
+ */
+export function generateMediumASSWithHookComposite(
+  transcript: Transcript,
+  segments: { start: number; end: number }[],
+  hookText: string,
+  buffer?: number,
+): string {
+  const baseASS = generateStyledASSForComposite(transcript, segments, buffer, 'medium')
+  const hookLine = generateHookOverlay(hookText, 4.0, 'medium')
   return baseASS + hookLine + '\n'
 }

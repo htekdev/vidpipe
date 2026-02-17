@@ -2,7 +2,7 @@ import type { ToolWithHandler } from '../providers/types.js'
 import { BaseAgent } from './BaseAgent'
 import { VideoFile, Transcript, MediumClip, MediumSegment } from '../types'
 import { extractClip, extractCompositeClipWithTransitions } from '../tools/ffmpeg/clipExtraction'
-import { generateStyledASSForSegment, generateStyledASSForComposite } from '../tools/captions/captionGenerator'
+import { generateStyledASSForSegment, generateStyledASSForComposite, generateMediumASSWithHook, generateMediumASSWithHookComposite } from '../tools/captions/captionGenerator'
 import { burnCaptions } from '../tools/ffmpeg/captionBurning'
 import { generateId } from '../core/text.js'
 import { slugify } from '../core/text.js'
@@ -87,7 +87,16 @@ You may receive AI-generated clip direction with suggested medium clips. Use the
 - The suggestions are based on visual + audio analysis and may identify narrative arcs you'd miss from transcript alone
 - Feel free to adjust timestamps, combine suggestions, or ignore ones that don't work
 - You may also find good clips NOT in the suggestions — always analyze the full transcript
-- Pay special attention to suggested hooks and topic arcs — they come from multimodal analysis`
+- Pay special attention to suggested hooks and topic arcs — they come from multimodal analysis
+
+## Hook-First Ordering
+Every medium clip should use hook-first ordering to maximize viewer retention:
+- Identify the most attention-grabbing 2-5 second moment within each clip's content
+- Place that moment as the FIRST segment in the segments array — it plays first as a teaser
+- Then include the full content segment(s) starting from the natural beginning
+- The hook segment WILL overlap with later segments — the viewer sees it twice (teaser, then in context). This is intentional.
+- The \`hook\` text field (≤60 chars) will be burned as a visual text overlay at the start of the clip
+- If you can't identify a clear hook moment, it's OK to skip — just set the segments in chronological order and provide a hook text based on the title`
 
 // ── JSON Schema for the add_medium_clips tool ───────────────────────────────
 
@@ -295,9 +304,13 @@ export async function generateMediumClips(
       // Generate ASS captions with medium style (smaller font, bottom-positioned)
       let captionedPath: string | undefined
       try {
-        const assContent = segments.length === 1
-          ? generateStyledASSForSegment(transcript, segments[0].start, segments[0].end, 1.0, 'medium')
-          : generateStyledASSForComposite(transcript, segments, 1.0, 'medium')
+        const assContent = plan.hook
+          ? (segments.length === 1
+              ? generateMediumASSWithHook(transcript, plan.hook, segments[0].start, segments[0].end, 1.0)
+              : generateMediumASSWithHookComposite(transcript, segments, plan.hook, 1.0))
+          : (segments.length === 1
+              ? generateStyledASSForSegment(transcript, segments[0].start, segments[0].end, 1.0, 'medium')
+              : generateStyledASSForComposite(transcript, segments, 1.0, 'medium'))
 
         const assPath = join(clipsDir, `${clipSlug}.ass`)
         await writeTextFile(assPath, assContent)

@@ -24,6 +24,7 @@ interface PlannedShort {
   description: string
   tags: string[]
   segments: PlannedSegment[]
+  hook?: string
 }
 
 // ── System prompt ───────────────────────────────────────────────────────────
@@ -73,7 +74,16 @@ Scale your output by video duration:
 You may receive AI-generated clip direction with suggested shorts. Use these as a starting point but make your own decisions:
 - The suggestions are based on visual + audio analysis and may identify moments you'd miss from transcript alone
 - Feel free to adjust timestamps, combine suggestions, or ignore ones that don't work
-- You may also find good shorts NOT in the suggestions — always analyze the full transcript`
+- You may also find good shorts NOT in the suggestions — always analyze the full transcript
+
+## Hook-First Ordering
+Every short should use hook-first ordering to maximize viewer retention:
+- Identify the most attention-grabbing 2-5 second moment within each clip's content
+- Place that moment as the FIRST segment in the segments array — it plays first as a teaser
+- Then include the full content segment(s) starting from the natural beginning
+- The hook segment WILL overlap with later segments — the viewer sees it twice (teaser, then in context). This is intentional.
+- Also provide a short \`hook\` text (≤60 chars) — an attention-grabbing phrase for a visual text overlay
+- If you can't identify a clear hook moment, it's OK to skip — just set the segments in chronological order and provide a hook text based on the title`
 
 // ── JSON Schema for the add_shorts tool ──────────────────────────────────────
 
@@ -93,6 +103,7 @@ const ADD_SHORTS_SCHEMA = {
             items: { type: 'string' },
             description: 'Lowercase tags without hashes, 3–6 per short',
           },
+          hook: { type: 'string', description: 'Short attention-grabbing text (≤60 chars) for visual overlay. Falls back to title if not provided.' },
           segments: {
             type: 'array',
             description: 'One or more time segments that compose this short',
@@ -322,9 +333,10 @@ export async function generateShorts(
         const portraitVariants = variants.filter(v => v.aspectRatio === '9:16')
         if (portraitVariants.length > 0) {
           try {
+            const hookText = plan.hook ?? plan.title
             const portraitAssContent = segments.length === 1
-              ? generatePortraitASSWithHook(transcript, plan.title, segments[0].start, segments[0].end)
-              : generatePortraitASSWithHookComposite(transcript, segments, plan.title)
+              ? generatePortraitASSWithHook(transcript, hookText, segments[0].start, segments[0].end)
+              : generatePortraitASSWithHookComposite(transcript, segments, hookText)
             const portraitAssPath = join(shortsDir, `${shortSlug}-portrait.ass`)
             await writeTextFile(portraitAssPath, portraitAssContent)
             // All 9:16 variants share the same source file — burn once, update all paths
@@ -388,6 +400,7 @@ export async function generateShorts(
         captionedPath,
         description: plan.description,
         tags: plan.tags,
+        hook: plan.hook,
         variants,
       })
 
