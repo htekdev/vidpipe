@@ -84,6 +84,18 @@ export async function generateImage(
 
   const imageBuffer = Buffer.from(b64, 'base64')
 
+  // Validate that the data is a valid PNG image (magic bytes: 89 50 4E 47)
+  if (
+    imageBuffer.length < 8 ||
+    imageBuffer[0] !== 0x89 ||
+    imageBuffer[1] !== 0x50 ||
+    imageBuffer[2] !== 0x4e ||
+    imageBuffer[3] !== 0x47
+  ) {
+    logger.error('[ImageGen] API response does not contain valid PNG data')
+    throw new Error('[ImageGen] Invalid PNG data received from API')
+  }
+
   await ensureDirectory(dirname(outputPath))
   await writeFile(outputPath, imageBuffer)
 
