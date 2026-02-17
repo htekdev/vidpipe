@@ -30,7 +30,7 @@ const COST_BY_QUALITY: Record<ImageQuality, number> = {
 const IMAGE_BASE_PROMPT = `\n\nRendering requirements: The image MUST have a solid opaque background (not transparent). Include a thin border or subtle drop shadow around the entire image. Use a clean, flat design style suitable for overlaying on top of video content. The image should look like a polished infographic card that clearly separates from whatever is behind it.`
 
 /**
- * Generate an image using OpenAI's gpt-image-1.5 model.
+ * Generate an image using OpenAI's DALL-E 3 model.
  *
  * @param prompt - Detailed description of the image to generate
  * @param outputPath - Where to save the generated PNG
@@ -61,7 +61,7 @@ export async function generateImage(
       Authorization: `Bearer ${config.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'gpt-image-1.5',
+      model: 'dall-e-3',
       prompt: fullPrompt,
       n: 1,
       size,
@@ -103,7 +103,7 @@ export async function generateImage(
 
   const estimatedCost = COST_BY_QUALITY[quality]
   costTracker.recordServiceUsage('openai-image', estimatedCost, {
-    model: 'gpt-image-1.5',
+    model: 'dall-e-3',
     size,
     quality,
     prompt: prompt.substring(0, 200),

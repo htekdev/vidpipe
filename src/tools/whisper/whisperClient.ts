@@ -51,7 +51,10 @@ export async function transcribeAudio(audioPath: string): Promise<Transcript> {
         })
         break
       } catch (retryError: unknown) {
-        const status = (retryError as { status?: number }).status
+        // Safely extract status - network errors may not have this property
+        const status = typeof retryError === 'object' && retryError !== null && 'status' in retryError
+          ? (retryError as { status?: number }).status
+          : undefined
         if (status === 401 || status === 400 || status === 429) throw retryError
         if (attempt === MAX_RETRIES) throw retryError
         const msg = retryError instanceof Error ? retryError.message : String(retryError)

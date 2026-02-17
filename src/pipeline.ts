@@ -238,11 +238,11 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   let enhancedVideoPath: string | undefined
   if (!cfg.SKIP_VISUAL_ENHANCEMENT && captionTranscript) {
     const videoToEnhance = editedVideoPath ?? video.repoPath
-    const enhancementResult = await runStage<VisualEnhancementResult>(
+    const enhancementResult = await runStage<VisualEnhancementResult | undefined>(
       Stage.VisualEnhancement,
       async () => {
         const result = await enhanceVideo(videoToEnhance, captionTranscript, video)
-        if (!result) throw new Error('Visual enhancement returned no result')
+        if (!result) return undefined
         return result
       },
       stageResults,
@@ -498,7 +498,8 @@ function generateCostMarkdown(report: CostReport): string {
 
 export async function processVideoSafe(videoPath: string): Promise<PipelineResult | null> {
   // Derive slug from filename for state tracking (same logic as MainVideoAsset.ingest)
-  const slug = basename(videoPath, '.mp4')
+  const filename = basename(videoPath)
+  const slug = filename.replace(/\.(mp4|mov|webm|avi|mkv)$/i, '')
   await markPending(slug, videoPath)
   await markProcessing(slug)
 

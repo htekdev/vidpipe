@@ -206,7 +206,8 @@ const defaultCmd = program
 
     watcher.on('new-video', async (filePath: string) => {
       // Dedup: skip videos already completed
-      const slug = filePath.replace(/\\/g, '/').split('/').pop()?.replace('.mp4', '') ?? ''
+      const filename = filePath.replace(/\\/g, '/').split('/').pop() ?? ''
+      const slug = filename.replace(/\.(mp4|mov|webm|avi|mkv)$/i, '')
       if (slug && await isCompleted(slug)) {
         logger.info(`Skipping already-processed video: ${filePath}`)
         return
@@ -221,9 +222,10 @@ const defaultCmd = program
     try {
       const watchFiles = listDirectorySync(config.WATCH_FOLDER)
       for (const file of watchFiles) {
-        if (extname(file).toLowerCase() !== '.mp4') continue
+        const ext = extname(file).toLowerCase()
+        if (!['.mp4', '.mov', '.webm', '.avi', '.mkv'].includes(ext)) continue
         const filePath = join(config.WATCH_FOLDER, file)
-        const slug = file.replace('.mp4', '')
+        const slug = file.replace(/\.(mp4|mov|webm|avi|mkv)$/i, '')
         const status = await getVideoStatus(slug)
         if (!status || status.status === 'failed' || status.status === 'pending') {
           if (!queue.includes(filePath)) {
