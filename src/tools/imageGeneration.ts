@@ -1,5 +1,6 @@
 import { writeFile } from 'fs/promises'
 import { dirname } from 'path'
+import sharp from 'sharp'
 import logger from '../config/logger.js'
 import { getConfig } from '../config/environment.js'
 import { costTracker } from '../services/costTracker.js'
@@ -82,22 +83,23 @@ export async function generateImage(
     throw new Error('[ImageGen] API response missing b64_json image data')
   }
 
-  const imageBuffer = Buffer.from(b64, 'base64')
+  const rawBuffer = Buffer.from(b64, 'base64')
 
-  // Validate that the data is a valid PNG image (magic bytes: 89 50 4E 47)
-  if (
-    imageBuffer.length < 8 ||
-    imageBuffer[0] !== 0x89 ||
-    imageBuffer[1] !== 0x50 ||
-    imageBuffer[2] !== 0x4e ||
-    imageBuffer[3] !== 0x47
-  ) {
-    logger.error('[ImageGen] API response does not contain valid PNG data')
-    throw new Error('[ImageGen] Invalid PNG data received from API')
+  // Validate and sanitize the image data using Sharp
+  // This ensures the data is a valid image and breaks the taint chain for CodeQL
+  // Sharp will throw if the data is not a valid image format
+  let validatedBuffer: Buffer
+  try {
+    validatedBuffer = await sharp(rawBuffer)
+      .png() // Re-encode as PNG to ensure format consistency
+      .toBuffer()
+  } catch (error) {
+    logger.error('[ImageGen] Failed to validate image data from API', { error })
+    throw new Error('[ImageGen] Invalid image data received from API - not a valid image format')
   }
 
   await ensureDirectory(dirname(outputPath))
-  await writeFile(outputPath, imageBuffer)
+  await writeFile(outputPath, validatedBuffer)
 
   const estimatedCost = COST_BY_QUALITY[quality]
   costTracker.recordServiceUsage('openai-image', estimatedCost, {
@@ -107,7 +109,7 @@ export async function generateImage(
     prompt: prompt.substring(0, 200),
   })
 
-  logger.info(`[ImageGen] Image saved to ${outputPath} (${imageBuffer.length} bytes)`)
+  logger.info(`[ImageGen] Image saved to ${outputPath} (${validatedBuffer.length} bytes)`)
 
   return outputPath
 }
