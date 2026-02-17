@@ -30,7 +30,23 @@ interface PlannedMediumClip {
 
 // ── System prompt ───────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a medium-form video content strategist. Your job is to analyze a video transcript with word-level timestamps and identify the best 1–3 minute segments to extract as standalone medium-form clips.
+const SYSTEM_PROMPT = `You are a medium-form video content strategist. Your job is to **exhaustively** analyze a video transcript with word-level timestamps and extract every viable 1–3 minute segment as a standalone medium-form clip.
+
+## Your workflow
+1. Read the transcript and note the total duration.
+2. Work through the transcript **section by section** (roughly 5–8 minute chunks). For each chunk, identify every complete topic or narrative arc.
+3. Call **add_medium_clips** for each batch of clips you find. You can call it as many times as needed.
+4. After your first pass, call **review_medium_clips** to see everything you've planned so far.
+5. Review for gaps: are there complete topics you missed? Could non-contiguous mentions of the same theme be compiled? Is there a tutorial segment that stands alone?
+6. Add any additional clips you find.
+7. When you are confident you've exhausted all opportunities, call **finalize_medium_clips**.
+
+## Target quantity
+Scale your output by video duration:
+- **~1 medium clip per 5–8 minutes** of video content.
+- A 10-minute video → 1–2 clips. A 30-minute video → 4–6 clips. A 60-minute video → 8–12 clips.
+- These are guidelines, not hard caps — if the content is rich, find more.
+- **Never stop at 2–4 clips for a long video.** Your job is to be thorough.
 
 ## What to look for
 
@@ -39,7 +55,7 @@ const SYSTEM_PROMPT = `You are a medium-form video content strategist. Your job 
 - **Educational deep dives** — clear, thorough explanations of complex topics
 - **Compelling stories** — anecdotes with setup, tension, and resolution
 - **Strong arguments** — claim → evidence → implication sequences
-- **Topic compilations** — multiple brief mentions of one theme across the video that can be compiled into a cohesive 1–3 minute segment
+- **Topic compilations** — multiple brief mentions of one theme across the video that can be compiled into a cohesive 1–3 minute segment. **Actively look for these** — they often make excellent content.
 
 ## Clip types
 
@@ -52,12 +68,12 @@ const SYSTEM_PROMPT = `You are a medium-form video content strategist. Your job 
 2. Timestamps must align to word boundaries from the transcript.
 3. Prefer natural sentence and paragraph boundaries for clean entry/exit points.
 4. Each clip must be self-contained — a viewer with no other context should understand and get value from the clip.
-5. Aim for 2–4 medium clips per video, depending on length and richness.
-6. Every clip needs a descriptive title (5–12 words) and a topic label.
-7. For compilations, specify segments in the order they should appear in the final clip (which may differ from chronological order).
-8. Tags should be lowercase, no hashes, 3–6 per clip.
-9. A 1-second buffer is automatically added around each segment boundary.
-10. Each clip needs a hook — the opening line or concept that draws viewers in.
+5. Every clip needs a descriptive title (5–12 words) and a topic label.
+6. For compilations, specify segments in the order they should appear in the final clip (which may differ from chronological order).
+7. Tags should be lowercase, no hashes, 3–6 per clip.
+8. A 1-second buffer is automatically added around each segment boundary.
+9. Each clip needs a hook — the opening line or concept that draws viewers in.
+10. Avoid significant overlap with content that would work better as a short (punchy, viral, single-moment).
 
 ## Differences from shorts
 
@@ -65,9 +81,6 @@ const SYSTEM_PROMPT = `You are a medium-form video content strategist. Your job 
 - Don't just find the most exciting 60 seconds — find where a topic starts and where it naturally concludes.
 - It's OK if a medium clip has slower pacing — depth and coherence matter more than constant high energy.
 - Look for segments that work as standalone mini-tutorials or explanations.
-- Avoid overlap with content that would work better as a short (punchy, viral, single-moment).
-
-When you have identified the clips, call the **plan_medium_clips** tool with your complete plan.
 
 ## Using Clip Direction
 You may receive AI-generated clip direction with suggested medium clips. Use these as a starting point but make your own decisions:
@@ -76,14 +89,14 @@ You may receive AI-generated clip direction with suggested medium clips. Use the
 - You may also find good clips NOT in the suggestions — always analyze the full transcript
 - Pay special attention to suggested hooks and topic arcs — they come from multimodal analysis`
 
-// ── JSON Schema for the plan_medium_clips tool ──────────────────────────────
+// ── JSON Schema for the add_medium_clips tool ───────────────────────────────
 
-const PLAN_MEDIUM_CLIPS_SCHEMA = {
+const ADD_MEDIUM_CLIPS_SCHEMA = {
   type: 'object',
   properties: {
     clips: {
       type: 'array',
-      description: 'Array of planned medium-length clips',
+      description: 'Array of medium-length clips to add to the plan',
       items: {
         type: 'object',
         properties: {
@@ -122,6 +135,7 @@ const PLAN_MEDIUM_CLIPS_SCHEMA = {
 
 class MediumVideoAgent extends BaseAgent {
   private plannedClips: PlannedMediumClip[] = []
+  private isFinalized = false
 
   constructor(model?: string) {
     super('MediumVideoAgent', SYSTEM_PROMPT, undefined, model)
@@ -130,12 +144,33 @@ class MediumVideoAgent extends BaseAgent {
   protected getTools(): ToolWithHandler[] {
     return [
       {
-        name: 'plan_medium_clips',
+        name: 'add_medium_clips',
         description:
-          'Submit the planned medium-length clips as a structured JSON array. Call this once with all planned clips.',
-        parameters: PLAN_MEDIUM_CLIPS_SCHEMA,
+          'Add one or more medium clips to your plan. ' +
+          'You can call this multiple times to build your list incrementally as you analyze each section of the transcript.',
+        parameters: ADD_MEDIUM_CLIPS_SCHEMA,
         handler: async (args: unknown) => {
-          return this.handleToolCall('plan_medium_clips', args as Record<string, unknown>)
+          return this.handleToolCall('add_medium_clips', args as Record<string, unknown>)
+        },
+      },
+      {
+        name: 'review_medium_clips',
+        description:
+          'Review all medium clips planned so far. Returns a summary of every clip in your current plan. ' +
+          'Use this to check for gaps, overlaps, or missed opportunities before finalizing.',
+        parameters: { type: 'object', properties: {} },
+        handler: async () => {
+          return this.handleToolCall('review_medium_clips', {})
+        },
+      },
+      {
+        name: 'finalize_medium_clips',
+        description:
+          'Finalize your medium clip plan and trigger extraction. ' +
+          'Call this ONCE after you have added all clips and reviewed them for completeness.',
+        parameters: { type: 'object', properties: {} },
+        handler: async () => {
+          return this.handleToolCall('finalize_medium_clips', {})
         },
       },
     ]
@@ -145,16 +180,44 @@ class MediumVideoAgent extends BaseAgent {
     toolName: string,
     args: Record<string, unknown>,
   ): Promise<unknown> {
-    if (toolName === 'plan_medium_clips') {
-      this.plannedClips = args.clips as PlannedMediumClip[]
-      logger.info(`[MediumVideoAgent] Planned ${this.plannedClips.length} medium clips`)
-      return { success: true, count: this.plannedClips.length }
+    switch (toolName) {
+      case 'add_medium_clips': {
+        const newClips = args.clips as PlannedMediumClip[]
+        this.plannedClips.push(...newClips)
+        logger.info(`[MediumVideoAgent] Added ${newClips.length} clips (total: ${this.plannedClips.length})`)
+        return `Added ${newClips.length} clips. Total planned: ${this.plannedClips.length}. Call add_medium_clips for more, review_medium_clips to check your plan, or finalize_medium_clips when done.`
+      }
+
+      case 'review_medium_clips': {
+        if (this.plannedClips.length === 0) {
+          return 'No medium clips planned yet. Analyze the transcript and call add_medium_clips to start planning.'
+        }
+        const summary = this.plannedClips.map((c, i) => {
+          const totalDur = c.segments.reduce((sum, seg) => sum + (seg.end - seg.start), 0)
+          const timeRanges = c.segments.map(seg => `${seg.start.toFixed(1)}s–${seg.end.toFixed(1)}s`).join(', ')
+          const type = c.segments.length > 1 ? 'compilation' : 'deep dive'
+          return `${i + 1}. "${c.title}" (${totalDur.toFixed(1)}s, ${type}) [${timeRanges}]\n   Topic: ${c.topic} | Hook: ${c.hook}\n   ${c.description}`
+        }).join('\n')
+        return `## Planned medium clips (${this.plannedClips.length} total)\n\n${summary}\n\nLook for gaps in transcript coverage, missed compilation opportunities, and complete topic arcs you may have overlooked.`
+      }
+
+      case 'finalize_medium_clips': {
+        this.isFinalized = true
+        logger.info(`[MediumVideoAgent] Finalized ${this.plannedClips.length} medium clips`)
+        return `Finalized ${this.plannedClips.length} medium clips. Extraction will begin.`
+      }
+
+      default:
+        throw new Error(`Unknown tool: ${toolName}`)
     }
-    throw new Error(`Unknown tool: ${toolName}`)
   }
 
   getPlannedClips(): PlannedMediumClip[] {
     return this.plannedClips
+  }
+
+  getIsFinalized(): boolean {
+    return this.isFinalized
   }
 }
 
@@ -179,7 +242,8 @@ export async function generateMediumClips(
   const promptParts = [
     `Analyze the following transcript (${transcript.duration.toFixed(0)}s total) and plan medium-length clips (1–3 minutes each).\n`,
     `Video: ${video.filename}`,
-    `Duration: ${transcript.duration.toFixed(1)}s\n`,
+    `Duration: ${transcript.duration.toFixed(1)}s`,
+    `Target: ~${Math.max(1, Math.round(transcript.duration / 480))}–${Math.max(2, Math.round(transcript.duration / 300))} medium clips (scale by content richness)\n`,
     '--- TRANSCRIPT ---\n',
     transcriptLines.join('\n\n'),
     '\n--- END TRANSCRIPT ---',

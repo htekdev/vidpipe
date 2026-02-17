@@ -4,12 +4,19 @@ import type { MediumClip, Platform } from '../../types/index.js'
 // ── Mocks ──────────────────────────────────────────────────────
 
 const mockFileExists = vi.fn<(path: string) => Promise<boolean>>()
+const mockEnsureDirectory = vi.fn<(path: string) => Promise<void>>()
+const mockExtractCompositeClip = vi.fn<(...args: unknown[]) => Promise<void>>()
 
 vi.mock('../../core/fileSystem.js', () => ({
   fileExists: (...args: unknown[]) => mockFileExists(args[0] as string),
   fileExistsSync: vi.fn().mockReturnValue(false),
+  ensureDirectory: (...args: unknown[]) => mockEnsureDirectory(args[0] as string),
   listDirectory: vi.fn().mockResolvedValue([]),
   readTextFile: vi.fn().mockResolvedValue(''),
+}))
+
+vi.mock('../../tools/ffmpeg/clipExtraction.js', () => ({
+  extractCompositeClip: (...args: unknown[]) => mockExtractCompositeClip(...args),
 }))
 
 vi.mock('../../core/paths.js', () => ({
@@ -44,6 +51,7 @@ function makeClip(overrides?: Partial<MediumClip>): MediumClip {
 function makeParent(): VideoAsset {
   return {
     getResult: vi.fn().mockResolvedValue('/videos/source.mp4'),
+    getEnhancedVideo: vi.fn().mockResolvedValue('/videos/source-enhanced.mp4'),
     getTranscript: vi.fn(),
     exists: vi.fn().mockResolvedValue(true),
   } as unknown as VideoAsset
@@ -88,16 +96,28 @@ describe('MediumClipAsset', () => {
       expect(result).toBe('/medium-clips/test-medium/media.mp4')
     })
 
-    it('throws when file does not exist', async () => {
+    it('extracts clip from enhanced video when file missing', async () => {
       mockFileExists.mockResolvedValue(false)
-      const asset = new MediumClipAsset(makeParent(), makeClip(), '/medium-clips')
-      await expect(asset.getResult()).rejects.toThrow('Medium clip "test-medium" not found')
+      mockExtractCompositeClip.mockResolvedValue(undefined)
+      const parent = makeParent()
+      const clip = makeClip()
+      const asset = new MediumClipAsset(parent, clip, '/medium-clips')
+      await asset.getResult()
+      expect(mockExtractCompositeClip).toHaveBeenCalledWith(
+        '/videos/source-enhanced.mp4',
+        clip.segments,
+        '/medium-clips/test-medium/media.mp4',
+      )
     })
 
-    it('throws with instructions to run medium-clips stage', async () => {
-      mockFileExists.mockResolvedValue(false)
-      const asset = new MediumClipAsset(makeParent(), makeClip(), '/medium-clips')
-      await expect(asset.getResult()).rejects.toThrow('Run the medium-clips stage first')
+    it('re-extracts when force is true even if file exists', async () => {
+      mockFileExists.mockResolvedValue(true)
+      mockExtractCompositeClip.mockResolvedValue(undefined)
+      const parent = makeParent()
+      const clip = makeClip()
+      const asset = new MediumClipAsset(parent, clip, '/medium-clips')
+      await asset.getResult({ force: true })
+      expect(mockExtractCompositeClip).toHaveBeenCalled()
     })
   })
 

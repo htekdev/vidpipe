@@ -9,8 +9,9 @@ import { runInit } from './commands/init'
 import { runSchedule } from './commands/schedule'
 import { startReviewServer } from './review/server'
 import { openUrl } from './core/cli.js'
-import { readTextFileSync } from './core/fileSystem.js'
-import { projectRoot, join, resolve } from './core/paths.js'
+import { readTextFileSync, listDirectorySync } from './core/fileSystem.js'
+import { projectRoot, join, resolve, extname } from './core/paths.js'
+import { isCompleted, getUnprocessed, getVideoStatus } from './services/processingState.js'
 
 const pkg = JSON.parse(readTextFileSync(join(projectRoot(), 'package.json')))
 
@@ -110,7 +111,8 @@ const defaultCmd = program
   .option('--no-medium-clips', 'Skip medium clip generation')
   .option('--no-social', 'Skip social media post generation')
   .option('--no-captions', 'Skip caption generation/burning')
-  .option('--no-social-publish', 'Skip social media publishing/queue-build stage')
+  .option('--no-visual-enhancement', 'Skip visual enhancement (AI image overlays)')
+  .option('--no-social-publish','Skip social media publishing/queue-build stage')
   .option('--late-api-key <key>', 'Late API key (default: env LATE_API_KEY)')
   .option('--late-profile-id <id>', 'Late profile ID (default: env LATE_PROFILE_ID)')
   .option('-v, --verbose', 'Verbose logging')
@@ -139,6 +141,7 @@ const defaultCmd = program
       mediumClips: opts.mediumClips,
       social: opts.social,
       captions: opts.captions,
+      visualEnhancement: opts.visualEnhancement,
       socialPublish: opts.socialPublish,
       lateApiKey: opts.lateApiKey,
       lateProfileId: opts.lateProfileId,
@@ -201,12 +204,53 @@ const defaultCmd = program
     process.on('SIGINT', () => shutdown())
     process.on('SIGTERM', () => shutdown())
 
-    watcher.on('new-video', (filePath: string) => {
+    watcher.on('new-video', async (filePath: string) => {
+      // Dedup: skip videos already completed
+      const filename = filePath.replace(/\\/g, '/').split('/').pop() ?? ''
+      const slug = filename.replace(/\.(mp4|mov|webm|avi|mkv)$/i, '')
+      if (slug && await isCompleted(slug)) {
+        logger.info(`Skipping already-processed video: ${filePath}`)
+        return
+      }
       queue.push(filePath)
       logger.info(`Queued video: ${filePath} (queue length: ${queue.length})`)
       processQueue().catch(err => logger.error('Queue processing error:', err))
     })
     watcher.start()
+
+    // Startup reconciliation: scan watch folder for videos not yet tracked
+    try {
+      const watchFiles = listDirectorySync(config.WATCH_FOLDER)
+      for (const file of watchFiles) {
+        const ext = extname(file).toLowerCase()
+        if (!['.mp4', '.mov', '.webm', '.avi', '.mkv'].includes(ext)) continue
+        const filePath = join(config.WATCH_FOLDER, file)
+        const slug = file.replace(/\.(mp4|mov|webm|avi|mkv)$/i, '')
+        const status = await getVideoStatus(slug)
+        if (!status || status.status === 'failed' || status.status === 'pending') {
+          if (!queue.includes(filePath)) {
+            queue.push(filePath)
+            logger.info(`Startup scan: queued ${slug}${status ? ` (was ${status.status})` : ' (new)'}`)
+          }
+        }
+      }
+    } catch (err) {
+      logger.warn(`Could not scan watch folder on startup: ${err instanceof Error ? err.message : String(err)}`)
+    }
+
+    // Also re-queue any videos tracked as unprocessed (pending/failed) from previous runs
+    const unprocessed = await getUnprocessed()
+    for (const [slug, state] of Object.entries(unprocessed)) {
+      if (!queue.includes(state.sourcePath)) {
+        queue.push(state.sourcePath)
+        logger.info(`Re-queued from state: ${slug} (${state.status})`)
+      }
+    }
+
+    if (queue.length > 0) {
+      logger.info(`Startup: ${queue.length} video(s) queued for processing`)
+      processQueue().catch(err => logger.error('Queue processing error:', err))
+    }
 
     if (onceMode) {
       logger.info('Running in --once mode. Will exit after processing the next video.')

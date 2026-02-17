@@ -49,6 +49,12 @@ describe('platformContentStrategy', () => {
       expect(rule).not.toBeNull();
       expect(rule!.variantKey).toBeNull();
     });
+
+    it('returns media rule for LinkedIn + video', () => {
+      const rule = getMediaRule(Platform.LinkedIn, 'video');
+      expect(rule).not.toBeNull();
+      expect(rule!.captions).toBe(true);
+    });
   });
 
   describe('platformAcceptsMedia', () => {
@@ -70,6 +76,10 @@ describe('platformContentStrategy', () => {
 
     it('returns true for Instagram + medium-clip', () => {
       expect(platformAcceptsMedia(Platform.Instagram, 'medium-clip')).toBe(true);
+    });
+
+    it('returns true for LinkedIn + video', () => {
+      expect(platformAcceptsMedia(Platform.LinkedIn, 'video')).toBe(true);
     });
   });
 });

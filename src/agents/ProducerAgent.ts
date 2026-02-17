@@ -7,39 +7,36 @@ import logger from '../config/logger.js'
 
 // ── System prompt ───────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a professional video cleaner. Your job is to analyze videos and identify regions that should be removed for a tighter, cleaner edit.
+const SYSTEM_PROMPT = `You are a professional video editor preparing raw footage for visual enhancement. Your goal is to produce a clean, tight edit that's ready for graphics overlays, captions, and social media distribution.
 
-## CONTEXT TOOLS (use these first to understand the video)
-- **get_video_info**: Get video dimensions, duration, and frame rate
-- **get_transcript**: Read what's being said (with optional time range filtering)
-- **get_editorial_direction**: Get AI-generated editorial guidance (cut points, pacing notes) from Gemini video analysis. Use this to inform your cleaning decisions.
+## INFORMATION HIERARCHY
 
-## WHAT TO REMOVE
-- **Dead air**: Long silences with no meaningful content
-- **Filler words**: Excessive "um", "uh", "like", "you know" clusters
-- **Bad takes**: False starts, stumbles, repeated sentences where the speaker restarts
-- **Long pauses**: Extended gaps between sentences (>3 seconds) that don't serve a purpose
-- **Redundant content**: Sections where the same point is repeated without adding value
+You have three sources of information:
+1. **Editorial direction** (from Gemini video AI) — provides editorial judgment: what to cut, pacing issues, hook advice. It watched the actual video and can see visual cues the transcript cannot.
+2. **Transcript** — the ground truth for **what was said and when**. Timestamps in the transcript are accurate. Use it to verify that editorial direction timestamps actually match the spoken content.
+3. **Your own judgment** — use this to resolve conflicts and make final decisions.
 
-## WHAT TO PRESERVE
-- **Intentional pauses**: Dramatic pauses, thinking pauses before important points
-- **Demonstrations**: Silence during live coding, UI interaction, or waiting for results
-- **Meaningful silence**: Pauses that give the viewer time to absorb information
-- **All substantive content**: When in doubt, keep it
+## CONFLICT RESOLUTION
 
-## WORKFLOW
+- **Timestamps**: The transcript's timestamps are authoritative. Gemini's timestamps can drift. Always cross-reference the editorial direction's timestamps against the transcript before cutting. If Gemini says "cut 85-108 because it's dead air" but the transcript shows substantive speech at 92-105, trust the transcript.
+- **Pacing vs Cleaning**: If the Pacing Analysis recommends removing an entire range but Cleaning Recommendations only flags pieces, favor pacing — it reflects the broader viewing experience.
+- **Hook & Retention**: If this section recommends starting at a later point, that overrides granular cleaning cuts in the opening.
+- **Valuable content**: Never cut substantive content that the viewer needs to understand the video's message. Filler and dead air around valuable content should be trimmed, but the content itself must be preserved.
 
-1. Call get_video_info to know the video duration
-2. Call get_editorial_direction to get AI-powered editorial guidance (cut points, pacing issues)
-3. Call get_transcript (in sections if long) to understand what's being said and find removable regions
-4. When ready, call **plan_cuts** with your list of regions to remove
+## WHAT YOU'RE OPTIMIZING FOR
 
-## GUIDELINES
-- Be conservative: aim for 10-20% removal at most
-- Each removal should have a clear reason
-- Don't remove short pauses (<1 second) — they sound natural
-- Focus on making the video tighter, not shorter for its own sake
-- Use editorial direction from Gemini to identify problematic regions`
+The video you produce will be further processed by a graphics agent that adds AI-generated image overlays, then captioned, then cut into shorts and medium clips. Your edit needs to:
+- Start with the strongest content — no dead air, no "I'm going to make a quick video" preambles
+- Flow naturally so captions and overlays land on clean, well-paced segments
+- Remove anything that isn't for the viewer (meta-commentary, editor instructions, false starts)
+
+## TOOLS
+
+- **get_video_info** — video duration, dimensions, frame rate
+- **get_editorial_direction** — Gemini's full editorial report (cut points, pacing, hook advice, cleaning recommendations)
+- **get_transcript** — timestamped transcript (supports start/end filtering)
+- **add_cuts** — queue regions for removal (call as many times as needed, use decimal-second precision)
+- **finalize_cuts** — merge adjacent cuts and trigger the render (call once at the end)`
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,19 +51,42 @@ interface GetTranscriptArgs {
   end?: number
 }
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Merge overlapping or adjacent removals (gap <= 2 seconds) into larger ranges. */
+function mergeRemovals(removals: Removal[]): Removal[] {
+  if (removals.length <= 1) return removals
+
+  const sorted = [...removals].sort((a, b) => a.start - b.start)
+  const merged: Removal[] = [{ ...sorted[0] }]
+
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = merged[merged.length - 1]
+    const curr = sorted[i]
+    if (curr.start <= prev.end + 2) {
+      prev.end = Math.max(prev.end, curr.end)
+      prev.reason = `${prev.reason}; ${curr.reason}`
+    } else {
+      merged.push({ ...curr })
+    }
+  }
+
+  return merged
+}
+
 // ── JSON Schemas ─────────────────────────────────────────────────────────────
 
-const PLAN_CUTS_SCHEMA = {
+const ADD_CUTS_SCHEMA = {
   type: 'object',
   properties: {
     removals: {
       type: 'array',
-      description: 'Array of regions to remove from the video',
+      description: 'One or more regions to remove from the video',
       items: {
         type: 'object',
         properties: {
-          start: { type: 'number', description: 'Start time in seconds' },
-          end: { type: 'number', description: 'End time in seconds' },
+          start: { type: 'number', description: 'Start time in seconds (decimal precision, e.g. 14.3)' },
+          end: { type: 'number', description: 'End time in seconds (decimal precision, e.g. 37.0)' },
           reason: { type: 'string', description: 'Why this region should be removed' },
         },
         required: ['start', 'end', 'reason'],
@@ -102,6 +122,8 @@ export class ProducerAgent extends BaseAgent {
   private readonly video: VideoAsset
   private videoDuration: number = 0
   private removals: Removal[] = []
+  private renderPromise: Promise<string | void> | null = null
+  private outputPath: string = ''
 
   constructor(video: VideoAsset, model?: string) {
     super('ProducerAgent', SYSTEM_PROMPT, undefined, model)
@@ -138,12 +160,22 @@ export class ProducerAgent extends BaseAgent {
         handler: async () => this.handleToolCall('get_editorial_direction', {}),
       },
       {
-        name: 'plan_cuts',
+        name: 'add_cuts',
         description:
-          'Submit your list of regions to remove from the video. Call this ONCE with ALL planned removals.',
-        parameters: PLAN_CUTS_SCHEMA,
+          'Add one or more regions to remove from the video. ' +
+          'You can call this multiple times to build your edit list incrementally as you analyze each section.',
+        parameters: ADD_CUTS_SCHEMA,
         handler: async (rawArgs: unknown) =>
-          this.handleToolCall('plan_cuts', rawArgs as Record<string, unknown>),
+          this.handleToolCall('add_cuts', rawArgs as Record<string, unknown>),
+      },
+      {
+        name: 'finalize_cuts',
+        description:
+          'Finalize your edit list and trigger video rendering. ' +
+          'Call this ONCE after you have added all cuts with add_cuts. ' +
+          'Adjacent/overlapping cuts will be merged automatically.',
+        parameters: { type: 'object', properties: {} },
+        handler: async () => this.handleToolCall('finalize_cuts', {}),
       },
     ]
   }
@@ -208,11 +240,38 @@ export class ProducerAgent extends BaseAgent {
         }
       }
 
-      case 'plan_cuts': {
+      case 'add_cuts': {
         const { removals } = args as { removals: Removal[] }
-        logger.info(`[ProducerAgent] Received plan with ${removals.length} removals`)
-        this.removals = removals
-        return `Plan received with ${removals.length} removals. Video will be rendered automatically.`
+        this.removals.push(...removals)
+        logger.info(`[ProducerAgent] Added ${removals.length} cuts (total: ${this.removals.length})`)
+        return `Added ${removals.length} cuts. Total queued: ${this.removals.length}. Call add_cuts again for more, or finalize_cuts when done.`
+      }
+
+      case 'finalize_cuts': {
+        this.removals = mergeRemovals(this.removals)
+        logger.info(`[ProducerAgent] Finalized ${this.removals.length} cuts (after merging), starting render`)
+
+        // Build keepSegments and start rendering (don't await — save promise)
+        const sortedRemovals = [...this.removals].sort((a, b) => a.start - b.start)
+        const keepSegments: KeepSegment[] = []
+        let cursor = 0
+        for (const removal of sortedRemovals) {
+          if (removal.start > cursor) {
+            keepSegments.push({ start: cursor, end: removal.start })
+          }
+          cursor = Math.max(cursor, removal.end)
+        }
+        if (cursor < this.videoDuration) {
+          keepSegments.push({ start: cursor, end: this.videoDuration })
+        }
+
+        const totalRemoval = this.removals.reduce((sum, r) => sum + (r.end - r.start), 0)
+        logger.info(
+          `[ProducerAgent] ${this.removals.length} removals → ${keepSegments.length} keep segments, removing ${totalRemoval.toFixed(1)}s`,
+        )
+
+        this.renderPromise = singlePassEdit(this.video.videoPath, keepSegments, this.outputPath)
+        return `Rendering started with ${this.removals.length} cuts. The video is being processed in the background.`
       }
 
       default:
@@ -227,88 +286,55 @@ export class ProducerAgent extends BaseAgent {
    */
   async produce(outputPath: string): Promise<ProduceResult> {
     this.removals = []
+    this.renderPromise = null
+    this.outputPath = outputPath
 
-    const prompt = `Analyze this video and decide which segments should be removed for a cleaner edit.
+    const prompt = `Clean this video by removing unwanted segments.
 
 **Video:** ${this.video.videoPath}
 
-## Instructions
-
-1. Call get_video_info to know the video duration.
-2. Call get_editorial_direction to get AI-powered editorial guidance (cut points, pacing issues).
-3. Call get_transcript to understand what's being said and identify removable regions.
-4. Call **plan_cuts** with your list of regions to remove.
-
-Focus on removing dead air, filler words, bad takes, and redundant content. Be conservative — aim for 10-20% removal at most.`
+Get the video info, editorial direction, and transcript. Analyze them together, then add your cuts and finalize.`
 
     try {
       const response = await this.run(prompt)
-      logger.info(`[ProducerAgent] Agent planning complete for ${this.video.videoPath}`)
+      logger.info(`[ProducerAgent] Agent conversation complete for ${this.video.videoPath}`)
 
-      if (this.removals.length === 0) {
-        logger.info(`[ProducerAgent] No removals planned — video is clean`)
+      // Wait for render if finalize_cuts was called
+      if (this.renderPromise) {
+        await this.renderPromise
+        logger.info(`[ProducerAgent] Render complete: ${outputPath}`)
+
+        const sortedRemovals = [...this.removals].sort((a, b) => a.start - b.start)
+        const keepSegments: KeepSegment[] = []
+        let cursor = 0
+        for (const removal of sortedRemovals) {
+          if (removal.start > cursor) {
+            keepSegments.push({ start: cursor, end: removal.start })
+          }
+          cursor = Math.max(cursor, removal.end)
+        }
+        if (cursor < this.videoDuration) {
+          keepSegments.push({ start: cursor, end: this.videoDuration })
+        }
+
         return {
           summary: response,
+          outputPath,
           success: true,
-          editCount: 0,
-          removals: [],
-          keepSegments: [{ start: 0, end: this.videoDuration }],
+          editCount: this.removals.length,
+          removals: sortedRemovals.map(r => ({ start: r.start, end: r.end })),
+          keepSegments,
         }
       }
 
-      // Safety cap: limit removals to 20% of video duration
-      const maxRemoval = this.videoDuration * 0.20
-      let totalRemoval = 0
-      const sortedByDuration = [...this.removals].sort(
-        (a, b) => (b.end - b.start) - (a.end - a.start),
-      )
-      const cappedRemovals: Removal[] = []
-      for (const r of sortedByDuration) {
-        const dur = r.end - r.start
-        if (totalRemoval + dur <= maxRemoval) {
-          cappedRemovals.push(r)
-          totalRemoval += dur
-        }
-      }
-
-      if (cappedRemovals.length < this.removals.length) {
-        logger.warn(
-          `[ProducerAgent] Safety cap: reduced ${this.removals.length} removals to ${cappedRemovals.length} (max 20% of ${this.videoDuration}s = ${maxRemoval.toFixed(1)}s)`,
-        )
-      }
-
-      // Sort by start time for keepSegment construction
-      const sortedRemovals = [...cappedRemovals].sort((a, b) => a.start - b.start)
-
-      // Convert removals to keepSegments (inverse)
-      const keepSegments: KeepSegment[] = []
-      let cursor = 0
-      for (const removal of sortedRemovals) {
-        if (removal.start > cursor) {
-          keepSegments.push({ start: cursor, end: removal.start })
-        }
-        cursor = Math.max(cursor, removal.end)
-      }
-      if (cursor < this.videoDuration) {
-        keepSegments.push({ start: cursor, end: this.videoDuration })
-      }
-
-      logger.info(
-        `[ProducerAgent] ${cappedRemovals.length} removals → ${keepSegments.length} keep segments, removing ${totalRemoval.toFixed(1)}s`,
-      )
-
-      // Render via singlePassEdit
-      await singlePassEdit(this.video.videoPath, keepSegments, outputPath)
-
-      logger.info(`[ProducerAgent] Render complete: ${outputPath}`)
-
+      // Agent didn't finalize — no cuts planned
+      logger.info(`[ProducerAgent] No cuts finalized — video is clean`)
       return {
         summary: response,
-        outputPath,
         success: true,
-        editCount: cappedRemovals.length,
-        removals: sortedRemovals.map(r => ({ start: r.start, end: r.end })),
-        keepSegments,
+        editCount: 0,
+        removals: [],
+        keepSegments: [{ start: 0, end: this.videoDuration }],
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)

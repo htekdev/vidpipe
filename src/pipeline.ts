@@ -1,5 +1,5 @@
 import { join, dirname, basename } from './core/paths.js'
-import { ensureDirectory, writeJsonFile, writeTextFile, copyFile, removeFile, fileExists, readTextFile } from './core/fileSystem.js'
+import { ensureDirectory, writeJsonFile, writeTextFile, copyFile, removeFile, fileExists, readTextFile, readJsonFile } from './core/fileSystem.js'
 import logger from './config/logger'
 import { getConfig } from './config/environment'
 import { MainVideoAsset } from './assets/MainVideoAsset.js'
@@ -17,6 +17,7 @@ import type { QueueBuildResult } from './services/queueBuilder'
 import { ProducerAgent, type ProduceResult } from './agents/ProducerAgent.js'
 import { burnCaptions } from './tools/ffmpeg/captionBurning'
 import { singlePassEditAndCaption } from './tools/ffmpeg/singlePassEdit'
+import { enhanceVideo } from './stages/visualEnhancement.js'
 import { getModelForAgent } from './config/modelConfig.js'
 import { costTracker } from './services/costTracker.js'
 import type { CostReport } from './services/costTracker.js'
@@ -31,8 +32,11 @@ import type {
   PipelineResult,
   PipelineStage,
   Chapter,
+  VisualEnhancementResult,
+  VideoLayout,
 } from './types'
 import { PipelineStage as Stage } from './types'
+import { markProcessing, markCompleted, markFailed, markPending } from './services/processingState.js'
 
 /**
  * Execute a single pipeline stage with error isolation and timing.
@@ -230,6 +234,24 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   // Use adjusted transcript for captions (if silence was removed), original otherwise
   const captionTranscript = adjustedTranscript ?? transcript
 
+  // 3.5. Visual Enhancement — AI-generated image overlays
+  let enhancedVideoPath: string | undefined
+  if (!cfg.SKIP_VISUAL_ENHANCEMENT && captionTranscript) {
+    const videoToEnhance = editedVideoPath ?? video.repoPath
+    const enhancementResult = await runStage<VisualEnhancementResult | undefined>(
+      Stage.VisualEnhancement,
+      async () => {
+        const result = await enhanceVideo(videoToEnhance, captionTranscript, video)
+        if (!result) return undefined
+        return result
+      },
+      stageResults,
+    )
+    if (enhancementResult) {
+      enhancedVideoPath = enhancementResult.enhancedVideoPath
+    }
+  }
+
   // 4. Captions (fast, no AI needed) — generate from the right transcript
   let captions: string[] | undefined
   if (captionTranscript && !cfg.SKIP_CAPTIONS) {
@@ -240,9 +262,9 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   let captionedVideoPath: string | undefined
   if (captions && !cfg.SKIP_CAPTIONS) {
     const assFile = captions.find((p) => p.endsWith('.ass'))
-    if (assFile && cleaningKeepSegments) {
+    if (assFile && cleaningKeepSegments && !enhancedVideoPath) {
       // Single-pass: re-do cleaning + burn captions from ORIGINAL video in one encode
-      // This guarantees frame-accurate cuts with perfectly aligned captions
+      // Skip single-pass when enhanced video exists (it already has cleaning baked in)
       const captionedOutput = join(video.videoDir, `${video.slug}-captioned.mp4`)
       captionedVideoPath = await runStage<string>(
         Stage.CaptionBurn,
@@ -251,7 +273,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
       )
     } else if (assFile) {
       // No cleaning — just burn captions into original video
-      const videoToBurn = editedVideoPath ?? video.repoPath
+      const videoToBurn = enhancedVideoPath ?? editedVideoPath ?? video.repoPath
       const captionedOutput = join(video.videoDir, `${video.slug}-captioned.mp4`)
       captionedVideoPath = await runStage<string>(
         Stage.CaptionBurn,
@@ -273,15 +295,27 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
         clipDirection = await readTextFile(clipDirPath)
       }
     } catch { /* clip direction is optional */ }
-    const result = await runStage<ShortClip[]>(Stage.Shorts, () => generateShorts(shortsVideo, shortsTranscript, getModelForAgent('ShortsAgent'), clipDirection), stageResults)
+
+    // Read pre-detected webcam region from layout.json so shorts don't re-detect per clip
+    let webcamRegion: VideoLayout['webcam'] | undefined
+    try {
+      const layoutPath = join(video.videoDir, 'layout.json')
+      if (await fileExists(layoutPath)) {
+        const layout = await readJsonFile<VideoLayout>(layoutPath)
+        webcamRegion = layout.webcam
+      }
+    } catch { /* layout is optional — shorts will detect per clip if unavailable */ }
+
+    const result = await runStage<ShortClip[]>(Stage.Shorts, () => generateShorts(shortsVideo, shortsTranscript, getModelForAgent('ShortsAgent'), clipDirection, webcamRegion), stageResults)
     if (result) shorts = result
   }
 
-  // 7. Medium Clips — use adjusted transcript + cleaned video (clips cut from cleaned video)
+  // 7. Medium Clips — use enhanced video if available (carries overlay images), else cleaned video
   let mediumClips: MediumClip[] = []
   if (transcript && !cfg.SKIP_MEDIUM_CLIPS) {
     const mediumTranscript = adjustedTranscript ?? transcript
-    const mediumVideo: VideoFile = editedVideoPath ? { ...video, repoPath: editedVideoPath } : video
+    const mediumVideoPath = enhancedVideoPath ?? editedVideoPath
+    const mediumVideo: VideoFile = mediumVideoPath ? { ...video, repoPath: mediumVideoPath } : video
     let mediumClipDirection: string | undefined
     try {
       const clipDirPath = join(video.videoDir, 'clip-direction.md')
@@ -410,6 +444,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
     video,
     transcript,
     editedVideoPath,
+    enhancedVideoPath,
     captions,
     captionedVideoPath,
     summary,
@@ -462,11 +497,20 @@ function generateCostMarkdown(report: CostReport): string {
 }
 
 export async function processVideoSafe(videoPath: string): Promise<PipelineResult | null> {
+  // Derive slug from filename for state tracking (same logic as MainVideoAsset.ingest)
+  const filename = basename(videoPath)
+  const slug = filename.replace(/\.(mp4|mov|webm|avi|mkv)$/i, '')
+  await markPending(slug, videoPath)
+  await markProcessing(slug)
+
   try {
-    return await processVideo(videoPath)
+    const result = await processVideo(videoPath)
+    await markCompleted(slug)
+    return result
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err)
     logger.error(`Pipeline failed with uncaught error: ${message}`)
+    await markFailed(slug, message)
     return null
   }
 }

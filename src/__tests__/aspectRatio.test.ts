@@ -271,8 +271,9 @@ describe('convertToPortraitSmart – screen crop & face padding', () => {
 
     const fc = getCapturedFilterComplex();
     expect(fc).toBeDefined();
-    // Screen crop uses webcam.x directly as width (no hardcoded margin)
-    expect(fc).toContain('crop=1440:ih:0:0');
+    // Screen crop uses webcam.x minus 2% margin (38px): 1440 - 38 = 1402
+    const margin = Math.round(1920 * 0.02);
+    expect(fc).toContain(`crop=${1440 - margin}:ih:0:0`);
   });
 
   it('screen crop excludes webcam region (bottom-left)', async () => {
@@ -286,8 +287,9 @@ describe('convertToPortraitSmart – screen crop & face padding', () => {
 
     const fc = getCapturedFilterComplex();
     expect(fc).toBeDefined();
-    // Screen crop starts after webcam (x + width) with remaining width
-    expect(fc).toContain('crop=1440:ih:480:0');
+    // Screen crop starts after webcam (x + width + margin): 0 + 480 + 38 = 518
+    const margin = Math.round(1920 * 0.02);
+    expect(fc).toContain(`crop=${1920 - 480 - margin}:ih:${480 + margin}:0`);
   });
 
   it('face crop matches target aspect ratio and fills bottom section', async () => {
@@ -313,7 +315,7 @@ describe('convertToPortraitSmart – screen crop & face padding', () => {
     expect(fc).not.toContain('force_original_aspect_ratio=increase');
   });
 
-  it('screen crop uses detected webcam.x directly with no hardcoded margin', async () => {
+  it('screen crop uses detected webcam.x with 2% safety margin', async () => {
     mockDetectWebcam.mockResolvedValue({
       x: 1728, y: 810, width: 192, height: 270,
       position: 'bottom-right', confidence: 0.9,
@@ -324,8 +326,9 @@ describe('convertToPortraitSmart – screen crop & face padding', () => {
 
     const fc = getCapturedFilterComplex();
     expect(fc).toBeDefined();
-    // With precise bbox detection, crop width = webcam.x = 1728
-    expect(fc).toContain('crop=1728:ih:0:0');
+    // crop width = webcam.x - margin = 1728 - 38 = 1690
+    const margin = Math.round(1920 * 0.02);
+    expect(fc).toContain(`crop=${1728 - margin}:ih:0:0`);
   });
 
   it('screen crop handles webcam at far edge gracefully', async () => {
@@ -339,8 +342,8 @@ describe('convertToPortraitSmart – screen crop & face padding', () => {
 
     const fc = getCapturedFilterComplex();
     expect(fc).toBeDefined();
-    // webcam.x = 20, so screen crop is only 20px wide
-    expect(fc).toContain('crop=20:ih:0:0');
+    // webcam.x = 20, minus margin = 20 - 38 = -18 → clamped to 0
+    expect(fc).toContain('crop=0:ih:0:0');
   });
 });
 
@@ -376,7 +379,8 @@ describe('convertToSquareSmart – screen crop & face padding', () => {
 
     const fc = getCapturedFilterComplex();
     expect(fc).toBeDefined();
-    expect(fc).toContain('crop=1440:ih:0:0');
+    const margin = Math.round(1920 * 0.02);
+    expect(fc).toContain(`crop=${1440 - margin}:ih:0:0`);
   });
 
   it('face crop matches target aspect ratio and fills bottom section', async () => {
@@ -450,7 +454,8 @@ describe('convertToFeedSmart – screen crop & face padding', () => {
 
     const fc = getCapturedFilterComplex();
     expect(fc).toBeDefined();
-    expect(fc).toContain('crop=1440:ih:0:0');
+    const margin = Math.round(1920 * 0.02);
+    expect(fc).toContain(`crop=${1440 - margin}:ih:0:0`);
   });
 
   it('face crop matches target aspect ratio and fills bottom section', async () => {
@@ -502,6 +507,7 @@ describe('convertToFeedSmart – screen crop & face padding', () => {
 
     const fc = getCapturedFilterComplex();
     expect(fc).toBeDefined();
-    expect(fc).toContain('crop=1440:ih:480:0');
+    const margin = Math.round(1920 * 0.02);
+    expect(fc).toContain(`crop=${1920 - 480 - margin}:ih:${480 + margin}:0`);
   });
 });

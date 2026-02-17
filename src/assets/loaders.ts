@@ -61,3 +61,7 @@ export const loadProducerAgent = async () =>
 // Gemini video analysis
 export const loadGeminiClient = async () =>
   import('../tools/gemini/geminiClient.js')
+
+// Visual enhancement stage
+export const loadVisualEnhancement = async () =>
+  import('../stages/visualEnhancement.js')
