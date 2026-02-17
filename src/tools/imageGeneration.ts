@@ -61,7 +61,7 @@ export async function generateImage(
       Authorization: `Bearer ${config.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'dall-e-3',
+      model: 'gpt-image-1.5',
       prompt: fullPrompt,
       n: 1,
       size,
@@ -103,7 +103,7 @@ export async function generateImage(
 
   const estimatedCost = COST_BY_QUALITY[quality]
   costTracker.recordServiceUsage('openai-image', estimatedCost, {
-    model: 'dall-e-3',
+    model: 'gpt-image-1.5',
     size,
     quality,
     prompt: prompt.substring(0, 200),
