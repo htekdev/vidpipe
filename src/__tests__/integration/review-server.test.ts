@@ -187,24 +187,28 @@ describe('Review Server API', () => {
   describe('POST /api/posts/:id/approve', () => {
     it('returns 404 for non-existent item', async () => {
       const res = await request(app).post('/api/posts/ghost/approve')
-      expect(res.status).toBe(404)
-      expect(res.body.error).toBe('Item not found')
+      // Now returns 202 immediately (fire-and-forget), item-not-found is logged
+      expect(res.status).toBe(202)
     })
 
-    it('approves item and returns scheduledFor', async () => {
+    it('approves item and returns 202 accepted', async () => {
       await createTestItem('approve-me')
 
       const res = await request(app).post('/api/posts/approve-me/approve')
-      expect(res.status).toBe(200)
-      expect(res.body.success).toBe(true)
-      expect(res.body.scheduledFor).toBe('2026-02-15T19:00:00-06:00')
-      expect(res.body.latePostId).toBe('test-post-id')
+      expect(res.status).toBe(202)
+      expect(res.body.accepted).toBe(true)
+
+      // Wait for queue to drain
+      await new Promise(resolve => setTimeout(resolve, 200))
     })
 
     it('moves item to published/ folder', async () => {
       await createTestItem('approve-move')
 
       await request(app).post('/api/posts/approve-move/approve')
+
+      // Wait for queue to drain
+      await new Promise(resolve => setTimeout(resolve, 200))
 
       // No longer in queue
       const pendingRes = await request(app).get('/api/posts/approve-move')
