@@ -62,46 +62,95 @@ export abstract class BaseAgent {
     args: Record<string, unknown>,
   ): Promise<unknown>
 
+  /** Max retries for transient API errors (stream drops, rate limits). */
+  private static readonly MAX_RETRIES = 3
+
   /**
    * Send a user message to the agent and return the final response text.
    *
    * 1. Lazily creates an LLMSession via the provider
    * 2. Registers event listeners for logging
    * 3. Calls sendAndWait and records usage via CostTracker
+   * 4. Retries on transient errors (stream drops, rate limits) with backoff
    */
   async run(userMessage: string): Promise<string> {
-    if (!this.session) {
-      this.session = await this.provider.createSession({
-        systemPrompt: this.systemPrompt,
-        tools: this.getTools(),
-        streaming: true,
-        model: this.model ?? getModelForAgent(this.agentName),
-        timeoutMs: 300_000, // 5 min timeout
-        mcpServers: this.getMcpServers(),
-      })
-      this.setupEventHandlers(this.session)
+    let lastError: unknown
+
+    for (let attempt = 1; attempt <= BaseAgent.MAX_RETRIES; attempt++) {
+      try {
+        if (!this.session) {
+          this.session = await this.provider.createSession({
+            systemPrompt: this.systemPrompt,
+            tools: this.getTools(),
+            streaming: true,
+            model: this.model ?? getModelForAgent(this.agentName),
+            timeoutMs: 300_000, // 5 min timeout
+            mcpServers: this.getMcpServers(),
+          })
+          this.setupEventHandlers(this.session)
+        }
+
+        logger.info(`[${this.agentName}] Sending message (attempt ${attempt}/${BaseAgent.MAX_RETRIES}): ${userMessage.substring(0, 80)}…`)
+
+        costTracker.setAgent(this.agentName)
+        const response = await this.session.sendAndWait(userMessage)
+
+        // Record usage via CostTracker
+        costTracker.recordUsage(
+          this.provider.name,
+          response.cost?.model ?? this.provider.getDefaultModel(),
+          response.usage,
+          response.cost,
+          response.durationMs,
+          response.quotaSnapshots
+            ? Object.values(response.quotaSnapshots)[0]
+            : undefined,
+        )
+
+        const content = response.content
+        logger.info(`[${this.agentName}] Response received (${content.length} chars)`)
+        return content
+      } catch (err) {
+        lastError = err
+        const message = err instanceof Error ? err.message : String(err)
+
+        if (!BaseAgent.isRetryableError(message) || attempt === BaseAgent.MAX_RETRIES) {
+          throw err
+        }
+
+        // Reset session — a mid-stream failure may leave it in a bad state
+        try { await this.session?.close() } catch { /* best-effort cleanup */ }
+        this.session = null
+
+        const delayMs = 2000 * Math.pow(2, attempt - 1) // 2s, 4s, 8s
+        logger.warn(`[${this.agentName}] Transient error (attempt ${attempt}/${BaseAgent.MAX_RETRIES}), retrying in ${delayMs / 1000}s: ${message}`)
+        await new Promise(resolve => setTimeout(resolve, delayMs))
+      }
     }
 
-    logger.info(`[${this.agentName}] Sending message: ${userMessage.substring(0, 80)}…`)
+    throw lastError
+  }
 
-    costTracker.setAgent(this.agentName)
-    const response = await this.session.sendAndWait(userMessage)
-
-    // Record usage via CostTracker
-    costTracker.recordUsage(
-      this.provider.name,
-      response.cost?.model ?? this.provider.getDefaultModel(),
-      response.usage,
-      response.cost,
-      response.durationMs,
-      response.quotaSnapshots
-        ? Object.values(response.quotaSnapshots)[0]
-        : undefined,
-    )
-
-    const content = response.content
-    logger.info(`[${this.agentName}] Response received (${content.length} chars)`)
-    return content
+  /** Check if an error message indicates a transient/retryable failure. */
+  private static isRetryableError(message: string): boolean {
+    const retryablePatterns = [
+      'missing finish_reason',
+      'ECONNRESET',
+      'ETIMEDOUT',
+      'ECONNREFUSED',
+      'socket hang up',
+      'network error',
+      'rate limit',
+      '429',
+      '500',
+      '502',
+      '503',
+      '504',
+      'stream ended',
+      'aborted',
+    ]
+    const lower = message.toLowerCase()
+    return retryablePatterns.some(p => lower.includes(p.toLowerCase()))
   }
 
   /** Wire up session event listeners for logging. */
