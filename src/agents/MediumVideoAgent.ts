@@ -150,6 +150,11 @@ class MediumVideoAgent extends BaseAgent {
     super('MediumVideoAgent', SYSTEM_PROMPT, undefined, model)
   }
 
+  protected resetForRetry(): void {
+    this.plannedClips = []
+    this.isFinalized = false
+  }
+
   protected getTools(): ToolWithHandler[] {
     return [
       {

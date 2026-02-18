@@ -130,6 +130,13 @@ export class ProducerAgent extends BaseAgent {
     this.video = video
   }
 
+  protected resetForRetry(): void {
+    this.videoDuration = 0
+    this.removals = []
+    this.renderPromise = null
+    this.outputPath = ''
+  }
+
   protected getTools(): ToolWithHandler[] {
     return [
       {

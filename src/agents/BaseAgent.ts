@@ -62,6 +62,14 @@ export abstract class BaseAgent {
     args: Record<string, unknown>,
   ): Promise<unknown>
 
+  /**
+   * Reset agent-specific state before a retry attempt.
+   * Override in subclasses that accumulate state via tool calls.
+   */
+  protected resetForRetry(): void {
+    // No-op by default — subclasses override to clear accumulated state
+  }
+
   /** Max retries for transient API errors (stream drops, rate limits). */
   private static readonly MAX_RETRIES = 3
 
@@ -118,9 +126,13 @@ export abstract class BaseAgent {
           throw err
         }
 
-        // Reset session — a mid-stream failure may leave it in a bad state
-        try { await this.session?.close() } catch { /* best-effort cleanup */ }
+        // Destroy old session — close() + null prevents stale callbacks
+        const staleSession = this.session
         this.session = null
+        try { await staleSession?.close() } catch { /* best-effort cleanup */ }
+
+        // Reset subclass state (e.g. plannedShorts, plannedClips) accumulated during the failed attempt
+        this.resetForRetry()
 
         const delayMs = 2000 * Math.pow(2, attempt - 1) // 2s, 4s, 8s
         logger.warn(`[${this.agentName}] Transient error (attempt ${attempt}/${BaseAgent.MAX_RETRIES}), retrying in ${delayMs / 1000}s: ${message}`)

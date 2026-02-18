@@ -135,6 +135,11 @@ class ShortsAgent extends BaseAgent {
     super('ShortsAgent', SYSTEM_PROMPT, undefined, model)
   }
 
+  protected resetForRetry(): void {
+    this.plannedShorts = []
+    this.isFinalized = false
+  }
+
   protected getTools(): ToolWithHandler[] {
     return [
       {

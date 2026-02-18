@@ -70,6 +70,10 @@ class SilenceRemovalAgent extends BaseAgent {
     super('SilenceRemovalAgent', SYSTEM_PROMPT, undefined, model)
   }
 
+  protected resetForRetry(): void {
+    this.removals = []
+  }
+
   protected getTools(): ToolWithHandler[] {
     return [
       {

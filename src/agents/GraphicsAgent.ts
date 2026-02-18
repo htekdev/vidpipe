@@ -98,6 +98,11 @@ class GraphicsAgent extends BaseAgent {
     super('GraphicsAgent', SYSTEM_PROMPT, undefined, model)
   }
 
+  protected resetForRetry(): void {
+    this.overlays = []
+    this.imageIndex = 0
+  }
+
   setContext(enhancementsDir: string): void {
     this.enhancementsDir = enhancementsDir
   }

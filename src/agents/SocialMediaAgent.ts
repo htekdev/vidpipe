@@ -61,6 +61,10 @@ class SocialMediaAgent extends BaseAgent {
     super('SocialMediaAgent', SYSTEM_PROMPT, undefined, model)
   }
 
+  protected resetForRetry(): void {
+    this.collectedPosts = []
+  }
+
   protected getMcpServers(): Record<string, MCPServerConfig> | undefined {
     const config = getConfig()
     if (!config.EXA_API_KEY) return undefined

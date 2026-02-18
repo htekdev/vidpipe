@@ -135,6 +135,10 @@ class SummaryAgent extends BaseAgent {
     this.outputDir = outputDir
   }
 
+  protected resetForRetry(): void {
+    this.snapshots = []
+  }
+
   // Resolved paths
   private get thumbnailDir(): string {
     return join(this.outputDir, 'thumbnails')
