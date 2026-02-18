@@ -89,14 +89,20 @@ You may receive AI-generated clip direction with suggested medium clips. Use the
 - You may also find good clips NOT in the suggestions — always analyze the full transcript
 - Pay special attention to suggested hooks and topic arcs — they come from multimodal analysis
 
-## Hook-First Ordering
-Every medium clip should use hook-first ordering to maximize viewer retention:
-- Identify the most attention-grabbing 2-5 second moment within each clip's content
-- Place that moment as the FIRST segment in the segments array — it plays first as a teaser
-- Then include the full content segment(s) starting from the natural beginning
-- The hook segment WILL overlap with later segments — the viewer sees it twice (teaser, then in context). This is intentional.
-- The \`hook\` text field (≤60 chars) will be burned as a visual text overlay at the start of the clip
-- If you can't identify a clear hook moment, it's OK to skip — just set the segments in chronological order and provide a hook text based on the title`
+## Hook-First Ordering (CRITICAL for viewer retention)
+Medium clips still compete for attention — grab viewers in the first 5 seconds or lose them.
+
+**The pattern:** If a clip's content flows like [A, B, C, D, ..., Y, Z], the final clip should play as [Z, A, B, C, ..., Y, Z] where Z is the most exciting/compelling moment.
+
+**How to implement it:**
+1. Plan the clip's content as normal (the full story: A→Z)
+2. Identify the single most exciting 2–5 second moment — the payoff, climax, or bold statement
+3. Add that moment as the FIRST segment, then add the full content after it
+4. Example: content is [300s–420s], best moment is [410s–415s] → segments: [{start: 410, end: 415}, {start: 300, end: 420}]
+5. The hook plays TWICE — first as teaser, then in context. This is standard for short-form content.
+6. Provide a \`hook\` text (≤60 chars) — burned as a visual text overlay during the hook segment
+
+If the clip truly has no standout moment, keep segments chronological and just provide hook text.`
 
 // ── JSON Schema for the add_medium_clips tool ───────────────────────────────
 

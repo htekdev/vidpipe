@@ -206,19 +206,24 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
     if (cleaningResult && cleaningResult.success && cleaningResult.removals.length > 0) {
       editedVideoPath = cleaningResult.outputPath
       cleaningKeepSegments = cleaningResult.keepSegments
-      adjustedTranscript = adjustTranscript(transcript, cleaningResult.removals)
 
-      // Validate: check that adjusted transcript duration is close to edited video duration
-      const totalRemoved = cleaningResult.removals.reduce((sum, r) => sum + (r.end - r.start), 0)
-      const expectedDuration = transcript.duration - totalRemoved
-      const adjustedDuration = adjustedTranscript.duration
-      const drift = Math.abs(expectedDuration - adjustedDuration)
-      logger.info(`[Pipeline] Video cleaning: original=${transcript.duration.toFixed(1)}s, removed=${totalRemoved.toFixed(1)}s, expected=${expectedDuration.toFixed(1)}s, adjusted=${adjustedDuration.toFixed(1)}s, drift=${drift.toFixed(1)}s`)
+      // Transcribe the edited video fresh — guaranteed accurate timestamps
+      const editedVideo: VideoFile = { ...video, repoPath: editedVideoPath!, filename: `${video.slug}-edited.mp4` }
+      adjustedTranscript = await runStage<Transcript>(
+        Stage.Transcription,
+        () => transcribeVideo(editedVideo),
+        stageResults,
+      ) ?? undefined
 
-      await writeJsonFile(
-        join(video.videoDir, 'transcript-edited.json'),
-        adjustedTranscript,
-      )
+      if (adjustedTranscript) {
+        const totalRemoved = cleaningResult.removals.reduce((sum, r) => sum + (r.end - r.start), 0)
+        logger.info(`[Pipeline] Video cleaning: original=${transcript.duration.toFixed(1)}s, removed=${totalRemoved.toFixed(1)}s, edited=${adjustedTranscript.duration.toFixed(1)}s`)
+
+        await writeJsonFile(
+          join(video.videoDir, 'transcript-edited.json'),
+          adjustedTranscript,
+        )
+      }
 
       await writeJsonFile(
         join(video.videoDir, 'producer-plan.json'),

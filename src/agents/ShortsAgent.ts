@@ -76,14 +76,26 @@ You may receive AI-generated clip direction with suggested shorts. Use these as 
 - Feel free to adjust timestamps, combine suggestions, or ignore ones that don't work
 - You may also find good shorts NOT in the suggestions — always analyze the full transcript
 
-## Hook-First Ordering
-Every short should use hook-first ordering to maximize viewer retention:
-- Identify the most attention-grabbing 2-5 second moment within each clip's content
-- Place that moment as the FIRST segment in the segments array — it plays first as a teaser
-- Then include the full content segment(s) starting from the natural beginning
-- The hook segment WILL overlap with later segments — the viewer sees it twice (teaser, then in context). This is intentional.
-- Also provide a short \`hook\` text (≤60 chars) — an attention-grabbing phrase for a visual text overlay
-- If you can't identify a clear hook moment, it's OK to skip — just set the segments in chronological order and provide a hook text based on the title`
+## Hook-First Ordering (CRITICAL for viewer retention)
+Shorts are for people with short attention spans — if you don't grab them in the first 5 seconds, you lost them.
+
+**The pattern:** If a short's content flows like [A, B, C, D, ..., Y, Z], the final short should play as [Z, A, B, C, ..., Y, Z] where Z is the most exciting/compelling moment — the climax, punchline, bold claim, or emotional peak.
+
+**How to implement it:**
+1. Plan the short's content as normal (the full story: A→Z)
+2. Identify the single most exciting 2–5 second moment — the part that would make a scroller STOP and watch. This is usually near the end (the payoff), not the beginning (the setup).
+3. Add that moment as the FIRST segment in the segments array, then add the full content after it
+4. Example: content is [120s–150s], best moment is [145s–150s] → segments: [{start: 145, end: 150}, {start: 120, end: 150}]
+5. Yes, the hook plays TWICE — first as a teaser, then in its natural context. This is intentional and standard practice for short-form content.
+6. Provide a \`hook\` text (≤60 chars) — the attention-grabbing phrase shown as text overlay during the hook segment
+
+**What makes a good hook moment:**
+- A bold claim or controversial statement ("You need to STOP doing this")
+- An emotional reaction or exclamation
+- A surprising result or reveal
+- A punchy one-liner that makes no sense without context (creates curiosity)
+
+If the short truly has no standout moment (rare), keep segments chronological and just provide hook text.`
 
 // ── JSON Schema for the add_shorts tool ──────────────────────────────────────
 

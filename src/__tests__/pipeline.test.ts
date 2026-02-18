@@ -480,7 +480,7 @@ describe('processVideo', () => {
     expect(mockProducerProduce).toHaveBeenCalled()
   })
 
-  it('uses adjusted transcript for captions after video cleaning', async () => {
+  it('re-transcribes edited video after cleaning for accurate timestamps', async () => {
     const removals = [{ start: 5, end: 10 }]
     const keepSegments = [{ start: 0, end: 5 }, { start: 10, end: 30 }]
     mockProducerProduce.mockResolvedValue({
@@ -492,13 +492,18 @@ describe('processVideo', () => {
       keepSegments,
     } as ProduceResult)
 
+    const editedTranscript = makeTranscript()
+    editedTranscript.duration = 25
+    mockTranscribeVideo
+      .mockResolvedValueOnce(transcript)       // original
+      .mockResolvedValueOnce(editedTranscript)  // edited
+
     await processVideo('/videos/test.mp4')
 
-    // generateCaptions should be called with the adjusted transcript (shifted timestamps)
-    const captionCall = mockGenerateCaptions.mock.calls[0]
-    const captionTranscript = captionCall[1] as Transcript
-    // The adjusted transcript should have shifted segment 1 from 10→5
-    expect(captionTranscript.segments[1].start).toBe(5)
+    // transcribeVideo should be called twice — once for original, once for edited
+    expect(mockTranscribeVideo).toHaveBeenCalledTimes(2)
+    const secondCall = mockTranscribeVideo.mock.calls[1][0] as VideoFile
+    expect(secondCall.repoPath).toBe('/edited.mp4')
   })
 
   it('uses singlePassEditAndCaption when keepSegments are available', async () => {
