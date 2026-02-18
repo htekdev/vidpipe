@@ -7,7 +7,7 @@ import { burnCaptions } from '../tools/ffmpeg/captionBurning'
 import { generatePlatformVariants, type Platform } from '../tools/ffmpeg/aspectRatio'
 import { generateId } from '../core/text.js'
 import { slugify } from '../core/text.js'
-import { writeTextFile, ensureDirectory } from '../core/fileSystem.js'
+import { writeTextFile, writeJsonFile, ensureDirectory } from '../core/fileSystem.js'
 import { join, dirname } from '../core/paths.js'
 import logger from '../config/logger'
 
@@ -267,6 +267,8 @@ export async function generateShorts(
       logger.warn('[ShortsAgent] No shorts were planned')
       return []
     }
+
+    await writeJsonFile(join(video.videoDir, 'shorts-plan.json'), planned)
 
     const shortsDir = join(dirname(video.repoPath), 'shorts')
     await ensureDirectory(shortsDir)

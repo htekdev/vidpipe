@@ -1,4 +1,5 @@
 import winston from 'winston'
+import { join } from './paths.js'
 
 /**
  * Sanitize user input for logging to prevent log injection attacks.
@@ -17,19 +18,46 @@ export function sanitizeForLog(value: unknown): string {
   })
 }
 
+const LOG_FORMAT = winston.format.combine(
+  winston.format.timestamp(),
+  winston.format.printf(({ timestamp, level, message }) => {
+    return `${timestamp} [${level.toUpperCase()}]: ${message}`
+  })
+)
+
 const logger = winston.createLogger({
   level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.printf(({ timestamp, level, message }) => {
-      return `${timestamp} [${level.toUpperCase()}]: ${message}`
-    })
-  ),
+  format: LOG_FORMAT,
   transports: [new winston.transports.Console()],
 })
 
 export function setVerbose(): void {
   logger.level = 'debug'
+}
+
+// ── Pipe stack ───────────────────────────────────────────────────────────────
+
+const pipeStack: winston.transports.FileTransportInstance[] = []
+
+/**
+ * Push a file transport that pipes all log output to `{folder}/pipeline.log`.
+ * Supports nesting — each pushPipe adds a new file, popPipe removes the most recent.
+ */
+export function pushPipe(folder: string): void {
+  const transport = new winston.transports.File({
+    filename: join(folder, 'pipeline.log'),
+    format: LOG_FORMAT,
+  })
+  pipeStack.push(transport)
+  logger.add(transport)
+}
+
+/** Remove the most recently pushed file transport. */
+export function popPipe(): void {
+  const transport = pipeStack.pop()
+  if (transport) {
+    logger.remove(transport)
+  }
 }
 
 export default logger

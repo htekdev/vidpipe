@@ -61,7 +61,7 @@ const {
 
 // ---- Mock all external dependencies ----
 
-vi.mock('../config/logger.js', () => ({ default: mockLogger }))
+vi.mock('../config/logger.js', () => ({ default: mockLogger, pushPipe: vi.fn(), popPipe: vi.fn() }))
 vi.mock('../config/environment.js', () => ({ getConfig: mockGetConfig }))
 vi.mock('../services/transcription.js', () => ({ transcribeVideo: mockTranscribeVideo }))
 vi.mock('../services/captionGeneration.js', () => ({ generateCaptions: mockGenerateCaptions }))

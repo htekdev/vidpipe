@@ -1,6 +1,6 @@
 import { join, dirname, basename } from './core/paths.js'
 import { ensureDirectory, writeJsonFile, writeTextFile, copyFile, removeFile, fileExists, readTextFile, readJsonFile } from './core/fileSystem.js'
-import logger from './config/logger'
+import logger, { pushPipe, popPipe } from './config/logger'
 import { getConfig } from './config/environment'
 import { MainVideoAsset } from './assets/MainVideoAsset.js'
 import { transcribeVideo } from './services/transcription'
@@ -176,6 +176,8 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   // Convert to VideoFile for backward compatibility with existing agents/services
   const video = await videoAsset.toVideoFile()
 
+  pushPipe(video.videoDir)
+  try {
   // 2. Transcription
   let transcript: Transcript | undefined
   transcript = await runStage<Transcript>(Stage.Transcription, () => transcribeVideo(video), stageResults)
@@ -216,6 +218,11 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
       await writeJsonFile(
         join(video.videoDir, 'transcript-edited.json'),
         adjustedTranscript,
+      )
+
+      await writeJsonFile(
+        join(video.videoDir, 'producer-plan.json'),
+        { removals: cleaningResult.removals, keepSegments: cleaningResult.keepSegments, editCount: cleaningResult.editCount },
       )
     }
   }
@@ -462,6 +469,9 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
     blogPost,
     stageResults,
     totalDuration,
+  }
+  } finally {
+    popPipe()
   }
 }
 

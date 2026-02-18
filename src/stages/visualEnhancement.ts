@@ -2,7 +2,7 @@ import { analyzeVideoForEnhancements } from '../tools/gemini/geminiClient.js'
 import { generateEnhancementImages } from '../agents/GraphicsAgent.js'
 import { compositeOverlays } from '../tools/ffmpeg/overlayCompositing.js'
 import { getModelForAgent } from '../config/modelConfig.js'
-import { ensureDirectory } from '../core/fileSystem.js'
+import { ensureDirectory, writeJsonFile } from '../core/fileSystem.js'
 import { join } from '../core/paths.js'
 import logger from '../config/logger.js'
 import type { VideoFile, Transcript, VisualEnhancementResult } from '../types/index.js'
@@ -57,6 +57,8 @@ export async function enhanceVideo(
   }
 
   logger.info(`[VisualEnhancement] Generated ${overlays.length} enhancement images`)
+
+  await writeJsonFile(join(video.videoDir, 'enhancements-plan.json'), overlays)
 
   // Step 3: Composite overlays onto video
   logger.info('[VisualEnhancement] Step 3: Compositing overlays onto video...')

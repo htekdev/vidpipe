@@ -6,7 +6,7 @@ import { generateStyledASSForSegment, generateStyledASSForComposite, generateMed
 import { burnCaptions } from '../tools/ffmpeg/captionBurning'
 import { generateId } from '../core/text.js'
 import { slugify } from '../core/text.js'
-import { writeTextFile, ensureDirectory } from '../core/fileSystem.js'
+import { writeTextFile, writeJsonFile, ensureDirectory } from '../core/fileSystem.js'
 import { join, dirname } from '../core/paths.js'
 import logger from '../config/logger'
 
@@ -281,6 +281,8 @@ export async function generateMediumClips(
       logger.warn('[MediumVideoAgent] No medium clips were planned')
       return []
     }
+
+    await writeJsonFile(join(video.videoDir, 'medium-clips-plan.json'), planned)
 
     const clipsDir = join(dirname(video.repoPath), 'medium-clips')
     await ensureDirectory(clipsDir)
