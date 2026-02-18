@@ -8,9 +8,26 @@ vi.mock('../config/logger.js', () => ({
 }))
 
 // Mock scheduleConfig
+let lastMockConfig: Record<string, unknown> | null = null
 const mockLoadScheduleConfig = vi.fn()
 vi.mock('../services/scheduleConfig.js', () => ({
-  loadScheduleConfig: (...args: unknown[]) => mockLoadScheduleConfig(...args),
+  loadScheduleConfig: async (...args: unknown[]) => {
+    const config = await mockLoadScheduleConfig(...args)
+    lastMockConfig = config
+    return config
+  },
+  getPlatformSchedule: (platform: string, clipType?: string) => {
+    if (!lastMockConfig?.platforms) return null
+    const platforms = lastMockConfig.platforms as Record<string, any>
+    const schedule = platforms[platform] ?? null
+    if (!schedule) return null
+    if (clipType && schedule.byClipType?.[clipType]) {
+      const sub = schedule.byClipType[clipType]
+      return { slots: sub.slots, avoidDays: sub.avoidDays }
+    }
+    return schedule
+  },
+  clearScheduleCache: vi.fn(),
 }))
 
 // Mock postStore
@@ -56,6 +73,7 @@ function makeScheduleConfig(overrides: Record<string, unknown> = {}) {
 describe('scheduler', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    lastMockConfig = null
     mockGetPublishedItems.mockResolvedValue([])
     mockGetScheduledPosts.mockResolvedValue([])
   })
@@ -295,11 +313,138 @@ describe('scheduler', () => {
     const sameSlot = await findNextSlot('twitter')
     expect(sameSlot).toBe(firstSlot)
   })
+
+  it('picks from correct clip-type sub-schedule', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-02-09T12:00:00Z')) // Monday
+
+    mockLoadScheduleConfig.mockResolvedValue({
+      timezone: 'UTC',
+      platforms: {
+        linkedin: {
+          slots: [{ days: ['tue'], time: '08:00', label: 'Default morning' }],
+          avoidDays: [],
+          byClipType: {
+            short: {
+              slots: [{ days: ['tue'], time: '15:00', label: 'Afternoon shorts' }],
+              avoidDays: [],
+            },
+            video: {
+              slots: [{ days: ['tue'], time: '09:00', label: 'Morning video' }],
+              avoidDays: [],
+            },
+          },
+        },
+      },
+    })
+
+    const slot = await findNextSlot('linkedin', 'short')
+    expect(slot).toBeTruthy()
+    expect(slot).toMatch(/T15:00:00/)
+
+    vi.useRealTimers()
+  })
+
+  it('findNextSlot without clipType falls back to legacy schedule', async () => {
+    mockLoadScheduleConfig.mockResolvedValue(makeScheduleConfig())
+
+    const slot = await findNextSlot('twitter')
+    expect(slot).toBeTruthy()
+    expect(slot).toMatch(/T(08:30|17:00):00/)
+  })
+
+  it('collision detection works across clip types', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-02-09T12:00:00Z')) // Monday
+
+    const config = {
+      timezone: 'UTC',
+      platforms: {
+        linkedin: {
+          slots: [],
+          avoidDays: [] as string[],
+          byClipType: {
+            short: {
+              slots: [{ days: ['tue'], time: '09:00', label: 'Short morning' }],
+              avoidDays: [],
+            },
+            video: {
+              slots: [{ days: ['tue'], time: '09:00', label: 'Video morning' }],
+              avoidDays: [],
+            },
+          },
+        },
+      },
+    }
+    mockLoadScheduleConfig.mockResolvedValue(config)
+
+    // Book the 09:00 slot via short
+    const firstSlot = await findNextSlot('linkedin', 'short')
+    expect(firstSlot).toBeTruthy()
+    expect(firstSlot).toMatch(/T09:00:00/)
+
+    // Now mark that slot as booked — video should not get the same slot
+    vi.clearAllMocks()
+    mockGetPublishedItems.mockResolvedValue([])
+    mockLoadScheduleConfig.mockResolvedValue(config)
+    mockGetScheduledPosts.mockResolvedValue([
+      {
+        _id: 'booked-short',
+        content: 'short clip',
+        status: 'scheduled',
+        platforms: [{ platform: 'linkedin', accountId: 'acct-1' }],
+        scheduledFor: firstSlot,
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      },
+    ])
+
+    const videoSlot = await findNextSlot('linkedin', 'video')
+    expect(videoSlot).toBeTruthy()
+    // Booked slot at 09:00 blocks both clip types on that datetime
+    expect(videoSlot).not.toBe(firstSlot)
+
+    vi.useRealTimers()
+  })
+
+  it('shorts do not get scheduled in video-only slots', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-02-09T12:00:00Z')) // Monday
+
+    mockLoadScheduleConfig.mockResolvedValue({
+      timezone: 'UTC',
+      platforms: {
+        linkedin: {
+          slots: [],
+          avoidDays: [] as string[],
+          byClipType: {
+            video: {
+              slots: [{ days: ['tue'], time: '09:00', label: 'Video morning' }],
+              avoidDays: [],
+            },
+            short: {
+              slots: [{ days: ['tue'], time: '15:00', label: 'Short afternoon' }],
+              avoidDays: [],
+            },
+          },
+        },
+      },
+    })
+
+    const slot = await findNextSlot('linkedin', 'short')
+    expect(slot).toBeTruthy()
+    // Must pick the short-specific 15:00 slot, NOT the video-only 09:00 slot
+    expect(slot).toMatch(/T15:00:00/)
+    expect(slot).not.toMatch(/T09:00:00/)
+
+    vi.useRealTimers()
+  })
 })
 
 describe('getScheduleCalendar', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    lastMockConfig = null
     mockGetPublishedItems.mockResolvedValue([])
     mockGetScheduledPosts.mockResolvedValue([])
   })

@@ -32,7 +32,7 @@ export interface MediaRule {
  * | Platform  | video (main)        | short                | medium-clip         |
  * |-----------|---------------------|----------------------|---------------------|
  * | YouTube   | original, captioned | 9:16 portrait        | original, captioned |
- * | LinkedIn  | —                   | —                    | original, captioned |
+ * | LinkedIn  | original, captioned | original, captioned  | original, captioned |
  * | TikTok    | —                   | 9:16 portrait        | —                   |
  * | Instagram | —                   | 9:16 reels + 4:5 feed| original, captioned |
  * | X/Twitter | —                   | original, captioned  | —                   |
@@ -48,6 +48,7 @@ const CONTENT_MATRIX: Record<Platform, Partial<Record<ClipType, MediaRule>>> = {
   },
   [Platform.LinkedIn]: {
     video:          { captions: true, variantKey: null },
+    short:          { captions: true, variantKey: null },
     'medium-clip':  { captions: true, variantKey: null },
   },
   [Platform.TikTok]: {

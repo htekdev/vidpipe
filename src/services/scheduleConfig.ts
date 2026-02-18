@@ -10,9 +10,15 @@ export interface TimeSlot {
   label: string
 }
 
+export interface ClipTypeSchedule {
+  slots: TimeSlot[]
+  avoidDays: DayOfWeek[]
+}
+
 export interface PlatformSchedule {
   slots: TimeSlot[]
   avoidDays: DayOfWeek[]
+  byClipType?: Record<string, ClipTypeSchedule>
 }
 
 export interface ScheduleConfig {
@@ -69,6 +75,97 @@ export function getDefaultScheduleConfig(): ScheduleConfig {
   }
 }
 
+function validateSlots(slots: unknown[], context: string): TimeSlot[] {
+  const validatedSlots: TimeSlot[] = []
+  for (let i = 0; i < slots.length; i++) {
+    const slot = slots[i] as Record<string, unknown>
+
+    if (!Array.isArray(slot.days) || slot.days.length === 0) {
+      throw new Error(`${context} slot ${i} must have a non-empty "days" array`)
+    }
+
+    for (const day of slot.days) {
+      if (!VALID_DAYS.includes(day as DayOfWeek)) {
+        throw new Error(`${context} slot ${i} has invalid day "${day}". Valid: ${VALID_DAYS.join(', ')}`)
+      }
+    }
+
+    if (typeof slot.time !== 'string' || !TIME_REGEX.test(slot.time)) {
+      throw new Error(`${context} slot ${i} "time" must match HH:MM format (00:00–23:59)`)
+    }
+
+    if (typeof slot.label !== 'string' || slot.label.trim() === '') {
+      throw new Error(`${context} slot ${i} must have a non-empty "label" string`)
+    }
+
+    validatedSlots.push({
+      days: slot.days as DayOfWeek[],
+      time: slot.time,
+      label: slot.label,
+    })
+  }
+  return validatedSlots
+}
+
+function validateAvoidDays(avoidDays: unknown[], context: string): DayOfWeek[] {
+  for (const day of avoidDays) {
+    if (!VALID_DAYS.includes(day as DayOfWeek)) {
+      throw new Error(`${context} avoidDays contains invalid day "${day}". Valid: ${VALID_DAYS.join(', ')}`)
+    }
+  }
+  return avoidDays as DayOfWeek[]
+}
+
+function validateByClipType(byClipType: Record<string, unknown>, platformName: string): Record<string, ClipTypeSchedule> {
+  const validated: Record<string, ClipTypeSchedule> = {}
+
+  for (const [clipType, value] of Object.entries(byClipType)) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      throw new Error(`Platform "${platformName}" byClipType "${clipType}" must be an object`)
+    }
+
+    const sub = value as Record<string, unknown>
+
+    if (!Array.isArray(sub.slots)) {
+      throw new Error(`Platform "${platformName}" byClipType "${clipType}" must have a "slots" array`)
+    }
+
+    const rawAvoidDays = Array.isArray(sub.avoidDays) ? sub.avoidDays : []
+
+    validated[clipType] = {
+      slots: validateSlots(sub.slots, `Platform "${platformName}" byClipType "${clipType}"`),
+      avoidDays: validateAvoidDays(rawAvoidDays, `Platform "${platformName}" byClipType "${clipType}"`),
+    }
+  }
+
+  // Check for overlapping (day, time) pairs across clip types
+  const clipTypes = Object.keys(validated)
+  for (let a = 0; a < clipTypes.length; a++) {
+    const aSlots = validated[clipTypes[a]]
+    const aTimeDays = new Set<string>()
+    for (const slot of aSlots.slots) {
+      for (const day of slot.days) {
+        aTimeDays.add(`${day}@${slot.time}`)
+      }
+    }
+
+    for (let b = a + 1; b < clipTypes.length; b++) {
+      const bSlots = validated[clipTypes[b]]
+      for (const slot of bSlots.slots) {
+        for (const day of slot.days) {
+          if (aTimeDays.has(`${day}@${slot.time}`)) {
+            logger.warn(
+              `Platform "${platformName}": clip types "${clipTypes[a]}" and "${clipTypes[b]}" have overlapping slot (${day}, ${slot.time})`
+            )
+          }
+        }
+      }
+    }
+  }
+
+  return validated
+}
+
 export function validateScheduleConfig(config: unknown): ScheduleConfig {
   if (!config || typeof config !== 'object') {
     throw new Error('Schedule config must be a non-null object')
@@ -96,54 +193,38 @@ export function validateScheduleConfig(config: unknown): ScheduleConfig {
     }
 
     const plat = value as Record<string, unknown>
+    const hasByClipType = plat.byClipType && typeof plat.byClipType === 'object' && !Array.isArray(plat.byClipType)
 
-    if (!Array.isArray(plat.slots)) {
-      throw new Error(`Platform "${name}" must have a "slots" array`)
-    }
+    // When byClipType is present, flat slots/avoidDays are optional defaults
+    const hasSlots = Array.isArray(plat.slots)
+    const hasAvoidDays = Array.isArray(plat.avoidDays)
 
-    if (!Array.isArray(plat.avoidDays)) {
-      throw new Error(`Platform "${name}" must have an "avoidDays" array`)
-    }
-
-    for (const day of plat.avoidDays) {
-      if (!VALID_DAYS.includes(day as DayOfWeek)) {
-        throw new Error(`Platform "${name}" avoidDays contains invalid day "${day}". Valid: ${VALID_DAYS.join(', ')}`)
+    if (!hasByClipType) {
+      if (!hasSlots) {
+        throw new Error(`Platform "${name}" must have a "slots" array`)
+      }
+      if (!hasAvoidDays) {
+        throw new Error(`Platform "${name}" must have an "avoidDays" array`)
       }
     }
 
-    const validatedSlots: TimeSlot[] = []
-    for (let i = 0; i < plat.slots.length; i++) {
-      const slot = plat.slots[i] as Record<string, unknown>
+    const validatedSlots = hasSlots
+      ? validateSlots(plat.slots as unknown[], `Platform "${name}"`)
+      : []
+    const validatedAvoidDays = hasAvoidDays
+      ? validateAvoidDays(plat.avoidDays as unknown[], `Platform "${name}"`)
+      : []
 
-      if (!Array.isArray(slot.days) || slot.days.length === 0) {
-        throw new Error(`Platform "${name}" slot ${i} must have a non-empty "days" array`)
-      }
-
-      for (const day of slot.days) {
-        if (!VALID_DAYS.includes(day as DayOfWeek)) {
-          throw new Error(`Platform "${name}" slot ${i} has invalid day "${day}". Valid: ${VALID_DAYS.join(', ')}`)
-        }
-      }
-
-      if (typeof slot.time !== 'string' || !TIME_REGEX.test(slot.time)) {
-        throw new Error(`Platform "${name}" slot ${i} "time" must match HH:MM format (00:00–23:59)`)
-      }
-
-      if (typeof slot.label !== 'string' || slot.label.trim() === '') {
-        throw new Error(`Platform "${name}" slot ${i} must have a non-empty "label" string`)
-      }
-
-      validatedSlots.push({
-        days: slot.days as DayOfWeek[],
-        time: slot.time,
-        label: slot.label,
-      })
-    }
-
-    validated.platforms[name] = {
+    const result: PlatformSchedule = {
       slots: validatedSlots,
-      avoidDays: plat.avoidDays as DayOfWeek[],
+      avoidDays: validatedAvoidDays,
     }
+
+    if (hasByClipType) {
+      result.byClipType = validateByClipType(plat.byClipType as Record<string, unknown>, name)
+    }
+
+    validated.platforms[name] = result
   }
 
   return validated
@@ -188,9 +269,20 @@ export async function loadScheduleConfig(configPath?: string): Promise<ScheduleC
   return cachedConfig
 }
 
-export function getPlatformSchedule(platform: string): PlatformSchedule | null {
+export function getPlatformSchedule(platform: string, clipType?: string): PlatformSchedule | null {
   if (!cachedConfig) return null
-  return cachedConfig.platforms[platform] ?? null
+  const schedule = cachedConfig.platforms[platform] ?? null
+  if (!schedule) return null
+
+  if (clipType && schedule.byClipType?.[clipType]) {
+    const sub = schedule.byClipType[clipType]
+    return {
+      slots: sub.slots,
+      avoidDays: sub.avoidDays,
+    }
+  }
+
+  return schedule
 }
 
 export function clearScheduleCache(): void {

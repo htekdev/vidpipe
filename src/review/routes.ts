@@ -85,7 +85,7 @@ export function createRouter(): Router {
       const latePlatform = normalizePlatformString(item.metadata.platform)
 
       // 1. Find next available slot
-      const slot = await findNextSlot(latePlatform)
+      const slot = await findNextSlot(latePlatform, item.metadata.clipType)
       if (!slot) return res.status(409).json({ error: 'No available schedule slots in the current scheduling window' })
 
       // 2. Resolve account ID
@@ -162,68 +162,93 @@ export function createRouter(): Router {
         const schedConfig = await loadScheduleConfig()
         const publishDataMap = new Map<string, { latePostId: string; scheduledFor: string; publishedUrl?: string; accountId?: string }>()
 
+        const rateLimitedPlatforms = new Set<string>()
+
         for (const itemId of itemIds) {
-          const item = await getItem(itemId)
-          if (!item) {
-            logger.warn(`Bulk approve: item ${String(itemId).replace(/[\r\n]/g, '')} not found`)
-            continue
-          }
+          try {
+            const item = await getItem(itemId)
+            if (!item) {
+              logger.warn(`Bulk approve: item ${String(itemId).replace(/[\r\n]/g, '')} not found`)
+              continue
+            }
 
-          const latePlatform = normalizePlatformString(item.metadata.platform)
+            const latePlatform = normalizePlatformString(item.metadata.platform)
 
-          const slot = await findNextSlot(latePlatform)
-          if (!slot) {
-            logger.warn(`Bulk approve: no slot available for ${latePlatform}`)
-            continue
-          }
+            // Skip platforms that already hit their daily limit
+            if (rateLimitedPlatforms.has(latePlatform)) {
+              logger.warn(`Bulk approve: skipping ${String(itemId).replace(/[\r\n]/g, '')} — ${latePlatform} is rate-limited`)
+              continue
+            }
 
-          const platform = fromLatePlatform(latePlatform)
-          const accountId = item.metadata.accountId || await getAccountId(platform)
-          if (!accountId) {
-            logger.warn(`Bulk approve: no account connected for ${latePlatform}`)
-            continue
-          }
+            const slot = await findNextSlot(latePlatform, item.metadata.clipType)
+            if (!slot) {
+              logger.warn(`Bulk approve: no slot available for ${latePlatform}`)
+              continue
+            }
 
-          let mediaItems: Array<{ type: 'image' | 'video'; url: string }> | undefined
-          const effectiveMediaPath = item.mediaPath ?? item.metadata.sourceMediaPath
-          if (effectiveMediaPath) {
-            const mediaExists = await fileExists(effectiveMediaPath)
-            if (mediaExists) {
-              const upload = await client.uploadMedia(effectiveMediaPath)
-              mediaItems = [{ type: upload.type, url: upload.url }]
+            const platform = fromLatePlatform(latePlatform)
+            const accountId = item.metadata.accountId || await getAccountId(platform)
+            if (!accountId) {
+              logger.warn(`Bulk approve: no account connected for ${latePlatform}`)
+              continue
+            }
+
+            let mediaItems: Array<{ type: 'image' | 'video'; url: string }> | undefined
+            const effectiveMediaPath = item.mediaPath ?? item.metadata.sourceMediaPath
+            if (effectiveMediaPath) {
+              const mediaExists = await fileExists(effectiveMediaPath)
+              if (mediaExists) {
+                const upload = await client.uploadMedia(effectiveMediaPath)
+                mediaItems = [{ type: upload.type, url: upload.url }]
+              }
+            }
+
+            const isTikTok = latePlatform === 'tiktok'
+            const tiktokSettings = isTikTok ? {
+              privacy_level: 'PUBLIC_TO_EVERYONE',
+              allow_comment: true,
+              allow_duet: true,
+              allow_stitch: true,
+              content_preview_confirmed: true,
+              express_consent_given: true,
+            } : undefined
+
+            const latePost = await client.createPost({
+              content: item.postContent,
+              platforms: [{ platform: latePlatform, accountId }],
+              scheduledFor: slot,
+              timezone: schedConfig.timezone,
+              mediaItems,
+              platformSpecificData: item.metadata.platformSpecificData,
+              tiktokSettings,
+            })
+
+            publishDataMap.set(itemId, {
+              latePostId: latePost._id,
+              scheduledFor: slot,
+              publishedUrl: undefined,
+              accountId,
+            })
+          } catch (itemErr) {
+            const itemMsg = itemErr instanceof Error ? itemErr.message : String(itemErr)
+            const latePlatform = normalizePlatformString((await getItem(itemId))?.metadata.platform ?? '')
+            if (itemMsg.includes('429') || itemMsg.includes('Daily post limit')) {
+              rateLimitedPlatforms.add(latePlatform)
+              logger.warn(`Bulk approve: ${latePlatform} hit daily post limit, skipping remaining ${latePlatform} items`)
+            } else {
+              logger.error(`Bulk approve: failed for ${String(itemId).replace(/[\r\n]/g, '')}: ${String(itemMsg).replace(/[\r\n]/g, '')}`)
             }
           }
-
-          const isTikTok = latePlatform === 'tiktok'
-          const tiktokSettings = isTikTok ? {
-            privacy_level: 'PUBLIC_TO_EVERYONE',
-            allow_comment: true,
-            allow_duet: true,
-            allow_stitch: true,
-            content_preview_confirmed: true,
-            express_consent_given: true,
-          } : undefined
-
-          const latePost = await client.createPost({
-            content: item.postContent,
-            platforms: [{ platform: latePlatform, accountId }],
-            scheduledFor: slot,
-            timezone: schedConfig.timezone,
-            mediaItems,
-            platformSpecificData: item.metadata.platformSpecificData,
-            tiktokSettings,
-          })
-
-          publishDataMap.set(itemId, {
-            latePostId: latePost._id,
-            scheduledFor: slot,
-            publishedUrl: undefined,
-            accountId,
-          })
         }
 
-        const results = await approveBulk(itemIds, publishDataMap)
-        logger.info(`Bulk approve completed: ${results.length} of ${itemIds.length} scheduled`)
+        // Approve all items that were successfully posted (even if some failed)
+        const successIds = itemIds.filter(id => publishDataMap.has(id))
+        if (successIds.length > 0) {
+          const results = await approveBulk(successIds, publishDataMap)
+          logger.info(`Bulk approve completed: ${results.length} of ${itemIds.length} scheduled (${rateLimitedPlatforms.size > 0 ? `rate-limited: ${[...rateLimitedPlatforms].join(', ')}` : 'no rate limits hit'})`)
+        } else {
+          logger.warn(`Bulk approve: 0 of ${itemIds.length} items scheduled (${rateLimitedPlatforms.size > 0 ? `rate-limited: ${[...rateLimitedPlatforms].join(', ')}` : 'all failed'})`)
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
         logger.error(`Bulk approve background failed: ${String(msg).replace(/[\r\n]/g, '')}`)
@@ -295,7 +320,8 @@ export function createRouter(): Router {
   router.get('/api/schedule/next-slot/:platform', async (req, res) => {
     try {
       const normalized = normalizePlatformString(req.params.platform)
-      const slot = await findNextSlot(normalized)
+      const clipType = typeof req.query.clipType === 'string' ? req.query.clipType : undefined
+      const slot = await findNextSlot(normalized, clipType)
       res.json({ platform: normalized, nextSlot: slot })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

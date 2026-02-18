@@ -22,9 +22,11 @@ describe('platformContentStrategy', () => {
       expect(rule!.variantKey).toBe('tiktok');
     });
 
-    it('returns null for LinkedIn + short (not in matrix)', () => {
+    it('returns media rule for LinkedIn + short', () => {
       const rule = getMediaRule(Platform.LinkedIn, 'short');
-      expect(rule).toBeNull();
+      expect(rule).not.toBeNull();
+      expect(rule!.captions).toBe(true);
+      expect(rule!.variantKey).toBeNull();
     });
 
     it('returns null for TikTok + video (not in matrix)', () => {
@@ -62,8 +64,8 @@ describe('platformContentStrategy', () => {
       expect(platformAcceptsMedia(Platform.YouTube, 'video')).toBe(true);
     });
 
-    it('returns false for LinkedIn + short', () => {
-      expect(platformAcceptsMedia(Platform.LinkedIn, 'short')).toBe(false);
+    it('returns true for LinkedIn + short', () => {
+      expect(platformAcceptsMedia(Platform.LinkedIn, 'short')).toBe(true);
     });
 
     it('returns true for TikTok + short', () => {

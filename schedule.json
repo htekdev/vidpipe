@@ -2,79 +2,1605 @@
   "timezone": "America/Chicago",
   "platforms": {
     "linkedin": {
-      "slots": [
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "07:00", "label": "Early morning professional" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "09:30", "label": "Mid-morning engagement" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "12:00", "label": "Lunch break thought leadership" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "14:30", "label": "Afternoon insight" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "17:00", "label": "End of workday wind-down" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "19:30", "label": "Evening professional reading" },
-        { "days": ["sat", "sun"], "time": "08:00", "label": "Weekend morning catch-up" },
-        { "days": ["sat", "sun"], "time": "11:30", "label": "Weekend late morning" },
-        { "days": ["sat", "sun"], "time": "15:00", "label": "Weekend afternoon browse" },
-        { "days": ["sat", "sun"], "time": "18:30", "label": "Weekend evening wind-down" }
-      ],
-      "avoidDays": []
+      "slots": [],
+      "avoidDays": [],
+      "byClipType": {
+        "short": {
+          "slots": [
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri"
+              ],
+              "time": "08:15",
+              "label": "Morning commute insight"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri"
+              ],
+              "time": "10:45",
+              "label": "Late morning thought piece"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri"
+              ],
+              "time": "13:15",
+              "label": "Post-lunch professional"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri"
+              ],
+              "time": "15:45",
+              "label": "Mid-afternoon engagement"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri"
+              ],
+              "time": "19:30",
+              "label": "Evening professional reading"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri"
+              ],
+              "time": "21:00",
+              "label": "Night professional catch-up"
+            },
+            {
+              "days": [
+                "sat",
+                "sun"
+              ],
+              "time": "09:45",
+              "label": "Weekend mid-morning browse"
+            },
+            {
+              "days": [
+                "sat",
+                "sun"
+              ],
+              "time": "13:15",
+              "label": "Weekend early afternoon"
+            },
+            {
+              "days": [
+                "sat",
+                "sun"
+              ],
+              "time": "16:45",
+              "label": "Weekend late afternoon"
+            },
+            {
+              "days": [
+                "sat",
+                "sun"
+              ],
+              "time": "20:00",
+              "label": "Weekend night reading"
+            }
+          ],
+          "avoidDays": []
+        },
+        "medium-clip": {
+          "slots": [
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri"
+              ],
+              "time": "09:30",
+              "label": "Mid-morning engagement"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri"
+              ],
+              "time": "14:30",
+              "label": "Afternoon insight"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri"
+              ],
+              "time": "18:15",
+              "label": "Early evening leadership"
+            },
+            {
+              "days": [
+                "sat",
+                "sun"
+              ],
+              "time": "11:30",
+              "label": "Weekend late morning"
+            },
+            {
+              "days": [
+                "sat",
+                "sun"
+              ],
+              "time": "15:00",
+              "label": "Weekend afternoon browse"
+            }
+          ],
+          "avoidDays": []
+        },
+        "video": {
+          "slots": [
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri"
+              ],
+              "time": "07:00",
+              "label": "Early morning professional"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri"
+              ],
+              "time": "12:00",
+              "label": "Lunch break thought leadership"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri"
+              ],
+              "time": "17:00",
+              "label": "End of workday wind-down"
+            },
+            {
+              "days": [
+                "sat",
+                "sun"
+              ],
+              "time": "08:00",
+              "label": "Weekend morning catch-up"
+            },
+            {
+              "days": [
+                "sat",
+                "sun"
+              ],
+              "time": "18:30",
+              "label": "Weekend evening wind-down"
+            }
+          ],
+          "avoidDays": []
+        }
+      }
     },
     "tiktok": {
-      "slots": [
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "06:30", "label": "Early morning scroll" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "09:00", "label": "Mid-morning break" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "11:30", "label": "Pre-lunch entertainment" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "14:00", "label": "Afternoon slump scroll" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "17:30", "label": "Commute entertainment" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "20:00", "label": "Prime evening entertainment" },
-        { "days": ["sat", "sun"], "time": "09:00", "label": "Weekend morning binge" },
-        { "days": ["sat", "sun"], "time": "12:30", "label": "Weekend midday scroll" },
-        { "days": ["sat", "sun"], "time": "16:00", "label": "Weekend afternoon chill" },
-        { "days": ["sat", "sun"], "time": "20:30", "label": "Weekend night entertainment" }
-      ],
-      "avoidDays": []
+      "slots": [],
+      "avoidDays": [],
+      "byClipType": {
+        "short": {
+          "slots": [
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "06:00",
+              "label": "Early morning scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "06:35",
+              "label": "Dawn engagement"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "07:45",
+              "label": "Morning routine watch"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "08:20",
+              "label": "Breakfast scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "08:55",
+              "label": "Mid-morning break"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "10:05",
+              "label": "Late morning scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "10:40",
+              "label": "Snack break watch"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "11:15",
+              "label": "Pre-lunch entertainment"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "11:50",
+              "label": "Midday scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "13:00",
+              "label": "Post-lunch entertainment"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "13:35",
+              "label": "Early afternoon scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "14:10",
+              "label": "Afternoon slump scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "14:45",
+              "label": "Mid-afternoon watch"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "15:20",
+              "label": "Afternoon break"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "15:55",
+              "label": "Late afternoon scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "16:30",
+              "label": "Pre-dinner scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "17:40",
+              "label": "Early evening scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "18:15",
+              "label": "Dinner scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "18:50",
+              "label": "Evening entertainment"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "19:25",
+              "label": "Prime evening scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "20:35",
+              "label": "Late evening watch"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "21:10",
+              "label": "Night scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "21:45",
+              "label": "Late night binge"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "22:20",
+              "label": "Night owl scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "22:55",
+              "label": "Late night entertainment"
+            }
+          ],
+          "avoidDays": []
+        },
+        "medium-clip": {
+          "slots": [
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "09:30",
+              "label": "Morning discovery"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "12:25",
+              "label": "Lunch scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "17:05",
+              "label": "Commute entertainment"
+            }
+          ],
+          "avoidDays": []
+        },
+        "video": {
+          "slots": [
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "07:10",
+              "label": "Morning commute scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "20:00",
+              "label": "Peak entertainment"
+            }
+          ],
+          "avoidDays": []
+        }
+      }
     },
     "instagram": {
-      "slots": [
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "07:30", "label": "Morning feed scroll" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "10:00", "label": "Mid-morning inspiration" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "12:30", "label": "Lunch break browse" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "15:00", "label": "Afternoon discovery" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "18:00", "label": "Evening couch time" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "20:30", "label": "Late evening scroll" },
-        { "days": ["sat", "sun"], "time": "09:30", "label": "Weekend morning scroll" },
-        { "days": ["sat", "sun"], "time": "13:00", "label": "Weekend afternoon browse" },
-        { "days": ["sat", "sun"], "time": "16:30", "label": "Weekend late afternoon" },
-        { "days": ["sat", "sun"], "time": "19:30", "label": "Weekend evening wind-down" }
-      ],
-      "avoidDays": []
+      "slots": [],
+      "avoidDays": [],
+      "byClipType": {
+        "short": {
+          "slots": [
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "06:30",
+              "label": "Early morning scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "07:25",
+              "label": "Morning commute browse"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "09:15",
+              "label": "Mid-morning discovery"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "10:10",
+              "label": "Late morning scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "11:05",
+              "label": "Pre-lunch browse"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "12:55",
+              "label": "Post-lunch scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "13:50",
+              "label": "Early afternoon inspiration"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "14:45",
+              "label": "Mid-afternoon discovery"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "15:40",
+              "label": "Afternoon browse"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "16:35",
+              "label": "Late afternoon scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "18:25",
+              "label": "Dinner scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "20:15",
+              "label": "Prime evening browse"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "21:10",
+              "label": "Late evening scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "22:05",
+              "label": "Night wind-down scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "23:00",
+              "label": "Night owl browse"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "23:55",
+              "label": "Late night scroll"
+            }
+          ],
+          "avoidDays": []
+        },
+        "medium-clip": {
+          "slots": [
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "12:00",
+              "label": "Lunch break browse"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "17:30",
+              "label": "Early evening browse"
+            }
+          ],
+          "avoidDays": []
+        },
+        "video": {
+          "slots": [
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "08:20",
+              "label": "Breakfast inspiration"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "19:20",
+              "label": "Evening feed scroll"
+            }
+          ],
+          "avoidDays": []
+        }
+      }
     },
     "youtube": {
-      "slots": [
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "08:00", "label": "Morning commute watch" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "10:30", "label": "Mid-morning discovery" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "13:00", "label": "Lunch viewing" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "15:30", "label": "Afternoon discovery" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "18:30", "label": "Evening viewing" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "21:00", "label": "Prime night viewing" },
-        { "days": ["sat", "sun"], "time": "10:00", "label": "Weekend morning viewing" },
-        { "days": ["sat", "sun"], "time": "13:30", "label": "Weekend afternoon binge" },
-        { "days": ["sat", "sun"], "time": "17:00", "label": "Weekend late afternoon" },
-        { "days": ["sat", "sun"], "time": "21:00", "label": "Weekend evening binge" }
-      ],
-      "avoidDays": []
+      "slots": [],
+      "avoidDays": [],
+      "byClipType": {
+        "short": {
+          "slots": [
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "06:00",
+              "label": "Early morning watch"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "06:35",
+              "label": "Dawn viewing"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "07:45",
+              "label": "Morning coffee viewing"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "08:20",
+              "label": "Breakfast viewing"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "08:55",
+              "label": "Mid-morning discovery"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "10:05",
+              "label": "Late morning watch"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "10:40",
+              "label": "Snack break viewing"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "11:15",
+              "label": "Pre-lunch watch"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "11:50",
+              "label": "Midday viewing"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "13:00",
+              "label": "Post-lunch watch"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "13:35",
+              "label": "Early afternoon viewing"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "14:10",
+              "label": "Afternoon discovery"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "14:45",
+              "label": "Mid-afternoon watch"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "15:20",
+              "label": "Afternoon learning"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "15:55",
+              "label": "Late afternoon viewing"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "16:30",
+              "label": "Pre-dinner watch"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "17:40",
+              "label": "Early evening watch"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "18:15",
+              "label": "Dinner viewing"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "18:50",
+              "label": "Evening entertainment"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "20:00",
+              "label": "Peak viewing"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "20:35",
+              "label": "Late evening watch"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "21:10",
+              "label": "Night viewing"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "21:45",
+              "label": "Late night binge"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "22:20",
+              "label": "Night owl viewing"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "22:55",
+              "label": "Late night watch"
+            }
+          ],
+          "avoidDays": []
+        },
+        "medium-clip": {
+          "slots": [
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "09:30",
+              "label": "Morning learning"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "12:25",
+              "label": "Lunch viewing"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "17:05",
+              "label": "End of day viewing"
+            }
+          ],
+          "avoidDays": []
+        },
+        "video": {
+          "slots": [
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "07:10",
+              "label": "Morning commute watch"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "19:25",
+              "label": "Prime time viewing"
+            }
+          ],
+          "avoidDays": []
+        }
+      }
     },
     "twitter": {
-      "slots": [
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "06:00", "label": "Early bird news check" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "08:30", "label": "Morning commute scroll" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "11:00", "label": "Late morning hot takes" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "13:30", "label": "Post-lunch scroll" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "16:00", "label": "Afternoon news check" },
-        { "days": ["mon", "tue", "wed", "thu", "fri"], "time": "19:00", "label": "Evening engagement" },
-        { "days": ["sat", "sun"], "time": "08:30", "label": "Weekend morning news" },
-        { "days": ["sat", "sun"], "time": "12:00", "label": "Weekend midday scroll" },
-        { "days": ["sat", "sun"], "time": "15:30", "label": "Weekend afternoon catch-up" },
-        { "days": ["sat", "sun"], "time": "19:00", "label": "Weekend evening engagement" }
-      ],
-      "avoidDays": []
+      "slots": [],
+      "avoidDays": [],
+      "byClipType": {
+        "short": {
+          "slots": [
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "06:30",
+              "label": "Early bird hot takes"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "07:25",
+              "label": "Morning commute scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "09:15",
+              "label": "Mid-morning engagement"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "10:10",
+              "label": "Late morning scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "11:05",
+              "label": "Pre-lunch discourse"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "12:55",
+              "label": "Post-lunch scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "13:50",
+              "label": "Early afternoon takes"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "14:45",
+              "label": "Afternoon discourse"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "15:40",
+              "label": "Afternoon news check"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "16:35",
+              "label": "Late afternoon scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "18:25",
+              "label": "Dinner scroll"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "20:15",
+              "label": "Prime evening discourse"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "21:10",
+              "label": "Night discourse"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "22:05",
+              "label": "Late night takes"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "23:00",
+              "label": "Night owl engagement"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "23:55",
+              "label": "Late night scroll"
+            }
+          ],
+          "avoidDays": []
+        },
+        "medium-clip": {
+          "slots": [
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "12:00",
+              "label": "Lunch break takes"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "17:30",
+              "label": "End of day engagement"
+            }
+          ],
+          "avoidDays": []
+        },
+        "video": {
+          "slots": [
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "08:20",
+              "label": "Breakfast discourse"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "19:20",
+              "label": "Evening engagement"
+            }
+          ],
+          "avoidDays": []
+        }
+      }
     }
   }
 }

@@ -173,13 +173,13 @@ describe('queueBuilder', () => {
 
   it('skips platforms that do not accept the clip type', async () => {
     const { buildPublishQueue } = await getModule();
-    // LinkedIn doesn't accept shorts
-    mockReadTextFile.mockResolvedValue('---\nplatform: linkedin\nshortSlug: short-1\n---\nPost');
+    // TikTok doesn't accept main video
+    mockReadTextFile.mockResolvedValue('---\nplatform: tiktok\n---\nPost');
 
-    const post = createPost(Platform.LinkedIn, 'short-1');
-    const result = await buildPublishQueue(mockVideo, [mockShort], [], [post], undefined);
+    const post = createPost(Platform.TikTok);
+    const result = await buildPublishQueue(mockVideo, [], [], [post], '/captioned.mp4');
 
-    // LinkedIn doesn't accept short clip type in the content matrix
+    // TikTok doesn't accept video clip type in the content matrix
     expect(result.itemsSkipped).toBe(1);
   });
 

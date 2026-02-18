@@ -235,6 +235,7 @@ Every bug fix **must** include a regression test — see [Bug Fix Testing Conven
 - TypeScript: ES2022 target, `bundler` moduleResolution
 - All imports use `.ts` extensions — tsx handles resolution at runtime
 - Run with `npx tsx src/index.ts`
+- **One-off scripts:** Always create a `.ts` file and run with `npx tsx <file>.ts`. Never use `npx tsx -e ""` — it doesn't work reliably on this system.
 
 ### Imports & Logging
 ```typescript

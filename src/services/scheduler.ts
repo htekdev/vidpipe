@@ -1,5 +1,5 @@
 import { LateApiClient, type LatePost } from './lateApi'
-import { loadScheduleConfig, type DayOfWeek } from './scheduleConfig'
+import { loadScheduleConfig, getPlatformSchedule, type DayOfWeek } from './scheduleConfig.js'
 import { getPublishedItems } from './postStore'
 import logger from '../config/logger'
 
@@ -149,9 +149,9 @@ async function buildBookedSlots(platform?: string): Promise<BookedSlot[]> {
  * 4. If no available slot in the current chunk, expand to the next chunk (up to ~2 years)
  * 5. Return the first candidate not already booked, or null if none found
  */
-export async function findNextSlot(platform: string): Promise<string | null> {
+export async function findNextSlot(platform: string, clipType?: string): Promise<string | null> {
   const config = await loadScheduleConfig()
-  const platformConfig = config.platforms[platform]
+  const platformConfig = getPlatformSchedule(platform, clipType)
   if (!platformConfig) {
     logger.warn(`No schedule config found for platform "${String(platform).replace(/[\r\n]/g, '')}"`)
     return null

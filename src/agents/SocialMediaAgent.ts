@@ -107,6 +107,12 @@ class SocialMediaAgent extends BaseAgent {
         },
         handler: async (args: unknown) => {
           const { posts } = args as CreatePostsArgs
+          for (const post of posts) {
+            if (post.platform.toLowerCase() === 'instagram' && post.hashtags.length > 30) {
+              logger.warn(`[SocialMediaAgent] Instagram post has ${post.hashtags.length} hashtags, trimming to 30`)
+              post.hashtags = post.hashtags.slice(0, 30)
+            }
+          }
           this.collectedPosts = posts
           logger.info(`[SocialMediaAgent] create_posts received ${posts.length} posts`)
           return JSON.stringify({ success: true, count: posts.length })

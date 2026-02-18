@@ -15,6 +15,7 @@ import {
   clearScheduleCache,
   getPlatformSchedule,
 } from '../services/scheduleConfig.js'
+import logger from '../config/logger.js'
 
 const tmpDirObj = tmp.dirSync({ prefix: 'vidpipe-schedule-', unsafeCleanup: false })
 const tmpDir = tmpDirObj.name
@@ -171,6 +172,87 @@ describe('scheduleConfig', () => {
       }
       expect(() => validateScheduleConfig(config)).toThrow(/non-empty "label"/)
     })
+
+    it('validates config with byClipType nested format', () => {
+      const config = {
+        timezone: 'UTC',
+        platforms: {
+          linkedin: {
+            slots: [{ days: ['mon'] as const, time: '08:00', label: 'Default' }],
+            avoidDays: [],
+            byClipType: {
+              short: {
+                slots: [{ days: ['mon'] as const, time: '15:00', label: 'Afternoon shorts' }],
+                avoidDays: ['sat', 'sun'],
+              },
+              video: {
+                slots: [{ days: ['tue'] as const, time: '09:00', label: 'Morning video' }],
+                avoidDays: [],
+              },
+            },
+          },
+        },
+      }
+      expect(() => validateScheduleConfig(config)).not.toThrow()
+    })
+
+    it('validates config without byClipType (backward compat)', () => {
+      const config = {
+        timezone: 'UTC',
+        platforms: {
+          twitter: {
+            slots: [{ days: ['mon'] as const, time: '08:00', label: 'Morning' }],
+            avoidDays: [],
+          },
+        },
+      }
+      const validated = validateScheduleConfig(config)
+      expect(validated.platforms.twitter.slots).toHaveLength(1)
+      expect(validated.platforms.twitter.byClipType).toBeUndefined()
+    })
+
+    it('warns on overlapping times across clip types', () => {
+      const config = {
+        timezone: 'UTC',
+        platforms: {
+          linkedin: {
+            slots: [],
+            avoidDays: [],
+            byClipType: {
+              short: {
+                slots: [{ days: ['mon'] as const, time: '09:00', label: 'Short morning' }],
+                avoidDays: [],
+              },
+              video: {
+                slots: [{ days: ['mon'] as const, time: '09:00', label: 'Video morning' }],
+                avoidDays: [],
+              },
+            },
+          },
+        },
+      }
+      validateScheduleConfig(config)
+      expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('overlap'))
+    })
+
+    it('defaults byClipType avoidDays to empty array when missing', () => {
+      const config = {
+        timezone: 'UTC',
+        platforms: {
+          linkedin: {
+            slots: [],
+            avoidDays: [],
+            byClipType: {
+              short: {
+                slots: [{ days: ['mon'] as const, time: '15:00', label: 'Afternoon' }],
+              },
+            },
+          },
+        },
+      }
+      const validated = validateScheduleConfig(config)
+      expect(validated.platforms.linkedin.byClipType?.short.avoidDays).toEqual([])
+    })
   })
 
   describe('loadScheduleConfig', () => {
@@ -203,6 +285,52 @@ describe('scheduleConfig', () => {
       const config = await loadScheduleConfig(filePath)
       expect(config.timezone).toBe('Europe/London')
       expect(config.platforms.twitter.slots[0].time).toBe('09:00')
+    })
+
+    it('reads existing file with byClipType nested format', async () => {
+      const customConfig = {
+        timezone: 'UTC',
+        platforms: {
+          linkedin: {
+            slots: [{ days: ['mon'], time: '08:00', label: 'Default' }],
+            avoidDays: [],
+            byClipType: {
+              short: {
+                slots: [{ days: ['tue'], time: '14:00', label: 'Short slot' }],
+                avoidDays: ['sat'],
+              },
+            },
+          },
+        },
+      }
+      const tmpFile = tmp.fileSync({ dir: tmpDir, postfix: '.json', mode: 0o600 })
+      const filePath = tmpFile.name
+      await fs.writeFile(filePath, JSON.stringify(customConfig), 'utf-8')
+
+      const config = await loadScheduleConfig(filePath)
+      expect(config.platforms.linkedin.byClipType).toBeDefined()
+      expect(config.platforms.linkedin.byClipType!.short.slots[0].time).toBe('14:00')
+      expect(config.platforms.linkedin.byClipType!.short.avoidDays).toEqual(['sat'])
+    })
+
+    it('reads existing flat config without byClipType (backward compat)', async () => {
+      const customConfig = {
+        timezone: 'UTC',
+        platforms: {
+          twitter: {
+            slots: [{ days: ['mon'], time: '10:00', label: 'Morning' }],
+            avoidDays: ['sun'],
+          },
+        },
+      }
+      const tmpFile = tmp.fileSync({ dir: tmpDir, postfix: '.json', mode: 0o600 })
+      const filePath = tmpFile.name
+      await fs.writeFile(filePath, JSON.stringify(customConfig), 'utf-8')
+
+      const config = await loadScheduleConfig(filePath)
+      expect(config.platforms.twitter.slots).toHaveLength(1)
+      expect(config.platforms.twitter.avoidDays).toEqual(['sun'])
+      expect(config.platforms.twitter.byClipType).toBeUndefined()
     })
   })
 
@@ -248,6 +376,64 @@ describe('scheduleConfig', () => {
       const filePath = path.join(tmpDir, 'schedule-for-unknown.json')
       await loadScheduleConfig(filePath)
       expect(getPlatformSchedule('nonexistent')).toBeNull()
+    })
+
+    it('returns clip-type-specific schedule when byClipType exists', async () => {
+      clearScheduleCache()
+      const customConfig = {
+        timezone: 'UTC',
+        platforms: {
+          linkedin: {
+            slots: [{ days: ['mon'], time: '08:00', label: 'Default morning' }],
+            avoidDays: [],
+            byClipType: {
+              short: {
+                slots: [{ days: ['mon'], time: '15:00', label: 'Short afternoon' }],
+                avoidDays: ['sat'],
+              },
+            },
+          },
+        },
+      }
+      const tmpFile = tmp.fileSync({ dir: tmpDir, postfix: '.json', mode: 0o600 })
+      const filePath = tmpFile.name
+      await fs.writeFile(filePath, JSON.stringify(customConfig), 'utf-8')
+      await loadScheduleConfig(filePath)
+
+      const schedule = getPlatformSchedule('linkedin', 'short')
+      expect(schedule).toBeDefined()
+      expect(schedule!.slots).toHaveLength(1)
+      expect(schedule!.slots[0].time).toBe('15:00')
+      expect(schedule!.avoidDays).toEqual(['sat'])
+    })
+
+    it('falls back to flat schedule when clipType not in byClipType', async () => {
+      clearScheduleCache()
+      const customConfig = {
+        timezone: 'UTC',
+        platforms: {
+          linkedin: {
+            slots: [{ days: ['mon'], time: '08:00', label: 'Default morning' }],
+            avoidDays: ['sun'],
+            byClipType: {
+              short: {
+                slots: [{ days: ['mon'], time: '15:00', label: 'Short afternoon' }],
+                avoidDays: ['sat'],
+              },
+            },
+          },
+        },
+      }
+      const tmpFile = tmp.fileSync({ dir: tmpDir, postfix: '.json', mode: 0o600 })
+      const filePath = tmpFile.name
+      await fs.writeFile(filePath, JSON.stringify(customConfig), 'utf-8')
+      await loadScheduleConfig(filePath)
+
+      const schedule = getPlatformSchedule('linkedin', 'nonexistent')
+      expect(schedule).toBeDefined()
+      // Falls back to the flat schedule
+      expect(schedule!.slots[0].time).toBe('08:00')
+      expect(schedule!.avoidDays).toEqual(['sun'])
     })
   })
 })
