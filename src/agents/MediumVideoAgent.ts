@@ -92,14 +92,14 @@ You may receive AI-generated clip direction with suggested medium clips. Use the
 ## Hook-First Ordering (CRITICAL for viewer retention)
 Medium clips still compete for attention — grab viewers in the first 5 seconds or lose them.
 
-**The pattern:** If a clip's content flows like [A, B, C, D, ..., Y, Z], the final clip should play as [Z, A, B, C, ..., Y, Z] where Z is the most exciting/compelling moment.
+**The pattern:** If a clip's content flows like [A, B, C, D, ..., Y, Z], the final clip should play as [Z, A, B, C, ..., Y] — the most exciting moment moved to the front, then the rest plays from the beginning up to that point. The hook does NOT repeat.
 
 **How to implement it:**
 1. Plan the clip's content as normal (the full story: A→Z)
 2. Identify the single most exciting 2–5 second moment — the payoff, climax, or bold statement
-3. Add that moment as the FIRST segment, then add the full content after it
-4. Example: content is [300s–420s], best moment is [410s–415s] → segments: [{start: 410, end: 415}, {start: 300, end: 420}]
-5. The hook plays TWICE — first as teaser, then in context. This is standard for short-form content.
+3. Add that moment as the FIRST segment
+4. Then add the remaining content — from the beginning up to where the hook starts
+5. Example: content is [300s–420s], best moment is [410s–415s] → segments: [{start: 410, end: 415}, {start: 300, end: 410}]
 6. Provide a \`hook\` text (≤60 chars) — burned as a visual text overlay during the hook segment
 
 If the clip truly has no standout moment, keep segments chronological and just provide hook text.`

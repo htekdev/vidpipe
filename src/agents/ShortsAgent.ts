@@ -79,14 +79,14 @@ You may receive AI-generated clip direction with suggested shorts. Use these as 
 ## Hook-First Ordering (CRITICAL for viewer retention)
 Shorts are for people with short attention spans — if you don't grab them in the first 5 seconds, you lost them.
 
-**The pattern:** If a short's content flows like [A, B, C, D, ..., Y, Z], the final short should play as [Z, A, B, C, ..., Y, Z] where Z is the most exciting/compelling moment — the climax, punchline, bold claim, or emotional peak.
+**The pattern:** If a short's content flows like [A, B, C, D, ..., Y, Z], the final short should play as [Z, A, B, C, ..., Y] — the most exciting moment (Z) is moved to the front, then the rest plays from the beginning up to that point. The hook does NOT repeat — the content is reordered, not duplicated.
 
 **How to implement it:**
 1. Plan the short's content as normal (the full story: A→Z)
 2. Identify the single most exciting 2–5 second moment — the part that would make a scroller STOP and watch. This is usually near the end (the payoff), not the beginning (the setup).
-3. Add that moment as the FIRST segment in the segments array, then add the full content after it
-4. Example: content is [120s–150s], best moment is [145s–150s] → segments: [{start: 145, end: 150}, {start: 120, end: 150}]
-5. Yes, the hook plays TWICE — first as a teaser, then in its natural context. This is intentional and standard practice for short-form content.
+3. Add that moment as the FIRST segment in the segments array
+4. Then add the remaining content — from the beginning up to where the hook starts
+5. Example: content is [120s–150s], best moment is [145s–150s] → segments: [{start: 145, end: 150}, {start: 120, end: 145}]
 6. Provide a \`hook\` text (≤60 chars) — the attention-grabbing phrase shown as text overlay during the hook segment
 
 **What makes a good hook moment:**
