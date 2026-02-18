@@ -257,6 +257,65 @@ describe('adjustTranscript', () => {
     expect(result.words[0].word).toBe('hello')
     expect(result.words[1].word).toBe('test')
   })
+
+  it('adjusts nested segment.words timestamps (regression: was previously unadjusted)', () => {
+    const transcript = makeTranscript({
+      segments: [
+        { id: 0, text: 'hello world', start: 0, end: 5, words: [
+          { word: 'hello', start: 0, end: 2 },
+          { word: 'world', start: 3, end: 5 },
+        ]},
+        { id: 1, text: 'foo bar', start: 10, end: 15, words: [
+          { word: 'foo', start: 10, end: 12 },
+          { word: 'bar', start: 13, end: 15 },
+        ]},
+        { id: 2, text: 'baz', start: 20, end: 25, words: [
+          { word: 'baz', start: 20, end: 22 },
+        ]},
+      ],
+    })
+
+    // Remove 5-10 (5s gap between seg 0 and seg 1)
+    const result = adjustTranscript(transcript, [{ start: 5, end: 10 }])
+
+    // Segment-level timestamps shift correctly
+    expect(result.segments[1].start).toBe(5)
+    expect(result.segments[1].end).toBe(10)
+
+    // Nested word timestamps must also shift by the same amount
+    expect(result.segments[1].words[0].start).toBe(5)  // was 10, shifted by 5
+    expect(result.segments[1].words[0].end).toBe(7)     // was 12, shifted by 5
+    expect(result.segments[1].words[1].start).toBe(8)   // was 13, shifted by 5
+    expect(result.segments[1].words[1].end).toBe(10)    // was 15, shifted by 5
+
+    // Third segment words also shift
+    expect(result.segments[2].words[0].start).toBe(15)  // was 20, shifted by 5
+    expect(result.segments[2].words[0].end).toBe(17)    // was 22, shifted by 5
+  })
+
+  it('filters nested words inside removal regions', () => {
+    const transcript = makeTranscript({
+      segments: [
+        { id: 0, text: 'a b c', start: 0, end: 20, words: [
+          { word: 'a', start: 0, end: 3 },
+          { word: 'b', start: 8, end: 12 },  // inside removal 5-15
+          { word: 'c', start: 16, end: 20 },
+        ]},
+      ],
+    })
+
+    const result = adjustTranscript(transcript, [{ start: 5, end: 15 }])
+
+    // Segment survives (not entirely within removal)
+    expect(result.segments).toHaveLength(1)
+    // Word 'b' (8-12) is entirely within removal 5-15, should be filtered
+    expect(result.segments[0].words).toHaveLength(2)
+    expect(result.segments[0].words[0].word).toBe('a')
+    expect(result.segments[0].words[1].word).toBe('c')
+    // 'c' was at 16-20, shifted by 10s removal → 6-10
+    expect(result.segments[0].words[1].start).toBe(6)
+    expect(result.segments[0].words[1].end).toBe(10)
+  })
 })
 
 // ============================================================================

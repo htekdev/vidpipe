@@ -112,6 +112,13 @@ export function adjustTranscript(
         ...seg,
         start: adjustTime(seg.start),
         end: adjustTime(seg.end),
+        words: seg.words
+          .filter(w => !sorted.some(r => w.start >= r.start && w.end <= r.end))
+          .map(w => ({
+            ...w,
+            start: adjustTime(w.start),
+            end: adjustTime(w.end),
+          })),
       })),
     words: transcript.words
       .filter(w => !sorted.some(r => w.start >= r.start && w.end <= r.end))
