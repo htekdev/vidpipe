@@ -2,10 +2,10 @@ import { BaseAgent } from './BaseAgent.js'
 import { LateApiClient } from '../L3-services/lateApi/lateApiService.js'
 import { findNextSlot, getScheduleCalendar } from '../L3-services/scheduler/scheduler.js'
 import { loadScheduleConfig } from '../L3-services/scheduler/scheduleConfig.js'
-import { buildRealignPlan, executeRealignPlan } from '../L3-services/scheduler/realign.js'
+import { buildRealignPlan, executeRealignPlan, buildPrioritizedRealignPlan } from '../L3-services/scheduler/realign.js'
 import logger from '../L1-infra/logger/configLogger.js'
 import type { LatePost } from '../L3-services/lateApi/lateApiService.js'
-import type { RealignPlan } from '../L3-services/scheduler/realign.js'
+import type { RealignPlan, PriorityRule } from '../L3-services/scheduler/realign.js'
 import type { ToolWithHandler, UserInputHandler, LLMSession } from '../L3-services/llm/providerFactory.js'
 
 /** Friendly labels for tool calls shown in chat mode */
@@ -15,10 +15,28 @@ const TOOL_LABELS: Record<string, string> = {
   view_calendar: '📅 Loading calendar',
   reschedule_post: '🔄 Rescheduling post',
   cancel_post: '🚫 Cancelling post',
-  swap_posts: '🔀 Swapping posts',
   find_next_slot: '🔍 Finding next slot',
   realign_schedule: '📐 Running realignment',
+  start_prioritize_realign: '🎯 Starting prioritized realignment',
+  check_realign_status: '📊 Checking realignment progress',
   ask_user: '💬 Asking for your input',
+}
+
+interface RealignJob {
+  id: string
+  status: 'planning' | 'executing' | 'completed' | 'failed'
+  startedAt: string
+  completedAt?: string
+  progress: { completed: number; total: number; phase: 'planning' | 'cancelling' | 'updating' }
+  plan?: {
+    totalFetched: number
+    toReschedule: number
+    toCancel: number
+    skipped: number
+    unmatched: number
+  }
+  result?: { updated: number; cancelled: number; failed: number; errors: Array<{ postId: string; error: string }> }
+  error?: string
 }
 
 const SYSTEM_PROMPT = `You are a schedule management assistant for Late.co social media posts.
@@ -30,11 +48,20 @@ Clip types: short (15-60s vertical clips), medium-clip (60-180s clips), video (f
 
 When listing posts, always show content previews (first 60 chars) so the user can identify them.
 Use ask_user when you need clarification on priorities or decisions — never guess at user intent.
-Be concise and actionable. Prefer tables or bullet lists over prose.`
+Be concise and actionable. Prefer tables or bullet lists over prose.
+
+For themed scheduling, use start_prioritize_realign to kick off the job, then poll with
+check_realign_status until it completes. The priorities array is ordered — rule[0] is checked
+first for each slot. Each rule has keywords to match post content, a saturation (0.0–1.0) controlling
+how aggressively to fill slots with matches, and optional from/to dates for the active range.
+Example: "DevOps this week, hooks next week" → two rules with different date ranges.
+Workflow: start_prioritize_realign (dryRun=true) → check_realign_status → review plan → if approved,
+start_prioritize_realign (dryRun=false) → check_realign_status (poll every few seconds until completed).`
 
 export class ScheduleAgent extends BaseAgent {
   private userInputHandler?: UserInputHandler
   private chatOutput?: (message: string) => void
+  private realignJobs = new Map<string, RealignJob>()
 
   constructor(userInputHandler?: UserInputHandler, model?: string) {
     super('ScheduleAgent', SYSTEM_PROMPT, undefined, model)
@@ -149,19 +176,6 @@ export class ScheduleAgent extends BaseAgent {
         handler: async (args) => this.handleToolCall('cancel_post', args as Record<string, unknown>),
       },
       {
-        name: 'swap_posts',
-        description: 'Swap the scheduled times of two posts.',
-        parameters: {
-          type: 'object',
-          properties: {
-            postId1: { type: 'string', description: 'First post ID' },
-            postId2: { type: 'string', description: 'Second post ID' },
-          },
-          required: ['postId1', 'postId2'],
-        },
-        handler: async (args) => this.handleToolCall('swap_posts', args as Record<string, unknown>),
-      },
-      {
         name: 'find_next_slot',
         description: 'Find the next available posting slot for a platform.',
         parameters: {
@@ -187,6 +201,52 @@ export class ScheduleAgent extends BaseAgent {
         },
         handler: async (args) => this.handleToolCall('realign_schedule', args as Record<string, unknown>),
       },
+      {
+        name: 'start_prioritize_realign',
+        description: 'Start a prioritized realignment in the background. Returns a job ID immediately. Use check_realign_status to poll progress. The priorities array is ordered: rule[0] is checked first for each slot.',
+        parameters: {
+          type: 'object',
+          properties: {
+            priorities: {
+              type: 'array',
+              description: 'Ordered array of priority rules. Array order = priority rank — rule[0] is checked first for each slot, then rule[1], etc.',
+              items: {
+                type: 'object',
+                properties: {
+                  keywords: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Search terms to match post content (case-insensitive). Posts matching ANY keyword are included.',
+                  },
+                  saturation: {
+                    type: 'number',
+                    description: 'Probability 0.0-1.0 of filling each slot with a match. 1.0 = always, 0.5 = ~50% of slots.',
+                  },
+                  from: { type: 'string', description: 'Start date (YYYY-MM-DD) for when this rule is active. Omit for immediately.' },
+                  to: { type: 'string', description: 'End date (YYYY-MM-DD) for when this rule expires. Omit for no end.' },
+                },
+                required: ['keywords', 'saturation'],
+              },
+            },
+            platform: { type: 'string', description: 'Limit to one platform: x, youtube, tiktok, instagram, linkedin' },
+            dryRun: { type: 'boolean', description: 'If true (default), only build the plan without executing. Set to false to build AND execute.' },
+          },
+          required: ['priorities'],
+        },
+        handler: async (args) => this.handleToolCall('start_prioritize_realign', args as Record<string, unknown>),
+      },
+      {
+        name: 'check_realign_status',
+        description: 'Check the progress of a running prioritized realignment job. Poll this periodically after calling start_prioritize_realign.',
+        parameters: {
+          type: 'object',
+          properties: {
+            jobId: { type: 'string', description: 'The job ID returned by start_prioritize_realign' },
+          },
+          required: ['jobId'],
+        },
+        handler: async (args) => this.handleToolCall('check_realign_status', args as Record<string, unknown>),
+      },
     ]
   }
 
@@ -197,9 +257,10 @@ export class ScheduleAgent extends BaseAgent {
       case 'view_calendar': return this.viewCalendar(args)
       case 'reschedule_post': return this.reschedulePost(args)
       case 'cancel_post': return this.cancelPost(args)
-      case 'swap_posts': return this.swapPosts(args)
       case 'find_next_slot': return this.findNextSlot(args)
       case 'realign_schedule': return this.realignSchedule(args)
+      case 'start_prioritize_realign': return this.startPrioritizeRealign(args)
+      case 'check_realign_status': return this.checkRealignStatus(args)
       default: return { error: `Unknown tool: ${toolName}` }
     }
   }
@@ -313,33 +374,6 @@ export class ScheduleAgent extends BaseAgent {
     }
   }
 
-  private async swapPosts(args: Record<string, unknown>): Promise<unknown> {
-    try {
-      const postId1 = args.postId1 as string
-      const postId2 = args.postId2 as string
-      const client = new LateApiClient()
-      const allPosts = await client.listPosts({ status: 'scheduled' })
-      const post1 = allPosts.find(p => p._id === postId1)
-      const post2 = allPosts.find(p => p._id === postId2)
-      if (!post1) return { error: `Post not found: ${postId1}` }
-      if (!post2) return { error: `Post not found: ${postId2}` }
-      const time1 = post1.scheduledFor
-      const time2 = post2.scheduledFor
-      await Promise.all([
-        client.updatePost(postId1, { scheduledFor: time2 }),
-        client.updatePost(postId2, { scheduledFor: time1 }),
-      ])
-      return {
-        success: true,
-        post1: { id: postId1, oldTime: time1, newTime: time2 },
-        post2: { id: postId2, oldTime: time2, newTime: time1 },
-      }
-    } catch (err) {
-      logger.error('swap_posts failed', { error: err })
-      return { error: `Failed to swap posts: ${(err as Error).message}` }
-    }
-  }
-
   private async findNextSlot(args: Record<string, unknown>): Promise<unknown> {
     try {
       const platform = args.platform as string
@@ -382,5 +416,96 @@ export class ScheduleAgent extends BaseAgent {
       logger.error('realign_schedule failed', { error: err })
       return { error: `Failed to realign schedule: ${(err as Error).message}` }
     }
+  }
+
+  private async startPrioritizeRealign(args: Record<string, unknown>): Promise<unknown> {
+    try {
+      const priorities = (args.priorities as PriorityRule[]) ?? []
+      const platform = args.platform as string | undefined
+      const dryRun = (args.dryRun as boolean) ?? true
+
+      const jobId = `realign-${Date.now()}`
+      const job: RealignJob = {
+        id: jobId,
+        status: 'planning',
+        startedAt: new Date().toISOString(),
+        progress: { completed: 0, total: 0, phase: 'planning' },
+      }
+      this.realignJobs.set(jobId, job)
+
+      // Fire-and-forget — runs in background
+      this.runRealignJob(job, priorities, platform, dryRun).catch((err) => {
+        job.status = 'failed'
+        job.error = err instanceof Error ? err.message : String(err)
+        job.completedAt = new Date().toISOString()
+        logger.error('Realign job failed', { jobId, error: err })
+      })
+
+      return {
+        started: true,
+        jobId,
+        dryRun,
+        message: `Prioritized realignment started. Use check_realign_status with jobId "${jobId}" to monitor progress.`,
+      }
+    } catch (err) {
+      logger.error('start_prioritize_realign failed', { error: err })
+      return { error: `Failed to start prioritize realign: ${(err as Error).message}` }
+    }
+  }
+
+  private async runRealignJob(
+    job: RealignJob,
+    priorities: PriorityRule[],
+    platform: string | undefined,
+    dryRun: boolean,
+  ): Promise<void> {
+    // Phase 1: Build plan
+    const plan: RealignPlan = await buildPrioritizedRealignPlan({ priorities, platform })
+    job.plan = {
+      totalFetched: plan.totalFetched,
+      toReschedule: plan.posts.length,
+      toCancel: plan.toCancel.length,
+      skipped: plan.skipped,
+      unmatched: plan.unmatched,
+    }
+
+    if (dryRun) {
+      job.status = 'completed'
+      job.completedAt = new Date().toISOString()
+      job.result = { updated: 0, cancelled: 0, failed: 0, errors: [] }
+      return
+    }
+
+    // Phase 2: Execute
+    job.status = 'executing'
+    job.progress = { completed: 0, total: plan.toCancel.length + plan.posts.length, phase: 'cancelling' }
+
+    const result = await executeRealignPlan(plan, (completed, total, phase) => {
+      job.progress = { completed, total, phase }
+    })
+
+    job.status = 'completed'
+    job.completedAt = new Date().toISOString()
+    job.result = result
+  }
+
+  private async checkRealignStatus(args: Record<string, unknown>): Promise<unknown> {
+    const jobId = args.jobId as string
+    const job = this.realignJobs.get(jobId)
+    if (!job) return { error: `No realign job found with ID: ${jobId}` }
+
+    const response: Record<string, unknown> = {
+      jobId: job.id,
+      status: job.status,
+      startedAt: job.startedAt,
+      progress: job.progress,
+    }
+
+    if (job.plan) response.plan = job.plan
+    if (job.completedAt) response.completedAt = job.completedAt
+    if (job.result) response.result = job.result
+    if (job.error) response.error = job.error
+
+    return response
   }
 }

@@ -45,7 +45,8 @@ function groupByProject(testChanges: readonly TestChange[]): Map<string, TestCha
 /**
  * Build vitest file arguments with line-number targeting.
  * Uses `file.test.ts:line` syntax to run only the specific changed tests.
- * Falls back to whole-file when no line data is available.
+ * Falls back to whole-file when no line data is available or when changed
+ * lines are outside test blocks (e.g. in mock setup or import regions).
  */
 export function buildFileArgs(testChanges: readonly TestChange[]): string[] {
   const args: string[] = [];
@@ -64,13 +65,88 @@ export function buildFileArgs(testChanges: readonly TestChange[]): string[] {
       continue;
     }
 
-    // Use the start line of each changed hunk as a vitest line filter
+    // Read the file and find test block start lines
+    const testBlockLines = findTestBlockLines(test.file);
+
+    if (testBlockLines.length === 0) {
+      // No test blocks found — run the whole file
+      args.push(test.file);
+      continue;
+    }
+
+    // Map each changed hunk to the nearest enclosing test block
+    const targetLines = new Set<number>();
+    let fallbackToWholeFile = false;
+
     for (const range of test.changedLines) {
-      args.push(`${test.file}:${range.start}`);
+      const blockLine = findEnclosingTestBlock(range.start, range.end, testBlockLines);
+      if (blockLine === null) {
+        // Changed lines are outside any test block (mock setup, imports, etc.)
+        // Fall back to running the whole file since these changes affect all tests
+        fallbackToWholeFile = true;
+        break;
+      }
+      targetLines.add(blockLine);
+    }
+
+    if (fallbackToWholeFile) {
+      args.push(test.file);
+    } else {
+      for (const line of targetLines) {
+        args.push(`${test.file}:${line}`);
+      }
     }
   }
 
   return args;
+}
+
+/**
+ * Scan a test file for lines that start test blocks (describe/it/test).
+ * Returns sorted array of line numbers where test blocks begin.
+ */
+function findTestBlockLines(filePath: string): number[] {
+  try {
+    const content = readFileSync(filePath, 'utf-8');
+    const lines = content.split('\n');
+    const testLines: number[] = [];
+
+    // Match describe(), it(), test() — including variants like describe.skipIf()
+    const testBlockPattern = /^\s*(?:describe|it|test)(?:\.\w+)*\s*\(/;
+
+    for (let i = 0; i < lines.length; i++) {
+      if (testBlockPattern.test(lines[i])) {
+        testLines.push(i + 1); // 1-indexed
+      }
+    }
+
+    return testLines;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Find the test block that encloses a changed line range.
+ * Returns the line number of the nearest `describe`/`it`/`test` that starts
+ * at or before the range start, or null if the change is before any test block.
+ */
+function findEnclosingTestBlock(
+  rangeStart: number,
+  _rangeEnd: number,
+  testBlockLines: readonly number[],
+): number | null {
+  // Find the last test block that starts at or before the changed range
+  let enclosing: number | null = null;
+  for (const blockLine of testBlockLines) {
+    if (blockLine <= rangeStart) {
+      enclosing = blockLine;
+    } else {
+      break;
+    }
+  }
+
+  return enclosing;
 }
 
 /**

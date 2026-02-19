@@ -1,6 +1,6 @@
-import { createInterface } from 'node:readline'
 import { initConfig } from '../../L1-infra/config/environment.js'
 import { setChatMode } from '../../L1-infra/logger/configLogger.js'
+import { createChatInterface } from '../../L1-infra/readline/readline.js'
 import { loadScheduleAgent } from '../../L6-pipeline/scheduleChat.js'
 import type { UserInputRequest, UserInputResponse } from '../../L3-services/llm/providerFactory.js'
 
@@ -12,10 +12,7 @@ export async function runChat(): Promise<void> {
   // Suppress Winston console transport so it doesn't corrupt readline
   setChatMode(true)
 
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  })
+  const rl = createChatInterface()
 
   // CLI-based user input handler for ask_user tool
   const handleUserInput = (request: UserInputRequest): Promise<UserInputResponse> => {

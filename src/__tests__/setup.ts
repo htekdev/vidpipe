@@ -24,6 +24,7 @@ vi.mock('../L1-infra/logger/configLogger.js', () => {
     default: mockLogger,
     sanitizeForLog: vi.fn((v: unknown) => v),
     setVerbose: vi.fn(),
+    setChatMode: vi.fn(),
     pushPipe: vi.fn(),
     popPipe: vi.fn(),
   }
