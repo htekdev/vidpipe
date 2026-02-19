@@ -300,7 +300,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
         },
       },
     }
-    seedSchedule(singleSlotConfig)
+    seedSchedule(singleSlotConfig as typeof TEST_SCHEDULE)
 
     // 8 posts: 2 hooks, 6 random — enough to fill slots through the date range
     mockPosts([
@@ -447,7 +447,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
         },
       },
     }
-    seedSchedule(smallConfig)
+    seedSchedule(smallConfig as typeof TEST_SCHEDULE)
 
     // 100 posts but only 1 slot per day (730 max days searched = 730 slots max)
     // With 100 posts, all should get slots since 730 > 100
@@ -475,7 +475,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
         },
       },
     }
-    seedSchedule(noSlotsConfig)
+    seedSchedule(noSlotsConfig as typeof TEST_SCHEDULE)
     mockPosts([
       makePost('p1', 'devops content', 'twitter'),
       makePost('p2', 'react content', 'twitter'),
