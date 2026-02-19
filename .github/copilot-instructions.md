@@ -683,3 +683,10 @@ When addressing code review feedback on testable code:
 - Never explore the codebase with multiple grep/glob/view calls when an `explore` agent can answer the question in one call
 - Run multiple independent sub-agents in parallel when possible
 - Only use direct tool calls in the main context for small surgical edits (edit/create) or quick single-file reads
+
+## Git Workflow
+
+- **Commit often** with small, focused changes. Each commit should be a single logical unit (one fix, one feature, one refactor).
+- Don't batch multiple unrelated changes into one large commit.
+- Use `npm run commit -- -m "message"` (direct `git commit` is blocked by pre-commit hook).
+- Write clear, concise commit messages describing what changed and why.
