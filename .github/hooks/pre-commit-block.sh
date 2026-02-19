@@ -14,7 +14,7 @@
   fi
 
   # Match git commit but not npm run commit
-  if ! echo "$COMMAND" | grep -q "git commit"; then
+  if ! echo "$COMMAND" | grep -qE 'git\s+(--\S+\s+)*commit'; then
     exit 0
   fi
 

@@ -57,6 +57,9 @@ Assert-Deny "DENY git push" $r
 $r = Invoke-Hook "pre-push-block.ps1" "bash" @{ command = "git push origin main" }
 Assert-Deny "DENY git push origin main" $r
 
+$r = Invoke-Hook "pre-push-block.ps1" "bash" @{ command = "git --no-pager push origin main" }
+Assert-Deny "DENY git --no-pager push" $r
+
 $r = Invoke-Hook "pre-push-block.ps1" "bash" @{ command = "git status" }
 Assert-Allow "ALLOW git status" $r
 
@@ -74,6 +77,9 @@ Write-Host "`n── pre-force-push-block ──" -ForegroundColor Cyan
 $r = Invoke-Hook "pre-force-push-block.ps1" "bash" @{ command = "git push --force" }
 Assert-Deny "DENY git push --force" $r
 
+$r = Invoke-Hook "pre-force-push-block.ps1" "bash" @{ command = "git --no-pager push --force" }
+Assert-Deny "DENY git --no-pager push --force" $r
+
 $r = Invoke-Hook "pre-force-push-block.ps1" "bash" @{ command = "git push origin main --force-with-lease" }
 Assert-Deny "DENY git push --force-with-lease" $r
 
@@ -84,6 +90,23 @@ $r = Invoke-Hook "pre-force-push-block.ps1" "bash" @{ command = "git push origin
 Assert-Allow "ALLOW normal git push" $r
 
 $r = Invoke-Hook "pre-force-push-block.ps1" "edit" @{ path = "src/foo.ts" }
+Assert-Allow "ALLOW non-bash tool" $r
+
+# ─────────────────────────────────────────────────────────────────────────
+# pre-commit-block.ps1
+# ─────────────────────────────────────────────────────────────────────────
+Write-Host "`n── pre-commit-block ──" -ForegroundColor Cyan
+
+$r = Invoke-Hook "pre-commit-block.ps1" "bash" @{ command = 'git commit -m "test"' }
+Assert-Deny "DENY git commit" $r
+
+$r = Invoke-Hook "pre-commit-block.ps1" "bash" @{ command = 'git --no-pager commit -m "test"' }
+Assert-Deny "DENY git --no-pager commit" $r
+
+$r = Invoke-Hook "pre-commit-block.ps1" "bash" @{ command = "git status" }
+Assert-Allow "ALLOW git status" $r
+
+$r = Invoke-Hook "pre-commit-block.ps1" "edit" @{ path = "src/foo.ts" }
 Assert-Allow "ALLOW non-bash tool" $r
 
 # ─────────────────────────────────────────────────────────────────────────

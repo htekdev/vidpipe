@@ -6,7 +6,7 @@ import { execSync } from 'child_process';
 import { mkdtempSync, rmSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import type { TestChange } from './diffAnalyzer.js';
+import type { TestChange, ChangedLineRange } from './diffAnalyzer.js';
 
 export interface TestRunResult {
   success: boolean;
@@ -25,21 +25,45 @@ const TIER_TO_PROJECT: Record<string, string> = {
 };
 
 /**
- * Group test files by their vitest project.
+ * Group test changes by their vitest project.
  */
-function groupByProject(testChanges: readonly TestChange[]): Map<string, string[]> {
-  const groups = new Map<string, string[]>();
+function groupByProject(testChanges: readonly TestChange[]): Map<string, TestChange[]> {
+  const groups = new Map<string, TestChange[]>();
 
   for (const test of testChanges) {
     const project = TIER_TO_PROJECT[test.tier];
     if (!project) continue;
 
-    const files = groups.get(project) ?? [];
-    files.push(test.file);
-    groups.set(project, files);
+    const entries = groups.get(project) ?? [];
+    entries.push(test);
+    groups.set(project, entries);
   }
 
   return groups;
+}
+
+/**
+ * Build vitest file arguments with line-number targeting.
+ * Uses `file.test.ts:line` syntax to run only the specific changed tests.
+ * Falls back to whole-file when no line data is available.
+ */
+export function buildFileArgs(testChanges: readonly TestChange[]): string[] {
+  const args: string[] = [];
+
+  for (const test of testChanges) {
+    if (test.changedLines.length === 0) {
+      // New file or no line data — run entire file
+      args.push(test.file);
+      continue;
+    }
+
+    // Use the start line of each changed hunk as a vitest line filter
+    for (const range of test.changedLines) {
+      args.push(`${test.file}:${range.start}`);
+    }
+  }
+
+  return args;
 }
 
 /**
@@ -47,10 +71,10 @@ function groupByProject(testChanges: readonly TestChange[]): Map<string, string[
  */
 function runProjectTests(
   project: string,
-  testFiles: string[],
+  testChanges: readonly TestChange[],
   coverageDir: string
 ): { success: boolean; output: string } {
-  const fileArgs = testFiles.join(' ');
+  const fileArgs = buildFileArgs(testChanges);
   const cmd = [
     'npx vitest run',
     `--project ${project}`,
@@ -58,7 +82,7 @@ function runProjectTests(
     `--coverage.reportsDirectory=${coverageDir}`,
     '--coverage.reporter=json',
     '--coverage.thresholds.100=false',
-    fileArgs,
+    ...fileArgs,
   ].join(' ');
 
   try {
@@ -133,11 +157,12 @@ export function runTestsWithCoverage(testChanges: readonly TestChange[]): TestRu
   let allSuccess = true;
 
   try {
-    for (const [project, files] of groups) {
+    for (const [project, changes] of groups) {
       const projectCoverageDir = join(tempBase, project);
-      console.log(`  🧪 Running ${files.length} test(s) in ${project}...`);
+      const testCount = changes.reduce((sum, t) => sum + Math.max(t.changedLines.length, 1), 0);
+      console.log(`  🧪 Running ${testCount} test target(s) in ${project}...`);
 
-      const result = runProjectTests(project, files, projectCoverageDir);
+      const result = runProjectTests(project, changes, projectCoverageDir);
       outputs.push(`--- ${project} ---\n${result.output}`);
       coverageDirs.push(projectCoverageDir);
 

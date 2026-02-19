@@ -8,8 +8,8 @@ describe('validateTestTiers', () => {
       { file: 'src/L0-pure/captions/captionGenerator.ts', layer: 0, changedLines: [] },
     ];
     const testChanges: TestChange[] = [
-      { file: 'src/__tests__/unit/L0-pure/captions/captionGenerator.test.ts', tier: 'unit', layer: 0 },
-      { file: 'src/__tests__/e2e/captions.test.ts', tier: 'e2e', layer: -1 },
+      { file: 'src/__tests__/unit/L0-pure/captions/captionGenerator.test.ts', tier: 'unit', layer: 0, changedLines: [] },
+      { file: 'src/__tests__/e2e/captions.test.ts', tier: 'e2e', layer: -1, changedLines: [] },
     ];
 
     const result = validateTestTiers(codeChanges, testChanges);
@@ -23,7 +23,7 @@ describe('validateTestTiers', () => {
       { file: 'src/L2-clients/ffmpeg/ffmpegClient.ts', layer: 2, changedLines: [] },
     ];
     const testChanges: TestChange[] = [
-      { file: 'src/__tests__/unit/L2-clients/ffmpeg/ffmpegClient.test.ts', tier: 'unit', layer: 2 },
+      { file: 'src/__tests__/unit/L2-clients/ffmpeg/ffmpegClient.test.ts', tier: 'unit', layer: 2, changedLines: [] },
     ];
 
     const result = validateTestTiers(codeChanges, testChanges);
@@ -39,9 +39,9 @@ describe('validateTestTiers', () => {
       { file: 'src/L4-agents/ShortsAgent.ts', layer: 4, changedLines: [] },
     ];
     const testChanges: TestChange[] = [
-      { file: 'src/__tests__/unit/L4-agents/ShortsAgent.test.ts', tier: 'unit', layer: 4 },
-      { file: 'src/__tests__/integration/L4-L6/shorts.test.ts', tier: 'integration-L4-L6', layer: 4 },
-      { file: 'src/__tests__/e2e/pipeline.test.ts', tier: 'e2e', layer: -1 },
+      { file: 'src/__tests__/unit/L4-agents/ShortsAgent.test.ts', tier: 'unit', layer: 4, changedLines: [] },
+      { file: 'src/__tests__/integration/L4-L6/shorts.test.ts', tier: 'integration-L4-L6', layer: 4, changedLines: [] },
+      { file: 'src/__tests__/e2e/pipeline.test.ts', tier: 'e2e', layer: -1, changedLines: [] },
     ];
 
     const result = validateTestTiers(codeChanges, testChanges);
@@ -65,10 +65,10 @@ describe('validateTestTiers', () => {
       { file: 'src/L3-services/video/clipExtractor.ts', layer: 3, changedLines: [] },
     ];
     const testChanges: TestChange[] = [
-      { file: 'src/__tests__/unit/L2-clients/ffmpeg/ffmpegClient.test.ts', tier: 'unit', layer: 2 },
-      { file: 'src/__tests__/unit/L3-services/video/clipExtractor.test.ts', tier: 'unit', layer: 3 },
-      { file: 'src/__tests__/integration/L3/video.test.ts', tier: 'integration-L3', layer: 3 },
-      { file: 'src/__tests__/e2e/pipeline.test.ts', tier: 'e2e', layer: -1 },
+      { file: 'src/__tests__/unit/L2-clients/ffmpeg/ffmpegClient.test.ts', tier: 'unit', layer: 2, changedLines: [] },
+      { file: 'src/__tests__/unit/L3-services/video/clipExtractor.test.ts', tier: 'unit', layer: 3, changedLines: [] },
+      { file: 'src/__tests__/integration/L3/video.test.ts', tier: 'integration-L3', layer: 3, changedLines: [] },
+      { file: 'src/__tests__/e2e/pipeline.test.ts', tier: 'e2e', layer: -1, changedLines: [] },
     ];
 
     const result = validateTestTiers(codeChanges, testChanges);
@@ -89,7 +89,7 @@ describe('formatMissingTiers', () => {
       { file: 'src/L2-clients/ffmpeg/ffmpegClient.ts', layer: 2, changedLines: [] },
     ];
     const testChanges: TestChange[] = [
-      { file: 'src/__tests__/unit/L2-clients/ffmpeg/ffmpegClient.test.ts', tier: 'unit', layer: 2 },
+      { file: 'src/__tests__/unit/L2-clients/ffmpeg/ffmpegClient.test.ts', tier: 'unit', layer: 2, changedLines: [] },
     ];
 
     const requirements = validateTestTiers(codeChanges, testChanges);
@@ -105,8 +105,8 @@ describe('formatMissingTiers', () => {
       { file: 'src/L0-pure/utils.ts', layer: 0, changedLines: [] },
     ];
     const testChanges: TestChange[] = [
-      { file: 'src/__tests__/unit/L0-pure/utils.test.ts', tier: 'unit', layer: 0 },
-      { file: 'src/__tests__/e2e/utils.test.ts', tier: 'e2e', layer: -1 },
+      { file: 'src/__tests__/unit/L0-pure/utils.test.ts', tier: 'unit', layer: 0, changedLines: [] },
+      { file: 'src/__tests__/e2e/utils.test.ts', tier: 'e2e', layer: -1, changedLines: [] },
     ];
 
     const requirements = validateTestTiers(codeChanges, testChanges);

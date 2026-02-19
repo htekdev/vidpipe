@@ -15,7 +15,7 @@ try {
     }
 
     # Match git commit but not npm run commit
-    if ($command -notmatch "git\s+commit") {
+    if ($command -notmatch "git\s+(--\S+\s+)*commit") {
         exit 0
     }
 

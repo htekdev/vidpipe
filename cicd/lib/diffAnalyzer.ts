@@ -19,6 +19,7 @@ export interface TestChange {
   file: string;
   tier: string;
   layer: number;
+  changedLines: ChangedLineRange[];
 }
 
 export interface DiffAnalysis {
@@ -140,7 +141,8 @@ export function analyzeStagedChanges(): DiffAnalysis {
     if (isTestFile(normalizedFile)) {
       const parsed = parseTestTier(normalizedFile);
       if (parsed) {
-        testChanges.push({ file: normalizedFile, ...parsed });
+        const changedLines = changedLinesMap.get(normalizedFile) ?? changedLinesMap.get(file) ?? [];
+        testChanges.push({ file: normalizedFile, ...parsed, changedLines });
       } else {
         exempt.push(normalizedFile);
       }
