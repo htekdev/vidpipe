@@ -29,7 +29,8 @@
     "platforms": {
       "tiktok": ["#TechTok", "#CodingTikTok", "#LearnOnTikTok"],
       "linkedin": ["#TechLeadership", "#Innovation", "#FutureOfWork"],
-      "instagram": ["#CodeLife", "#TechContent", "#DeveloperLife"]
+      "instagram": ["#CodeLife", "#TechContent", "#DeveloperLife"],
+      "facebook": ["#TechCommunity", "#DeveloperLife", "#Innovation"]
     }
   },
   "contentGuidelines": {

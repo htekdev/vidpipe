@@ -31,7 +31,7 @@ interface CreatePostsArgs {
 // ── System prompt───────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `You are a viral social-media content strategist.
-Given a video transcript and summary you MUST generate one post for each of the 5 platforms listed below.
+Given a video transcript and summary you MUST generate one post for each of the 6 platforms listed below.
 Each post must match the platform's tone, format, and constraints exactly.
 
 Platform guidelines:
@@ -40,6 +40,7 @@ Platform guidelines:
 3. **Instagram** – Visual storytelling, emoji-rich, 30 hashtags max, engaging caption.
 4. **LinkedIn** – Professional, thought-leadership, industry insights, 1-3 hashtags.
 5. **X (Twitter)** – Concise, punchy, 280 chars max, 2-5 hashtags, thread-ready.
+6. **Facebook** – Conversational, community-focused, storytelling, 400 chars recommended, 2-5 hashtags, emoji-friendly.
 
 IMPORTANT – Content format:
 The "content" field you provide must be the FINAL, ready-to-post text that can be directly copied and pasted onto the platform. Do NOT use markdown headers, bullet points, or any formatting inside the content. Include hashtags inline at the end of the post text where appropriate. The content is saved as-is for direct posting.
@@ -50,7 +51,7 @@ Workflow:
    Each element must have: platform, content, hashtags (array), links (array), characterCount.
 
 Include relevant links in posts when search results provide them.
-Always call "create_posts" exactly once with all 5 platform posts.`
+Always call "create_posts" exactly once with all 6 platform posts.`
 
 // ── Agent ────────────────────────────────────────────────────────────────────
 
@@ -79,7 +80,7 @@ class SocialMediaAgent extends BaseAgent {
       {
         name: 'create_posts',
         description:
-          'Submit the generated social media posts for all 5 platforms.',
+          'Submit the generated social media posts for all 6 platforms.',
         parameters: {
           type: 'object',
           properties: {
@@ -144,6 +145,8 @@ function toPlatformEnum(raw: string): Platform {
     case 'x (twitter)':
     case 'x/twitter':
       return Platform.X
+    case 'facebook':
+      return Platform.Facebook
     default:
       return normalised as Platform
   }
