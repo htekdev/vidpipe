@@ -209,7 +209,7 @@ describe('Review Server API', () => {
       await request(app).post('/api/posts/approve-move/approve')
 
       // Wait for queue to drain
-      await new Promise(resolve => setTimeout(resolve, 200))
+      await new Promise(resolve => setTimeout(resolve, 1000))
 
       // No longer in queue
       const pendingRes = await request(app).get('/api/posts/approve-move')

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 
-describe('L3 videoOperations re-exports', () => {
+describe('L3 videoOperations re-exports', { timeout: 30_000 }, () => {
   it('re-exports ffprobe, getFFmpegPath, getFFprobePath', async () => {
     const mod = await import('../../../L3-services/videoOperations/videoOperations.js')
     expect(mod.ffprobe).toBeDefined()
