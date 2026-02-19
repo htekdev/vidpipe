@@ -269,9 +269,11 @@ export async function loadScheduleConfig(configPath?: string): Promise<ScheduleC
   return cachedConfig
 }
 
+const PLATFORM_ALIASES: Record<string, string> = { twitter: 'x' }
+
 export function getPlatformSchedule(platform: string, clipType?: string): PlatformSchedule | null {
   if (!cachedConfig) return null
-  const schedule = cachedConfig.platforms[platform] ?? null
+  const schedule = cachedConfig.platforms[platform] ?? cachedConfig.platforms[PLATFORM_ALIASES[platform] ?? ''] ?? null
   if (!schedule) return null
 
   if (clipType && schedule.byClipType?.[clipType]) {

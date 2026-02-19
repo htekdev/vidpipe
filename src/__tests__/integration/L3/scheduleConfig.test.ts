@@ -357,6 +357,24 @@ describe('L3 Integration: scheduleConfig', () => {
     expect(unknown!.slots[0].label).toBe('Default')
   })
 
+  test('resolves twitter alias to x platform key', async () => {
+    const fileConfig: ScheduleConfig = {
+      timezone: 'UTC',
+      platforms: {
+        x: {
+          slots: [{ days: ['mon'], time: '07:00', label: 'Early bird' }],
+          avoidDays: [],
+        },
+      },
+    }
+    mockReadTextFile.mockResolvedValueOnce(JSON.stringify(fileConfig))
+    await loadScheduleConfig('/test/schedule.json')
+
+    const schedule = getPlatformSchedule('twitter')
+    expect(schedule).not.toBeNull()
+    expect(schedule!.slots[0].label).toBe('Early bird')
+  })
+
   // ── clearScheduleCache ────────────────────────────────────────────
 
   test('forces reload on next call', async () => {

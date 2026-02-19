@@ -435,5 +435,25 @@ describe('scheduleConfig', () => {
       expect(schedule!.slots[0].time).toBe('08:00')
       expect(schedule!.avoidDays).toEqual(['sun'])
     })
+    it('resolves twitter alias to x platform key', async () => {
+      clearScheduleCache()
+      const customConfig = {
+        timezone: 'UTC',
+        platforms: {
+          x: {
+            slots: [{ days: ['mon'], time: '10:00', label: 'X morning' }],
+            avoidDays: [],
+          },
+        },
+      }
+      const tmpFile = tmp.fileSync({ dir: tmpDir, postfix: '.json', mode: 0o600 })
+      const filePath = tmpFile.name
+      await fs.writeFile(filePath, JSON.stringify(customConfig), 'utf-8')
+      await loadScheduleConfig(filePath)
+
+      const schedule = getPlatformSchedule('twitter')
+      expect(schedule).not.toBeNull()
+      expect(schedule!.slots[0].label).toBe('X morning')
+    })
   })
 })

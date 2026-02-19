@@ -14,4 +14,12 @@ describe('scheduler e2e', () => {
     )
     expect(calendar).toEqual([])
   }, 10_000)
+  test('getPlatformSchedule resolves twitter alias to x key from real schedule.json', async () => {
+    const { loadScheduleConfig, getPlatformSchedule, clearScheduleCache } = await import('../../L3-services/scheduler/scheduleConfig.js')
+    clearScheduleCache()
+    await loadScheduleConfig()
+    const schedule = getPlatformSchedule('twitter')
+    expect(schedule).not.toBeNull()
+    expect(schedule!.slots.length).toBeGreaterThanOrEqual(0)
+  }, 10_000)
 })
