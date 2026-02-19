@@ -5,6 +5,7 @@ import { BaseAgent } from './BaseAgent'
 import logger from '../config/logger'
 import type { MCPServerConfig } from '../providers/types.js'
 import { getConfig } from '../config/environment.js'
+import { getBrandConfig } from '../config/brand.js'
 import {
   Platform,
   ShortClip,
@@ -28,17 +29,59 @@ interface CreatePostsArgs {
   posts: PlatformPost[]
 }
 
-// ── System prompt───────────────────────────────────────────────────────────
+// ── Build system prompt from brand config ───────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a viral social-media content strategist.
-Given a video transcript and summary you MUST generate one post for each of the 5 platforms listed below.
-Each post must match the platform's tone, format, and constraints exactly.
+function buildSystemPrompt(): string {
+  const brand = getBrandConfig()
+
+  // Build hashtag guidance
+  const alwaysHashtags = brand.hashtags.always.join(', ')
+  const preferredHashtags = brand.hashtags.preferred.join(', ')
+  
+  // Build platform-specific hashtag guidance
+  const platformHashtags: string[] = []
+  if (brand.hashtags.platforms.tiktok) {
+    platformHashtags.push(`- **TikTok**: ${brand.hashtags.platforms.tiktok.join(', ')}`)
+  }
+  if (brand.hashtags.platforms.linkedin) {
+    platformHashtags.push(`- **LinkedIn**: ${brand.hashtags.platforms.linkedin.join(', ')}`)
+  }
+  if (brand.hashtags.platforms.instagram) {
+    platformHashtags.push(`- **Instagram**: ${brand.hashtags.platforms.instagram.join(', ')}`)
+  }
+
+  // Build advocacy guidance
+  const primaryAdvocacy = brand.advocacy.primary.join(', ')
+  const interests = brand.advocacy.interests.join(', ')
+
+  return `You are a viral social-media content strategist creating posts for ${brand.name} (${brand.handle}).
+
+Voice & style:
+- Tone: ${brand.voice.tone}
+- Personality: ${brand.voice.personality}
+- Style: ${brand.voice.style}
+
+Content guidelines: ${brand.contentGuidelines.socialFocus}
+
+Brand advocacy:
+- ALWAYS mention or reference: ${primaryAdvocacy}
+- Topics of interest: ${interests}
+- NEVER: ${brand.advocacy.avoids.join(', ')}
+
+Hashtag strategy:
+- Always include: ${alwaysHashtags}
+- Preferred tags: ${preferredHashtags}
+- Platform-specific tags:
+${platformHashtags.join('\n')}
+
+Your task is to generate one post for each of the 5 platforms listed below.
+Each post must match the platform's tone, format, and constraints while maintaining the brand voice above.
 
 Platform guidelines:
-1. **TikTok** – Casual, hook-driven, trending hashtags, 150 chars max, emoji-heavy.
-2. **YouTube** – Descriptive, SEO-optimized title + description, relevant tags.
-3. **Instagram** – Visual storytelling, emoji-rich, 30 hashtags max, engaging caption.
-4. **LinkedIn** – Professional, thought-leadership, industry insights, 1-3 hashtags.
+1. **TikTok** – Casual, hook-driven, trending hashtags, 150 chars max, emoji-heavy. Use platform-specific tags.
+2. **YouTube** – Descriptive, SEO-optimized title + description, relevant tags. Emphasize educational value.
+3. **Instagram** – Visual storytelling, emoji-rich, 30 hashtags max, engaging caption. Use platform-specific tags.
+4. **LinkedIn** – Professional, thought-leadership, industry insights, 1-3 hashtags. Use platform-specific tags.
 5. **X (Twitter)** – Concise, punchy, 280 chars max, 2-5 hashtags, thread-ready.
 
 IMPORTANT – Content format:
@@ -51,6 +94,7 @@ Workflow:
 
 Include relevant links in posts when search results provide them.
 Always call "create_posts" exactly once with all 5 platform posts.`
+}
 
 // ── Agent ────────────────────────────────────────────────────────────────────
 
@@ -58,7 +102,7 @@ class SocialMediaAgent extends BaseAgent {
   private collectedPosts: PlatformPost[] = []
 
   constructor(model?: string) {
-    super('SocialMediaAgent', SYSTEM_PROMPT, undefined, model)
+    super('SocialMediaAgent', buildSystemPrompt(), undefined, model)
   }
 
   protected getMcpServers(): Record<string, MCPServerConfig> | undefined {
