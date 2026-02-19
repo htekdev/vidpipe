@@ -2,7 +2,7 @@ import { describe, test, expect } from 'vitest'
 import { buildPrioritizedRealignPlan } from '../../L3-services/scheduler/realign.js'
 
 describe('prioritized realign e2e', () => {
-  test('buildPrioritizedRealignPlan returns valid plan shape without crashing', async () => {
+  test('buildPrioritizedRealignPlan reserves priority posts outside remaining pool', async () => {
     const plan = await buildPrioritizedRealignPlan({
       priorities: [{ keywords: ['nonexistent-keyword-xyz'], saturation: 1.0 }],
     })

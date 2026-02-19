@@ -190,7 +190,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
 
   // ── Saturation control ──
 
-  it('saturation=0 never picks priority posts via rule (falls to remaining pool)', async () => {
+  it('saturation=0 never picks priority posts via rule, non-matching fill slots', async () => {
     seedSchedule()
     mockPosts([
       makePost('p1', 'devops tools', 'twitter', '2026-06-02T08:00:00+00:00'),
@@ -201,9 +201,12 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
       priorities: [{ keywords: ['devops'], saturation: 0 }],
     })
 
-    // With saturation=0, Math.random() (=0) >= 0 → always skip rule
-    // Remaining pool sorted by scheduledFor → p2 first
+    // With saturation=0, rule never fires. p1 is reserved for rule (excluded from pool).
+    // Only p2 (non-matching) goes to remaining pool.
     expect(plan.posts[0].post._id).toBe('p2')
+    // p1 never assigned → cancelled
+    expect(plan.toCancel).toHaveLength(1)
+    expect(plan.toCancel[0].post._id).toBe('p1')
   })
 
   it('saturation=0.5 with deterministic random controls slot assignment', async () => {
@@ -228,21 +231,13 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
     })
 
     const ids = plan.posts.map(p => p.post._id)
-    // Slot 0: rule fires → devops p1
+    // Slot 0: rule fires (0.3 < 0.5) → devops p1
     expect(ids[0]).toBe('p1')
-    // Slot 1: rule skipped → remaining pool → first unused = p2 (devops, but assigned via pool not rule)
-    // Actually wait... p2 is a devops post in the remaining pool. Pool is sorted by scheduledFor.
-    // All posts have null scheduledFor → Infinity → pool order matches insertion order.
-    // p1 is used → next unused is p2
-    // Hmm, but p2 is also in the rule queue. Since p2 hasn't been used by the rule yet, it's still in the pool.
-    // Pool: [p1(used), p2(unused), p3(unused), p4(unused)] → p2
-    expect(ids[1]).toBe('p2')
-    // Slot 2: rule fires → devops queue still has p2 but used → queue exhausted → fallback pool
-    // Wait, rule queue had [p1, p2]. p1 was shifted at slot 0. At slot 2, queue has [p2].
-    // Shift p2 → but p2 IS in usedPostIds (from slot 1 fallback). So skip it. Queue empty → no assignment from rule.
-    // Fallback pool: p1(used), p2(used), p3(unused) → p3
-    expect(ids[2]).toBe('p3')
-    // Slot 3: rule skipped → remaining pool → p4
+    // Slot 1: rule skips (0.7 >= 0.5) → remaining pool (non-matching only) → p3
+    expect(ids[1]).toBe('p3')
+    // Slot 2: rule fires (0.1 < 0.5) → devops p2
+    expect(ids[2]).toBe('p2')
+    // Slot 3: rule skips (0.9 >= 0.5) → remaining pool → p4
     expect(ids[3]).toBe('p4')
   })
 
@@ -260,10 +255,13 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
       priorities: [{ keywords: ['devops'], saturation: 1.0, from: '2099-01-01', to: '2099-12-31' }],
     })
 
-    // Rule doesn't fire (date out of range), all from remaining pool
-    // Both posts go to remaining pool sorted by scheduledFor (both null → insertion order)
-    expect(plan.posts).toHaveLength(2)
-    expect(plan.posts[0].post._id).toBe('p1')
+    // p1 matches rule → excluded from remaining pool, reserved for rule (which never fires)
+    // Only p2 (non-matching) goes to remaining pool
+    expect(plan.posts).toHaveLength(1)
+    expect(plan.posts[0].post._id).toBe('p2')
+    // p1 gets cancelled since no slots within the rule's date range are available now
+    expect(plan.toCancel).toHaveLength(1)
+    expect(plan.toCancel[0].post._id).toBe('p1')
   })
 
   it('date range active today causes rule to fire', async () => {
@@ -280,6 +278,75 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
 
     // p1 matches devops → assigned first via rule
     expect(plan.posts[0].post._id).toBe('p1')
+  })
+
+  it('preserves priority-matched posts for their date range (does not consume them early)', async () => {
+    // This is the key bug test: when a rule has a future date range,
+    // priority-matched posts should NOT be consumed by earlier slots.
+
+    // Use a config with 1 slot/day to make slots predictable
+    const singleSlotConfig = {
+      timezone: 'UTC',
+      platforms: {
+        x: {
+          slots: [],
+          avoidDays: [] as string[],
+          byClipType: {
+            short: {
+              slots: [{ days: ['mon','tue','wed','thu','fri','sat','sun'], time: '10:00', label: 'Daily' }],
+              avoidDays: [] as string[],
+            },
+          },
+        },
+      },
+    }
+    seedSchedule(singleSlotConfig)
+
+    // 8 posts: 2 hooks, 6 random — enough to fill slots through the date range
+    mockPosts([
+      makePost('hook1', 'React hooks deep dive #hooks', 'twitter'),
+      makePost('hook2', 'Custom hooks patterns #hooks', 'twitter'),
+      makePost('rand1', 'Architecture matrix #CleanCode', 'twitter'),
+      makePost('rand2', 'TypeScript generics guide', 'twitter'),
+      makePost('rand3', 'CSS grid tricks', 'twitter'),
+      makePost('rand4', 'Docker basics', 'twitter'),
+      makePost('rand5', 'Git workflows', 'twitter'),
+      makePost('rand6', 'Testing patterns', 'twitter'),
+    ])
+
+    // Rule: hooks posts starting 3 days from now (slots 1-3 are before range, 4+ are in range)
+    const fromDate = new Date()
+    fromDate.setDate(fromDate.getDate() + 3)
+    const toDate = new Date()
+    toDate.setDate(toDate.getDate() + 10)
+    const from = fromDate.toISOString().slice(0, 10)
+    const to = toDate.toISOString().slice(0, 10)
+
+    const plan = await buildPrioritizedRealignPlan({
+      priorities: [{ keywords: ['hooks'], saturation: 1.0, from, to }],
+    })
+
+    // Find posts assigned to slots within the rule's date range
+    const nextWeekPosts = plan.posts.filter(p => {
+      const date = p.newScheduledFor.slice(0, 10)
+      return date >= from && date <= to
+    })
+
+    // hooks posts should be in the date range — they were reserved for the rule
+    const hooksInRange = nextWeekPosts.filter(p =>
+      p.post.content.toLowerCase().includes('hooks'),
+    )
+    expect(hooksInRange.length).toBeGreaterThan(0)
+
+    // Before the date range, only non-hooks posts should appear
+    const beforeRange = plan.posts.filter(p => {
+      const date = p.newScheduledFor.slice(0, 10)
+      return date < from
+    })
+    const hooksBeforeRange = beforeRange.filter(p =>
+      p.post.content.toLowerCase().includes('hooks'),
+    )
+    expect(hooksBeforeRange).toHaveLength(0)
   })
 
   // ── Keyword matching ──

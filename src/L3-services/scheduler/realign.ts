@@ -496,12 +496,25 @@ export async function buildPrioritizedRealignPlan(options: {
       return matched
     })
 
-    // Remaining pool: all posts not consumed by any rule, sorted by scheduledFor
-    const remainingPool = [...posts].sort((a, b) => {
-      const at = a.post.scheduledFor ? new Date(a.post.scheduledFor).getTime() : Infinity
-      const bt = b.post.scheduledFor ? new Date(b.post.scheduledFor).getTime() : Infinity
-      return at - bt
-    })
+    // Collect IDs of posts matched by any priority rule
+    const priorityMatchedIds = new Set<string>()
+    for (const queue of ruleQueues) {
+      for (const tp of queue) {
+        priorityMatchedIds.add(tp.post._id)
+      }
+    }
+
+    // Remaining pool: ONLY posts that don't match any priority rule.
+    // Priority-matched posts are reserved for their rule queues — they are only
+    // assignable when a rule fires. This prevents them from being consumed by
+    // earlier slots before the rule's date range starts.
+    const remainingPool = posts
+      .filter(tp => !priorityMatchedIds.has(tp.post._id))
+      .sort((a, b) => {
+        const at = a.post.scheduledFor ? new Date(a.post.scheduledFor).getTime() : Infinity
+        const bt = b.post.scheduledFor ? new Date(b.post.scheduledFor).getTime() : Infinity
+        return at - bt
+      })
     let remainingIdx = 0
 
     // Walk each slot and decide which post to assign

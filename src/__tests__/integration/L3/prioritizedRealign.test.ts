@@ -29,7 +29,7 @@ describe('L3 Integration: prioritized realign with no Late API', () => {
     clearScheduleCache()
   })
 
-  it('throws when Late API key is not configured', async () => {
+  it('requires Late API key for prioritized realign', async () => {
     await expect(
       buildPrioritizedRealignPlan({
         priorities: [{ keywords: ['devops'], saturation: 1.0 }],
