@@ -1,5 +1,4 @@
-import { readTextFile, writeFileRaw } from '../../L1-infra/fileSystem/fileSystem.js'
-import { join } from '../../L1-infra/paths/paths.js'
+import { readScheduleFile, writeScheduleFile, resolveSchedulePath } from '../../L2-clients/scheduleStore/scheduleStore.js'
 import logger from '../../L1-infra/logger/configLogger.js'
 
 export type DayOfWeek = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
@@ -233,25 +232,20 @@ export function validateScheduleConfig(config: unknown): ScheduleConfig {
 export async function loadScheduleConfig(configPath?: string): Promise<ScheduleConfig> {
   if (cachedConfig) return cachedConfig
 
-  const filePath = configPath ?? join(process.cwd(), 'schedule.json')
+  const filePath = resolveSchedulePath(configPath)
 
   let raw: string
   try {
-    raw = await readTextFile(filePath)
+    raw = await readScheduleFile(filePath)
   } catch {
     logger.info(`No schedule.json found at ${filePath}, creating with defaults`)
     const defaults = getDefaultScheduleConfig()
-    // Write directly with exclusive create flag for security
     try {
-      await writeFileRaw(filePath, JSON.stringify(defaults, null, 2), { 
-        encoding: 'utf-8',
-        flag: 'wx',
-        mode: 0o600
-      })
+      await writeScheduleFile(filePath, JSON.stringify(defaults, null, 2))
     } catch (err: any) {
       // If file was created by another process in a race, read it
       if (err.code === 'EEXIST') {
-        const raw = await readTextFile(filePath)
+        const raw = await readScheduleFile(filePath)
         const parsed: unknown = JSON.parse(raw)
         cachedConfig = validateScheduleConfig(parsed)
         logger.info(`Loaded schedule config from ${filePath}`)
