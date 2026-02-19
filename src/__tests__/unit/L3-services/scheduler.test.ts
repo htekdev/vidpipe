@@ -536,6 +536,33 @@ describe('getScheduleCalendar', () => {
     expect(calendar[0].postId).toBe('early')
   })
 
+  it('excludes draft posts from Late API', async () => {
+    mockGetScheduledPosts.mockResolvedValue([
+      {
+        _id: 'draft-1',
+        content: 'draft post',
+        status: 'draft',
+        platforms: [{ platform: 'twitter', accountId: 'a1' }],
+        scheduledFor: '2025-06-15T08:00:00+00:00',
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      },
+      {
+        _id: 'scheduled-1',
+        content: 'scheduled post',
+        status: 'scheduled',
+        platforms: [{ platform: 'twitter', accountId: 'a1' }],
+        scheduledFor: '2025-06-15T17:00:00+00:00',
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      },
+    ])
+
+    const calendar = await getScheduleCalendar()
+    expect(calendar).toHaveLength(1)
+    expect(calendar[0].postId).toBe('scheduled-1')
+  })
+
   it('includes local published items with scheduledFor', async () => {
     mockGetPublishedItems.mockResolvedValue([
       {

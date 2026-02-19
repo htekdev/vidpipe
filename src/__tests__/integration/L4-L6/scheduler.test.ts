@@ -118,4 +118,30 @@ describe('L4-L6 Integration: scheduler → Late API (mocked L2)', () => {
       ]),
     )
   })
+  it('getScheduleCalendar excludes draft posts', async () => {
+    mockGetScheduledPosts.mockResolvedValue([
+      {
+        _id: 'draft-post',
+        content: 'this is a draft',
+        status: 'draft',
+        platforms: [{ platform: 'linkedin', accountId: 'acc1' }],
+        scheduledFor: '2026-06-15T08:00:00-06:00',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+      {
+        _id: 'scheduled-post',
+        content: 'this is scheduled',
+        status: 'scheduled',
+        platforms: [{ platform: 'linkedin', accountId: 'acc1' }],
+        scheduledFor: '2026-06-15T17:00:00-06:00',
+        createdAt: '2026-01-01T00:00:00Z',
+        updatedAt: '2026-01-01T00:00:00Z',
+      },
+    ])
+
+    const calendar = await getScheduleCalendar()
+    expect(calendar).toHaveLength(1)
+    expect(calendar[0].postId).toBe('scheduled-post')
+  })
 })

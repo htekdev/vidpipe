@@ -20,6 +20,7 @@ interface BookedSlot {
   postId?: string
   itemId?: string
   platform: string
+  status?: string
 }
 
 /**
@@ -118,6 +119,7 @@ async function buildBookedSlots(platform?: string): Promise<BookedSlot[]> {
           source: 'late',
           postId: post._id,
           platform: p.platform,
+          status: post.status,
         })
       }
     }
@@ -212,7 +214,9 @@ export async function getScheduleCalendar(
 }>> {
   const slots = await buildBookedSlots()
 
-  let filtered = slots.map(s => ({
+  let filtered = slots
+    .filter(s => s.source === 'local' || s.status === 'scheduled')
+    .map(s => ({
     platform: s.platform,
     scheduledFor: s.scheduledFor,
     source: s.source,

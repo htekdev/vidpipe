@@ -57,6 +57,13 @@ export function buildFileArgs(testChanges: readonly TestChange[]): string[] {
       continue;
     }
 
+    // If the first hunk starts at line 1, it's a new file — run entire file
+    // (vitest :1 can't match imports/comments to a test block)
+    if (test.changedLines[0].start === 1) {
+      args.push(test.file);
+      continue;
+    }
+
     // Use the start line of each changed hunk as a vitest line filter
     for (const range of test.changedLines) {
       args.push(`${test.file}:${range.start}`);
