@@ -62,6 +62,10 @@ export const loadProducerAgent = async () =>
 export const loadGeminiClient = async () =>
   import('../L4-agents/analysisServiceBridge.js')
 
+// Schedule agent (for interactive chat)
+export const loadScheduleAgent = async () =>
+  import('../L4-agents/ScheduleAgent.js')
+
 // Visual enhancement stage
 export const loadVisualEnhancement = async () =>
   import('./visualEnhancement.js')

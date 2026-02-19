@@ -668,3 +668,18 @@ When addressing code review feedback on testable code:
 2. Verify the test fails, then implement the fix
 3. This ensures every review item becomes a permanent regression test
 4. Exempt: doc changes, YAML/config changes, comment-only changes
+
+## Agent Delegation & Token Preservation
+
+**Always delegate work to sub-agents** to preserve main conversation context tokens:
+
+- **Commands, builds, tests, linting** → use `task` agent (returns brief success/full failure output)
+- **Codebase exploration, file searching, understanding code** → use `explore` agent (returns focused answers)
+- **Complex multi-step implementation** → use `general-purpose` agent (full toolset in separate context)
+- **Code review** → use `code-review` or `code-reviewer` agent
+
+**Rules:**
+- Never run `npm test`, `npm run build`, `npx vitest`, or similar commands directly in the main context — always delegate to a `task` agent
+- Never explore the codebase with multiple grep/glob/view calls when an `explore` agent can answer the question in one call
+- Run multiple independent sub-agents in parallel when possible
+- Only use direct tool calls in the main context for small surgical edits (edit/create) or quick single-file reads
