@@ -34,10 +34,10 @@ describe('L7 Integration: chat module', () => {
     expect(typeof mod.runChat).toBe('function')
   })
 
-  it('ScheduleAgent is accessible via L6 scheduleChat', async () => {
-    const { ScheduleAgent } = await import('../../../L6-pipeline/scheduleChat.js')
-    expect(ScheduleAgent).toBeDefined()
-    expect(typeof ScheduleAgent).toBe('function')
+  it('createScheduleAgent is accessible via L6 scheduleChat', async () => {
+    const { createScheduleAgent } = await import('../../../L6-pipeline/scheduleChat.js')
+    expect(createScheduleAgent).toBeDefined()
+    expect(typeof createScheduleAgent).toBe('function')
   })
 
   it('runChat creates readline interface and exits on quit', async () => {
