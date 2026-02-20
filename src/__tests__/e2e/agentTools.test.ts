@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi, beforeEach } from 'vitest';
+import { existsSync } from 'node:fs';
 import path from 'path';
 import os from 'os';
 import fs from 'fs/promises';
@@ -8,6 +9,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const FIXTURE_VIDEO_PATH = path.join(__dirname, 'fixtures', 'sample-speech.mp4');
 const FIXTURE_TRANSCRIPT_PATH = path.join(__dirname, 'fixtures', 'sample-speech-transcript.json');
+const fixtureExists = existsSync(FIXTURE_VIDEO_PATH);
 
 // Test imports
 import {
@@ -38,7 +40,7 @@ const ffmpegAvailable = await isFFmpegAvailable();
 // ============================================================================
 // captureFrame tests
 // ============================================================================
-describe.skipIf(!ffmpegAvailable)('captureFrame', () => {
+describe.skipIf(!ffmpegAvailable || !fixtureExists)('captureFrame', () => {
   let tempDir: string;
 
   beforeAll(async () => {
@@ -85,7 +87,7 @@ describe.skipIf(!ffmpegAvailable)('captureFrame', () => {
 // ============================================================================
 // getVideoInfo tests
 // ============================================================================
-describe.skipIf(!ffmpegAvailable)('getVideoInfo', () => {
+describe.skipIf(!ffmpegAvailable || !fixtureExists)('getVideoInfo', () => {
   it('extracts video dimensions and duration', async () => {
     const info = await getVideoInfo(FIXTURE_VIDEO_PATH);
 
@@ -246,7 +248,7 @@ describe('getChapters', () => {
 // ============================================================================
 // runFfmpeg tests
 // ============================================================================
-describe.skipIf(!ffmpegAvailable)('runFfmpeg', () => {
+describe.skipIf(!ffmpegAvailable || !fixtureExists)('runFfmpeg', () => {
   let tempDir: string;
 
   beforeAll(async () => {

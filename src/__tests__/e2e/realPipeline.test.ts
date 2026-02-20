@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { existsSync } from 'node:fs';
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
@@ -19,6 +20,8 @@ import { getFFprobePath } from '../../L2-clients/ffmpeg/ffmpeg.js';
 const execFileAsync = promisify(execFile);
 const ffprobePath = getFFprobePath();
 const ffmpegOk = await isFFmpegAvailable();
+const fixtureDir = path.join(import.meta.dirname, 'fixtures');
+const fixtureExists = existsSync(path.join(fixtureDir, 'sample-speech.mp4'));
 
 async function getStreamInfo(filePath: string) {
   const { stdout } = await execFileAsync(ffprobePath, [
@@ -36,9 +39,8 @@ async function getAudioChannels(filePath: string): Promise<number> {
   return parseInt(stdout.trim(), 10);
 }
 
-describe.skipIf(!ffmpegOk)('Real Video Pipeline Tests', () => {
+describe.skipIf(!ffmpegOk || !fixtureExists)('Real Video Pipeline Tests', () => {
   let tempDir: string;
-  const fixtureDir = path.join(import.meta.dirname, 'fixtures');
   const videoPath = path.join(fixtureDir, 'sample-speech.mp4');
   const transcriptPath = path.join(fixtureDir, 'sample-speech-transcript.json');
   let transcript: Transcript;

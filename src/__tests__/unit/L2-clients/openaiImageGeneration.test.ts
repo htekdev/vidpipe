@@ -14,6 +14,7 @@ vi.mock('sharp', () => {
 
 vi.mock('fs/promises', () => ({
   writeFile: vi.fn().mockResolvedValue(undefined),
+  mkdir: vi.fn().mockResolvedValue(undefined),
 }))
 
 import { generateImage, COST_BY_QUALITY } from '../../../L2-clients/openai/imageGeneration.js'
