@@ -85,7 +85,7 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: scope
-        ? ['text', 'text-summary', 'json-summary']
+        ? ['text', 'text-summary', 'json-summary', 'json']
         : ['text', 'text-summary', 'lcov', 'html', 'json-summary', 'json'],
       include: scope?.include ?? ['src/**/*.ts'],
       exclude: scope?.exclude ?? [...BASE_EXCLUDE, ...LLM_PROVIDERS, ...L7_ENTRY_POINTS],
