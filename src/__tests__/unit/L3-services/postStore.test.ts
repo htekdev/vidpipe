@@ -119,6 +119,21 @@ describe('postStore', () => {
       const mediaBytes = await fs.readFile(item.mediaPath!, 'utf-8')
       expect(mediaBytes).toBe('fake-video-bytes')
     })
+
+    it('copies PNG image file with correct extension', async () => {
+      const mediaTmpFile = tmp.fileSync({ dir: tmpDir, postfix: '.png', mode: 0o600 })
+      const mediaSource = mediaTmpFile.name
+      await fs.writeFile(mediaSource, 'fake-png-bytes')
+
+      const meta = makeMetadata({ id: 'create-png' })
+      const item = await createItem('create-png', meta, 'With image', mediaSource)
+
+      expect(item.hasMedia).toBe(true)
+      expect(item.mediaPath).toContain('media.png')
+
+      const mediaBytes = await fs.readFile(item.mediaPath!, 'utf-8')
+      expect(mediaBytes).toBe('fake-png-bytes')
+    })
   })
 
   describe('getPendingItems', () => {
@@ -279,6 +294,41 @@ describe('postStore', () => {
 
     it('returns null for non-existent item', async () => {
       expect(await itemExists('nonexistent')).toBeNull()
+    })
+  })
+
+  describe('readQueueItem image support', () => {
+    it('finds media.png when media.mp4 does not exist', async () => {
+      const meta = makeMetadata({ id: 'img-only' })
+      const item = await createItem('img-only', meta, 'Image post')
+      // Manually create media.png in the folder
+      await fs.writeFile(path.join(item.folderPath, 'media.png'), 'fake-png')
+
+      const read = await getItem('img-only')
+      expect(read).not.toBeNull()
+      expect(read!.hasMedia).toBe(true)
+      expect(read!.mediaPath).toContain('media.png')
+    })
+
+    it('prefers media.mp4 over media.png when both exist', async () => {
+      const meta = makeMetadata({ id: 'both-media' })
+      const item = await createItem('both-media', meta, 'Both media')
+      await fs.writeFile(path.join(item.folderPath, 'media.mp4'), 'video')
+      await fs.writeFile(path.join(item.folderPath, 'media.png'), 'image')
+
+      const read = await getItem('both-media')
+      expect(read).not.toBeNull()
+      expect(read!.hasMedia).toBe(true)
+      expect(read!.mediaPath).toContain('media.mp4')
+    })
+
+    it('preserves mediaType field in metadata', async () => {
+      const meta = makeMetadata({ id: 'img-type', mediaType: 'image' })
+      await createItem('img-type', meta, 'Image type post')
+
+      const read = await getItem('img-type')
+      expect(read).not.toBeNull()
+      expect(read!.metadata.mediaType).toBe('image')
     })
   })
 

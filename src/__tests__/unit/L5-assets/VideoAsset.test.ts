@@ -10,7 +10,9 @@ import * as videoOperations from '../../../L3-services/videoOperations/videoOper
 
 vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   fileExists: vi.fn(),
+  fileExistsSync: vi.fn().mockReturnValue(false),
   readJsonFile: vi.fn(),
+  readTextFile: vi.fn(),
   writeJsonFile: vi.fn(),
   ensureDirectory: vi.fn(),
   writeTextFile: vi.fn(),
@@ -20,8 +22,10 @@ vi.mock('../../../L3-services/videoOperations/videoOperations.js', () => ({
   ffprobe: vi.fn(),
 }))
 
-
-
+const mockGenerateImage = vi.hoisted(() => vi.fn())
+vi.mock('../../../L3-services/imageGeneration/imageGeneration.js', () => ({
+  generateImage: mockGenerateImage,
+}))
 vi.mock('../../../L0-pure/captions/captionGenerator.js', () => ({
   generateSRT: vi.fn().mockReturnValue('SRT content'),
   generateVTT: vi.fn().mockReturnValue('VTT content'),
@@ -362,6 +366,47 @@ describe('VideoAsset', () => {
       await asset.getChapters()
 
       expect(fileSystem.readJsonFile).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('coverImagePath', () => {
+    it('returns correct path to cover.png in videoDir', () => {
+      expect(asset.coverImagePath).toMatch(/recordings[/\\]test-video[/\\]cover\.png$/)
+    })
+  })
+
+  describe('generateCoverImage()', () => {
+    it('calls generateImage with prompt and returns cover path', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(false)
+      mockGenerateImage.mockResolvedValue(asset.coverImagePath)
+
+      const result = await asset.generateCoverImage('Check out this TypeScript tutorial!')
+
+      expect(mockGenerateImage).toHaveBeenCalledWith(
+        expect.stringContaining('social media cover image'),
+        expect.stringMatching(/cover\.png$/),
+        expect.objectContaining({ size: '1024x1024', quality: 'high' }),
+      )
+      expect(result).toMatch(/cover\.png$/)
+    })
+
+    it('returns cached path when cover image already exists on disk', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+
+      const result = await asset.generateCoverImage('Some post content')
+
+      expect(mockGenerateImage).not.toHaveBeenCalled()
+      expect(result).toMatch(/cover\.png$/)
+    })
+
+    it('includes post content in the generation prompt', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(false)
+      mockGenerateImage.mockResolvedValue(asset.coverImagePath)
+
+      await asset.generateCoverImage('Learn about async patterns in Node.js')
+
+      const promptArg = mockGenerateImage.mock.calls[0][0]
+      expect(promptArg).toContain('async patterns in Node.js')
     })
   })
 

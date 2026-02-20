@@ -1,7 +1,7 @@
 import { getConfig } from '../../L1-infra/config/environment'
 import logger from '../../L1-infra/logger/configLogger'
 import { readTextFile, writeTextFile, writeJsonFile, ensureDirectory, copyFile, fileExists, listDirectoryWithTypes, removeDirectory, renameFile, copyDirectory } from '../../L1-infra/fileSystem/fileSystem.js'
-import { join, basename, resolve, sep } from '../../L1-infra/paths/paths.js'
+import { join, basename, resolve, sep, extname } from '../../L1-infra/paths/paths.js'
 
 export interface QueueItemMetadata {
   id: string
@@ -24,6 +24,8 @@ export interface QueueItemMetadata {
   reviewedAt: string | null
   publishedAt: string | null
   textOnly?: boolean
+  /** Type of media attached: video file or generated image */
+  mediaType?: 'video' | 'image'
   platformSpecificData?: Record<string, unknown>
 }
 
@@ -42,6 +44,7 @@ export interface GroupedQueueItem {
   sourceClip: string | null
   clipType: 'video' | 'short' | 'medium-clip'
   hasMedia: boolean
+  mediaType?: 'video' | 'image'
   items: QueueItem[]
 }
 
@@ -58,7 +61,6 @@ function getPublishedDir(): string {
 async function readQueueItem(folderPath: string, id: string): Promise<QueueItem | null> {
   const metadataPath = join(folderPath, 'metadata.json')
   const postPath = join(folderPath, 'post.md')
-  const mediaPath = join(folderPath, 'media.mp4')
 
   try {
     // Read directly without prior existence check to avoid TOCTOU race
@@ -72,16 +74,26 @@ async function readQueueItem(folderPath: string, id: string): Promise<QueueItem 
       logger.debug(`No post.md found for ${String(id).replace(/[\r\n]/g, '')}`)
     }
 
+    // Check for media file (could be video or image)
+    const videoPath = join(folderPath, 'media.mp4')
+    const imagePath = join(folderPath, 'media.png')
+    let mediaPath: string | null = null
     let hasMedia = false
-    const mediaFilePath = join(folderPath, 'media.mp4')
-    hasMedia = await fileExists(mediaFilePath)
+
+    if (await fileExists(videoPath)) {
+      mediaPath = videoPath
+      hasMedia = true
+    } else if (await fileExists(imagePath)) {
+      mediaPath = imagePath
+      hasMedia = true
+    }
 
     return {
       id,
       metadata,
       postContent,
       hasMedia,
-      mediaPath: hasMedia ? mediaFilePath : null,
+      mediaPath,
       folderPath,
     }
   } catch (err) {
@@ -148,6 +160,7 @@ export async function getGroupedPendingItems(): Promise<GroupedQueueItem[]> {
       sourceClip: first.metadata.sourceClip,
       clipType: first.metadata.clipType,
       hasMedia: first.hasMedia,
+      mediaType: first.metadata.mediaType,
       items: groupItems,
     })
   }
@@ -189,7 +202,9 @@ export async function createItem(
   await writeTextFile(join(folderPath, 'post.md'), postContent)
 
   let hasMedia = false
-  const mediaPath = join(folderPath, 'media.mp4')
+  const ext = mediaSourcePath ? extname(mediaSourcePath) : '.mp4'
+  const mediaFilename = `media${ext}`
+  const mediaPath = join(folderPath, mediaFilename)
 
   if (mediaSourcePath) {
     await copyFile(mediaSourcePath, mediaPath)
@@ -242,6 +257,7 @@ export async function updateItem(
       reviewedAt: updates.metadata.reviewedAt !== undefined ? (updates.metadata.reviewedAt !== null ? String(updates.metadata.reviewedAt) : null) : (existing.metadata.reviewedAt !== null ? String(existing.metadata.reviewedAt) : null),
       publishedAt: updates.metadata.publishedAt !== undefined ? (updates.metadata.publishedAt !== null ? String(updates.metadata.publishedAt) : null) : (existing.metadata.publishedAt !== null ? String(existing.metadata.publishedAt) : null),
       textOnly: updates.metadata.textOnly ?? existing.metadata.textOnly,
+      mediaType: updates.metadata.mediaType ?? existing.metadata.mediaType,
       platformSpecificData: updates.metadata.platformSpecificData ?? existing.metadata.platformSpecificData,
     }
     // Use only the sanitized object — do not spread raw HTTP updates (CodeQL js/http-to-file-access)
@@ -318,6 +334,7 @@ export async function approveItem(
     reviewedAt: item.metadata.reviewedAt !== null ? String(item.metadata.reviewedAt) : null,
     publishedAt: item.metadata.publishedAt !== null ? String(item.metadata.publishedAt) : null,
     textOnly: item.metadata.textOnly,
+    mediaType: item.metadata.mediaType,
     platformSpecificData: item.metadata.platformSpecificData,
   }
 

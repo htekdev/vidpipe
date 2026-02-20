@@ -4,9 +4,11 @@ import type { ShortClip, MediumClip, SocialPost, VideoFile } from '../../../L0-p
 
 // Mock dependencies
 const mockReadTextFile = vi.hoisted(() => vi.fn());
+const mockFileExists = vi.hoisted(() => vi.fn());
 vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   readTextFile: mockReadTextFile,
-  fileExists: vi.fn(),
+  fileExists: mockFileExists,
+  fileExistsSync: vi.fn().mockReturnValue(false),
   writeTextFile: vi.fn(),
   createDirectory: vi.fn(),
   listDirectory: vi.fn(),
@@ -18,6 +20,11 @@ const mockItemExists = vi.hoisted(() => vi.fn());
 vi.mock('../../../L3-services/postStore/postStore.js', () => ({
   createItem: mockCreateItem,
   itemExists: mockItemExists,
+}));
+
+const mockGenerateImage = vi.hoisted(() => vi.fn());
+vi.mock('../../../L3-services/imageGeneration/imageGeneration.js', () => ({
+  generateImage: mockGenerateImage,
 }));
 
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
@@ -34,6 +41,8 @@ describe('queueBuilder', () => {
     vi.clearAllMocks();
     mockItemExists.mockResolvedValue(false);
     mockCreateItem.mockResolvedValue(undefined);
+    mockFileExists.mockResolvedValue(false);
+    mockGenerateImage.mockResolvedValue('/tmp/cover.png');
   });
 
   // We need to import dynamically after mocks are set up
@@ -173,22 +182,78 @@ describe('queueBuilder', () => {
 
   it('creates text-only post when platform does not accept media for clip type', async () => {
     const { buildPublishQueue } = await getModule();
-    // TikTok doesn't accept main video media
+    // TikTok doesn't accept main video media — generates cover image
     mockReadTextFile.mockResolvedValue('---\nplatform: tiktok\n---\nPost');
 
     const post = createPost(Platform.TikTok);
     const result = await buildPublishQueue(mockVideo, [], [], [post], '/captioned.mp4');
 
-    // TikTok video post is created as text-only (no media), not skipped
+    // TikTok video post is created with generated cover image
     expect(result.itemsCreated).toBe(1);
     expect(result.itemsSkipped).toBe(0);
-    // Verify createItem was called with no media path (text-only)
+    expect(mockGenerateImage).toHaveBeenCalledWith(
+      expect.stringContaining('social media cover image'),
+      expect.stringContaining('cover.png'),
+      expect.objectContaining({ size: '1024x1024', quality: 'high' }),
+    );
+    // Verify createItem was called with image media path and mediaType=image
+    expect(mockCreateItem).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ mediaType: 'image' }),
+      expect.any(String),
+      expect.stringContaining('cover.png'),
+    );
+  });
+
+  it('reuses existing cover image when file already exists', async () => {
+    const { buildPublishQueue } = await getModule();
+    mockReadTextFile.mockResolvedValue('---\nplatform: tiktok\n---\nPost');
+    // Cover image already exists on disk
+    mockFileExists.mockResolvedValue(true);
+
+    const post = createPost(Platform.TikTok);
+    const result = await buildPublishQueue(mockVideo, [], [], [post], '/captioned.mp4');
+
+    // Should NOT call generateImage since cover already exists
+    expect(mockGenerateImage).not.toHaveBeenCalled();
+    // Item is still created with existing cover image
+    expect(result.itemsCreated).toBe(1);
+    expect(mockCreateItem).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ mediaType: 'image' }),
+      expect.any(String),
+      expect.stringContaining('cover.png'),
+    );
+  });
+
+  it('falls back to text-only when generateImage throws', async () => {
+    const { buildPublishQueue } = await getModule();
+    mockReadTextFile.mockResolvedValue('---\nplatform: tiktok\n---\nPost');
+    mockGenerateImage.mockRejectedValue(new Error('API key missing'));
+
+    const post = createPost(Platform.TikTok);
+    const result = await buildPublishQueue(mockVideo, [], [], [post], '/captioned.mp4');
+
+    expect(result.itemsCreated).toBe(1);
+    // Verify createItem was called with null media (fallback)
     expect(mockCreateItem).toHaveBeenCalledWith(
       expect.any(String),
       expect.objectContaining({ sourceMediaPath: null }),
       expect.any(String),
       undefined,
     );
+  });
+
+  it('sets mediaType to image for generated cover images', async () => {
+    const { buildPublishQueue } = await getModule();
+    mockReadTextFile.mockResolvedValue('---\nplatform: tiktok\n---\nPost content here');
+
+    const post = createPost(Platform.TikTok);
+    const result = await buildPublishQueue(mockVideo, [], [], [post], '/captioned.mp4');
+
+    expect(result.itemsCreated).toBe(1);
+    const metadataArg = mockCreateItem.mock.calls[0][1];
+    expect(metadataArg.mediaType).toBe('image');
   });
 
   it('handles post with missing clip slug gracefully', async () => {

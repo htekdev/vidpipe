@@ -42,6 +42,7 @@ vi.mock('../../../L1-infra/paths/paths.js', () => {
     resolve: (...args: string[]) => path.resolve(...args),
     basename: (p: string) => path.basename(p),
     dirname: (p: string) => path.dirname(p),
+    extname: (p: string) => path.extname(p),
     sep: path.sep,
   }
 })
@@ -143,6 +144,18 @@ describe('L3 Integration: postStore', () => {
       expect(item.mediaPath).toContain('media.mp4')
     })
 
+    it('copies PNG image file with correct extension', async () => {
+      const metadata = makeMetadata()
+      const item = await createItem('my-short-youtube', metadata, 'Content', '/source/cover.png')
+
+      expect(mockCopyFile).toHaveBeenCalledWith(
+        '/source/cover.png',
+        expect.stringContaining('media.png'),
+      )
+      expect(item.hasMedia).toBe(true)
+      expect(item.mediaPath).toContain('media.png')
+    })
+
     it('rejects invalid ID with path traversal characters', async () => {
       const metadata = makeMetadata()
       await expect(createItem('../evil', metadata, 'x')).rejects.toThrow('Invalid ID format')
@@ -183,6 +196,49 @@ describe('L3 Integration: postStore', () => {
 
     it('rejects invalid ID format', async () => {
       await expect(getItem('../etc/passwd')).rejects.toThrow('Invalid ID format')
+    })
+
+    it('finds media.png when media.mp4 does not exist', async () => {
+      const metadata = makeMetadata({ id: 'img-item' })
+      mockReadTextFile
+        .mockResolvedValueOnce(JSON.stringify(metadata))
+        .mockResolvedValueOnce('Image post')
+      mockFileExists
+        .mockResolvedValueOnce(false)  // media.mp4 not found
+        .mockResolvedValueOnce(true)   // media.png found
+
+      const item = await getItem('img-item')
+
+      expect(item).not.toBeNull()
+      expect(item!.hasMedia).toBe(true)
+      expect(item!.mediaPath).toContain('media.png')
+    })
+
+    it('prefers media.mp4 over media.png when both exist', async () => {
+      const metadata = makeMetadata({ id: 'both-item' })
+      mockReadTextFile
+        .mockResolvedValueOnce(JSON.stringify(metadata))
+        .mockResolvedValueOnce('Both media')
+      mockFileExists.mockResolvedValueOnce(true)  // media.mp4 found (stops checking)
+
+      const item = await getItem('both-item')
+
+      expect(item).not.toBeNull()
+      expect(item!.hasMedia).toBe(true)
+      expect(item!.mediaPath).toContain('media.mp4')
+    })
+
+    it('preserves mediaType field in metadata', async () => {
+      const metadata = makeMetadata({ id: 'typed-item', mediaType: 'image' })
+      mockReadTextFile
+        .mockResolvedValueOnce(JSON.stringify(metadata))
+        .mockResolvedValueOnce('Typed post')
+      mockFileExists.mockResolvedValue(false)
+
+      const item = await getItem('typed-item')
+
+      expect(item).not.toBeNull()
+      expect(item!.metadata.mediaType).toBe('image')
     })
   })
 
@@ -228,10 +284,13 @@ describe('L3 Integration: postStore', () => {
         .mockResolvedValueOnce('text post')
         .mockResolvedValueOnce(JSON.stringify(metaHasMedia))
         .mockResolvedValueOnce('media post')
-      // no-media: fileExists false; has-media: fileExists true
+      // readQueueItem checks media.mp4 then media.png for each item
+      // no-media: mp4=false, png=false
+      // has-media: mp4=true
       mockFileExists
-        .mockResolvedValueOnce(false)
-        .mockResolvedValueOnce(true)
+        .mockResolvedValueOnce(false)  // no-media: media.mp4
+        .mockResolvedValueOnce(false)  // no-media: media.png
+        .mockResolvedValueOnce(true)   // has-media: media.mp4
 
       const items = await getPendingItems()
       expect(items[0].id).toBe('has-media')

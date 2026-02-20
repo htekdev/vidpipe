@@ -45,12 +45,20 @@ vi.mock('../../../L1-infra/paths/paths.js', () => {
     resolve: (...args: string[]) => path.resolve(...args),
     basename: (p: string) => path.basename(p),
     dirname: (p: string) => path.dirname(p),
+    extname: (p: string) => path.extname(p),
     sep: path.sep,
   }
 })
 
 vi.mock('../../../L1-infra/config/environment.js', () => ({
   getConfig: () => ({ OUTPUT_DIR: '/test/output' }),
+}))
+
+// Mock L2 image generation client to prevent real API calls
+const mockL2GenerateImage = vi.hoisted(() => vi.fn())
+vi.mock('../../../L2-clients/openai/imageGeneration.js', () => ({
+  generateImage: mockL2GenerateImage,
+  COST_BY_QUALITY: { low: 0.04, medium: 0.07, high: 0.07 },
 }))
 
 // Logger is auto-mocked by global setup.ts
@@ -141,6 +149,8 @@ describe('L3 Integration: queueBuilder', () => {
     // Default: items don't exist yet
     mockFileExists.mockResolvedValue(false)
     mockListDirectoryWithTypes.mockResolvedValue([])
+    // Default: image generation succeeds
+    mockL2GenerateImage.mockResolvedValue('/tmp/cover.png')
   })
 
   // ── buildPublishQueue ─────────────────────────────────────────────
@@ -238,9 +248,69 @@ describe('L3 Integration: queueBuilder', () => {
 
       const result = await buildPublishQueue(video, [], [], [post], undefined)
 
-      // Post is created as text-only, not skipped
+      // Post is created with generated cover image, not skipped
       expect(result.itemsCreated).toBe(1)
       expect(result.itemsSkipped).toBe(0)
+    })
+
+    it('generates cover image for text-only platform and sets mediaType to image', async () => {
+      const video = makeVideo()
+      const post = makePost({
+        platform: Platform.TikTok,
+        content: '---\nplatform: tiktok\n---\nCover image test',
+        outputPath: '/social/tiktok.md',
+      })
+
+      mockReadTextFile.mockResolvedValue('---\nplatform: tiktok\n---\nCover image test')
+
+      const result = await buildPublishQueue(video, [], [], [post], undefined)
+
+      expect(result.itemsCreated).toBe(1)
+      // Verify L2 generateImage was called via L3 service
+      expect(mockL2GenerateImage).toHaveBeenCalledWith(
+        expect.stringContaining('social media cover image'),
+        expect.stringContaining('cover.png'),
+        expect.objectContaining({ size: '1024x1024', quality: 'high' }),
+      )
+    })
+
+    it('reuses existing cover image without regenerating', async () => {
+      const video = makeVideo()
+      const post = makePost({
+        platform: Platform.TikTok,
+        content: '---\nplatform: tiktok\n---\nReuse test',
+        outputPath: '/social/tiktok.md',
+      })
+
+      mockReadTextFile.mockResolvedValue('---\nplatform: tiktok\n---\nReuse test')
+      // Cover image already exists
+      mockFileExists.mockImplementation(async (p: string) => {
+        if (typeof p === 'string' && p.endsWith('cover.png')) return true
+        return false
+      })
+
+      const result = await buildPublishQueue(video, [], [], [post], undefined)
+
+      expect(result.itemsCreated).toBe(1)
+      // Should NOT call generateImage since cover already exists
+      expect(mockL2GenerateImage).not.toHaveBeenCalled()
+    })
+
+    it('falls back to null media when cover image generation fails', async () => {
+      const video = makeVideo()
+      const post = makePost({
+        platform: Platform.TikTok,
+        content: '---\nplatform: tiktok\n---\nFallback test',
+        outputPath: '/social/tiktok.md',
+      })
+
+      mockReadTextFile.mockResolvedValue('---\nplatform: tiktok\n---\nFallback test')
+      mockL2GenerateImage.mockRejectedValue(new Error('API key missing'))
+
+      const result = await buildPublishQueue(video, [], [], [post], undefined)
+
+      // Should still create the item, just without media
+      expect(result.itemsCreated).toBe(1)
     })
 
     it('records errors for posts with empty content', async () => {

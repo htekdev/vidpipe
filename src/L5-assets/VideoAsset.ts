@@ -13,7 +13,7 @@ import { join } from '../L1-infra/paths/paths.js'
 import { fileExists, readJsonFile, readTextFile, writeJsonFile, ensureDirectory, writeTextFile } from '../L1-infra/fileSystem/fileSystem.js'
 import { ffprobe, getVideoResolution, detectWebcamRegion } from '../L4-agents/videoServiceBridge.js'
 import { generateSRT, generateVTT, generateStyledASS } from '../L0-pure/captions/captionGenerator.js'
-import { analyzeVideoEditorial, analyzeVideoClipDirection } from '../L4-agents/analysisServiceBridge.js'
+import { analyzeVideoEditorial, analyzeVideoClipDirection, generateImage } from '../L4-agents/analysisServiceBridge.js'
 import type { Transcript, Chapter, VideoLayout, WebcamRegion, ScreenRegion } from '../L0-pure/types/index.js'
 
 /**
@@ -84,6 +84,11 @@ export abstract class VideoAsset extends Asset<string> {
   /** Directory containing caption files */
   get captionsDir(): string {
     return join(this.videoDir, 'captions')
+  }
+
+  /** Path to generated cover image */
+  get coverImagePath(): string {
+    return join(this.videoDir, 'cover.png')
   }
 
   /** Directory containing chapter files */
@@ -381,6 +386,31 @@ export abstract class VideoAsset extends Asset<string> {
     })
   }
 
+  // ── Cover Image ─────────────────────────────────────────────────────────────
+
+  /**
+   * Generate an eye-catching cover image for this video using DALL-E.
+   * The image captures the essence of the given post content.
+   *
+   * @param postContent - The social media post text to base the image on
+   * @returns Path to the generated PNG image
+   */
+  async generateCoverImage(postContent: string): Promise<string> {
+    // Check disk cache first
+    if (await fileExists(this.coverImagePath)) {
+      return this.coverImagePath
+    }
+
+    const prompt = buildCoverImagePrompt(postContent)
+
+    await generateImage(prompt, this.coverImagePath, {
+      size: '1024x1024',
+      quality: 'high',
+    })
+
+    return this.coverImagePath
+  }
+
   // ── Asset Implementation ───────────────────────────────────────────────────
 
   /**
@@ -399,4 +429,20 @@ export abstract class VideoAsset extends Asset<string> {
     }
     return this.videoPath
   }
+}
+
+function buildCoverImagePrompt(postContent: string): string {
+  const essence = postContent.substring(0, 500)
+
+  return `Create a professional, eye-catching social media cover image for a tech content post. The image should visually represent the following topic:
+
+"${essence}"
+
+Style requirements:
+- Modern, clean design with bold visual elements
+- Tech-focused aesthetic (code elements, circuit patterns, or abstract tech visuals)
+- Vibrant colors that stand out in a social media feed
+- No text or words in the image — purely visual
+- Professional quality suitable for LinkedIn, YouTube, or blog headers
+- 1:1 square aspect ratio composition`
 }

@@ -1,4 +1,4 @@
-import { readTextFile } from '../../L1-infra/fileSystem/fileSystem.js'
+import { readTextFile, fileExists } from '../../L1-infra/fileSystem/fileSystem.js'
 import { join, dirname } from '../../L1-infra/paths/paths.js'
 import logger from '../../L1-infra/logger/configLogger'
 import { PLATFORM_CHAR_LIMITS, toLatePlatform } from '../../L0-pure/types/index'
@@ -7,6 +7,7 @@ import type { VideoFile, ShortClip, MediumClip, SocialPost } from '../../L0-pure
 import { getMediaRule, platformAcceptsMedia } from '../socialPosting/platformContentStrategy'
 import type { ClipType } from '../socialPosting/platformContentStrategy'
 import { createItem, itemExists, type QueueItemMetadata } from '../postStore/postStore'
+import { generateImage } from '../imageGeneration/imageGeneration.js'
 
 // ============================================================================
 // TYPES
@@ -179,9 +180,27 @@ export async function buildPublishQueue(
         mediaPath = resolveVideoMedia(video, post.platform, captionedVideoPath)
       }
 
-      // Clear media for platform+clipType combos that are text-only
+      // Generate a cover image for platform+clipType combos that are text-only
+      let mediaType: 'video' | 'image' = 'video'
       if (!platformAcceptsMedia(post.platform, clipType)) {
-        mediaPath = null
+        const coverDir = clipSlug && clipSlug !== video.slug
+          ? join(video.repoPath, clipType === 'short' ? 'shorts' : 'medium-clips', clipSlug)
+          : video.repoPath
+        const coverPath = join(coverDir, 'cover.png')
+
+        try {
+          if (!await fileExists(coverPath)) {
+            const stripped = stripFrontmatter(post.content)
+            const textForPrompt = stripped.trim().length > 0 ? stripped : post.content
+            const prompt = buildTextOnlyCoverPrompt(textForPrompt)
+            await generateImage(prompt, coverPath, { size: '1024x1024', quality: 'high' })
+          }
+          mediaPath = coverPath
+          mediaType = 'image'
+        } catch {
+          logger.warn(`Failed to generate cover image for ${post.platform}, falling back to text-only`)
+          mediaPath = null
+        }
       }
 
       const itemId = `${clipSlug}-${latePlatform}`
@@ -201,6 +220,7 @@ export async function buildPublishQueue(
         sourceClip,
         clipType,
         sourceMediaPath: mediaPath,
+        mediaType,
         hashtags: post.hashtags,
         links: post.links.map(l => typeof l === 'string' ? { url: l } : l),
         characterCount: post.characterCount,
@@ -237,4 +257,23 @@ export async function buildPublishQueue(
     `Queue builder: ${result.itemsCreated} created, ${result.itemsSkipped} skipped, ${result.errors.length} errors`,
   )
   return result
+}
+
+// ============================================================================
+// COVER IMAGE PROMPT
+// ============================================================================
+
+function buildTextOnlyCoverPrompt(postContent: string): string {
+  const essence = postContent.substring(0, 500)
+  return `Create a professional, eye-catching social media cover image for a tech content post. The image should visually represent the following topic:
+
+"${essence}"
+
+Style requirements:
+- Modern, clean design with bold visual elements
+- Tech-focused aesthetic with code elements, circuit patterns, or abstract tech visuals
+- Vibrant colors that stand out in a social media feed
+- No text or words in the image — purely visual
+- Professional quality suitable for LinkedIn, YouTube, or blog headers
+- 1:1 square aspect ratio composition`
 }
