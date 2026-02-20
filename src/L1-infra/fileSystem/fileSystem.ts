@@ -33,21 +33,12 @@ function validateFilePath(filePath: string): string {
 }
 
 /**
- * Sanitize text content before writing to prevent security issues.
- * Removes null bytes and validates content isn't obviously malicious.
+ * Sanitize text content before writing to prevent null-byte injection
+ * and other potential security issues.
  */
 function sanitizeTextContent(content: string): string {
   // Remove null bytes which can cause security issues in some contexts
-  let sanitized = content.replace(/\0/g, '')
-  
-  // Additional validation: check for suspicious patterns that might indicate
-  // malicious content (e.g., embedded scripts, shell commands)
-  // This is a basic check - callers should validate untrusted HTTP data before passing it here
-  if (sanitized.length > 10_000_000) {
-    throw new Error('Content too large (> 10MB) - possible DoS attempt')
-  }
-  
-  return sanitized
+  return content.replace(/\0/g, '')
 }
 
 // ── Reads ──────────────────────────────────────────────────────
@@ -183,23 +174,11 @@ export async function writeJsonFile(filePath: string, data: unknown): Promise<vo
   await fsp.writeFile(filePath, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600 })
 }
 
-/** 
- * Write text file. Creates parent dirs.
- * 
- * Security note: This function writes content to the filesystem, which may include
- * data from HTTP sources. Callers are responsible for:
- * 1. Validating that HTTP data is from trusted sources
- * 2. Using safe file paths (e.g., via basename() to prevent path traversal)
- * 3. Storing files in appropriate locations with proper permissions
- * 
- * This function provides basic sanitization (null-byte removal, size limits) but relies on
- * callers to validate untrusted input before calling.
- */
+/** Write text file. Creates parent dirs. */
 export async function writeTextFile(filePath: string, content: string): Promise<void> {
   if (typeof content !== 'string') throw new TypeError('content must be a string')
   const safeContent = sanitizeTextContent(content)
   await fsp.mkdir(dirname(filePath), { recursive: true })
-  // lgtm[js/http-to-file-access] - General-purpose file write utility. Content is sanitized and callers are responsible for validating untrusted sources.
   await fsp.writeFile(filePath, safeContent, { encoding: 'utf-8', mode: 0o600 })
 }
 

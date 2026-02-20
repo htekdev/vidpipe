@@ -5,8 +5,7 @@
  *   user message → LLM → (tool_calls? → execute → feed back → LLM)* → final text
  */
 
-import { createOpenAI } from './ai.js'
-import type { OpenAI } from './ai.js'
+import { OpenAI } from './ai.js';
 import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,
@@ -238,7 +237,7 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async createSession(config: SessionConfig): Promise<LLMSession> {
-    const client = createOpenAI(); // reads OPENAI_API_KEY from env
+    const client = new OpenAI(); // reads OPENAI_API_KEY from env
     const model = config.model ?? this.getDefaultModel();
     logger.info(`OpenAI session created (model=${model}, tools=${config.tools.length})`);
     return new OpenAISession(client, config, model);

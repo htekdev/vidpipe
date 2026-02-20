@@ -5,8 +5,7 @@
  * Uses direct @anthropic-ai/sdk for tool-calling with our own agent loop.
  */
 
-import { createAnthropic } from './ai.js'
-import type { Anthropic } from './ai.js'
+import { Anthropic } from './ai.js'
 import type {
   ContentBlock,
   ContentBlockParam,
@@ -259,7 +258,7 @@ export class ClaudeProvider implements LLMProvider {
   }
 
   async createSession(config: SessionConfig): Promise<LLMSession> {
-    const client = createAnthropic()
+    const client = new Anthropic()
     return new ClaudeSession(client, config)
   }
 }

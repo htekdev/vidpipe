@@ -1,4 +1,4 @@
-import { createOpenAI } from '../llm/ai.js'
+import { OpenAI } from '../llm/ai.js'
 import { fileExistsSync, getFileStatsSync, openReadStream } from '../../L1-infra/fileSystem/fileSystem.js'
 import { getConfig } from '../../L1-infra/config/environment'
 import logger from '../../L1-infra/logger/configLogger'
@@ -32,7 +32,7 @@ export async function transcribeAudio(audioPath: string): Promise<Transcript> {
   }
 
   const config = getConfig()
-  const openai = createOpenAI({ apiKey: config.OPENAI_API_KEY })
+  const openai = new OpenAI({ apiKey: config.OPENAI_API_KEY })
 
   try {
     const prompt = getWhisperPrompt()
