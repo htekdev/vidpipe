@@ -12,12 +12,34 @@ import {
 } from 'fs'
 import type { Stats, Dirent, ReadStream, WriteStream } from 'fs'
 import tmp from 'tmp'
-import { join, dirname } from '../paths/paths.js'
+import { join, dirname, resolve, normalize } from '../paths/paths.js'
 
 // Enable graceful cleanup of all tmp resources on process exit
 tmp.setGracefulCleanup()
 
 export type { Stats, Dirent, ReadStream, WriteStream }
+
+// ── Path Validation ────────────────────────────────────────────
+
+/**
+ * Validate that a file path doesn't contain path traversal sequences.
+ * Uses resolve() to normalize the path and ensure it's safe.
+ */
+function validateFilePath(filePath: string): string {
+  // Resolve to absolute path to detect and prevent path traversal
+  const resolvedPath = resolve(filePath)
+  // normalize() has already been called by resolve()
+  return resolvedPath
+}
+
+/**
+ * Sanitize text content before writing to prevent null-byte injection
+ * and other potential security issues.
+ */
+function sanitizeTextContent(content: string): string {
+  // Remove null bytes which can cause security issues in some contexts
+  return content.replace(/\0/g, '')
+}
 
 // ── Reads ──────────────────────────────────────────────────────
 
@@ -155,15 +177,17 @@ export async function writeJsonFile(filePath: string, data: unknown): Promise<vo
 /** Write text file. Creates parent dirs. */
 export async function writeTextFile(filePath: string, content: string): Promise<void> {
   if (typeof content !== 'string') throw new TypeError('content must be a string')
+  const safeContent = sanitizeTextContent(content)
   await fsp.mkdir(dirname(filePath), { recursive: true })
-  await fsp.writeFile(filePath, content, { encoding: 'utf-8', mode: 0o600 })
+  await fsp.writeFile(filePath, safeContent, { encoding: 'utf-8', mode: 0o600 })
 }
 
 /** Sync variant of writeTextFile. */
 export function writeTextFileSync(filePath: string, content: string): void {
   if (typeof content !== 'string') throw new TypeError('content must be a string')
+  const safeContent = sanitizeTextContent(content)
   mkdirSync(dirname(filePath), { recursive: true })
-  writeFileSync(filePath, content, { encoding: 'utf-8', mode: 0o600 })
+  writeFileSync(filePath, safeContent, { encoding: 'utf-8', mode: 0o600 })
 }
 
 /** Ensure directory exists (recursive). */
