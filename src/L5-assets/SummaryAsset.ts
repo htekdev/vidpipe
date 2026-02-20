@@ -6,7 +6,7 @@
  */
 import { TextAsset } from './TextAsset.js'
 import { join } from '../L1-infra/paths/paths.js'
-import { loadSummaryAgent } from './loaders.js'
+import { generateSummary } from '../L4-agents/SummaryAgent.js'
 import type { AssetOptions } from './Asset.js'
 import type { MainVideoAsset } from './MainVideoAsset.js'
 
@@ -56,7 +56,6 @@ export class SummaryAsset extends TextAsset {
       }
 
       // Generate via SummaryAgent
-      const { generateSummary } = await loadSummaryAgent()
       const transcript = await this.parent.getTranscript()
       const shortAssets = await this.parent.getShorts()
       const shorts = shortAssets.map((s) => s.clip) // Get raw clip data

@@ -32,23 +32,18 @@ import {
   readTextFile,
 } from '../L1-infra/fileSystem/fileSystem.js'
 import { slugify } from '../L0-pure/text/text.js'
-import { ffprobe } from '../L4-agents/videoServiceBridge.js'
-import {
-  loadTranscription,
-  loadSilenceRemovalAgent,
-  loadCaptionBurning,
-  loadShortsAgent,
-  loadMediumVideoAgent,
-  loadChapterAgent,
-  loadProducerAgent,
-  loadVisualEnhancement,
-  loadCaptionGeneration,
-  loadSummaryAgent,
-  loadSocialMediaAgent,
-  loadBlogAgent,
-  loadGeminiClient,
-  loadPipelineServices,
-} from './loaders.js'
+import { ffprobe, burnCaptions, singlePassEditAndCaption } from '../L4-agents/videoServiceBridge.js'
+import { transcribeVideo, analyzeVideoClipDirection, generateCaptions } from '../L4-agents/analysisServiceBridge.js'
+import { removeDeadSilence } from '../L4-agents/SilenceRemovalAgent.js'
+import { generateShorts } from '../L4-agents/ShortsAgent.js'
+import { generateMediumClips } from '../L4-agents/MediumVideoAgent.js'
+import { generateChapters } from '../L4-agents/ChapterAgent.js'
+import { ProducerAgent } from '../L4-agents/ProducerAgent.js'
+import { generateSummary } from '../L4-agents/SummaryAgent.js'
+import { generateSocialPosts, generateShortPosts } from '../L4-agents/SocialMediaAgent.js'
+import { generateBlogPost } from '../L4-agents/BlogAgent.js'
+import { buildPublishQueue, commitAndPush } from '../L4-agents/pipelineServiceBridge.js'
+import { enhanceVideo } from './visualEnhancement.js'
 import { getConfig } from '../L1-infra/config/environment.js'
 import logger from '../L1-infra/logger/configLogger.js'
 import type { ProduceResult } from '../L4-agents/ProducerAgent.js'
@@ -309,7 +304,6 @@ export class MainVideoAsset extends VideoAsset {
       }
 
       // Generate via transcription service
-      const { transcribeVideo } = await loadTranscription()
       const videoFile = await this.toVideoFile()
       const transcript = await transcribeVideo(videoFile)
       logger.info(`Generated transcript: ${transcript.segments.length} segments`)
@@ -343,7 +337,6 @@ export class MainVideoAsset extends VideoAsset {
     }
 
     // Generate via silence removal agent
-    const { removeDeadSilence } = await loadSilenceRemovalAgent()
     const transcript = await this.getTranscript()
     const videoFile = await this.toVideoFile()
     const result = await removeDeadSilence(videoFile, transcript)
@@ -382,7 +375,6 @@ export class MainVideoAsset extends VideoAsset {
     const videoFile = await this.toVideoFile()
 
     // Run visual enhancement
-    const { enhanceVideo } = await loadVisualEnhancement()
     const result = await enhanceVideo(editedPath, transcript, videoFile)
 
     if (result) {
@@ -412,7 +404,6 @@ export class MainVideoAsset extends VideoAsset {
     const captions = await this.getCaptions()
 
     // Burn captions into video
-    const { burnCaptions } = await loadCaptionBurning()
     await burnCaptions(enhancedPath, captions.ass, this.captionedVideoPath)
     logger.info(`Captions burned into video: ${this.captionedVideoPath}`)
     return this.captionedVideoPath
@@ -438,7 +429,6 @@ export class MainVideoAsset extends VideoAsset {
     await this.getCaptionedVideo()
 
     // Load and run producer agent (video asset passed to constructor)
-    const { ProducerAgent } = await loadProducerAgent()
     const agent = new ProducerAgent(this, aspectRatio)
 
     const result = await agent.produce(outputPath)
@@ -515,7 +505,6 @@ export class MainVideoAsset extends VideoAsset {
       }
 
       // Generate via ShortsAgent
-      const { generateShorts } = await loadShortsAgent()
       const transcript = await this.getTranscript()
       const videoFile = await this.toVideoFile()
       const shorts = await generateShorts(videoFile, transcript)
@@ -560,7 +549,6 @@ export class MainVideoAsset extends VideoAsset {
       }
 
       // Generate via MediumVideoAgent
-      const { generateMediumClips } = await loadMediumVideoAgent()
       const transcript = await this.getTranscript()
       const videoFile = await this.toVideoFile()
       const clips = await generateMediumClips(videoFile, transcript)
@@ -620,7 +608,6 @@ export class MainVideoAsset extends VideoAsset {
 
     // Generate via ChapterAgent and cache the result
     return this.cached('chapters', async () => {
-      const { generateChapters } = await loadChapterAgent()
       const transcript = await this.getTranscript()
       const videoFile = await this.toVideoFile()
       const chapters = await generateChapters(videoFile, transcript)
@@ -704,7 +691,6 @@ export class MainVideoAsset extends VideoAsset {
    * @returns ProduceResult with removals, keepSegments, and output path
    */
   async removeSilence(modelName?: string): Promise<ProduceResult> {
-    const { ProducerAgent } = await loadProducerAgent()
     const agent = new ProducerAgent(this, modelName)
     return agent.produce(this.editedVideoPath)
   }
@@ -714,7 +700,6 @@ export class MainVideoAsset extends VideoAsset {
    * Creates a VideoFile pointing to the edited path and runs transcription.
    */
   async transcribeEditedVideo(editedVideoPath: string): Promise<Transcript> {
-    const { transcribeVideo } = await loadTranscription()
     const video = await this.toVideoFile()
     const editedVideo: VideoFile = { ...video, repoPath: editedVideoPath, filename: basename(editedVideoPath) }
     return transcribeVideo(editedVideo)
@@ -724,7 +709,6 @@ export class MainVideoAsset extends VideoAsset {
    * Analyze edited video for clip direction suggestions via Gemini.
    */
   async analyzeClipDirection(videoPath: string, duration: number): Promise<string> {
-    const { analyzeVideoClipDirection } = await loadGeminiClient()
     return analyzeVideoClipDirection(videoPath, duration)
   }
 
@@ -733,7 +717,6 @@ export class MainVideoAsset extends VideoAsset {
    * @returns Array of generated caption file paths
    */
   async generateCaptionFiles(transcript: Transcript): Promise<string[]> {
-    const { generateCaptions } = await loadCaptionGeneration()
     const video = await this.toVideoFile()
     return generateCaptions(video, transcript)
   }
@@ -743,7 +726,6 @@ export class MainVideoAsset extends VideoAsset {
    * @returns Path to the captioned output video
    */
   async burnCaptionFiles(inputVideo: string, assPath: string, outputPath: string): Promise<string> {
-    const { burnCaptions } = await loadCaptionBurning()
     return burnCaptions(inputVideo, assPath, outputPath)
   }
 
@@ -758,8 +740,7 @@ export class MainVideoAsset extends VideoAsset {
     assPath: string,
     outputPath: string,
   ): Promise<string> {
-    const ops = await loadCaptionBurning()
-    return ops.singlePassEditAndCaption(originalVideo, keepSegments, assPath, outputPath)
+    return singlePassEditAndCaption(originalVideo, keepSegments, assPath, outputPath)
   }
 
   /**
@@ -773,7 +754,6 @@ export class MainVideoAsset extends VideoAsset {
     webcamRegion?: WebcamRegion | null,
     videoPathOverride?: string,
   ): Promise<ShortClip[]> {
-    const { generateShorts } = await loadShortsAgent()
     let video = await this.toVideoFile()
     if (videoPathOverride) video = { ...video, repoPath: videoPathOverride }
     return generateShorts(video, transcript, modelName, clipDirection, webcamRegion)
@@ -789,7 +769,6 @@ export class MainVideoAsset extends VideoAsset {
     clipDirection?: string,
     videoPathOverride?: string,
   ): Promise<MediumClip[]> {
-    const { generateMediumClips } = await loadMediumVideoAgent()
     let video = await this.toVideoFile()
     if (videoPathOverride) video = { ...video, repoPath: videoPathOverride }
     return generateMediumClips(video, transcript, modelName, clipDirection)
@@ -799,7 +778,6 @@ export class MainVideoAsset extends VideoAsset {
    * Generate chapters via the ChapterAgent.
    */
   async generateChapterData(transcript: Transcript, modelName?: string): Promise<Chapter[]> {
-    const { generateChapters } = await loadChapterAgent()
     const video = await this.toVideoFile()
     return generateChapters(video, transcript, modelName)
   }
@@ -813,7 +791,6 @@ export class MainVideoAsset extends VideoAsset {
     chapters?: Chapter[],
     modelName?: string,
   ): Promise<VideoSummary> {
-    const { generateSummary } = await loadSummaryAgent()
     const video = await this.toVideoFile()
     return generateSummary(video, transcript, shorts, chapters, modelName)
   }
@@ -827,7 +804,6 @@ export class MainVideoAsset extends VideoAsset {
     outputDir: string,
     modelName?: string,
   ): Promise<SocialPost[]> {
-    const { generateSocialPosts } = await loadSocialMediaAgent()
     const video = await this.toVideoFile()
     return generateSocialPosts(video, transcript, summary, outputDir, modelName)
   }
@@ -840,7 +816,6 @@ export class MainVideoAsset extends VideoAsset {
     transcript: Transcript,
     modelName?: string,
   ): Promise<SocialPost[]> {
-    const { generateShortPosts } = await loadSocialMediaAgent()
     const video = await this.toVideoFile()
     return generateShortPosts(video, short, transcript, modelName)
   }
@@ -853,7 +828,6 @@ export class MainVideoAsset extends VideoAsset {
     summary: VideoSummary,
     modelName?: string,
   ): Promise<string> {
-    const { generateBlogPost } = await loadBlogAgent()
     const video = await this.toVideoFile()
     return generateBlogPost(video, transcript, summary, modelName)
   }
@@ -867,7 +841,6 @@ export class MainVideoAsset extends VideoAsset {
     socialPosts: SocialPost[],
     captionedVideoPath: string | undefined,
   ): Promise<QueueBuildResult> {
-    const { buildPublishQueue } = await loadPipelineServices()
     const video = await this.toVideoFile()
     return buildPublishQueue(video, shorts, mediumClips, socialPosts, captionedVideoPath)
   }
@@ -876,7 +849,6 @@ export class MainVideoAsset extends VideoAsset {
    * Commit and push all generated assets via git.
    */
   async commitAndPushChanges(message?: string): Promise<void> {
-    const { commitAndPush } = await loadPipelineServices()
     return commitAndPush(this.slug, message)
   }
 }

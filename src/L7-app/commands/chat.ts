@@ -1,13 +1,11 @@
 import { initConfig } from '../../L1-infra/config/environment.js'
 import { setChatMode } from '../../L1-infra/logger/configLogger.js'
 import { createChatInterface } from '../../L1-infra/readline/readline.js'
-import { loadScheduleAgent } from '../../L6-pipeline/scheduleChat.js'
+import { ScheduleAgent } from '../../L6-pipeline/scheduleChat.js'
 import type { UserInputRequest, UserInputResponse } from '../../L3-services/llm/providerFactory.js'
 
 export async function runChat(): Promise<void> {
   initConfig()
-
-  const { ScheduleAgent } = await loadScheduleAgent()
 
   // Suppress Winston console transport so it doesn't corrupt readline
   setChatMode(true)

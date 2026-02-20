@@ -8,13 +8,11 @@ const mockAgent = {
 }
 
 vi.mock('../../../L6-pipeline/scheduleChat.js', () => ({
-  loadScheduleAgent: vi.fn().mockResolvedValue({
-    ScheduleAgent: class MockScheduleAgent {
-      setChatOutput = mockAgent.setChatOutput
-      run = mockAgent.run
-      destroy = mockAgent.destroy
-    },
-  }),
+  ScheduleAgent: class MockScheduleAgent {
+    setChatOutput = mockAgent.setChatOutput
+    run = mockAgent.run
+    destroy = mockAgent.destroy
+  },
 }))
 
 describe('L7 Unit: chat command', () => {

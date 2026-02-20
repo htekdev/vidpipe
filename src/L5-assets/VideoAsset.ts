@@ -11,9 +11,9 @@
 import { Asset, AssetOptions } from './Asset.js'
 import { join } from '../L1-infra/paths/paths.js'
 import { fileExists, readJsonFile, readTextFile, writeJsonFile, ensureDirectory, writeTextFile } from '../L1-infra/fileSystem/fileSystem.js'
-import { ffprobe } from '../L4-agents/videoServiceBridge.js'
+import { ffprobe, getVideoResolution, detectWebcamRegion } from '../L4-agents/videoServiceBridge.js'
 import { generateSRT, generateVTT, generateStyledASS } from '../L0-pure/captions/captionGenerator.js'
-import { loadFaceDetection, loadGeminiClient } from './loaders.js'
+import { analyzeVideoEditorial, analyzeVideoClipDirection } from '../L4-agents/analysisServiceBridge.js'
 import type { Transcript, Chapter, VideoLayout, WebcamRegion, ScreenRegion } from '../L0-pure/types/index.js'
 
 /**
@@ -142,7 +142,6 @@ export abstract class VideoAsset extends Asset<string> {
       }
 
       // Detect layout (lazy import to avoid config issues at module load)
-      const { getVideoResolution, detectWebcamRegion } = await loadFaceDetection()
       const { width, height } = await getVideoResolution(this.videoPath)
       const webcam = await detectWebcamRegion(this.videoPath)
 
@@ -225,7 +224,6 @@ export abstract class VideoAsset extends Asset<string> {
       }
 
       // Analyze video via Gemini
-      const { analyzeVideoEditorial } = await loadGeminiClient()
       const metadata = await this.getMetadata()
       const direction = await analyzeVideoEditorial(
         this.videoPath,
@@ -269,7 +267,6 @@ export abstract class VideoAsset extends Asset<string> {
       }
 
       // Analyze video via Gemini
-      const { analyzeVideoClipDirection } = await loadGeminiClient()
       const metadata = await this.getMetadata()
       const direction = await analyzeVideoClipDirection(
         this.videoPath,

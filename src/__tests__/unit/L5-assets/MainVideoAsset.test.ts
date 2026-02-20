@@ -4,7 +4,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { MainVideoAsset } from '../../../L5-assets/MainVideoAsset.js'
 import * as fileSystem from '../../../L1-infra/fileSystem/fileSystem.js'
-import * as videoOperations from '../../../L3-services/videoOperations/videoOperations.js'
+import * as videoServiceBridge from '../../../L4-agents/videoServiceBridge.js'
 import * as environment from '../../../L1-infra/config/environment.js'
 
 vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
@@ -23,10 +23,16 @@ vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   openWriteStream: vi.fn(),
 }))
 
-vi.mock('../../../L3-services/videoOperations/videoOperations.js', () => ({
+vi.mock('../../../L4-agents/videoServiceBridge.js', () => ({
   ffprobe: vi.fn(),
   getFFmpegPath: vi.fn().mockReturnValue('/usr/bin/ffmpeg'),
   getFFprobePath: vi.fn().mockReturnValue('/usr/bin/ffprobe'),
+  burnCaptions: vi.fn().mockResolvedValue('/recordings/test/test-captioned.mp4'),
+  singlePassEditAndCaption: vi.fn().mockResolvedValue('/recordings/test/test-captioned.mp4'),
+  extractCompositeClip: vi.fn(),
+  compositeOverlays: vi.fn(),
+  getVideoResolution: vi.fn().mockResolvedValue({ width: 1920, height: 1080 }),
+  detectWebcamRegion: vi.fn().mockResolvedValue(null),
 }))
 
 vi.mock('../../../L1-infra/config/environment.js', () => ({
@@ -53,45 +59,68 @@ vi.mock('../../../L0-pure/captions/captionGenerator.js', () => ({
   generateStyledASS: vi.fn().mockReturnValue('ASS'),
 }))
 
-// Mock loaders to prevent actual agent instantiation during tests
-vi.mock('../../../L5-assets/loaders.js', () => ({
-  loadTranscription: vi.fn(async () => ({
-    transcribeVideo: vi.fn().mockResolvedValue({
-      text: 'test transcript',
-      segments: [],
-      words: [],
-      language: 'en',
-      duration: 100,
-    }),
-  })),
-  loadSilenceRemovalAgent: vi.fn(async () => ({
-    removeDeadSilence: vi.fn().mockResolvedValue({
-      editedPath: '/recordings/test/test.mp4',
-      removals: [],
-      keepSegments: [],
-      wasEdited: false,
-    }),
-  })),
-  loadCaptionBurning: vi.fn(async () => ({
-    burnCaptions: vi.fn().mockResolvedValue('/recordings/test/test-captioned.mp4'),
-  })),
-  loadShortsAgent: vi.fn(async () => ({
-    generateShorts: vi.fn().mockResolvedValue([]),
-  })),
-  loadChapterAgent: vi.fn(async () => ({
-    generateChapters: vi.fn().mockResolvedValue([]),
-  })),
-  loadFaceDetection: vi.fn(async () => ({
-    detectWebcamRegion: vi.fn().mockResolvedValue(null),
-    getVideoResolution: vi.fn().mockResolvedValue({ width: 1920, height: 1080 }),
-  })),
-  loadVisualEnhancement: vi.fn(async () => ({
-    enhanceVideo: vi.fn().mockResolvedValue({
-      enhancedVideoPath: '/recordings/test/test-enhanced.mp4',
-      overlays: [{ imagePath: '/tmp/test.png', width: 1024, height: 1024, opportunity: {} }],
-      report: 'test report',
-    }),
-  })),
+// Mock L4 agents to prevent actual agent instantiation during tests
+vi.mock('../../../L4-agents/analysisServiceBridge.js', () => ({
+  transcribeVideo: vi.fn().mockResolvedValue({
+    text: 'test transcript',
+    segments: [],
+    words: [],
+    language: 'en',
+    duration: 100,
+  }),
+  analyzeVideoClipDirection: vi.fn().mockResolvedValue(''),
+  generateCaptions: vi.fn().mockResolvedValue({ srt: '', vtt: '', ass: '' }),
+}))
+
+vi.mock('../../../L4-agents/SilenceRemovalAgent.js', () => ({
+  removeDeadSilence: vi.fn().mockResolvedValue({
+    editedPath: '/recordings/test/test.mp4',
+    removals: [],
+    keepSegments: [],
+    wasEdited: false,
+  }),
+}))
+
+vi.mock('../../../L4-agents/ShortsAgent.js', () => ({
+  generateShorts: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('../../../L4-agents/MediumVideoAgent.js', () => ({
+  generateMediumClips: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('../../../L4-agents/ChapterAgent.js', () => ({
+  generateChapters: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('../../../L4-agents/ProducerAgent.js', () => ({
+  ProducerAgent: vi.fn(),
+}))
+
+vi.mock('../../../L4-agents/SummaryAgent.js', () => ({
+  generateSummary: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('../../../L4-agents/SocialMediaAgent.js', () => ({
+  generateSocialPosts: vi.fn().mockResolvedValue([]),
+  generateShortPosts: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('../../../L4-agents/BlogAgent.js', () => ({
+  generateBlogPost: vi.fn().mockResolvedValue(''),
+}))
+
+vi.mock('../../../L4-agents/pipelineServiceBridge.js', () => ({
+  buildPublishQueue: vi.fn().mockResolvedValue({ itemsCreated: 0, itemsSkipped: 0, errors: [] }),
+  commitAndPush: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('../../../L5-assets/visualEnhancement.js', () => ({
+  enhanceVideo: vi.fn().mockResolvedValue({
+    enhancedVideoPath: '/recordings/test/test-enhanced.mp4',
+    overlays: [{ imagePath: '/tmp/test.png', width: 1024, height: 1024, opportunity: {} }],
+    report: 'test report',
+  }),
 }))
 
 describe('MainVideoAsset', () => {
@@ -100,7 +129,7 @@ describe('MainVideoAsset', () => {
   })
 
   afterEach(() => {
-    vi.resetAllMocks()
+    vi.clearAllMocks()
   })
 
   describe('load()', () => {
@@ -255,8 +284,7 @@ describe('MainVideoAsset', () => {
         duration: 100,
       })
 
-      // Mock ffprobe for toVideoFile call
-      vi.mocked(videoOperations.ffprobe).mockResolvedValue({
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue({
         format: { duration: 100, size: 1000 },
         streams: [{ codec_type: 'video', width: 1920, height: 1080 }],
       } as any)
@@ -358,8 +386,7 @@ describe('MainVideoAsset', () => {
 
       const asset = await MainVideoAsset.load('/recordings/test')
 
-      // Mock ffprobe for toVideoFile call
-      vi.mocked(videoOperations.ffprobe).mockResolvedValue({
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue({
         format: { duration: 100, size: 1000 },
         streams: [{ codec_type: 'video', width: 1920, height: 1080 }],
       } as any)
@@ -516,7 +543,7 @@ describe('MainVideoAsset', () => {
         isFile: () => true,
         isDirectory: () => false,
       } as any)
-      vi.mocked(videoOperations.ffprobe).mockResolvedValue({
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue({
         format: { duration: 120, size: 1024000, filename: '', nb_streams: 1, format_name: 'mp4', format_long_name: '', start_time: 0, bit_rate: 0, tags: {} },
         streams: [{ codec_type: 'video', width: 1920, height: 1080, index: 0, codec_name: '', codec_long_name: '', profile: 0, codec_time_base: '', duration: '0', bit_rate: '0' }],
         chapters: [],
@@ -530,6 +557,20 @@ describe('MainVideoAsset', () => {
       expect(videoFile.repoPath).toMatch(/recordings[/\\]test[/\\]test\.mp4$/)
       expect(videoFile.duration).toBe(120)
       expect(videoFile.size).toBe(1024000)
+    })
+  })
+
+  describe('singlePassEditAndBurnCaptions()', () => {
+    it('delegates to singlePassEditAndCaption', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      const asset = await MainVideoAsset.load('/recordings/test')
+      const result = await asset.singlePassEditAndBurnCaptions(
+        '/recordings/test/test.mp4',
+        [{ start: 0, end: 10 }],
+        '/recordings/test/captions.ass',
+        '/recordings/test/output.mp4',
+      )
+      expect(result).toBe('/recordings/test/test-captioned.mp4')
     })
   })
 

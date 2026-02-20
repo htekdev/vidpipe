@@ -11,9 +11,9 @@ vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   writeTextFile: vi.fn(),
 }));
 
-// Mock loaders so we don't need real agents
-vi.mock('../../../L5-assets/loaders.js', () => ({
-  loadSummaryAgent: vi.fn(),
+// Mock L4 agent so we don't need real agents
+vi.mock('../../../L4-agents/SummaryAgent.js', () => ({
+  generateSummary: vi.fn(),
 }));
 
 describe('SummaryAsset', () => {

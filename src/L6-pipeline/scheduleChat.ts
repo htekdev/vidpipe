@@ -1,2 +1,2 @@
-/** Re-export lazy loader for ScheduleAgent so L7 can access it via L6 → L5 → L4. */
-export { loadScheduleAgent } from '../L5-assets/loaders.js'
+/** Re-export ScheduleAgent for L7 consumption via L6 → L5 → L4. */
+export { ScheduleAgent } from '../L5-assets/pipelineServices.js'

@@ -92,7 +92,7 @@ vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   readJsonFile: vi.fn().mockResolvedValue({}),
 }))
 
-// ---- Mock L5 dependencies (MainVideoAsset + loaders) ----
+// ---- Mock L5 dependencies (MainVideoAsset + pipelineServices) ----
 
 vi.mock('../../../L5-assets/MainVideoAsset.js', () => ({
   MainVideoAsset: {
@@ -100,14 +100,12 @@ vi.mock('../../../L5-assets/MainVideoAsset.js', () => ({
   },
 }))
 
-vi.mock('../../../L5-assets/loaders.js', () => ({
-  loadPipelineServices: vi.fn().mockResolvedValue({
-    costTracker: mockCostTracker,
-    markPending: mockMarkPending,
-    markProcessing: mockMarkProcessing,
-    markCompleted: mockMarkCompleted,
-    markFailed: mockMarkFailed,
-  }),
+vi.mock('../../../L5-assets/pipelineServices.js', () => ({
+  costTracker: mockCostTracker,
+  markPending: mockMarkPending,
+  markProcessing: mockMarkProcessing,
+  markCompleted: mockMarkCompleted,
+  markFailed: mockMarkFailed,
 }))
 
 // Mock visual enhancement (L6-internal) to prevent eager module loading

@@ -21,3 +21,7 @@ export { transcribeVideo } from '../L3-services/transcription/transcription.js'
 
 // Caption generation
 export { generateCaptions } from '../L3-services/captionGeneration/captionGeneration.js'
+
+// Image generation (DALL-E wrapper with cost tracking)
+export { generateImage } from '../L3-services/imageGeneration/imageGeneration.js'
+export type { ImageGenerationOptions } from '../L3-services/imageGeneration/imageGeneration.js'

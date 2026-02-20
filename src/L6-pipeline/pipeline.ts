@@ -3,12 +3,11 @@ import { ensureDirectory, writeJsonFile, writeTextFile, copyFile, removeFile, fi
 import logger, { pushPipe, popPipe } from '../L1-infra/logger/configLogger'
 import { getConfig } from '../L1-infra/config/environment'
 import { MainVideoAsset } from '../L5-assets/MainVideoAsset.js'
-import { loadPipelineServices } from '../L5-assets/loaders.js'
+import { costTracker, markPending, markProcessing, markCompleted, markFailed } from '../L5-assets/pipelineServices.js'
 import { enhanceVideo } from './stages/visualEnhancement.js'
 import { getModelForAgent } from '../L1-infra/config/modelConfig.js'
-import type { CostReport } from '../L3-services/costTracking/costTracker.js'
+import type { CostReport, QueueBuildResult } from '../L5-assets/pipelineServices.js'
 import type { ProduceResult } from '../L4-agents/ProducerAgent.js'
-import type { QueueBuildResult } from '../L3-services/queueBuilder/queueBuilder.js'
 import type {
   VideoFile,
   Transcript,
@@ -147,8 +146,6 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   const stageResults: StageResult[] = []
   const cfg = getConfig()
 
-  // Load pipeline infrastructure via L5 loaders
-  const { costTracker } = await loadPipelineServices()
   costTracker.reset()
 
   // Helper: set cost-tracking stage before running
@@ -496,9 +493,6 @@ function generateCostMarkdown(report: CostReport): string {
 }
 
 export async function processVideoSafe(videoPath: string): Promise<PipelineResult | null> {
-  // Load processing state via L5 loader
-  const { markPending, markProcessing, markCompleted, markFailed } = await loadPipelineServices()
-
   // Derive slug from filename for state tracking (same logic as MainVideoAsset.ingest)
   const filename = basename(videoPath)
   const slug = filename.replace(/\.(mp4|mov|webm|avi|mkv)$/i, '')
