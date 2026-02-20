@@ -1,7 +1,9 @@
 import { describe, test, expect } from 'vitest'
 import { buildPrioritizedRealignPlan } from '../../L3-services/scheduler/realign.js'
 
-describe('prioritized realign e2e', () => {
+const hasLateApiKey = !!process.env.LATE_API_KEY
+
+describe.skipIf(!hasLateApiKey)('prioritized realign e2e', () => {
   test('buildPrioritizedRealignPlan reserves priority posts outside remaining pool', async () => {
     const plan = await buildPrioritizedRealignPlan({
       priorities: [{ keywords: ['nonexistent-keyword-xyz'], saturation: 1.0 }],

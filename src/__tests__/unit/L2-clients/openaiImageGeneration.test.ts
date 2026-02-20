@@ -12,10 +12,17 @@ vi.mock('sharp', () => {
   return { default: mockSharp.mockReturnValue(instance) }
 })
 
-vi.mock('fs/promises', () => ({
-  writeFile: vi.fn().mockResolvedValue(undefined),
-  mkdir: vi.fn().mockResolvedValue(undefined),
-}))
+vi.mock('fs', async () => {
+  const actual = await vi.importActual<typeof import('fs')>('fs')
+  return {
+    ...actual,
+    promises: {
+      ...actual.promises,
+      writeFile: vi.fn().mockResolvedValue(undefined),
+      mkdir: vi.fn().mockResolvedValue(undefined),
+    },
+  }
+})
 
 import { generateImage, COST_BY_QUALITY } from '../../../L2-clients/openai/imageGeneration.js'
 import { initConfig } from '../../../L1-infra/config/environment.js'
