@@ -39,32 +39,39 @@ jobs:
       - run: npx tsc --noEmit
 
   test:
-    name: Test (Node ${{ matrix.node-version }})
+    name: ${{ matrix.tier.name }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       checks: write
     strategy:
+      fail-fast: false
       matrix:
-        node-version: [20, 22]
+        tier:
+          - { name: "Unit Tests", script: "test:unit:coverage", node: 22, coverage: true }
+          - { name: "Unit Tests (Node 20)", script: "test:unit", node: 20, coverage: false }
+          - { name: "Integration L3", script: "test:integration:L3:coverage", node: 22, coverage: false }
+          - { name: "Integration L4-L6", script: "test:integration:L4-L6:coverage", node: 22, coverage: false }
+          - { name: "Integration L7", script: "test:integration:L7:coverage", node: 22, coverage: false }
+          - { name: "E2E", script: "test:e2e:coverage", node: 22, coverage: false }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: ${{ matrix.tier.node }}
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Run tests with coverage
-        run: npx vitest run --coverage --reporter=default --reporter=junit --outputFile.junit=test-results.xml
+      - name: Run ${{ matrix.tier.name }}
+        run: npm run ${{ matrix.tier.script }} -- --reporter=default --reporter=junit --outputFile.junit=test-results.xml
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-node-${{ matrix.node-version }}
+          name: test-results-${{ matrix.tier.name }}
           path: test-results.xml
       - name: Upload coverage
-        if: matrix.node-version == 22
+        if: matrix.tier.coverage
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report

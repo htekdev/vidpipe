@@ -77,14 +77,19 @@ console.log('  ⏳ Running type check...');
 run('npx tsc --noEmit', 'Type check');
 console.log('  ✓ Type check passed');
 
-// tests (unit + integration)
-console.log('  ⏳ Running tests...');
-run('npm run test:coverage', 'Tests');
-console.log('  ✓ Tests passed');
-
-console.log('  ⏳ Running integration tests...');
-run('npm run test:integration', 'Integration tests');
-console.log('  ✓ Integration tests passed');
+// tests — per-tier
+const tiers = [
+  { label: 'Unit tests', script: 'test:unit:coverage' },
+  { label: 'Integration L3', script: 'test:integration:L3:coverage' },
+  { label: 'Integration L4-L6', script: 'test:integration:L4-L6:coverage' },
+  { label: 'Integration L7', script: 'test:integration:L7:coverage' },
+  { label: 'E2E tests', script: 'test:e2e:coverage' },
+];
+for (const tier of tiers) {
+  console.log(`  ⏳ Running ${tier.label}...`);
+  run(`npm run ${tier.script}`, tier.label);
+  console.log(`  ✓ ${tier.label} passed`);
+}
 
 // build
 console.log('  ⏳ Building...');
