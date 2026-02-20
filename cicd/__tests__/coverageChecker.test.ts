@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'vitest';
-import { checkChangedLineCoverage, formatCoverageReport } from '../lib/coverageChecker.js';
+import { checkChangedLineCoverage, formatCoverageReport, isExcludedFromCoverage } from '../lib/coverageChecker.js';
 import type { CodeChange } from '../lib/diffAnalyzer.js';
 
 function makeCoverageEntry(statements: Record<number, { lines: [number, number]; count: number }>) {
@@ -194,5 +194,84 @@ describe('formatCoverageReport', () => {
     const report = formatCoverageReport(result);
     expect(report).toContain('❌');
     expect(report).toContain('Uncovered lines: 10, 11, 12');
+  });
+});
+
+describe('isExcludedFromCoverage', () => {
+  test('L7 entry point is excluded from integration-L7 and e2e scopes', () => {
+    const result = isExcludedFromCoverage('src/L7-app/cli.ts', ['integration-L7', 'e2e']);
+    expect(result).toBe(true);
+  });
+
+  test('regular L7 file is NOT excluded from integration-L7', () => {
+    const result = isExcludedFromCoverage('src/L7-app/review/routes.ts', ['integration-L7']);
+    expect(result).toBe(false);
+  });
+
+  test('L2 file is NOT excluded from unit scope', () => {
+    const result = isExcludedFromCoverage('src/L2-clients/ffmpeg/ffmpeg.ts', ['unit']);
+    expect(result).toBe(false);
+  });
+
+  test('L7 file is excluded from unit scope (not included)', () => {
+    const result = isExcludedFromCoverage('src/L7-app/cli.ts', ['unit']);
+    expect(result).toBe(true);
+  });
+
+  test('test file is excluded from all scopes', () => {
+    const result = isExcludedFromCoverage('src/__tests__/unit/L2/test.test.ts', ['unit', 'e2e']);
+    expect(result).toBe(true);
+  });
+
+  test('file included by at least one scope is NOT excluded', () => {
+    const result = isExcludedFromCoverage('src/L3-services/foo.ts', ['unit', 'integration-L3']);
+    expect(result).toBe(false);
+  });
+
+  test('unknown scope is ignored gracefully', () => {
+    const result = isExcludedFromCoverage('src/L2-clients/foo.ts', ['nonexistent']);
+    expect(result).toBe(true);
+  });
+});
+
+describe('checkChangedLineCoverage with exclusions', () => {
+  test('excluded file is marked as exempt and passing', () => {
+    const codeChanges: CodeChange[] = [{
+      file: 'src/L7-app/cli.ts',
+      layer: 7,
+      changedLines: [{ start: 5, end: 10 }],
+    }];
+
+    // cli.ts is excluded from e2e and integration-L7 scopes (L7_ENTRY_POINTS)
+    const result = checkChangedLineCoverage(codeChanges, {}, 80, ['integration-L7', 'e2e']);
+    expect(result.allPassing).toBe(true);
+    expect(result.results[0].exempt).toBe(true);
+    expect(result.results[0].percentage).toBe(100);
+  });
+
+  test('non-excluded file missing from coverage still fails', () => {
+    const codeChanges: CodeChange[] = [{
+      file: 'src/L2-clients/foo.ts',
+      layer: 2,
+      changedLines: [{ start: 1, end: 3 }],
+    }];
+
+    const result = checkChangedLineCoverage(codeChanges, {}, 80, ['unit']);
+    expect(result.allPassing).toBe(false);
+    expect(result.results[0].exempt).toBeUndefined();
+    expect(result.results[0].percentage).toBe(0);
+  });
+
+  test('formatCoverageReport shows exempt label', () => {
+    const codeChanges: CodeChange[] = [{
+      file: 'src/L7-app/cli.ts',
+      layer: 7,
+      changedLines: [{ start: 5, end: 10 }],
+    }];
+
+    const result = checkChangedLineCoverage(codeChanges, {}, 80, ['integration-L7']);
+    const report = formatCoverageReport(result);
+    expect(report).toContain('Excluded from coverage');
+    expect(report).toContain('⏭️');
   });
 });

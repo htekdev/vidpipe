@@ -1,60 +1,11 @@
 import { defineConfig } from 'vitest/config';
+import { COVERAGE_SCOPES, BASE_EXCLUDE, L7_ENTRY_POINTS } from './cicd/lib/coverageScopes.js';
+import type { CoverageScope } from './cicd/lib/coverageScopes.js';
 
 // ── Coverage scope definitions per workspace ──
 // Vitest does NOT support per-project coverage config — it's always global.
 // We parse --project from CLI args and select the right scope dynamically.
-
-const BASE_EXCLUDE = [
-  'src/**/*.test.ts',
-  'src/**/*.d.ts',
-  'src/__tests__/**',
-]
-
-const L7_ENTRY_POINTS = [
-  'src/L7-app/cli.ts',
-  'src/L7-app/commands/init.ts',
-  'src/L7-app/commands/schedule.ts',
-]
-
-interface CoverageScope {
-  include: string[]
-  exclude: string[]
-  reportsDirectory: string
-  thresholds: { statements: number; branches: number; functions: number; lines: number }
-}
-
-const COVERAGE_SCOPES: Record<string, CoverageScope> = {
-  unit: {
-    include: ['src/L0-pure/**/*.ts', 'src/L1-infra/**/*.ts', 'src/L2-clients/**/*.ts', 'src/L3-services/**/*.ts', 'src/L4-agents/**/*.ts', 'src/L5-assets/**/*.ts', 'src/L6-pipeline/**/*.ts'],
-    exclude: [...BASE_EXCLUDE, 'src/L7-app/**/*.ts'],
-    reportsDirectory: 'coverage/unit',
-    thresholds: { statements: 68, branches: 59, functions: 71, lines: 69 },
-  },
-  'integration-L3': {
-    include: ['src/L2-clients/**/*.ts', 'src/L3-services/**/*.ts'],
-    exclude: [...BASE_EXCLUDE],
-    reportsDirectory: 'coverage/integration-L3',
-    thresholds: { statements: 27, branches: 26, functions: 28, lines: 28 },
-  },
-  'integration-L4-L6': {
-    include: ['src/L4-agents/**/*.ts', 'src/L5-assets/**/*.ts', 'src/L6-pipeline/**/*.ts'],
-    exclude: [...BASE_EXCLUDE],
-    reportsDirectory: 'coverage/integration-L4-L6',
-    thresholds: { statements: 0, branches: 0, functions: 0, lines: 0 },
-  },
-  'integration-L7': {
-    include: ['src/L7-app/**/*.ts'],
-    exclude: [...BASE_EXCLUDE, ...L7_ENTRY_POINTS],
-    reportsDirectory: 'coverage/integration-L7',
-    thresholds: { statements: 59, branches: 46, functions: 63, lines: 59 },
-  },
-  e2e: {
-    include: ['src/**/*.ts'],
-    exclude: [...BASE_EXCLUDE, ...L7_ENTRY_POINTS],
-    reportsDirectory: 'coverage/e2e',
-    thresholds: { statements: 10, branches: 8, functions: 11, lines: 10 },
-  },
-}
+// Scope definitions live in cicd/lib/coverageScopes.ts (shared with commit gate).
 
 // Detect which single project is running via --project CLI arg
 function getActiveProject(): string | undefined {

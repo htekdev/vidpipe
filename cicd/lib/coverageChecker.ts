@@ -4,6 +4,7 @@
 
 import { resolve } from 'path';
 import type { CodeChange, ChangedLineRange } from './diffAnalyzer.js';
+import { COVERAGE_SCOPES } from './coverageScopes.js';
 
 export interface LineCoverageResult {
   file: string;
@@ -12,6 +13,7 @@ export interface LineCoverageResult {
   uncoveredLines: number[];
   percentage: number;
   passing: boolean;
+  exempt?: boolean;
 }
 
 export interface CoverageCheckResult {
@@ -96,12 +98,60 @@ function findCoverageEntry(
 }
 
 /**
+ * Convert a simple glob pattern to a RegExp.
+ * Handles globstar (zero or more path segments), single star (any chars in segment).
+ */
+function globToRegex(pattern: string): RegExp {
+  const escaped = pattern
+    .replace(/[.+^${}()|[\]\\]/g, '\\$&')  // escape regex chars (except * and ?)
+    .replace(/\*\*\//g, '(?:.+/)?')         // **/ = zero or more path segments
+    .replace(/\*\*/g, '.*')                 // standalone ** = any chars
+    .replace(/\*/g, '[^/]*')                // * = any chars except /
+  return new RegExp(`^${escaped}$`)
+}
+
+/**
+ * Check if a file is excluded from coverage instrumentation in ALL relevant scopes.
+ *
+ * A file is coverage-exempt when it is explicitly excluded or not included
+ * by any of the coverage scopes that ran. The commit gate merges coverage
+ * from all test tiers, so a file only needs to be instrumented by ONE scope
+ * to appear in coverage data. If it's missing from ALL scopes, it's exempt.
+ */
+export function isExcludedFromCoverage(
+  filePath: string,
+  activeScopes: readonly string[]
+): boolean {
+  const normalized = filePath.replace(/\\/g, '/')
+
+  for (const scopeName of activeScopes) {
+    const scope = COVERAGE_SCOPES[scopeName]
+    if (!scope) continue
+
+    // Check if file matches any include pattern
+    const included = scope.include.some(p => globToRegex(p).test(normalized))
+    if (!included) continue
+
+    // Check if file matches any exclude pattern
+    const excluded = scope.exclude.some(p => globToRegex(p).test(normalized))
+    if (!excluded) return false // included and not excluded → will be instrumented
+  }
+
+  // Not instrumented by any active scope
+  return true
+}
+
+/**
  * Check coverage for changed lines across all changed source files.
+ *
+ * @param activeScopes - Names of coverage scopes that were run (e.g., ['unit', 'e2e']).
+ *   Files excluded from ALL active scopes are treated as exempt (100% covered).
  */
 export function checkChangedLineCoverage(
   codeChanges: readonly CodeChange[],
   coverageData: Record<string, any>,
-  threshold: number = 80
+  threshold: number = 80,
+  activeScopes: readonly string[] = Object.keys(COVERAGE_SCOPES)
 ): CoverageCheckResult {
   const results: LineCoverageResult[] = [];
 
@@ -122,6 +172,20 @@ export function checkChangedLineCoverage(
 
     const fileCoverage = findCoverageEntry(coverageData, change.file);
     if (!fileCoverage) {
+      // File not in coverage data — check if it's excluded from instrumentation
+      if (isExcludedFromCoverage(change.file, activeScopes)) {
+        results.push({
+          file: change.file,
+          totalChangedLines: 0,
+          coveredLines: [],
+          uncoveredLines: [],
+          percentage: 100,
+          passing: true,
+          exempt: true,
+        });
+        continue;
+      }
+
       results.push({
         file: change.file,
         totalChangedLines: changedLineNumbers.length,
@@ -180,6 +244,11 @@ export function formatCoverageReport(result: CoverageCheckResult): string {
   lines.push(`📈 Changed-Line Coverage (threshold: ${result.threshold}%)`);
 
   for (const r of result.results) {
+    if (r.exempt) {
+      lines.push(`  ${r.file}: Excluded from coverage ⏭️`);
+      continue;
+    }
+
     if (r.totalChangedLines === 0) {
       lines.push(`  ${r.file}: No measurable changes`);
       continue;

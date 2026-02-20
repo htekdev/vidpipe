@@ -139,10 +139,14 @@ export async function runCommitGate(options: CommitGateOptions): Promise<boolean
 
     console.log('\n📈 Step 5: Checking changed-line coverage\n');
 
+    // Derive active coverage scopes from the test tiers that ran
+    const activeScopes = [...new Set(analysis.testChanges.map(t => t.tier))];
+
     const coverageResult = checkChangedLineCoverage(
       analysis.codeChanges,
       testResult.coverageData as Record<string, any>,
-      threshold
+      threshold,
+      activeScopes
     );
 
     console.log(formatCoverageReport(coverageResult));
