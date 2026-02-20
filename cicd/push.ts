@@ -147,6 +147,10 @@ let copilotReviewDone = false;
 let copilotReviewCommit = '';
 let copilotReviewPending = false;
 
+const CI_CHECKS = ['Build', 'Type Check', 'Unit Tests', 'Unit Tests (Node 20)', 'Integration L3', 'Integration L4-L6', 'Integration L7', 'E2E'];
+const ciCheckResults = new Map<string, { status: string; conclusion: string }>();
+let ciChecksCompleted = false;
+
 // Pre-check: is Copilot review pending? (requested_reviewers tells us)
 const rrResult = tryRun(`gh api repos/${owner}/${repo}/pulls/${prNumber}/requested_reviewers`);
 if (rrResult.ok && rrResult.stdout) {
@@ -184,7 +188,7 @@ if (!copilotReviewPending) {
 }
 
 for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-  const done = codeqlCompleted && copilotReviewDone;
+  const done = codeqlCompleted && copilotReviewDone && ciChecksCompleted;
   if (done) break;
 
   if (attempt > 1) await sleep(POLL_INTERVAL);
@@ -192,10 +196,11 @@ for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
   const pending: string[] = [];
   if (!codeqlCompleted) pending.push('CodeQL');
   if (!copilotReviewDone) pending.push('Copilot Review');
+  if (!ciChecksCompleted) pending.push('CI Checks');
   console.log(`⏳ Still waiting for ${pending.join(', ')}... (attempt ${attempt}/${MAX_ATTEMPTS})`);
 
-  // Check CodeQL
-  if (!codeqlCompleted) {
+  // Check CodeQL + CI checks (single API call for both)
+  if (!codeqlCompleted || !ciChecksCompleted) {
     const fullResult = tryRun(
       `gh api repos/${owner}/${repo}/commits/${sha}/check-runs`
     );
@@ -203,10 +208,31 @@ for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
         const checksData = JSON.parse(fullResult.stdout);
         const checkRuns: any[] = checksData.check_runs ?? [];
-        const codeql = checkRuns.find((c: any) => c.name === 'CodeQL');
-        if (codeql && codeql.status === 'completed') {
-          codeqlCompleted = true;
-          codeqlConclusion = codeql.conclusion;
+
+        // CodeQL
+        if (!codeqlCompleted) {
+          const codeql = checkRuns.find((c: any) => c.name === 'CodeQL');
+          if (codeql && codeql.status === 'completed') {
+            codeqlCompleted = true;
+            codeqlConclusion = codeql.conclusion;
+          }
+        }
+
+        // CI checks
+        if (!ciChecksCompleted) {
+          for (const name of CI_CHECKS) {
+            const check = checkRuns.find((c: any) => c.name === name);
+            if (check) {
+              ciCheckResults.set(name, { status: check.status, conclusion: check.conclusion ?? '' });
+            }
+          }
+          const foundCompleted = CI_CHECKS.every(name => {
+            const result = ciCheckResults.get(name);
+            return result && result.status === 'completed';
+          });
+          if (foundCompleted) {
+            ciChecksCompleted = true;
+          }
         }
       } catch { /* parse error — retry next attempt */ }
     }
@@ -313,6 +339,25 @@ Run the **security-fixer** agent to remediate these alerts, then run \`npm run p
     }
   } else {
     console.log('❌ CodeQL: Check failed. Could not fetch security alerts.');
+  }
+}
+
+// CI Checks result
+if (!ciChecksCompleted) {
+  console.log('⏰ CI Checks did not complete within 5 minutes. Re-run `npm run push` later to check.');
+  allPassed = false;
+} else {
+  const passed = CI_CHECKS.filter(name => ciCheckResults.get(name)?.conclusion === 'success');
+  const failed = CI_CHECKS.filter(name => ciCheckResults.get(name)?.conclusion !== 'success');
+  if (failed.length === 0) {
+    console.log(`✅ CI Checks: ${passed.length}/${CI_CHECKS.length} passed`);
+  } else {
+    console.log(`❌ CI Checks: ${passed.length}/${CI_CHECKS.length} passed, ${failed.length} failed`);
+    for (const name of failed) {
+      const conclusion = ciCheckResults.get(name)?.conclusion ?? 'unknown';
+      console.log(`   ✗ ${name} — ${conclusion}`);
+    }
+    allPassed = false;
   }
 }
 
