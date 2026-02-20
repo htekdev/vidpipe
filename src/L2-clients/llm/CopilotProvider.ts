@@ -10,7 +10,8 @@
  * included in the JSON result as text only.
  */
 
-import { CopilotClient, CopilotSession } from './ai.js'
+import { createCopilotClient } from './ai.js'
+import type { CopilotClient, CopilotSession } from './ai.js'
 import type { SessionEvent } from './ai.js'
 import logger from '../../L1-infra/logger/configLogger.js'
 import type {
@@ -44,7 +45,7 @@ export class CopilotProvider implements LLMProvider {
 
   async createSession(config: SessionConfig): Promise<LLMSession> {
     if (!this.client) {
-      this.client = new CopilotClient({ autoStart: true, logLevel: 'error' })
+      this.client = createCopilotClient({ autoStart: true, logLevel: 'error' })
     }
 
     const copilotSession = await this.client.createSession({
