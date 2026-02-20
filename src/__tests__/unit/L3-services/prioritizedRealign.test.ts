@@ -556,15 +556,23 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
 
   it('skips posts already at the correct slot', async () => {
     seedSchedule()
-    // Post already scheduled at the first available slot
-    // We need to figure out what the first slot would be — it's the next future 08:00, 14:00, or 20:00 UTC
+    // Compute the actual first slot using the same logic as generateSlots
     const now = new Date()
-    const tomorrow = new Date(now)
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1)
-    const y = tomorrow.getUTCFullYear()
-    const m = String(tomorrow.getUTCMonth() + 1).padStart(2, '0')
-    const d = String(tomorrow.getUTCDate()).padStart(2, '0')
-    const firstSlotIso = `${y}-${m}-${d}T08:00:00+00:00`
+    const nowMs = now.getTime()
+    // Walk days until we find the first future 08:00 UTC slot
+    let firstSlotIso = ''
+    for (let dayOffset = 0; dayOffset < 30; dayOffset++) {
+      const day = new Date(now)
+      day.setDate(day.getDate() + dayOffset)
+      const y = day.getUTCFullYear()
+      const m = String(day.getUTCMonth() + 1).padStart(2, '0')
+      const d = String(day.getUTCDate()).padStart(2, '0')
+      const candidate = `${y}-${m}-${d}T08:00:00+00:00`
+      if (new Date(candidate).getTime() > nowMs) {
+        firstSlotIso = candidate
+        break
+      }
+    }
 
     mockPosts([makePost('p1', 'test', 'twitter', firstSlotIso)])
 
