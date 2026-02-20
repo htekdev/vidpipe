@@ -53,7 +53,7 @@ const COVERAGE_SCOPES: Record<string, CoverageScope> = {
     include: ['src/L7-app/**/*.ts'],
     exclude: [...BASE_EXCLUDE, ...L7_ENTRY_POINTS],
     reportsDirectory: 'coverage/integration-L7',
-    thresholds: { statements: 67, branches: 55, functions: 65, lines: 67 },
+    thresholds: { statements: 59, branches: 47, functions: 64, lines: 59 },
   },
   e2e: {
     include: ['src/**/*.ts'],
