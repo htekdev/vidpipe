@@ -10,13 +10,6 @@ const BASE_EXCLUDE = [
   'src/__tests__/**',
 ]
 
-const LLM_PROVIDERS = [
-  'src/L2-clients/llm/CopilotProvider.ts',
-  'src/L2-clients/llm/OpenAIProvider.ts',
-  'src/L2-clients/llm/ClaudeProvider.ts',
-  'src/L2-clients/llm/types.ts',
-]
-
 const L7_ENTRY_POINTS = [
   'src/L7-app/cli.ts',
   'src/L7-app/commands/init.ts',
@@ -33,19 +26,19 @@ interface CoverageScope {
 const COVERAGE_SCOPES: Record<string, CoverageScope> = {
   unit: {
     include: ['src/L0-pure/**/*.ts', 'src/L1-infra/**/*.ts', 'src/L2-clients/**/*.ts', 'src/L3-services/**/*.ts', 'src/L4-agents/**/*.ts', 'src/L5-assets/**/*.ts', 'src/L6-pipeline/**/*.ts'],
-    exclude: [...BASE_EXCLUDE, ...LLM_PROVIDERS, 'src/L7-app/**/*.ts'],
+    exclude: [...BASE_EXCLUDE, 'src/L7-app/**/*.ts'],
     reportsDirectory: 'coverage/unit',
-    thresholds: { statements: 69, branches: 61, functions: 71, lines: 69 },
+    thresholds: { statements: 68, branches: 59, functions: 71, lines: 69 },
   },
   'integration-L3': {
     include: ['src/L2-clients/**/*.ts', 'src/L3-services/**/*.ts'],
-    exclude: [...BASE_EXCLUDE, ...LLM_PROVIDERS],
+    exclude: [...BASE_EXCLUDE],
     reportsDirectory: 'coverage/integration-L3',
     thresholds: { statements: 27, branches: 26, functions: 28, lines: 28 },
   },
   'integration-L4-L6': {
     include: ['src/L4-agents/**/*.ts', 'src/L5-assets/**/*.ts', 'src/L6-pipeline/**/*.ts'],
-    exclude: [...BASE_EXCLUDE, ...LLM_PROVIDERS],
+    exclude: [...BASE_EXCLUDE],
     reportsDirectory: 'coverage/integration-L4-L6',
     thresholds: { statements: 0, branches: 0, functions: 0, lines: 0 },
   },
@@ -57,7 +50,7 @@ const COVERAGE_SCOPES: Record<string, CoverageScope> = {
   },
   e2e: {
     include: ['src/**/*.ts'],
-    exclude: [...BASE_EXCLUDE, ...LLM_PROVIDERS, ...L7_ENTRY_POINTS],
+    exclude: [...BASE_EXCLUDE, ...L7_ENTRY_POINTS],
     reportsDirectory: 'coverage/e2e',
     thresholds: { statements: 10, branches: 8, functions: 11, lines: 10 },
   },
@@ -88,7 +81,7 @@ export default defineConfig({
         ? ['text', 'text-summary', 'json-summary', 'json']
         : ['text', 'text-summary', 'lcov', 'html', 'json-summary', 'json'],
       include: scope?.include ?? ['src/**/*.ts'],
-      exclude: scope?.exclude ?? [...BASE_EXCLUDE, ...LLM_PROVIDERS, ...L7_ENTRY_POINTS],
+      exclude: scope?.exclude ?? [...BASE_EXCLUDE, ...L7_ENTRY_POINTS],
       reportsDirectory: scope?.reportsDirectory ?? 'coverage',
       thresholds: scope?.thresholds ?? { statements: 0, branches: 0, functions: 0, lines: 0 },
     },

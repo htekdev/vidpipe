@@ -24,7 +24,7 @@ vi.mock('../../../L1-infra/config/brand.js', () => ({
   getBrandConfig: vi.fn().mockReturnValue({ name: 'Test', handle: '@test' }),
 }))
 
-// Mock OpenAI
+// Mock OpenAI via external package (L2 tests mock externals only)
 const mockCreate = vi.fn().mockResolvedValue({
   text: 'Hello world',
   language: 'en',
@@ -36,8 +36,8 @@ const mockCreate = vi.fn().mockResolvedValue({
   ],
 })
 
-vi.mock('../../../L2-clients/llm/ai.js', () => ({
-  OpenAI: class MockOpenAI {
+vi.mock('openai', () => ({
+  default: class MockOpenAI {
     audio = {
       transcriptions: {
         create: mockCreate,
