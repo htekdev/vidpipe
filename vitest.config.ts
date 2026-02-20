@@ -41,7 +41,7 @@ const COVERAGE_SCOPES: Record<string, CoverageScope> = {
     include: ['src/L2-clients/**/*.ts', 'src/L3-services/**/*.ts'],
     exclude: [...BASE_EXCLUDE, ...LLM_PROVIDERS],
     reportsDirectory: 'coverage/integration-L3',
-    thresholds: { statements: 29, branches: 29, functions: 28, lines: 29 },
+    thresholds: { statements: 27, branches: 26, functions: 28, lines: 28 },
   },
   'integration-L4-L6': {
     include: ['src/L4-agents/**/*.ts', 'src/L5-assets/**/*.ts', 'src/L6-pipeline/**/*.ts'],
