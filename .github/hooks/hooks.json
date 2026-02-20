@@ -49,6 +49,14 @@
         "cwd": ".",
         "timeoutSec": 5,
         "comment": "Enforce layer-based mocking rules for L0-L7 test architecture"
+      },
+      {
+        "type": "command",
+        "bash": ".github/hooks/pre-reexport-block.sh",
+        "powershell": ".github/hooks/pre-reexport-block.ps1",
+        "cwd": ".",
+        "timeoutSec": 5,
+        "comment": "Block cross-layer re-exports -- must use wrapper functions instead"
       }
     ],
     "postToolUse": [
