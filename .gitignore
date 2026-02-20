@@ -22,8 +22,6 @@ recordings/
 # Exception: test fixtures with real video/audio for integration tests
 !src/__tests__/integration/fixtures/**/*.mp4
 !src/__tests__/integration/fixtures/**/*.mp3
-!src/__tests__/e2e/fixtures/**/*.mp4
-!src/__tests__/e2e/fixtures/**/*.mp3
 
 # Late account cache
 .vidpipe-cache.json
