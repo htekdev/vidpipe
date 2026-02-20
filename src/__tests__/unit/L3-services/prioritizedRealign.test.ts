@@ -4,10 +4,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const mockListPosts = vi.hoisted(() => vi.fn())
 const mockUpdatePost = vi.hoisted(() => vi.fn())
+const mockSchedulePost = vi.hoisted(() => vi.fn())
 vi.mock('../../../L2-clients/late/lateApi.js', () => ({
   LateApiClient: class MockLateApiClient {
     listPosts(...args: unknown[]) { return mockListPosts(...args) }
     updatePost(...args: unknown[]) { return mockUpdatePost(...args) }
+    schedulePost(...args: unknown[]) { return mockSchedulePost(...args) }
   },
 }))
 
@@ -617,13 +619,13 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
 
   // ── Execute plan ──
 
-  it('executeRealignPlan calls updatePost for each planned post', async () => {
+  it('executeRealignPlan calls schedulePost for each planned post', async () => {
     seedSchedule()
     mockPosts([
       makePost('p1', 'devops one', 'twitter'),
       makePost('p2', 'devops two', 'twitter'),
     ])
-    mockUpdatePost.mockResolvedValue({})
+    mockSchedulePost.mockResolvedValue({})
 
     const plan = await buildPrioritizedRealignPlan({
       priorities: [{ keywords: ['devops'], saturation: 1.0 }],
@@ -632,13 +634,13 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
     const result = await executeRealignPlan(plan)
     expect(result.updated).toBe(2)
     expect(result.failed).toBe(0)
-    expect(mockUpdatePost).toHaveBeenCalledTimes(2)
+    expect(mockSchedulePost).toHaveBeenCalledTimes(2)
   })
 
   it('executeRealignPlan reports progress via callback', async () => {
     seedSchedule()
     mockPosts([makePost('p1', 'test', 'twitter')])
-    mockUpdatePost.mockResolvedValue({})
+    mockSchedulePost.mockResolvedValue({})
 
     const plan = await buildPrioritizedRealignPlan({ priorities: [] })
     const progress: Array<[number, number, string]> = []
@@ -654,7 +656,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
   it('executeRealignPlan handles API errors gracefully', async () => {
     seedSchedule()
     mockPosts([makePost('p1', 'test', 'twitter')])
-    mockUpdatePost.mockRejectedValue(new Error('API rate limit'))
+    mockSchedulePost.mockRejectedValue(new Error('API rate limit'))
 
     const plan = await buildPrioritizedRealignPlan({ priorities: [] })
     const result = await executeRealignPlan(plan)
