@@ -19,7 +19,7 @@ vi.mock('../../../L1-infra/config/environment.js', () => ({
   }),
 }))
 
-// providerFactory currently re-exports from L2 — this tests the chain
+// providerFactory wraps L2 functions — this tests the L3→L2 chain
 import { getProvider, resetProvider, getProviderName } from '../../../L3-services/llm/providerFactory.js'
 
 describe('L3 Integration: providerFactory → L2 provider chain', () => {

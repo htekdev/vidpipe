@@ -1,10 +1,28 @@
 /**
  * L3 wrapper around the L2 LLM provider factory.
  *
- * Re-exports getProvider(), resetProvider(), and getProviderName() so that
+ * Wraps getProvider(), resetProvider(), and getProviderName() so that
  * L4 agents import from L3 (allowed) instead of L2 (blocked by layer rules).
  */
-export { getProvider, resetProvider, getProviderName } from '../../L2-clients/llm/index.js'
+import {
+  getProvider as _getProvider,
+  resetProvider as _resetProvider,
+  getProviderName as _getProviderName,
+} from '../../L2-clients/llm/index.js'
+import type { ProviderName } from '../../L2-clients/llm/types.js'
+import type { LLMProvider } from '../../L2-clients/llm/types.js'
+
+export function getProvider(name?: ProviderName): LLMProvider {
+  return _getProvider(name)
+}
+
+export async function resetProvider(): Promise<void> {
+  return _resetProvider()
+}
+
+export function getProviderName(): ProviderName {
+  return _getProviderName()
+}
 
 // Re-export types that L4 agents need
 export type {
