@@ -13,6 +13,8 @@ on:
 jobs:
   version:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     if: |
       !contains(github.event.head_commit.message, '[skip publish]') &&
       github.actor != 'dependabot[bot]'
@@ -24,12 +26,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: gittools/actions/gitversion/setup@v3
+      - uses: gittools/actions/gitversion/setup@a94a3b62ee018ef5346cb08fd0d63d93811fe691 # v3.0.0
         with:
           versionSpec: "6.x"
 
       - id: gitversion
-        uses: gittools/actions/gitversion/execute@v3
+        uses: gittools/actions/gitversion/execute@a94a3b62ee018ef5346cb08fd0d63d93811fe691 # v3.0.0
 
   publish:
     needs: version

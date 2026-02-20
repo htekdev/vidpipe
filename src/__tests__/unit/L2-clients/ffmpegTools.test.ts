@@ -96,7 +96,7 @@ vi.mock('../../../L2-clients/ffmpeg/ffmpeg.js', () => ({
   ffprobe: mockFfprobe,
 }));
 
-vi.mock('../../../../config/logger.js', () => ({
+vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
   default: {
     info: vi.fn(),
     warn: vi.fn(),
