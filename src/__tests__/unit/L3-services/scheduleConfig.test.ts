@@ -435,6 +435,62 @@ describe('scheduleConfig', () => {
       expect(schedule!.slots[0].time).toBe('08:00')
       expect(schedule!.avoidDays).toEqual(['sun'])
     })
+    it('aggregates all byClipType slots when clipType missing and top-level slots empty', async () => {
+      clearScheduleCache()
+      const customConfig = {
+        timezone: 'UTC',
+        platforms: {
+          linkedin: {
+            slots: [],
+            avoidDays: [],
+            byClipType: {
+              short: {
+                slots: [
+                  { days: ['mon'], time: '09:00', label: 'Morning short' },
+                  { days: ['mon'], time: '17:00', label: 'Evening short' },
+                ],
+                avoidDays: ['sat'],
+              },
+              'medium-clip': {
+                slots: [{ days: ['mon'], time: '12:00', label: 'Noon clip' }],
+                avoidDays: ['sun'],
+              },
+            },
+          },
+        },
+      }
+      const tmpFile = tmp.fileSync({ dir: tmpDir, postfix: '.json', mode: 0o600 })
+      await fs.writeFile(tmpFile.name, JSON.stringify(customConfig), 'utf-8')
+      await loadScheduleConfig(tmpFile.name)
+
+      const schedule = getPlatformSchedule('linkedin', 'video')
+      expect(schedule).toBeDefined()
+      expect(schedule!.slots).toHaveLength(3)
+      expect(schedule!.slots.map(s => s.time).sort()).toEqual(['09:00', '12:00', '17:00'])
+      expect(schedule!.avoidDays).toEqual(expect.arrayContaining(['sat', 'sun']))
+      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('falling back'))
+    })
+
+    it('returns empty-slot schedule when no byClipType exists at all', async () => {
+      clearScheduleCache()
+      const customConfig = {
+        timezone: 'UTC',
+        platforms: {
+          linkedin: {
+            slots: [],
+            avoidDays: [],
+          },
+        },
+      }
+      const tmpFile = tmp.fileSync({ dir: tmpDir, postfix: '.json', mode: 0o600 })
+      await fs.writeFile(tmpFile.name, JSON.stringify(customConfig), 'utf-8')
+      await loadScheduleConfig(tmpFile.name)
+
+      const schedule = getPlatformSchedule('linkedin', 'video')
+      expect(schedule).toBeDefined()
+      expect(schedule!.slots).toHaveLength(0)
+    })
+
     it('resolves twitter alias to x platform key', async () => {
       clearScheduleCache()
       const customConfig = {

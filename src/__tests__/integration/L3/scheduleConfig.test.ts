@@ -357,6 +357,39 @@ describe('L3 Integration: scheduleConfig', () => {
     expect(unknown!.slots[0].label).toBe('Default')
   })
 
+  test('aggregates all byClipType slots when clipType missing and top-level slots empty', async () => {
+    const fileConfig: ScheduleConfig = {
+      timezone: 'UTC',
+      platforms: {
+        linkedin: {
+          slots: [],
+          avoidDays: [],
+          byClipType: {
+            short: {
+              slots: [
+                { days: ['mon'], time: '09:00', label: 'Morning short' },
+                { days: ['mon'], time: '17:00', label: 'Evening short' },
+              ],
+              avoidDays: ['sat'],
+            },
+            'medium-clip': {
+              slots: [{ days: ['mon'], time: '12:00', label: 'Noon clip' }],
+              avoidDays: ['sun'],
+            },
+          },
+        },
+      },
+    }
+    mockReadTextFile.mockResolvedValueOnce(JSON.stringify(fileConfig))
+    await loadScheduleConfig('/test/schedule.json')
+
+    const schedule = getPlatformSchedule('linkedin', 'video')
+    expect(schedule).not.toBeNull()
+    expect(schedule!.slots).toHaveLength(3)
+    expect(schedule!.slots.map(s => s.time).sort()).toEqual(['09:00', '12:00', '17:00'])
+    expect(schedule!.avoidDays).toEqual(expect.arrayContaining(['sat', 'sun']))
+  })
+
   test('resolves twitter alias to x platform key', async () => {
     const fileConfig: ScheduleConfig = {
       timezone: 'UTC',
