@@ -26,4 +26,10 @@ describe('E2E: ai.ts wrapper functions', () => {
     // Real Anthropic SDK exposes messages
     expect(client.messages).toBeDefined()
   })
+
+  test('OpenAI instance has expected namespace properties', () => {
+    const client = createOpenAI({ apiKey: 'e2e-test-key' })
+    expect(client.models).toBeDefined()
+    expect(client.audio).toBeDefined()
+  })
 })

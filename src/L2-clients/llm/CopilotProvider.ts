@@ -12,7 +12,7 @@
 
 import { createCopilotClient } from './ai.js'
 import type { SessionEvent } from './ai.js'
-import type { CopilotSession } from '../../L1-infra/ai/copilot.js'
+import type { CopilotClient, CopilotSession } from '../../L1-infra/ai/copilot.js'
 import logger from '../../L1-infra/logger/configLogger.js'
 import type {
   LLMProvider,
@@ -25,6 +25,7 @@ import type {
   ToolCall,
   ProviderEvent,
   ProviderEventType,
+  UserInputRequest,
 } from './types'
 
 const DEFAULT_MODEL = 'claude-opus-4.5'
@@ -60,7 +61,7 @@ export class CopilotProvider implements LLMProvider {
       })),
       streaming: config.streaming ?? true,
       onUserInputRequest: config.onUserInputRequest
-        ? (request) => config.onUserInputRequest!(request)
+        ? (request: UserInputRequest) => config.onUserInputRequest!(request)
         : undefined,
     })
 

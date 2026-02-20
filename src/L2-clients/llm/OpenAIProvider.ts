@@ -6,6 +6,7 @@
  */
 
 import { createOpenAI } from './ai.js';
+import type OpenAI from 'openai';
 import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,

@@ -6,6 +6,7 @@
  */
 
 import { createAnthropic } from './ai.js'
+import type Anthropic from '@anthropic-ai/sdk'
 import type {
   ContentBlock,
   ContentBlockParam,

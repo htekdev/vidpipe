@@ -57,7 +57,8 @@ describe('L2 ai.ts wrapper functions', () => {
   })
 
   test('createCopilotSession returns an instance', () => {
-    const session = createCopilotSession()
+    // CopilotSession requires (sessionId, connection) — mocked constructor accepts anything
+    const session = (createCopilotSession as (...args: unknown[]) => unknown)('test-id', {})
     expect(session).toBeDefined()
   })
 })
@@ -95,6 +96,18 @@ describe('CopilotProvider.createSession uses createCopilotClient wrapper', () =>
     const session = await provider.createSession({
       systemPrompt: 'test',
       tools: [],
+    })
+    expect(session).toBeDefined()
+  })
+
+  test('createSession passes onUserInputRequest through', async () => {
+    const { CopilotProvider } = await import('../../../L2-clients/llm/CopilotProvider.js')
+    const provider = new CopilotProvider()
+    const handler = vi.fn().mockResolvedValue({ response: 'ok' })
+    const session = await provider.createSession({
+      systemPrompt: 'test',
+      tools: [],
+      onUserInputRequest: handler,
     })
     expect(session).toBeDefined()
   })

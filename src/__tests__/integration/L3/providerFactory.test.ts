@@ -59,4 +59,14 @@ describe('L3 Integration: providerFactory → L2 provider chain', () => {
     const name = getProviderName()
     expect(name).toBe('openai')
   })
+
+  test('ClaudeProvider.createSession creates session with Anthropic client', async () => {
+    const { ClaudeProvider } = await import('../../../L2-clients/llm/ClaudeProvider.js')
+    const provider = new ClaudeProvider()
+    const session = await provider.createSession({
+      systemPrompt: 'test',
+      tools: [],
+    })
+    expect(session).toBeDefined()
+  })
 })
