@@ -636,16 +636,9 @@ export async function executeRealignPlan(
   for (const entry of plan.posts) {
     completed++
     try {
-      const updates: Record<string, unknown> = {
-        scheduledFor: entry.newScheduledFor,
-      }
-
-      // Reactivate draft/cancelled/failed posts
-      if (entry.post.status !== 'scheduled') {
-        updates.status = 'scheduled'
-      }
-
-      await client.updatePost(entry.post._id, updates)
+      // Late API schedulePost sends isDraft: false to ensure
+      // draft posts transition to scheduled status.
+      await client.schedulePost(entry.post._id, entry.newScheduledFor)
       updated++
       const preview = entry.post.content.slice(0, 40).replace(/\n/g, ' ')
       logger.info(`[${completed}/${totalOps}] ✅ ${entry.platform}/${entry.clipType}: "${preview}..." → ${entry.newScheduledFor}`)

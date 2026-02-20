@@ -5,6 +5,7 @@ vi.mock('../../../L2-clients/late/lateApi.js', () => ({
   LateApiClient: class MockLateApiClient {
     listPosts() { return Promise.resolve([]) }
     updatePost() { return Promise.resolve({}) }
+    schedulePost() { return Promise.resolve({}) }
   },
 }))
 

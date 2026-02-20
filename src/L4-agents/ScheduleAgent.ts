@@ -354,7 +354,7 @@ export class ScheduleAgent extends BaseAgent {
       const postId = args.postId as string
       const scheduledFor = args.scheduledFor as string
       const client = new LateApiClient()
-      const updated = await client.updatePost(postId, { scheduledFor, status: 'scheduled' })
+      const updated = await client.schedulePost(postId, scheduledFor)
       return { success: true, postId, scheduledFor: updated.scheduledFor }
     } catch (err) {
       logger.error('reschedule_post failed', { error: err })

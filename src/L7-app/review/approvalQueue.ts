@@ -125,6 +125,7 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
         platforms: [{ platform: latePlatform, accountId }],
         scheduledFor: slot,
         timezone: schedConfig.timezone,
+        isDraft: false,
         mediaItems,
         platformSpecificData: item.metadata.platformSpecificData,
         tiktokSettings,

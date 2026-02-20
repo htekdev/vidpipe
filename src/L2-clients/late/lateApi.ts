@@ -193,6 +193,11 @@ export class LateApiClient {
     return data.post
   }
 
+  /** Reschedule a post and ensure it transitions out of draft status. */
+  async schedulePost(postId: string, scheduledFor: string): Promise<LatePost> {
+    return this.updatePost(postId, { scheduledFor, isDraft: false })
+  }
+
   async uploadMedia(filePath: string): Promise<LateMediaUploadResult> {
     const fileStats = await getFileStats(filePath)
     const fileName = basename(filePath)

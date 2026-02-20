@@ -162,6 +162,17 @@ describe('enqueueApproval', () => {
       )
     })
 
+    it('creates post with isDraft: false to prevent draft status', async () => {
+      const item = makeQueueItem({ id: 'draft-fix' })
+      mockGetItem.mockResolvedValue(item)
+
+      await enqueueApproval(['draft-fix'])
+
+      expect(mockCreatePost).toHaveBeenCalledWith(
+        expect.objectContaining({ isDraft: false }),
+      )
+    })
+
     it('does not include TikTok settings for non-tiktok platform', async () => {
       const item = makeQueueItem({
         id: 'yt-item',

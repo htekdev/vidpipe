@@ -76,6 +76,7 @@ vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
   LateApiClient: class MockLateApiClient {
     listPosts() { return Promise.resolve([]) }
     updatePost() { return Promise.resolve({}) }
+    schedulePost(_id: string, scheduledFor: string) { return Promise.resolve({ _id, scheduledFor }) }
   },
 }));
 
@@ -1003,5 +1004,23 @@ describe('Real ScheduleAgent', () => {
     ) as any;
     expect(status.status).toBe('completed');
     expect(status.result).toBeDefined();
+  });
+
+  it('reschedule_post handler calls schedulePost and returns success', async () => {
+    const { ScheduleAgent } = await import('../../../L4-agents/ScheduleAgent.js');
+    const agent = new ScheduleAgent();
+    try {
+      await agent.run('test');
+    } catch { /* session mock ends quickly */ }
+
+    const tool = findCapturedTool('reschedule_post');
+    const result = await tool.handler!(
+      { postId: 'post-123', scheduledFor: '2026-04-01T10:00:00Z' },
+      mockInvocation,
+    ) as any;
+
+    expect(result.success).toBe(true);
+    expect(result.postId).toBe('post-123');
+    expect(result.scheduledFor).toBe('2026-04-01T10:00:00Z');
   });
 });
