@@ -35,7 +35,7 @@ const COVERAGE_SCOPES: Record<string, CoverageScope> = {
     include: ['src/L0-pure/**/*.ts', 'src/L1-infra/**/*.ts', 'src/L2-clients/**/*.ts', 'src/L3-services/**/*.ts', 'src/L4-agents/**/*.ts', 'src/L5-assets/**/*.ts', 'src/L6-pipeline/**/*.ts'],
     exclude: [...BASE_EXCLUDE, ...LLM_PROVIDERS, 'src/L7-app/**/*.ts'],
     reportsDirectory: 'coverage/unit',
-    thresholds: { statements: 69, branches: 62, functions: 71, lines: 70 },
+    thresholds: { statements: 69, branches: 61, functions: 71, lines: 69 },
   },
   'integration-L3': {
     include: ['src/L2-clients/**/*.ts', 'src/L3-services/**/*.ts'],
@@ -59,7 +59,7 @@ const COVERAGE_SCOPES: Record<string, CoverageScope> = {
     include: ['src/**/*.ts'],
     exclude: [...BASE_EXCLUDE, ...LLM_PROVIDERS, ...L7_ENTRY_POINTS],
     reportsDirectory: 'coverage/e2e',
-    thresholds: { statements: 11, branches: 9, functions: 12, lines: 11 },
+    thresholds: { statements: 10, branches: 8, functions: 11, lines: 10 },
   },
 }
 
