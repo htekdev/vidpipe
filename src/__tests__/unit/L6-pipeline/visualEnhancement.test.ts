@@ -1,6 +1,13 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { buildOverlayFilterComplex, getOverlayPosition } from '../../../L2-clients/ffmpeg/overlayCompositing.js'
 import type { GeneratedOverlay, EnhancementOpportunity, OverlayRegion } from '../../../L0-pure/types/index.js'
+
+const mockEnhanceVideo = vi.hoisted(() => vi.fn())
+vi.mock('../../../L5-assets/visualEnhancement.js', () => ({
+  enhanceVideo: mockEnhanceVideo,
+}))
+
+import { enhanceVideo } from '../../../L6-pipeline/stages/visualEnhancement.js'
 
 function makeOverlay(overrides: Partial<{
   timestampStart: number
@@ -143,5 +150,14 @@ describe('buildOverlayFilterComplex', () => {
     const parts = filter.split(';')
     const lastPart = parts[parts.length - 1]
     expect(lastPart).toBe('[overlaid]format=yuv420p[outv]')
+  })
+})
+
+describe('enhanceVideo wrapper', () => {
+  it('delegates to L5 enhanceVideo', async () => {
+    mockEnhanceVideo.mockResolvedValue({ enhanced: true })
+    const result = await enhanceVideo('/v.mp4' as never, {} as never)
+    expect(result).toEqual({ enhanced: true })
+    expect(mockEnhanceVideo).toHaveBeenCalledWith('/v.mp4', {})
   })
 })

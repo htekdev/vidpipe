@@ -1,3 +1,9 @@
-// Re-export from L5 — enhanceVideo was moved to respect layer boundaries
-// (L5 can import L0–L4; this file previously imported L3+L4 directly)
-export { enhanceVideo } from '../../L5-assets/visualEnhancement.js'
+// Wrapper for L5 enhanceVideo — respects layer boundaries
+// (L6 can only import L0, L1, L5)
+import { enhanceVideo as _enhanceVideo } from '../../L5-assets/visualEnhancement.js'
+
+export function enhanceVideo(
+  ...args: Parameters<typeof _enhanceVideo>
+): ReturnType<typeof _enhanceVideo> {
+  return _enhanceVideo(...args)
+}

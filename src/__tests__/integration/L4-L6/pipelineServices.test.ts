@@ -25,15 +25,17 @@ import {
   markFailed,
   buildPublishQueue,
   commitAndPush,
-  ScheduleAgent,
+  createScheduleAgent,
 } from '../../../L5-assets/pipelineServices.js'
 
 // ── Tests ─────────────────────────────────────────────────────────────
 
 describe('L4-L6 Integration: pipelineServices re-export chain', () => {
-  it('re-exports costTracker singleton from L3 via L4', () => {
+  it('re-exports costTracker proxy from L3 via L4', () => {
     expect(costTracker).toBeDefined()
-    expect(typeof costTracker.recordUsage).toBe('function')
+    expect(typeof costTracker.reset).toBe('function')
+    expect(typeof costTracker.setStage).toBe('function')
+    expect(typeof costTracker.getReport).toBe('function')
   })
 
   it('re-exports processing state functions', () => {
@@ -51,8 +53,8 @@ describe('L4-L6 Integration: pipelineServices re-export chain', () => {
     expect(typeof commitAndPush).toBe('function')
   })
 
-  it('re-exports ScheduleAgent class', () => {
-    expect(ScheduleAgent).toBeDefined()
-    expect(typeof ScheduleAgent).toBe('function')
+  it('exports createScheduleAgent factory', () => {
+    expect(createScheduleAgent).toBeDefined()
+    expect(typeof createScheduleAgent).toBe('function')
   })
 })
