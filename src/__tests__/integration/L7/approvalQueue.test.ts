@@ -38,10 +38,10 @@ vi.mock('../../../L3-services/socialPosting/accountMapping.js', () => ({
 const mockUploadMedia = vi.hoisted(() => vi.fn())
 const mockCreatePost = vi.hoisted(() => vi.fn())
 vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
-  LateApiClient: class {
-    uploadMedia = mockUploadMedia
-    createPost = mockCreatePost
-  },
+  createLateApiClient: () => ({
+    uploadMedia: mockUploadMedia,
+    createPost: mockCreatePost,
+  }),
 }))
 
 // ── Import after mocks ──────────────────────────────────────────────────

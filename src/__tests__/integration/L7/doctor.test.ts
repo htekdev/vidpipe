@@ -28,9 +28,9 @@ vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
-const mockLateApiClient = vi.hoisted(() => vi.fn())
+const mockCreateLateApiClient = vi.hoisted(() => vi.fn())
 vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
-  LateApiClient: mockLateApiClient,
+  createLateApiClient: mockCreateLateApiClient,
 }))
 
 const mockLoadScheduleConfig = vi.hoisted(() => vi.fn())
@@ -75,7 +75,7 @@ function setupPassingMocks() {
     }
     return { status: 1, stdout: '' }
   })
-  mockLateApiClient.mockImplementation(() => ({
+  mockCreateLateApiClient.mockImplementation(() => ({
     validateConnection: async () => ({ valid: false }),
   }))
   mockLoadScheduleConfig.mockRejectedValue(new Error('not found'))
@@ -228,14 +228,14 @@ describe('runDoctor', () => {
     interceptExit()
     setupPassingMocks()
     mockGetConfig.mockReturnValue(makeConfig({ LATE_API_KEY: 'late-test-key' }))
-    mockLateApiClient.mockImplementation(() => ({
+    mockCreateLateApiClient.mockImplementation(() => ({
       validateConnection: async () => ({ valid: true, profileName: 'Test Profile' }),
       listAccounts: async () => [{ platform: 'tiktok', username: 'testuser' }],
     }))
 
     await expect(runDoctor()).rejects.toThrow('process.exit(0)')
     expect(exitCode).toBe(0)
-    expect(mockLateApiClient).toHaveBeenCalledWith('late-test-key')
+    expect(mockCreateLateApiClient).toHaveBeenCalledWith('late-test-key')
   })
 
   it('loads schedule config when schedule.json exists', async () => {

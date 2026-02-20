@@ -23,11 +23,11 @@ vi.mock('fs', async (importOriginal) => {
   return { ...orig, existsSync: mockExistsSync };
 });
 vi.mock('../../../L1-infra/config/environment.js', () => ({ getConfig: mockGetConfig }));
-vi.mock('../../../L2-clients/late/lateApi.js', () => ({
-  LateApiClient: class MockLateApiClient {
-    validateConnection(...args: unknown[]) { return mockValidateConnection(...args) }
-    listAccounts(...args: unknown[]) { return mockListAccounts(...args) }
-  },
+vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
+  createLateApiClient: (...args: unknown[]) => ({
+    validateConnection: (...a: unknown[]) => mockValidateConnection(...a),
+    listAccounts: (...a: unknown[]) => mockListAccounts(...a),
+  }),
 }));
 vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
   loadScheduleConfig: mockLoadScheduleConfig,

@@ -3,7 +3,7 @@ import { getItem, approveItem, approveBulk } from '../../L3-services/postStore/p
 import { findNextSlot } from '../../L3-services/scheduler/scheduler.js'
 import { loadScheduleConfig } from '../../L3-services/scheduler/scheduleConfig.js'
 import { getAccountId } from '../../L3-services/socialPosting/accountMapping.js'
-import { LateApiClient } from '../../L3-services/lateApi/lateApiService.js'
+import { createLateApiClient } from '../../L3-services/lateApi/lateApiService.js'
 import { fromLatePlatform, normalizePlatformString } from '../../L0-pure/types/index.js'
 import logger from '../../L1-infra/logger/configLogger.js'
 
@@ -63,7 +63,7 @@ async function drain(): Promise<void> {
 }
 
 async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> {
-  const client = new LateApiClient()
+  const client = createLateApiClient()
   const schedConfig = await loadScheduleConfig()
   const publishDataMap = new Map<string, { latePostId: string; scheduledFor: string; publishedUrl?: string; accountId?: string }>()
   const results: ApprovalResult['results'] = []

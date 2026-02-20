@@ -1,10 +1,18 @@
 /**
  * L3 service wrapper for the Late API client.
  *
- * Re-exports the L2 LateApiClient and its types so that L7 (and higher layers)
+ * Wraps the L2 LateApiClient constructor so that L7 (and higher layers)
  * can access Late functionality without importing L2 directly.
  */
-export { LateApiClient } from '../../L2-clients/late/lateApi.js'
+import { LateApiClient as _LateApiClient } from '../../L2-clients/late/lateApi.js'
+
+export function createLateApiClient(
+  ...args: ConstructorParameters<typeof _LateApiClient>
+): InstanceType<typeof _LateApiClient> {
+  return new _LateApiClient(...args)
+}
+
+export type { LateApiClient } from '../../L2-clients/late/lateApi.js'
 export type {
   LateAccount,
   LateProfile,

@@ -37,10 +37,10 @@ vi.mock('../../../L3-services/socialPosting/accountMapping.js', () => ({
 
 const mockCreatePost = vi.hoisted(() => vi.fn())
 vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
-  LateApiClient: class {
-    createPost = mockCreatePost
-    uploadMedia = vi.fn().mockResolvedValue({ type: 'video', url: 'https://cdn/v.mp4' })
-  },
+  createLateApiClient: () => ({
+    createPost: mockCreatePost,
+    uploadMedia: vi.fn().mockResolvedValue({ type: 'video', url: 'https://cdn/v.mp4' }),
+  }),
 }))
 
 // ── Import after mocks ────────────────────────────────────────────────

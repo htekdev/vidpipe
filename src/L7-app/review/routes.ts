@@ -1,7 +1,7 @@
 import { Router } from '../../L1-infra/http/http.js'
 import { getPendingItems, getGroupedPendingItems, getItem, updateItem, rejectItem } from '../../L3-services/postStore/postStore.js'
 import { findNextSlot, getScheduleCalendar } from '../../L3-services/scheduler/scheduler.js'
-import { LateApiClient, type LateAccount, type LateProfile } from '../../L3-services/lateApi/lateApiService.js'
+import { createLateApiClient, type LateApiClient, type LateAccount, type LateProfile } from '../../L3-services/lateApi/lateApiService.js'
 import { normalizePlatformString } from '../../L0-pure/types/index.js'
 import logger from '../../L1-infra/logger/configLogger.js'
 import { enqueueApproval } from './approvalQueue.js'
@@ -43,7 +43,7 @@ export function createRouter(): Router {
       (async () => {
         const cached = getCached<LateAccount[]>('accounts')
         if (cached) return cached
-        const client = new LateApiClient()
+        const client = createLateApiClient()
         const accounts = await client.listAccounts()
         setCache('accounts', accounts)
         return accounts
@@ -51,7 +51,7 @@ export function createRouter(): Router {
       (async () => {
         const cached = getCached<LateProfile | null>('profile')
         if (cached !== undefined) return cached
-        const client = new LateApiClient()
+        const client = createLateApiClient()
         const profiles = await client.listProfiles()
         const profile = profiles[0] || null
         setCache('profile', profile)
@@ -182,7 +182,7 @@ export function createRouter(): Router {
       const cached = getCached<LateAccount[]>('accounts')
       if (cached) return res.json({ accounts: cached })
 
-      const client = new LateApiClient()
+      const client = createLateApiClient()
       const accounts = await client.listAccounts()
       setCache('accounts', accounts)
       res.json({ accounts })
@@ -197,7 +197,7 @@ export function createRouter(): Router {
       const cached = getCached<LateProfile | null>('profile')
       if (cached !== undefined) return res.json({ profile: cached })
 
-      const client = new LateApiClient()
+      const client = createLateApiClient()
       const profiles = await client.listProfiles()
       const profile = profiles[0] || null
       setCache('profile', profile)

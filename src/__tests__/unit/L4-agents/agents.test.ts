@@ -73,11 +73,11 @@ vi.mock('../../../L3-services/videoOperations/videoOperations.js', () => ({
 }));
 
 vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
-  LateApiClient: class MockLateApiClient {
-    listPosts() { return Promise.resolve([]) }
-    updatePost() { return Promise.resolve({}) }
-    schedulePost(_id: string, scheduledFor: string) { return Promise.resolve({ _id, scheduledFor }) }
-  },
+  createLateApiClient: () => ({
+    listPosts() { return Promise.resolve([]) },
+    updatePost() { return Promise.resolve({}) },
+    schedulePost(_id: string, scheduledFor: string) { return Promise.resolve({ _id, scheduledFor }) },
+  }),
 }));
 
 vi.mock('../../../L3-services/scheduler/scheduler.js', () => ({
@@ -1022,5 +1022,38 @@ describe('Real ScheduleAgent', () => {
     expect(result.success).toBe(true);
     expect(result.postId).toBe('post-123');
     expect(result.scheduledFor).toBe('2026-04-01T10:00:00Z');
+  });
+
+  it('list_posts handler calls createLateApiClient and returns posts', async () => {
+    const { ScheduleAgent } = await import('../../../L4-agents/ScheduleAgent.js');
+    const agent = new ScheduleAgent();
+    try {
+      await agent.run('test');
+    } catch { /* session mock ends quickly */ }
+
+    const tool = findCapturedTool('list_posts');
+    const result = await tool.handler!(
+      { status: 'scheduled' },
+      mockInvocation,
+    ) as any;
+
+    expect(result.posts).toEqual([]);
+  });
+
+  it('cancel_post handler calls createLateApiClient and returns success', async () => {
+    const { ScheduleAgent } = await import('../../../L4-agents/ScheduleAgent.js');
+    const agent = new ScheduleAgent();
+    try {
+      await agent.run('test');
+    } catch { /* session mock ends quickly */ }
+
+    const tool = findCapturedTool('cancel_post');
+    const result = await tool.handler!(
+      { postId: 'post-456' },
+      mockInvocation,
+    ) as any;
+
+    expect(result.success).toBe(true);
+    expect(result.postId).toBe('post-456');
   });
 });

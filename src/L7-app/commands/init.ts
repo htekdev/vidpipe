@@ -2,7 +2,7 @@ import { createReadlineInterface } from '../../L1-infra/cli/cli.js'
 import { writeTextFile, readTextFile, fileExists } from '../../L1-infra/fileSystem/fileSystem.js'
 import { join } from '../../L1-infra/paths/paths.js'
 import { getFFmpegPath, getFFprobePath } from '../../L3-services/diagnostics/diagnostics.js'
-import { LateApiClient } from '../../L3-services/lateApi/lateApiService.js'
+import { createLateApiClient } from '../../L3-services/lateApi/lateApiService.js'
 import { getDefaultScheduleConfig } from '../../L3-services/scheduler/scheduleConfig'
 
 const rl = createReadlineInterface({ input: process.stdin, output: process.stdout })
@@ -101,7 +101,7 @@ export async function runInit(): Promise<void> {
       envVars.LATE_API_KEY = lateKey.trim()
       // Validate connection
       try {
-        const client = new LateApiClient(lateKey.trim())
+        const client = createLateApiClient(lateKey.trim())
         const validation = await client.validateConnection()
         if (validation.valid) {
           console.log(`  ✅ Connected to profile "${validation.profileName}"`)

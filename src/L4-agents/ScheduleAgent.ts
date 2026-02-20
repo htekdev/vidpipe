@@ -1,5 +1,5 @@
 import { BaseAgent } from './BaseAgent.js'
-import { LateApiClient } from '../L3-services/lateApi/lateApiService.js'
+import { createLateApiClient } from '../L3-services/lateApi/lateApiService.js'
 import { findNextSlot, getScheduleCalendar } from '../L3-services/scheduler/scheduler.js'
 import { loadScheduleConfig } from '../L3-services/scheduler/scheduleConfig.js'
 import { buildRealignPlan, executeRealignPlan, buildPrioritizedRealignPlan } from '../L3-services/scheduler/realign.js'
@@ -271,7 +271,7 @@ export class ScheduleAgent extends BaseAgent {
       const platform = args.platform as string | undefined
       const search = args.search as string | undefined
       const limit = (args.limit as number) ?? 100
-      const client = new LateApiClient()
+      const client = createLateApiClient()
 
       // Fetch all posts — if no status specified, fetch all active statuses
       let posts: LatePost[]
@@ -353,7 +353,7 @@ export class ScheduleAgent extends BaseAgent {
     try {
       const postId = args.postId as string
       const scheduledFor = args.scheduledFor as string
-      const client = new LateApiClient()
+      const client = createLateApiClient()
       const updated = await client.schedulePost(postId, scheduledFor)
       return { success: true, postId, scheduledFor: updated.scheduledFor }
     } catch (err) {
@@ -365,7 +365,7 @@ export class ScheduleAgent extends BaseAgent {
   private async cancelPost(args: Record<string, unknown>): Promise<unknown> {
     try {
       const postId = args.postId as string
-      const client = new LateApiClient()
+      const client = createLateApiClient()
       await client.updatePost(postId, { status: 'cancelled' })
       return { success: true, postId, status: 'cancelled' }
     } catch (err) {

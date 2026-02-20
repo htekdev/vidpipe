@@ -2,7 +2,7 @@ import { spawnCommand, createModuleRequire } from '../../L1-infra/process/proces
 import { fileExistsSync } from '../../L1-infra/fileSystem/fileSystem.js'
 import { join } from '../../L1-infra/paths/paths.js'
 import { getConfig } from '../../L1-infra/config/environment.js'
-import { LateApiClient } from '../../L3-services/lateApi/lateApiService.js'
+import { createLateApiClient } from '../../L3-services/lateApi/lateApiService.js'
 import { loadScheduleConfig } from '../../L3-services/scheduler/scheduleConfig.js'
 import type { ProviderName } from '../../L3-services/llm/index.js'
 
@@ -270,7 +270,7 @@ async function checkLateApi(apiKey: string): Promise<void> {
   }
 
   try {
-    const client = new LateApiClient(apiKey)
+    const client = createLateApiClient(apiKey)
     const { valid, profileName, error } = await client.validateConnection()
 
     if (!valid) {

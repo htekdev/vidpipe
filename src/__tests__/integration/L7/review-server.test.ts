@@ -19,13 +19,13 @@ vi.mock('../../../L1-infra/config/environment.js', () => ({
 }))
 
 vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
-  LateApiClient: class {
-    async uploadMedia() { return { url: 'https://test.com/media.mp4', type: 'video' } }
-    async createPost() { return { _id: 'test-post-id', status: 'scheduled' } }
-    async getScheduledPosts() { return [] }
-    async listAccounts() { return [{ id: 'acc-1', platform: 'tiktok', name: 'Test Account' }] }
-    async listProfiles() { return [{ id: 'profile-1', name: 'Test Profile' }] }
-  },
+  createLateApiClient: () => ({
+    async uploadMedia() { return { url: 'https://test.com/media.mp4', type: 'video' } },
+    async createPost() { return { _id: 'test-post-id', status: 'scheduled' } },
+    async getScheduledPosts() { return [] },
+    async listAccounts() { return [{ id: 'acc-1', platform: 'tiktok', name: 'Test Account' }] },
+    async listProfiles() { return [{ id: 'profile-1', name: 'Test Profile' }] },
+  }),
 }))
 
 vi.mock('../../../L3-services/scheduler/scheduler.js', () => ({
