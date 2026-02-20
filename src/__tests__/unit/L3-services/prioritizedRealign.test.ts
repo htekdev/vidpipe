@@ -559,20 +559,24 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
   it('skips posts already at the correct slot', async () => {
     seedSchedule()
     // Compute the actual first slot using the same logic as generateSlots
+    // Must check ALL slot times (08:00, 14:00, 20:00) not just 08:00
     const now = new Date()
     const nowMs = now.getTime()
-    // Walk days until we find the first future 08:00 UTC slot
+    const slotTimes = ['08:00', '14:00', '20:00']
     let firstSlotIso = ''
+    outer:
     for (let dayOffset = 0; dayOffset < 30; dayOffset++) {
       const day = new Date(now)
       day.setDate(day.getDate() + dayOffset)
       const y = day.getUTCFullYear()
       const m = String(day.getUTCMonth() + 1).padStart(2, '0')
       const d = String(day.getUTCDate()).padStart(2, '0')
-      const candidate = `${y}-${m}-${d}T08:00:00+00:00`
-      if (new Date(candidate).getTime() > nowMs) {
-        firstSlotIso = candidate
-        break
+      for (const time of slotTimes) {
+        const candidate = `${y}-${m}-${d}T${time}:00+00:00`
+        if (new Date(candidate).getTime() > nowMs) {
+          firstSlotIso = candidate
+          break outer
+        }
       }
     }
 
