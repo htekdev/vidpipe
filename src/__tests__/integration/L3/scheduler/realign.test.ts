@@ -73,7 +73,10 @@ describe('L3 Integration: executeRealignPlan schedulePost flow', () => {
 
     // Verify the PUT body contains isDraft: false (from schedulePost)
     const putCall = mockFetchRaw.mock.calls.find(
-      ([url, opts]: [string, RequestInit]) => opts.method === 'PUT',
+      (args: unknown[]) => {
+        const opts = args[1] as RequestInit | undefined
+        return opts?.method === 'PUT'
+      },
     )
     expect(putCall).toBeDefined()
     const body = JSON.parse(putCall![1].body as string)
