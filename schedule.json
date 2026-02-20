@@ -5,6 +5,21 @@
       "slots": [],
       "avoidDays": [],
       "byClipType": {
+        "short": {
+          "slots": [
+            {
+              "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+              "time": "09:00",
+              "label": "Morning commute"
+            },
+            {
+              "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+              "time": "17:00",
+              "label": "Evening commute"
+            }
+          ],
+          "avoidDays": []
+        },
         "medium-clip": {
           "slots": [
             {
