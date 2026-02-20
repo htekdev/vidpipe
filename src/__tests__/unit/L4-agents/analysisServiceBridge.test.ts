@@ -1,29 +1,36 @@
 /**
- * L4 Unit Test — analysisServiceBridge re-exports
+ * L4 Unit Test — analysisServiceBridge wrappers
  *
  * Mocks: L3 services only (imageGeneration, videoAnalysis, transcription, captionGeneration)
- * Tests that the bridge module re-exports the expected functions from L3.
+ * Tests that the bridge module wraps the L3 functions and delegates calls.
  */
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 
 // ── Mock L3 services ────────────────────────────────────────────────
 
+const mockGenerateImage = vi.hoisted(() => vi.fn())
+const mockAnalyzeVideoEditorial = vi.hoisted(() => vi.fn())
+const mockAnalyzeVideoClipDirection = vi.hoisted(() => vi.fn())
+const mockAnalyzeVideoForEnhancements = vi.hoisted(() => vi.fn())
+const mockTranscribeVideo = vi.hoisted(() => vi.fn())
+const mockGenerateCaptions = vi.hoisted(() => vi.fn())
+
 vi.mock('../../../L3-services/imageGeneration/imageGeneration.js', () => ({
-  generateImage: vi.fn(),
+  generateImage: mockGenerateImage,
 }))
 
 vi.mock('../../../L3-services/videoAnalysis/videoAnalysis.js', () => ({
-  analyzeVideoEditorial: vi.fn(),
-  analyzeVideoClipDirection: vi.fn(),
-  analyzeVideoForEnhancements: vi.fn(),
+  analyzeVideoEditorial: mockAnalyzeVideoEditorial,
+  analyzeVideoClipDirection: mockAnalyzeVideoClipDirection,
+  analyzeVideoForEnhancements: mockAnalyzeVideoForEnhancements,
 }))
 
 vi.mock('../../../L3-services/transcription/transcription.js', () => ({
-  transcribeVideo: vi.fn(),
+  transcribeVideo: mockTranscribeVideo,
 }))
 
 vi.mock('../../../L3-services/captionGeneration/captionGeneration.js', () => ({
-  generateCaptions: vi.fn(),
+  generateCaptions: mockGenerateCaptions,
 }))
 
 // ── Import after mocks ──────────────────────────────────────────────
@@ -39,28 +46,43 @@ import {
 
 // ── Tests ────────────────────────────────────────────────────────────
 
-describe('L4 Unit: analysisServiceBridge re-exports', () => {
-  it('re-exports generateImage from L3 imageGeneration', () => {
-    expect(typeof generateImage).toBe('function')
+describe('L4 Unit: analysisServiceBridge wrappers', () => {
+  afterEach(() => vi.clearAllMocks())
+
+  it('analyzeVideoEditorial delegates to L3', async () => {
+    mockAnalyzeVideoEditorial.mockResolvedValue('cut it')
+    const result = await analyzeVideoEditorial('/v.mp4', 'prompt')
+    expect(result).toBe('cut it')
+    expect(mockAnalyzeVideoEditorial).toHaveBeenCalledWith('/v.mp4', 'prompt')
   })
 
-  it('re-exports analyzeVideoEditorial from L3 videoAnalysis', () => {
-    expect(typeof analyzeVideoEditorial).toBe('function')
+  it('analyzeVideoClipDirection delegates to L3', async () => {
+    mockAnalyzeVideoClipDirection.mockResolvedValue('zoom in')
+    const result = await analyzeVideoClipDirection('/v.mp4', 'prompt')
+    expect(result).toBe('zoom in')
   })
 
-  it('re-exports analyzeVideoClipDirection from L3 videoAnalysis', () => {
-    expect(typeof analyzeVideoClipDirection).toBe('function')
+  it('analyzeVideoForEnhancements delegates to L3', async () => {
+    mockAnalyzeVideoForEnhancements.mockResolvedValue([])
+    const result = await analyzeVideoForEnhancements('/v.mp4', 'prompt' as never)
+    expect(result).toEqual([])
   })
 
-  it('re-exports analyzeVideoForEnhancements from L3 videoAnalysis', () => {
-    expect(typeof analyzeVideoForEnhancements).toBe('function')
+  it('transcribeVideo delegates to L3', async () => {
+    mockTranscribeVideo.mockResolvedValue({ text: 'hello' })
+    const result = await transcribeVideo('/audio.mp3')
+    expect(result).toEqual({ text: 'hello' })
   })
 
-  it('re-exports transcribeVideo from L3 transcription', () => {
-    expect(typeof transcribeVideo).toBe('function')
+  it('generateCaptions delegates to L3', async () => {
+    mockGenerateCaptions.mockResolvedValue('/captions.srt')
+    const result = await generateCaptions('/dir', [] as never)
+    expect(result).toBe('/captions.srt')
   })
 
-  it('re-exports generateCaptions from L3 captionGeneration', () => {
-    expect(typeof generateCaptions).toBe('function')
+  it('generateImage delegates to L3', async () => {
+    mockGenerateImage.mockResolvedValue('/img.png')
+    const result = await generateImage('prompt', '/out.png')
+    expect(result).toBe('/img.png')
   })
 })
