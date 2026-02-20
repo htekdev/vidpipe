@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { PassThrough } from 'node:stream'
 
-// ── Mock setup (L1 + L3 only) ────────────────────────────────────────
+// ── Mock setup (L1 + L3 only, verifies ESM .js resolution) ──────────
 
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

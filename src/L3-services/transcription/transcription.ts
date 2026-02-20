@@ -1,10 +1,10 @@
 import { join } from '../../L1-infra/paths/paths.js'
 import { getFileStats, writeJsonFile, ensureDirectory, removeFile } from '../../L1-infra/fileSystem/fileSystem.js'
-import { extractAudio, splitAudioIntoChunks } from '../../L2-clients/ffmpeg/audioExtraction'
-import { transcribeAudio } from '../../L2-clients/whisper/whisperClient'
-import { VideoFile, Transcript, Segment, Word } from '../../L0-pure/types/index'
-import { getConfig } from '../../L1-infra/config/environment'
-import logger from '../../L1-infra/logger/configLogger'
+import { extractAudio, splitAudioIntoChunks } from '../../L2-clients/ffmpeg/audioExtraction.js'
+import { transcribeAudio } from '../../L2-clients/whisper/whisperClient.js'
+import type { VideoFile, Transcript, Segment, Word } from '../../L0-pure/types/index'
+import { getConfig } from '../../L1-infra/config/environment.js'
+import logger from '../../L1-infra/logger/configLogger.js'
 import { costTracker } from '../costTracking/costTracker.js'
 
 const MAX_WHISPER_SIZE_MB = 25

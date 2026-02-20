@@ -32,6 +32,7 @@ describe('L7 Unit: chat command', () => {
 
   it('runChat creates readline and exits on quit command', async () => {
     // Provide a fake stdin that sends "exit" immediately
+    // Also verifies the close listener leak fix (single shared closePromise)
     const fakeStdin = new PassThrough()
     Object.defineProperty(process, 'stdin', { value: fakeStdin, configurable: true })
 

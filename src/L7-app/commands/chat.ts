@@ -63,13 +63,21 @@ reschedule posts, check what's coming up, or reprioritize content.
 Type \x1b[33mexit\x1b[0m or \x1b[33mquit\x1b[0m to leave. Press Ctrl+C to stop.
 `)
 
+  let closeRejector: ((err: Error) => void) | null = null
+  const closePromise = new Promise<never>((_, reject) => {
+    closeRejector = reject
+    rl.once('close', () => reject(new Error('readline closed')))
+  })
+
   const prompt = (): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      rl.question('\x1b[32mvidpipe>\x1b[0m ', (answer) => {
-        resolve(answer)
-      })
-      rl.once('close', () => reject(new Error('readline closed')))
-    })
+    return Promise.race([
+      new Promise<string>((resolve) => {
+        rl.question('\x1b[32mvidpipe>\x1b[0m ', (answer) => {
+          resolve(answer)
+        })
+      }),
+      closePromise
+    ])
   }
 
   try {

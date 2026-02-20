@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { execFile } from 'child_process';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { execFile } from 'child_process'
 import { promisify } from 'util';
 import path from 'path';
 import {

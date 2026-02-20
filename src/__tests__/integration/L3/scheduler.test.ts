@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// Mock L1 infrastructure
+// Mock L1 infrastructure (ESM imports verified)
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   sanitizeForLog: vi.fn((v: unknown) => String(v)),

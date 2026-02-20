@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
-// ── Mocks ──────────────────────────────────────────────────────────────
+// ── Mocks (L3 scheduler uses L2 via realign + scheduleConfig) ────────
 
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },

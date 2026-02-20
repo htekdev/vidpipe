@@ -1,7 +1,7 @@
 import { fluentFfmpeg as ffmpegLib } from '../../L1-infra/ffmpeg/ffmpeg.js'
 import { createModuleRequire } from '../../L1-infra/process/process.js'
 import { fileExistsSync } from '../../L1-infra/fileSystem/fileSystem.js'
-import logger from '../../L1-infra/logger/logger.js'
+import logger from '../../L1-infra/logger/configLogger.js'
 import { getConfig } from '../../L1-infra/config/environment.js'
 
 const require = createModuleRequire(import.meta.url)

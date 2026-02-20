@@ -2,8 +2,8 @@ import { execFileRaw } from '../../L1-infra/process/process.js'
 import { ensureDirectory, copyFile } from '../../L1-infra/fileSystem/fileSystem.js'
 import { dirname, join } from '../../L1-infra/paths/paths.js'
 import { getFFmpegPath } from './ffmpeg.js'
-import logger from '../../L1-infra/logger/configLogger'
-import { detectWebcamRegion, getVideoResolution, type WebcamRegion } from './faceDetection'
+import logger from '../../L1-infra/logger/configLogger.js'
+import { detectWebcamRegion, getVideoResolution, type WebcamRegion } from './faceDetection.js'
 
 const ffmpegPath = getFFmpegPath()
 
