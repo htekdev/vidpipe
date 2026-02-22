@@ -7,6 +7,7 @@ import { analyzeStagedChanges } from './diffAnalyzer.js';
 import { validateTestTiers, formatMissingTiers } from './layerTestMapper.js';
 import { runTestsWithCoverage, cleanupCoverage } from './testRunner.js';
 import { checkChangedLineCoverage, formatCoverageReport } from './coverageChecker.js';
+import { analyzeSpecTestTraceability, formatTraceabilityReport } from './specAnalyzer.js';
 
 export interface CommitGateOptions {
   threshold: number;
@@ -58,12 +59,13 @@ export async function runCommitGate(options: CommitGateOptions): Promise<boolean
   console.log(`  Code files:  ${analysis.codeChanges.length} file(s)${layerList ? ` across ${layerList}` : ''}`);
   console.log(`  Type files:  ${analysis.typeOnlyChanges.length} file(s)${analysis.typeOnlyChanges.length > 0 ? ' (typecheck only)' : ''}`);
   console.log(`  Test files:  ${analysis.testChanges.length} file(s)${tierList ? ` across ${tierList}` : ''}`);
+  console.log(`  Spec files:  ${analysis.specChanges.length} file(s)`);
   console.log(`  Exempt:      ${analysis.exempt.length} file(s)`);
   console.log('');
 
-  // No code or type changes → just commit
-  if (analysis.codeChanges.length === 0 && analysis.typeOnlyChanges.length === 0) {
-    console.log('✅ No source code changes detected -- skipping test requirements.\n');
+  // No code, type, or spec changes → just commit
+  if (analysis.codeChanges.length === 0 && analysis.typeOnlyChanges.length === 0 && analysis.specChanges.length === 0) {
+    console.log('✅ No source code or spec changes detected -- skipping test requirements.\n');
     return executeCommit(commitArgs, dryRun);
   }
 
@@ -86,7 +88,7 @@ export async function runCommitGate(options: CommitGateOptions): Promise<boolean
   }
 
   // Only type changes → commit after typecheck
-  if (analysis.codeChanges.length === 0) {
+  if (analysis.codeChanges.length === 0 && analysis.specChanges.length === 0) {
     console.log('✅ Only type changes -- typecheck passed, skipping test requirements.\n');
     return executeCommit(commitArgs, dryRun);
   }
@@ -95,9 +97,35 @@ export async function runCommitGate(options: CommitGateOptions): Promise<boolean
     return executeCommit(commitArgs, dryRun);
   }
 
-  // ── Step 3: Validate test tiers ────────────────────────────────────────────
+  // ── Step 3: Validate spec-test traceability ─────────────────────────────────
 
-  console.log('📊 Step 3: Validating test tier coverage\n');
+  if (analysis.specChanges.length > 0) {
+    console.log('📝 Step 3: Validating spec-test traceability\n');
+
+    // ALL test files can reference specs (unit, integration, e2e)
+    const allTestFiles = analysis.testChanges.map(t => t.file);
+
+    const traceability = analyzeSpecTestTraceability(analysis.specChanges, allTestFiles);
+
+    if (traceability.specChanges.length > 0) {
+      const totalReqs = traceability.specChanges.reduce((sum, s) => sum + s.changedReqs.length, 0);
+      console.log(`  Spec changes: ${traceability.specChanges.length} file(s), ${totalReqs} REQ(s) added/modified`);
+      console.log(`  Test refs:    ${totalReqs - traceability.missingTestRefs.length} covered, ${traceability.missingTestRefs.length} missing`);
+      console.log('');
+
+      if (!traceability.satisfied) {
+        console.log('❌ Commit blocked: Spec changes missing test coverage.\n');
+        console.log(formatTraceabilityReport(traceability));
+        return false;
+      }
+
+      console.log('  ✅ All spec requirements have corresponding tests\n');
+    }
+  }
+
+  // ── Step 4: Validate test tiers ────────────────────────────────────────────
+
+  console.log('📊 Step 4: Validating test tier coverage\n');
 
   const requirements = validateTestTiers(analysis.codeChanges, analysis.testChanges);
   const allTiersSatisfied = requirements.every(r => r.allSatisfied);
@@ -117,9 +145,9 @@ export async function runCommitGate(options: CommitGateOptions): Promise<boolean
     return false;
   }
 
-  // ── Step 4: Run tests ──────────────────────────────────────────────────────
+  // ── Step 5: Run tests ──────────────────────────────────────────────────────
 
-  console.log('🧪 Step 4: Running changed tests with coverage\n');
+  console.log('🧪 Step 5: Running changed tests with coverage\n');
 
   const testResult = runTestsWithCoverage(analysis.testChanges);
 
@@ -135,9 +163,9 @@ export async function runCommitGate(options: CommitGateOptions): Promise<boolean
       return executeCommit(commitArgs, dryRun);
     }
 
-    // ── Step 5: Verify changed-line coverage ─────────────────────────────────
+    // ── Step 6: Verify changed-line coverage ─────────────────────────────────
 
-    console.log('\n📈 Step 5: Checking changed-line coverage\n');
+    console.log('\n📈 Step 6: Checking changed-line coverage\n');
 
     // Derive active coverage scopes from the test tiers that ran
     const activeScopes = [...new Set(analysis.testChanges.map(t => t.tier))];

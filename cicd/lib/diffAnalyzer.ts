@@ -26,11 +26,13 @@ export interface DiffAnalysis {
   codeChanges: CodeChange[];
   typeOnlyChanges: string[];
   testChanges: TestChange[];
+  specChanges: string[];
   exempt: string[];
 }
 
 const LAYER_PATTERN = /^src\/L(\d)-/;
 const TEST_PATTERN = /^src\/__tests__\//;
+const SPEC_PATTERN = /^specs\/.*\.md$/;
 const TYPE_ONLY_PATTERNS = [
   /\/types\//,
   /\.d\.ts$/,
@@ -47,6 +49,10 @@ function isTypeOnlyFile(filePath: string): boolean {
 
 function isTestFile(filePath: string): boolean {
   return TEST_PATTERN.test(filePath);
+}
+
+function isSpecFile(filePath: string): boolean {
+  return SPEC_PATTERN.test(filePath);
 }
 
 function isSourceFile(filePath: string): boolean {
@@ -124,7 +130,7 @@ export function analyzeStagedChanges(): DiffAnalysis {
     .filter(Boolean);
 
   if (stagedFiles.length === 0) {
-    return { codeChanges: [], typeOnlyChanges: [], testChanges: [], exempt: [] };
+    return { codeChanges: [], typeOnlyChanges: [], testChanges: [], specChanges: [], exempt: [] };
   }
 
   const diffOutput = execSync('git diff --cached -U0', { encoding: 'utf-8' });
@@ -133,11 +139,19 @@ export function analyzeStagedChanges(): DiffAnalysis {
   const codeChanges: CodeChange[] = [];
   const typeOnlyChanges: string[] = [];
   const testChanges: TestChange[] = [];
+  const specChanges: string[] = [];
   const exempt: string[] = [];
 
   for (const file of stagedFiles) {
     const normalizedFile = file.replace(/\\/g, '/');
 
+    // Spec files (specs/**/*.md)
+    if (isSpecFile(normalizedFile)) {
+      specChanges.push(normalizedFile);
+      continue;
+    }
+
+    // Test files in src/__tests__/ (these may reference specs via {SpecName}.REQ-XXX)
     if (isTestFile(normalizedFile)) {
       const parsed = parseTestTier(normalizedFile);
       if (parsed) {
@@ -169,5 +183,5 @@ export function analyzeStagedChanges(): DiffAnalysis {
     codeChanges.push({ file: normalizedFile, layer, changedLines });
   }
 
-  return { codeChanges, typeOnlyChanges, testChanges, exempt };
+  return { codeChanges, typeOnlyChanges, testChanges, specChanges, exempt };
 }

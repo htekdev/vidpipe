@@ -555,6 +555,65 @@ Always use `npm run push` (never raw `git push`) to push changes. The push scrip
 - After fixes are applied, run `npm run push` again to verify and re-poll CI
 - **Repeat until all steps pass** — the push is not done until every gate is green
 
+## Spec-Driven Development
+
+This project uses **spec-driven development** where specifications are the source of truth.
+
+### Philosophy
+
+1. **Specs define WHAT** — Requirements describe expected behavior, not implementation
+2. **Tests verify specs** — Every `REQ-XXX` requirement must have a corresponding test
+3. **Code implements** — Implementation can change freely as long as tests pass
+
+### Workflow
+
+1. **Change specs first** — When adding/modifying functionality, update the spec file first
+2. **Add tests for new REQs** — Every new `REQ-XXX` needs a test named `{SpecName}.REQ-XXX`
+3. **Commit gate enforces** — Commits with spec changes require corresponding test changes
+
+### Spec Structure
+
+Specs live in `specs/` mirroring source structure:
+- `src/L5-assets/VideoAsset.ts` → `specs/L5-assets/VideoAsset.md`
+- `src/L3-services/transcription.ts` → `specs/L3-services/transcription.md`
+
+### Requirement Types
+
+| Type | Format | Purpose |
+|------|--------|---------|
+| Behavioral | `REQ-XXX` | What the system must do (tested) |
+| Architectural | `ARCH-XXX` | How the system is structured (enforced by hooks) |
+
+### Test Mapping
+
+Tests in ANY tier (unit, integration, e2e) can reference spec requirements:
+
+```typescript
+// Unit test
+test('VideoAsset.REQ-001: computes transcript path', () => { ... })
+
+// Integration test  
+test('Pipeline.REQ-010: silence removal preserves audio sync', () => { ... })
+
+// E2E test
+test('CLI.REQ-005: process command accepts --stages flag', () => { ... })
+```
+
+### Custom Agent
+
+Use the `spec-out` agent to create specs from existing tests:
+- Analyzes test files to extract requirements
+- Creates spec file with proper REQ-XXX format
+- Renames tests to `{SpecName}.REQ-XXX` format
+- Can delegate to sub-agents for higher quality
+
+### Commit Enforcement
+
+The commit gate (`npm run commit`) validates:
+1. Changed spec REQs have corresponding test changes
+2. Test names follow `{SpecName}.REQ-XXX` format
+3. Similar to code-test coverage enforcement
+
 ## Testing
 
 ### Test Suite

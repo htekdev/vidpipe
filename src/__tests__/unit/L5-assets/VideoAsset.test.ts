@@ -6,7 +6,7 @@ import { VideoAsset, VideoMetadata, CaptionFiles } from '../../../L5-assets/Vide
 import { AssetOptions } from '../../../L5-assets/Asset.js'
 import { join } from '../../../L1-infra/paths/paths.js'
 import * as fileSystem from '../../../L1-infra/fileSystem/fileSystem.js'
-import * as videoOperations from '../../../L3-services/videoOperations/videoOperations.js'
+import * as videoServiceBridge from '../../../L4-agents/videoServiceBridge.js'
 
 vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   fileExists: vi.fn(),
@@ -18,12 +18,12 @@ vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   writeTextFile: vi.fn(),
 }))
 
-vi.mock('../../../L3-services/videoOperations/videoOperations.js', () => ({
+vi.mock('../../../L4-agents/videoServiceBridge.js', () => ({
   ffprobe: vi.fn(),
 }))
 
 const mockGenerateImage = vi.hoisted(() => vi.fn())
-vi.mock('../../../L3-services/imageGeneration/imageGeneration.js', () => ({
+vi.mock('../../../L4-agents/analysisServiceBridge.js', () => ({
   generateImage: mockGenerateImage,
 }))
 vi.mock('../../../L0-pure/captions/captionGenerator.js', () => ({
@@ -61,21 +61,21 @@ describe('VideoAsset', () => {
   })
 
   describe('computed paths', () => {
-    it('computes transcriptPath correctly', () => {
+    it('VideoAsset.REQ-001: computes transcript path as {videoDir}/transcript.json', () => {
       expect(asset.transcriptPath).toMatch(/recordings[/\\]test-video[/\\]transcript\.json$/)
     })
 
-    it('computes layoutPath correctly', () => {
+    it('VideoAsset.REQ-002: computes layout path as {videoDir}/layout.json', () => {
       expect(asset.layoutPath).toMatch(/recordings[/\\]test-video[/\\]layout\.json$/)
     })
 
-    it('computes captionsDir correctly', () => {
+    it('VideoAsset.REQ-003: computes captions directory as {videoDir}/captions/', () => {
       expect(asset.captionsDir).toMatch(/recordings[/\\]test-video[/\\]captions$/)
     })
   })
 
   describe('exists()', () => {
-    it('returns true when video file exists', async () => {
+    it('VideoAsset.REQ-010: exists() returns true when video file exists on disk', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
 
       const result = await asset.exists()
@@ -86,7 +86,7 @@ describe('VideoAsset', () => {
       expect(calledPath).toMatch(/recordings[/\\]test-video[/\\]test-video\.mp4$/)
     })
 
-    it('returns false when video file does not exist', async () => {
+    it('VideoAsset.REQ-011: exists() returns false when video file does not exist', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(false)
 
       const result = await asset.exists()
@@ -96,7 +96,7 @@ describe('VideoAsset', () => {
   })
 
   describe('getResult()', () => {
-    it('returns video path when video exists', async () => {
+    it('VideoAsset.REQ-012: getResult() returns video path when file exists', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
 
       const result = await asset.getResult()
@@ -104,7 +104,7 @@ describe('VideoAsset', () => {
       expect(result).toMatch(/recordings[/\\]test-video[/\\]test-video\.mp4$/)
     })
 
-    it('throws error when video does not exist', async () => {
+    it('VideoAsset.REQ-013: getResult() throws "Video not found" error when file does not exist', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(false)
 
       await expect(asset.getResult()).rejects.toThrow('Video not found')
@@ -112,8 +112,8 @@ describe('VideoAsset', () => {
   })
 
   describe('getMetadata()', () => {
-    it('returns video metadata from ffprobe', async () => {
-      vi.mocked(videoOperations.ffprobe).mockResolvedValue({
+    it('VideoAsset.REQ-020: extracts video duration in seconds via ffprobe', async () => {
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue({
         format: {
           duration: 120.5,
           size: 1024000,
@@ -152,8 +152,8 @@ describe('VideoAsset', () => {
       })
     })
 
-    it('defaults to 0 when no video stream found', async () => {
-      vi.mocked(videoOperations.ffprobe).mockResolvedValue({
+    it('VideoAsset.REQ-023: defaults resolution to 0×0 when no video stream found', async () => {
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue({
         format: { duration: 60, size: 500000, filename: '', nb_streams: 1, format_name: 'mp4', format_long_name: '', start_time: 0, bit_rate: 0, tags: {} },
         streams: [{ codec_type: 'audio', index: 0, codec_name: 'aac', codec_long_name: '', profile: 0, codec_time_base: '', duration: '0', bit_rate: '0' }],
         chapters: [],
@@ -164,8 +164,8 @@ describe('VideoAsset', () => {
       expect(metadata.height).toBe(0)
     })
 
-    it('defaults duration and size to 0 when format fields missing', async () => {
-      vi.mocked(videoOperations.ffprobe).mockResolvedValue({
+    it('VideoAsset.REQ-024: defaults duration and size to 0 when format fields missing', async () => {
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue({
         format: { filename: '', nb_streams: 0, format_name: '', format_long_name: '', start_time: 0, bit_rate: 0, tags: {} },
         streams: [],
         chapters: [],
@@ -176,8 +176,8 @@ describe('VideoAsset', () => {
       expect(metadata.size).toBe(0)
     })
 
-    it('caches metadata on subsequent calls', async () => {
-      vi.mocked(videoOperations.ffprobe).mockResolvedValue({
+    it('VideoAsset.REQ-025: caches metadata after first extraction', async () => {
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue({
         format: { duration: 60, size: 500000, filename: '', nb_streams: 1, format_name: 'mp4', format_long_name: '', start_time: 0, bit_rate: 0, tags: {} },
         streams: [{ codec_type: 'video', width: 1280, height: 720, index: 0, codec_name: '', codec_long_name: '', profile: 0, codec_time_base: '', duration: '0', bit_rate: '0' }],
         chapters: [],
@@ -186,11 +186,11 @@ describe('VideoAsset', () => {
       await asset.getMetadata()
       await asset.getMetadata()
 
-      expect(videoOperations.ffprobe).toHaveBeenCalledTimes(1)
+      expect(videoServiceBridge.ffprobe).toHaveBeenCalledTimes(1)
     })
 
-    it('re-fetches metadata when force is true', async () => {
-      vi.mocked(videoOperations.ffprobe).mockResolvedValue({
+    it('VideoAsset.REQ-026: force flag bypasses metadata cache and re-fetches', async () => {
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue({
         format: { duration: 60, size: 500000, filename: '', nb_streams: 1, format_name: 'mp4', format_long_name: '', start_time: 0, bit_rate: 0, tags: {} },
         streams: [{ codec_type: 'video', width: 1280, height: 720, index: 0, codec_name: '', codec_long_name: '', profile: 0, codec_time_base: '', duration: '0', bit_rate: '0' }],
         chapters: [],
@@ -199,12 +199,12 @@ describe('VideoAsset', () => {
       await asset.getMetadata()
       await asset.getMetadata({ force: true })
 
-      expect(videoOperations.ffprobe).toHaveBeenCalledTimes(2)
+      expect(videoServiceBridge.ffprobe).toHaveBeenCalledTimes(2)
     })
   })
 
   describe('getTranscript()', () => {
-    it('loads transcript from disk when it exists', async () => {
+    it('VideoAsset.REQ-030: loads transcript from disk when file exists', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
       vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
         text: 'Test transcript',
@@ -219,13 +219,13 @@ describe('VideoAsset', () => {
       expect(calledPath).toMatch(/recordings[/\\]test-video[/\\]transcript\.json$/)
     })
 
-    it('throws error when transcript does not exist', async () => {
+    it('VideoAsset.REQ-031: throws "Transcript not found" error when file does not exist', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(false)
 
       await expect(asset.getTranscript()).rejects.toThrow('Transcript not found')
     })
 
-    it('caches transcript on subsequent calls', async () => {
+    it('VideoAsset.REQ-032: caches transcript after first load', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
       vi.mocked(fileSystem.readJsonFile).mockResolvedValue({ text: '', segments: [], words: [] })
 
@@ -237,7 +237,7 @@ describe('VideoAsset', () => {
   })
 
   describe('getCaptions()', () => {
-    it('returns existing caption file paths when all exist', async () => {
+    it('VideoAsset.REQ-040: returns existing caption paths when all three files exist', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
 
       const captions = await asset.getCaptions()
@@ -247,7 +247,7 @@ describe('VideoAsset', () => {
       expect(captions.ass).toMatch(/recordings[/\\]test-video[/\\]captions[/\\]captions\.ass$/)
     })
 
-    it('generates captions when files do not exist', async () => {
+    it('VideoAsset.REQ-041: generates SRT, VTT, and ASS captions when files do not exist', async () => {
       // First call for exists check on video, then for each caption file
       vi.mocked(fileSystem.fileExists)
         .mockResolvedValueOnce(false) // srt
@@ -270,7 +270,7 @@ describe('VideoAsset', () => {
       expect(captions.srt).toMatch(/recordings[/\\]test-video[/\\]captions[/\\]captions\.srt$/)
     })
 
-    it('regenerates captions when force is true even if files exist', async () => {
+    it('VideoAsset.REQ-043: force flag regenerates captions even when files exist', async () => {
       // fileExists calls for caption files return true, but force overrides
       vi.mocked(fileSystem.fileExists)
         .mockResolvedValueOnce(true) // srt
@@ -289,7 +289,7 @@ describe('VideoAsset', () => {
       expect(fileSystem.writeTextFile).toHaveBeenCalledTimes(3)
     })
 
-    it('generates captions when only some files exist', async () => {
+    it('VideoAsset.REQ-044: regenerates all captions when only some files exist', async () => {
       // srt exists, vtt doesn't, ass exists — should still generate
       vi.mocked(fileSystem.fileExists)
         .mockResolvedValueOnce(true)  // srt
@@ -312,7 +312,7 @@ describe('VideoAsset', () => {
   })
 
   describe('getChapters()', () => {
-    it('loads chapters from disk when file exists', async () => {
+    it('VideoAsset.REQ-050: loads chapters from chapters/chapters.json when file exists', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
       vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
         chapters: [
@@ -327,7 +327,7 @@ describe('VideoAsset', () => {
       expect(chapters[0].title).toBe('Intro')
     })
 
-    it('returns empty array when file does not exist', async () => {
+    it('VideoAsset.REQ-051: returns empty array when chapters file does not exist', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(false)
 
       const chapters = await asset.getChapters()
@@ -335,7 +335,7 @@ describe('VideoAsset', () => {
       expect(chapters).toEqual([])
     })
 
-    it('returns empty array when chapters key is missing from file', async () => {
+    it('VideoAsset.REQ-052: returns empty array when chapters key is missing from file', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
       vi.mocked(fileSystem.readJsonFile).mockResolvedValue({})
 
@@ -344,7 +344,7 @@ describe('VideoAsset', () => {
       expect(chapters).toEqual([])
     })
 
-    it('returns empty array when force is true (skips disk cache)', async () => {
+    it('VideoAsset.REQ-053: force flag returns empty array (skips disk cache)', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
       vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
         chapters: [{ timestamp: 0, title: 'Ch1', description: '' }],
@@ -356,7 +356,7 @@ describe('VideoAsset', () => {
       expect(chapters).toEqual([])
     })
 
-    it('caches chapters on subsequent calls', async () => {
+    it('VideoAsset.REQ-054: caches chapters after first load', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
       vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
         chapters: [{ timestamp: 0, title: 'Ch1', description: '' }],
@@ -370,13 +370,13 @@ describe('VideoAsset', () => {
   })
 
   describe('coverImagePath', () => {
-    it('returns correct path to cover.png in videoDir', () => {
+    it('VideoAsset.REQ-004: computes cover image path as {videoDir}/cover.png', () => {
       expect(asset.coverImagePath).toMatch(/recordings[/\\]test-video[/\\]cover\.png$/)
     })
   })
 
   describe('generateCoverImage()', () => {
-    it('calls generateImage with prompt and returns cover path', async () => {
+    it('VideoAsset.REQ-060: generates cover image with AI using post content as context', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(false)
       mockGenerateImage.mockResolvedValue(asset.coverImagePath)
 
@@ -390,7 +390,7 @@ describe('VideoAsset', () => {
       expect(result).toMatch(/cover\.png$/)
     })
 
-    it('returns cached path when cover image already exists on disk', async () => {
+    it('VideoAsset.REQ-062: returns cached path when cover image already exists', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
 
       const result = await asset.generateCoverImage('Some post content')
@@ -399,7 +399,7 @@ describe('VideoAsset', () => {
       expect(result).toMatch(/cover\.png$/)
     })
 
-    it('includes post content in the generation prompt', async () => {
+    it('VideoAsset.REQ-063: generation prompt includes post content for context', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(false)
       mockGenerateImage.mockResolvedValue(asset.coverImagePath)
 
@@ -411,8 +411,8 @@ describe('VideoAsset', () => {
   })
 
   describe('clearCache()', () => {
-    it('clears cached metadata', async () => {
-      vi.mocked(videoOperations.ffprobe).mockResolvedValue({
+    it('VideoAsset.REQ-070: clearCache() clears all in-memory cached data', async () => {
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue({
         format: { duration: 60, size: 500000, filename: '', nb_streams: 1, format_name: 'mp4', format_long_name: '', start_time: 0, bit_rate: 0, tags: {} },
         streams: [{ codec_type: 'video', width: 1280, height: 720, index: 0, codec_name: '', codec_long_name: '', profile: 0, codec_time_base: '', duration: '0', bit_rate: '0' }],
         chapters: [],
@@ -422,7 +422,7 @@ describe('VideoAsset', () => {
       asset.clearCache()
       await asset.getMetadata()
 
-      expect(videoOperations.ffprobe).toHaveBeenCalledTimes(2)
+      expect(videoServiceBridge.ffprobe).toHaveBeenCalledTimes(2)
     })
   })
 })

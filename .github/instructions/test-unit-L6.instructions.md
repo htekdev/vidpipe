@@ -5,8 +5,11 @@ applyTo: "src/__tests__/unit/L6-*/**/*.ts"
 
 ## Mocking Rules
 
-- ✅ Can mock **L5 asset paths only** (`vi.mock('../../../../src/L5-assets/...')`).
-- ❌ Cannot mock L0-L4 or L6+ paths.
+- ✅ Can mock **L0, L1, and L5** (aligns with L6 import rules: foundation layers + layer below).
+- ❌ Cannot mock L2, L3, L4, L6, or L7 paths.
+- L0 pure functions rarely need mocking (they have no side effects), but it's allowed.
+- L1 infrastructure (fileSystem, config, paths) can be mocked to control I/O.
+- L5 assets are the primary mock target for testing pipeline orchestration.
 
 ## What to Test
 
@@ -44,6 +47,6 @@ describe('runStage', () => {
 
 ## Checklist
 
-- [ ] Every `vi.mock()` path contains `/L5-assets/` — nothing else
+- [ ] Every `vi.mock()` path contains `/L0-`, `/L1-`, or `/L5-` — nothing else
 - [ ] Stage failure does NOT throw — verify `runStage` catches and records
 - [ ] Stage timing is recorded (check `result.durationMs`)

@@ -5,8 +5,11 @@ applyTo: "src/__tests__/unit/L5-*/**/*.ts"
 
 ## Mocking Rules
 
-- ✅ Can mock **L4 agent paths only** (`vi.mock('../../../../src/L4-agents/...')`).
-- ❌ Cannot mock L0-L3 or L5+ paths.
+- ✅ Can mock **L0, L1, and L4** (aligns with L5 import rules: foundation layers + layer below).
+- ❌ Cannot mock L2, L3, L5, L6, or L7 paths.
+- L0 pure functions rarely need mocking (they have no side effects), but it's allowed.
+- L1 infrastructure (fileSystem, config, paths) can be mocked to control I/O.
+- L4 agents/bridges are the primary mock target for testing asset behavior.
 
 ## What to Test
 
@@ -42,5 +45,7 @@ describe('VideoAsset', () => {
 
 ## Checklist
 
-- [ ] Every `vi.mock()` path contains `/L4-agents/` — nothing else
+- [ ] Every `vi.mock()` path contains `/L0-`, `/L1-`, or `/L4-` — nothing else
 - [ ] Lazy-loading tested: first access triggers load, second access uses cache
+- [ ] L0 mocks are rare (pure functions usually run real)
+- [ ] L1 mocks control file I/O and config for deterministic tests

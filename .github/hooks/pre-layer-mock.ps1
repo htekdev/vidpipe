@@ -116,19 +116,32 @@ try {
                 "{`"permissionDecision`":`"deny`",`"permissionDecisionReason`":`"$reason`"}"
                 exit 0
             }
-            # L3-L7: can only mock the layer directly below (N-1)
-            $allowed = $unitLayer - 1
-            if ($mockLayerNum -ne $allowed) {
+            # L3-L7: allowed mocks align with import rules (foundation layers + layer below)
+            # L3 → L2 only (L0/L1 foundation runs real in unit tests)
+            # L4 → L3 only (L0/L1 foundation runs real in unit tests)
+            # L5 → L0, L1, L4 (foundation + layer below)
+            # L6 → L0, L1, L5 (foundation + layer below)
+            # L7 → L0, L1, L6 (foundation + layer below, L3 via integration tests)
+            $allowedLayers = @{
+                3 = @(2)
+                4 = @(3)
+                5 = @(0, 1, 4)
+                6 = @(0, 1, 5)
+                7 = @(0, 1, 6)
+            }
+            $allowed = $allowedLayers[$unitLayer]
+            if ($allowed -notcontains $mockLayerNum) {
                 $mockGuidance = @{
                     3 = "L3 unit tests can only mock L2-clients, not L$mockLayerNum. If mocking L0/L1, those are foundation layers that run real. If mocking L3+, the code under test has wrong-layer imports -- refactor it. If you need to control L1 (config, filesystem), use the integration/L3/ test tier instead."
                     4 = "L4 unit tests can only mock L3-services, not L$mockLayerNum. If the code under test imports L2 directly, that's a layer import violation -- create an L3-services wrapper function (not a re-export). For LLM providers, inject a mock LLMProvider via constructor, don't vi.mock() the module."
-                    5 = "L5 unit tests can only mock L4 agents/bridges, not L$mockLayerNum. If you need L2/L3 functionality in an L5 test, it should be behind an L4 bridge wrapper function -- mock the bridge instead."
-                    6 = "L6 unit tests can only mock L5 assets/loaders, not L$mockLayerNum. If the pipeline code under test is importing L3/L4 directly, that's a layer violation -- refactor to go through L5 asset methods and loaders."
-                    7 = "L7 unit tests can only mock L6 pipeline, not L$mockLayerNum. If the app code under test imports L3 directly, refactor to go through L6. If you need to mock L1+L3 together, use the integration/L7/ test tier."
+                    5 = "L5 unit tests can mock L0 (pure), L1 (infra), and L4 (agents/bridges), not L$mockLayerNum. If you need L2/L3 functionality in an L5 test, it should be behind an L4 bridge wrapper function -- mock the bridge instead."
+                    6 = "L6 unit tests can mock L0 (pure), L1 (infra), and L5 (assets/loaders), not L$mockLayerNum. If the pipeline code under test is importing L3/L4 directly, that's a layer violation -- refactor to go through L5 asset methods and loaders."
+                    7 = "L7 unit tests can mock L0 (pure), L1 (infra), and L6 (pipeline), not L$mockLayerNum. If the app code under test imports L3 directly, refactor to go through L6. If you need to mock L3 alongside L1, use the integration/L7/ test tier."
                 }
                 $reason = $mockGuidance[$unitLayer]
                 if (-not $reason) {
-                    $reason = "L$unitLayer unit tests can only mock L$allowed (layer directly below), not L$mockLayerNum."
+                    $allowedStr = ($allowed | ForEach-Object { "L$_" }) -join ", "
+                    $reason = "L$unitLayer unit tests can only mock $allowedStr, not L$mockLayerNum."
                 }
                 [Console]::Error.WriteLine("Layer-mock violation: $reason (in $filePath)")
                 "{`"permissionDecision`":`"deny`",`"permissionDecisionReason`":`"$reason`"}"
