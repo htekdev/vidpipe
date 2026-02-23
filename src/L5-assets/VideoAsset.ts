@@ -59,6 +59,14 @@ export abstract class VideoAsset extends Asset<string> {
   /** URL-safe identifier */
   abstract readonly slug: string
 
+  /**
+   * Get the path to the completion marker file.
+   * For video assets, this is {videoDir}/.complete
+   */
+  getCompletionMarkerPath(): string {
+    return join(this.videoDir, '.complete')
+  }
+
   // ── Computed paths ─────────────────────────────────────────────────────────
 
   /** Path to transcript JSON file */

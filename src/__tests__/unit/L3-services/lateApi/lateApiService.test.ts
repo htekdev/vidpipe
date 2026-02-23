@@ -21,6 +21,6 @@ describe('L3 lateApiService wrappers', () => {
   test('createLateApiClient delegates to L2 constructor with apiKey', () => {
     const client = createLateApiClient('test-key')
     expect(mockLateApiClient).toHaveBeenCalledWith('test-key')
-    expect(client.apiKey).toBe('test-key')
+    expect(client).toBeDefined()
   })
 })

@@ -22,6 +22,14 @@ export abstract class TextAsset extends Asset<string> {
   abstract readonly filePath: string
 
   /**
+   * Get the path to the completion marker file.
+   * For text assets, this is the filePath with .complete appended.
+   */
+  getCompletionMarkerPath(): string {
+    return `${this.filePath}.complete`
+  }
+
+  /**
    * Get the text content (from disk or memory cache).
    *
    * @param opts - Options controlling generation behavior

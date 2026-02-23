@@ -280,10 +280,30 @@ export async function generateMediumClips(
   const prompt = promptParts.join('\n')
 
   try {
-    await agent.run(prompt)
+    let runError: Error | undefined
+    
+    // The Copilot SDK has a known bug where it throws "missing finish_reason"
+    // even after tools completed successfully. We catch that specific error
+    // and check if clips were planned before re-throwing.
+    try {
+      await agent.run(prompt)
+    } catch (err) {
+      runError = err instanceof Error ? err : new Error(String(err))
+      
+      // Check if clips were planned despite the error
+      const partialPlanned = agent.getPlannedClips()
+      if (partialPlanned.length > 0 && runError.message.includes('missing finish_reason')) {
+        logger.warn(`[MediumVideoAgent] SDK error after ${partialPlanned.length} clips planned - proceeding with partial result`)
+      } else {
+        throw runError
+      }
+    }
+    
     const planned = agent.getPlannedClips()
 
     if (planned.length === 0) {
+      // Re-throw original error if we have one but no clips
+      if (runError) throw runError
       logger.warn('[MediumVideoAgent] No medium clips were planned')
       return []
     }

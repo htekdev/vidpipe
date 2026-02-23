@@ -1,15 +1,11 @@
-import { join, dirname, basename } from '../L1-infra/paths/paths.js'
-import { ensureDirectory, writeJsonFile, writeTextFile, copyFile, removeFile, fileExists, readTextFile, readJsonFile } from '../L1-infra/fileSystem/fileSystem.js'
+import { join, basename } from '../L1-infra/paths/paths.js'
+import { writeTextFile } from '../L1-infra/fileSystem/fileSystem.js'
 import logger, { pushPipe, popPipe } from '../L1-infra/logger/configLogger'
 import { getConfig } from '../L1-infra/config/environment'
 import { MainVideoAsset } from '../L5-assets/MainVideoAsset.js'
 import { costTracker, markPending, markProcessing, markCompleted, markFailed } from '../L5-assets/pipelineServices.js'
-import { enhanceVideo } from './stages/visualEnhancement.js'
-import { getModelForAgent } from '../L1-infra/config/modelConfig.js'
-import type { CostReport, QueueBuildResult } from '../L5-assets/pipelineServices.js'
-import type { ProduceResult } from '../L4-agents/ProducerAgent.js'
+import type { CostReport } from '../L5-assets/pipelineServices.js'
 import type {
-  VideoFile,
   Transcript,
   VideoSummary,
   ShortClip,
@@ -19,10 +15,11 @@ import type {
   PipelineResult,
   PipelineStage,
   Chapter,
-  VisualEnhancementResult,
-  VideoLayout,
 } from '../L0-pure/types/index'
 import { PipelineStage as Stage } from '../L0-pure/types/index'
+import type { ShortVideoAsset } from '../L5-assets/ShortVideoAsset.js'
+import type { MediumClipAsset } from '../L5-assets/MediumClipAsset.js'
+import type { CaptionFiles } from '../L5-assets/VideoAsset.js'
 
 /**
  * Execute a single pipeline stage with error isolation and timing.
@@ -118,23 +115,13 @@ export function adjustTranscript(
 /**
  * Run the full video processing pipeline.
  *
- * ### Stage ordering and data flow
- * 1. **Ingest** — extracts metadata (slug, duration, paths). Required; aborts if failed.
- * 2. **Transcribe** — Whisper transcription with word-level timestamps.
- * 3. **Video cleaning** — ProducerAgent trims dead air / bad segments and adjusts
- *    the transcript timestamps accordingly. Produces an `adjustedTranscript` for captions.
- * 4. **Captions** — generates SRT/VTT/ASS files from the (adjusted) transcript.
- * 5. **Caption burn** — renders captions into the video using FFmpeg. Prefers a
- *    single-pass approach (silence removal + captions in one encode) when possible.
- * 6. **Shorts** — AI-selected short clips. Uses the **original** transcript because
- *    clips are cut from the original (unedited) video.
- * 7. **Medium clips** — longer AI-selected clips (same original-transcript reasoning).
- * 8. **Chapters** — topic-boundary detection for YouTube chapters.
- * 9. **Summary** — README generation (runs after shorts/chapters so it can reference them).
- * 10–12. **Social posts** — platform-specific posts for the full video and each clip.
- * 13. **Queue build** — populates publish-queue/ for review before publishing.
- * 14. **Blog** — long-form blog post from transcript + summary.
- * 15. **Git push** — commits all generated assets and pushes.
+ * ### Stage flow
+ * Each asset method (getTranscript, getEditedVideo, etc.) handles its own:
+ * - Disk cache check (load from file if exists)
+ * - Generation (call agent/service if needed)
+ * - File writing (save result to disk)
+ *
+ * The pipeline orchestrates the order and provides timing/error isolation via runStage().
  *
  * ### Why failures don't abort
  * Each stage runs through {@link runStage} which catches errors. This means a
@@ -157,298 +144,147 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
   logger.info(`Pipeline starting for: ${videoPath}`)
 
   // 1. Ingestion — required for all subsequent stages
-  const videoAsset = await trackStage<MainVideoAsset>(Stage.Ingestion, () => MainVideoAsset.ingest(videoPath))
-  if (!videoAsset) {
+  const asset = await trackStage<MainVideoAsset>(Stage.Ingestion, () => MainVideoAsset.ingest(videoPath))
+  if (!asset) {
     const totalDuration = Date.now() - pipelineStart
     logger.error('Ingestion failed — cannot proceed without video metadata')
-    return { video: { originalPath: videoPath, repoPath: '', videoDir: '', slug: '', filename: '', duration: 0, size: 0, createdAt: new Date() }, transcript: undefined, editedVideoPath: undefined, captions: undefined, captionedVideoPath: undefined, summary: undefined, shorts: [], mediumClips: [], socialPosts: [], blogPost: undefined, stageResults, totalDuration }
-  }
-
-  // Convert to VideoFile for backward compatibility
-  const video = await videoAsset.toVideoFile()
-
-  pushPipe(video.videoDir)
-  try {
-  // 2. Transcription
-  let transcript: Transcript | undefined
-  transcript = await trackStage<Transcript>(Stage.Transcription, () => videoAsset.getTranscript())
-
-  // 3. Video Cleaning (ProducerAgent-based)
-  let editedVideoPath: string | undefined
-  let adjustedTranscript: Transcript | undefined
-  let cleaningKeepSegments: { start: number; end: number }[] | undefined
-
-  if (transcript && !cfg.SKIP_SILENCE_REMOVAL) {
-    // Trigger Gemini editorial direction (cached for ProducerAgent use)
-    await videoAsset.getEditorialDirection().catch(err => {
-      logger.warn(`[Pipeline] Editorial direction unavailable: ${err instanceof Error ? err.message : String(err)}`)
-    })
-
-    const cleaningResult = await trackStage<ProduceResult>(
-      Stage.SilenceRemoval,
-      () => videoAsset.removeSilence(getModelForAgent('ProducerAgent')),
-    )
-
-    if (cleaningResult && cleaningResult.success && cleaningResult.removals.length > 0) {
-      editedVideoPath = cleaningResult.outputPath
-      cleaningKeepSegments = cleaningResult.keepSegments
-
-      // Transcribe the edited video fresh — guaranteed accurate timestamps
-      adjustedTranscript = await trackStage<Transcript>(
-        Stage.Transcription,
-        () => videoAsset.transcribeEditedVideo(editedVideoPath!),
-      ) ?? undefined
-
-      if (adjustedTranscript) {
-        const totalRemoved = cleaningResult.removals.reduce((sum, r) => sum + (r.end - r.start), 0)
-        logger.info(`[Pipeline] Video cleaning: original=${transcript.duration.toFixed(1)}s, removed=${totalRemoved.toFixed(1)}s, edited=${adjustedTranscript.duration.toFixed(1)}s`)
-
-        await writeJsonFile(
-          join(video.videoDir, 'transcript-edited.json'),
-          adjustedTranscript,
-        )
-      }
-
-      await writeJsonFile(
-        join(video.videoDir, 'producer-plan.json'),
-        { removals: cleaningResult.removals, keepSegments: cleaningResult.keepSegments, editCount: cleaningResult.editCount },
-      )
-    }
-  }
-
-  // Gemini Pass 2: Analyze cleaned video for clip direction
-  // This provides short/medium clip suggestions to downstream agents
-  if (editedVideoPath && !cfg.SKIP_SHORTS) {
-    try {
-      if (cfg.GEMINI_API_KEY) {
-        logger.info('[Pipeline] Running Gemini Pass 2: clip direction analysis on cleaned video')
-        const metadata = await videoAsset.getMetadata()
-        const clipDirection = await videoAsset.analyzeClipDirection(editedVideoPath, metadata.duration)
-        await writeTextFile(join(video.videoDir, 'clip-direction.md'), clipDirection)
-        logger.info(`[Pipeline] Clip direction saved (${clipDirection.length} chars)`)
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      logger.warn(`[Pipeline] Gemini clip direction failed (non-fatal): ${msg}`)
-    }
-  }
-
-  // Use adjusted transcript for captions (if silence was removed), original otherwise
-  const captionTranscript = adjustedTranscript ?? transcript
-
-  // 3.5. Visual Enhancement — AI-generated image overlays
-  let enhancedVideoPath: string | undefined
-  if (!cfg.SKIP_VISUAL_ENHANCEMENT && captionTranscript) {
-    const videoToEnhance = editedVideoPath ?? video.repoPath
-    const enhancementResult = await runStage<VisualEnhancementResult | undefined>(
-      Stage.VisualEnhancement,
-      async () => {
-        const result = await enhanceVideo(videoToEnhance, captionTranscript, video)
-        if (!result) return undefined
-        return result
-      },
+    return {
+      video: { originalPath: videoPath, repoPath: '', videoDir: '', slug: '', filename: '', duration: 0, size: 0, createdAt: new Date() },
+      transcript: undefined,
+      editedVideoPath: undefined,
+      captions: undefined,
+      captionedVideoPath: undefined,
+      summary: undefined,
+      shorts: [],
+      mediumClips: [],
+      socialPosts: [],
+      blogPost: undefined,
       stageResults,
-    )
-    if (enhancementResult) {
-      enhancedVideoPath = enhancementResult.enhancedVideoPath
+      totalDuration,
     }
   }
 
-  // 4. Captions (fast, no AI needed) — generate from the right transcript
-  let captions: string[] | undefined
-  if (captionTranscript && !cfg.SKIP_CAPTIONS) {
-    captions = await trackStage<string[]>(Stage.Captions, () => videoAsset.generateCaptionFiles(captionTranscript))
-  }
+  const video = await asset.toVideoFile()
+  pushPipe(video.videoDir)
 
-  // 5. Caption Burn — use single-pass (silence removal + captions) when possible
-  let captionedVideoPath: string | undefined
-  if (captions && !cfg.SKIP_CAPTIONS) {
-    const assFile = captions.find((p) => p.endsWith('.ass'))
-    if (assFile && cleaningKeepSegments && !enhancedVideoPath) {
-      // Single-pass: re-do cleaning + burn captions from ORIGINAL video in one encode
-      // Skip single-pass when enhanced video exists (it already has cleaning baked in)
-      const captionedOutput = join(video.videoDir, `${video.slug}-captioned.mp4`)
-      captionedVideoPath = await trackStage<string>(
-        Stage.CaptionBurn,
-        () => videoAsset.singlePassEditAndBurnCaptions(video.repoPath, cleaningKeepSegments!, assFile, captionedOutput),
-      )
-    } else if (assFile) {
-      // No cleaning — just burn captions into original video
-      const videoToBurn = enhancedVideoPath ?? editedVideoPath ?? video.repoPath
-      const captionedOutput = join(video.videoDir, `${video.slug}-captioned.mp4`)
-      captionedVideoPath = await trackStage<string>(
-        Stage.CaptionBurn,
-        () => videoAsset.burnCaptionFiles(videoToBurn, assFile, captionedOutput),
-      )
+  try {
+    // 2. Transcription — asset handles disk check + Whisper call + file write
+    const transcript = await trackStage<Transcript>(Stage.Transcription, () => asset.getTranscript())
+
+    // 3. Silence Removal — asset handles edited video generation
+    let editedVideoPath: string | undefined
+    if (!cfg.SKIP_SILENCE_REMOVAL) {
+      editedVideoPath = await trackStage<string>(Stage.SilenceRemoval, () => asset.getEditedVideo())
     }
-  }
 
-  // 6. Shorts — use adjusted transcript + cleaned video (clips cut from cleaned video)
-  let shorts: ShortClip[] = []
-  if (transcript && !cfg.SKIP_SHORTS) {
-    const shortsTranscript = adjustedTranscript ?? transcript
-    let clipDirection: string | undefined
-    try {
-      const clipDirPath = join(video.videoDir, 'clip-direction.md')
-      if (await fileExists(clipDirPath)) {
-        clipDirection = await readTextFile(clipDirPath)
-      }
-    } catch { /* clip direction is optional */ }
+    // 3.5. Visual Enhancement — asset handles overlay generation + compositing
+    let enhancedVideoPath: string | undefined
+    if (!cfg.SKIP_VISUAL_ENHANCEMENT) {
+      enhancedVideoPath = await trackStage<string>(Stage.VisualEnhancement, () => asset.getEnhancedVideo())
+    }
 
-    // Read pre-detected webcam region from layout.json so shorts don't re-detect per clip
-    let webcamRegion: VideoLayout['webcam'] | undefined
-    try {
-      const layoutPath = join(video.videoDir, 'layout.json')
-      if (await fileExists(layoutPath)) {
-        const layout = await readJsonFile<VideoLayout>(layoutPath)
-        webcamRegion = layout.webcam
-      }
-    } catch { /* layout is optional — shorts will detect per clip if unavailable */ }
+    // 4. Captions — asset handles transcript → SRT/VTT/ASS generation
+    let captions: CaptionFiles | undefined
+    if (!cfg.SKIP_CAPTIONS) {
+      captions = await trackStage<CaptionFiles>(Stage.Captions, () => asset.getCaptions())
+    }
 
-    const result = await trackStage<ShortClip[]>(Stage.Shorts, () => videoAsset.generateShortClips(shortsTranscript, getModelForAgent('ShortsAgent'), clipDirection, webcamRegion, editedVideoPath))
-    if (result) shorts = result
-  }
+    // 5. Caption Burn — asset handles burning captions into video
+    let captionedVideoPath: string | undefined
+    if (!cfg.SKIP_CAPTIONS) {
+      captionedVideoPath = await trackStage<string>(Stage.CaptionBurn, () => asset.getCaptionedVideo())
+    }
 
-  // 7. Medium Clips — use enhanced video if available (carries overlay images), else cleaned video
-  let mediumClips: MediumClip[] = []
-  if (transcript && !cfg.SKIP_MEDIUM_CLIPS) {
-    const mediumTranscript = adjustedTranscript ?? transcript
-    const mediumVideoPath = enhancedVideoPath ?? editedVideoPath
-    let mediumClipDirection: string | undefined
-    try {
-      const clipDirPath = join(video.videoDir, 'clip-direction.md')
-      if (await fileExists(clipDirPath)) {
-        mediumClipDirection = await readTextFile(clipDirPath)
-      }
-    } catch { /* clip direction is optional */ }
-    const result = await trackStage<MediumClip[]>(Stage.MediumClips, () => videoAsset.generateMediumClipData(mediumTranscript, getModelForAgent('MediumVideoAgent'), mediumClipDirection, mediumVideoPath))
-    if (result) mediumClips = result
-  }
+    // 6. Shorts — asset handles clip planning, extraction, caption burning
+    let shorts: ShortClip[] = []
+    if (!cfg.SKIP_SHORTS) {
+      const shortAssets = await trackStage<ShortVideoAsset[]>(Stage.Shorts, () => asset.getShorts()) ?? []
+      shorts = shortAssets.map(s => s.clip)
+    }
 
-  // All downstream stages use the adjusted transcript (post-cleaning) when available
-  const downstreamTranscript = adjustedTranscript ?? transcript
+    // 7. Medium Clips — asset handles clip planning, extraction, transitions
+    let mediumClips: MediumClip[] = []
+    if (!cfg.SKIP_MEDIUM_CLIPS) {
+      const mediumAssets = await trackStage<MediumClipAsset[]>(Stage.MediumClips, () => asset.getMediumClips()) ?? []
+      mediumClips = mediumAssets.map(m => m.clip)
+    }
 
-  // 8. Chapters — analyse transcript for topic boundaries
-  let chapters: Chapter[] | undefined
-  if (downstreamTranscript) {
-    chapters = await trackStage<Chapter[]>(Stage.Chapters, () => videoAsset.generateChapterData(downstreamTranscript, getModelForAgent('ChapterAgent')))
-  }
+    // 8. Chapters — asset handles topic boundary detection
+    const chapters = await trackStage<Chapter[]>(Stage.Chapters, () => asset.getChapters())
 
-  // 9. Summary (after shorts, medium clips, and chapters so the README can reference them)
-  let summary: VideoSummary | undefined
-  if (downstreamTranscript) {
-    summary = await trackStage<VideoSummary>(Stage.Summary, () => videoAsset.generateSummaryContent(downstreamTranscript, shorts, chapters, getModelForAgent('SummaryAgent')))
-  }
+    // 9. Summary — asset handles README generation (after shorts/chapters for references)
+    const summary = await trackStage<VideoSummary>(Stage.Summary, () => asset.getSummary())
 
-  // 10. Social Media
-  let socialPosts: SocialPost[] = []
-  if (downstreamTranscript && summary && !cfg.SKIP_SOCIAL) {
-    const result = await trackStage<SocialPost[]>(
-      Stage.SocialMedia,
-      () => videoAsset.generateSocialPostsData(downstreamTranscript, summary, join(video.videoDir, 'social-posts'), getModelForAgent('SocialMediaAgent')),
-    )
-    if (result) socialPosts = result
-  }
+    // 10. Social Media — asset handles platform-specific post generation
+    let socialPosts: SocialPost[] = []
+    if (!cfg.SKIP_SOCIAL) {
+      const mainPosts = await trackStage<SocialPost[]>(Stage.SocialMedia, () => asset.getSocialPosts()) ?? []
+      socialPosts.push(...mainPosts)
 
-  // 11. Short Posts — generate social posts per short clip
-  if (downstreamTranscript && shorts.length > 0 && !cfg.SKIP_SOCIAL) {
-    await trackStage<void>(
-      Stage.ShortPosts,
-      async () => {
-        for (const short of shorts) {
-          const posts = await videoAsset.generateShortPostsData(short, downstreamTranscript, getModelForAgent('ShortPostsAgent'))
-          socialPosts.push(...posts)
-        }
-      },
-    )
-  }
-
-  // 12. Medium Clip Posts — generate social posts per medium clip
-  if (downstreamTranscript && mediumClips.length > 0 && !cfg.SKIP_SOCIAL) {
-    await trackStage<void>(
-      Stage.MediumClipPosts,
-      async () => {
-        for (const clip of mediumClips) {
-          const asShortClip: ShortClip = {
-            id: clip.id,
-            title: clip.title,
-            slug: clip.slug,
-            segments: clip.segments,
-            totalDuration: clip.totalDuration,
-            outputPath: clip.outputPath,
-            captionedPath: clip.captionedPath,
-            description: clip.description,
-            tags: clip.tags,
+      // 11. Short Posts — generate social posts for each short clip
+      if (shorts.length > 0) {
+        await trackStage<void>(Stage.ShortPosts, async () => {
+          for (const short of shorts) {
+            const posts = await asset.generateShortPostsData(short, await asset.getTranscript())
+            socialPosts.push(...posts)
           }
-          const posts = await videoAsset.generateShortPostsData(asShortClip, downstreamTranscript, getModelForAgent('MediumClipPostsAgent'))
-          // Move posts to medium-clips/{slug}/posts/
-          const clipsDir = join(dirname(video.repoPath), 'medium-clips')
-          const postsDir = join(clipsDir, clip.slug, 'posts')
-          await ensureDirectory(postsDir)
-          for (const post of posts) {
-            const destPath = join(postsDir, basename(post.outputPath))
-            await copyFile(post.outputPath, destPath)
-            await removeFile(post.outputPath)
-            post.outputPath = destPath
+        })
+      }
+
+      // 12. Medium Clip Posts — generate social posts for each medium clip
+      if (mediumClips.length > 0) {
+        await trackStage<void>(Stage.MediumClipPosts, async () => {
+          for (const clip of mediumClips) {
+            const posts = await asset.generateMediumClipPostsData(clip)
+            socialPosts.push(...posts)
           }
-          socialPosts.push(...posts)
-        }
-      },
-    )
-  }
+        })
+      }
+    }
 
-  // 13. Queue Build — populate publish-queue/ for review
-  if (socialPosts.length > 0 && !cfg.SKIP_SOCIAL_PUBLISH) {
-    await trackStage<QueueBuildResult>(
-      Stage.QueueBuild,
-      () => videoAsset.buildPublishQueueData(shorts, mediumClips, socialPosts, captionedVideoPath),
-    )
-  }
+    // 13. Queue Build — asset handles publish-queue/ population
+    if (!cfg.SKIP_SOCIAL_PUBLISH && socialPosts.length > 0) {
+      await trackStage<void>(Stage.QueueBuild, () => asset.buildQueue(shorts, mediumClips, socialPosts, captionedVideoPath))
+    }
 
-  // 14. Blog Post
-  let blogPost: string | undefined
-  if (downstreamTranscript && summary) {
-    blogPost = await trackStage<string>(
-      Stage.Blog,
-      () => videoAsset.generateBlogPostContent(downstreamTranscript, summary, getModelForAgent('BlogAgent')),
-    )
-  }
+    // 14. Blog — asset handles blog post generation
+    const blogPost = await trackStage<string>(Stage.Blog, () => asset.getBlog())
 
-  // 15. Git
-  if (!cfg.SKIP_GIT) {
-    await trackStage<void>(Stage.GitPush, () => videoAsset.commitAndPushChanges())
-  }
+    // 15. Git — asset handles commit and push
+    if (!cfg.SKIP_GIT) {
+      await trackStage<void>(Stage.GitPush, () => asset.commitAndPushChanges())
+    }
 
-  const totalDuration = Date.now() - pipelineStart
+    const totalDuration = Date.now() - pipelineStart
 
-  // Cost tracking report
-  const report = costTracker.getReport()
-  if (report.records.length > 0) {
-    logger.info(costTracker.formatReport())
-    const costMd = generateCostMarkdown(report)
-    const costPath = join(video.videoDir, 'cost-report.md')
-    await writeTextFile(costPath, costMd)
-    logger.info(`Cost report saved: ${costPath}`)
-  }
+    // Cost tracking report
+    const report = costTracker.getReport()
+    if (report.records.length > 0) {
+      logger.info(costTracker.formatReport())
+      const costMd = generateCostMarkdown(report)
+      const costPath = join(video.videoDir, 'cost-report.md')
+      await writeTextFile(costPath, costMd)
+      logger.info(`Cost report saved: ${costPath}`)
+    }
 
-  logger.info(`Pipeline completed in ${totalDuration}ms`)
+    logger.info(`Pipeline completed in ${totalDuration}ms`)
 
-  return {
-    video,
-    transcript,
-    editedVideoPath,
-    enhancedVideoPath,
-    captions,
-    captionedVideoPath,
-    summary,
-    chapters,
-    shorts,
-    mediumClips,
-    socialPosts,
-    blogPost,
-    stageResults,
-    totalDuration,
-  }
+    return {
+      video,
+      transcript,
+      editedVideoPath,
+      enhancedVideoPath,
+      captions: captions ? [captions.srt, captions.vtt, captions.ass] : undefined,
+      captionedVideoPath,
+      summary,
+      chapters,
+      shorts,
+      mediumClips,
+      socialPosts,
+      blogPost,
+      stageResults,
+      totalDuration,
+    }
   } finally {
     popPipe()
   }

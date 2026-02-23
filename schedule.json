@@ -9,13 +9,18 @@
           "slots": [
             {
               "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-              "time": "09:00",
-              "label": "Morning commute"
+              "time": "08:00",
+              "label": "Morning"
             },
             {
               "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-              "time": "17:00",
-              "label": "Evening commute"
+              "time": "12:00",
+              "label": "Lunch"
+            },
+            {
+              "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+              "time": "15:00",
+              "label": "Afternoon"
             }
           ],
           "avoidDays": []
@@ -23,17 +28,19 @@
         "medium-clip": {
           "slots": [
             {
-              "days": [
-                "mon",
-                "tue",
-                "wed",
-                "thu",
-                "fri",
-                "sat",
-                "sun"
-              ],
-              "time": "12:00",
-              "label": "Daily deep dive"
+              "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+              "time": "10:00",
+              "label": "Morning deep dive"
+            },
+            {
+              "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+              "time": "14:00",
+              "label": "Lunch deep dive"
+            },
+            {
+              "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+              "time": "17:00",
+              "label": "Afternoon deep dive"
             }
           ],
           "avoidDays": []
@@ -204,7 +211,7 @@
                 "sat",
                 "sun"
               ],
-              "time": "09:00",
+              "time": "08:30",
               "label": "Morning reel"
             },
             {
@@ -217,8 +224,21 @@
                 "sat",
                 "sun"
               ],
-              "time": "20:00",
-              "label": "Evening reel"
+              "time": "12:00",
+              "label": "Lunch reel"
+            },
+            {
+              "days": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri",
+                "sat",
+                "sun"
+              ],
+              "time": "15:30",
+              "label": "Afternoon reel"
             }
           ],
           "avoidDays": []
@@ -226,11 +246,19 @@
         "medium-clip": {
           "slots": [
             {
-              "days": [
-                "thu"
-              ],
-              "time": "11:00",
-              "label": "Thursday feature"
+              "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+              "time": "10:30",
+              "label": "Morning feature"
+            },
+            {
+              "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+              "time": "14:00",
+              "label": "Lunch feature"
+            },
+            {
+              "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
+              "time": "17:30",
+              "label": "Afternoon feature"
             }
           ],
           "avoidDays": []

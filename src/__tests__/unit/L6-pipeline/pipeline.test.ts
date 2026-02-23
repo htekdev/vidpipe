@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Transcript, VideoFile, StageResult, VideoSummary, ShortClip, MediumClip, SocialPost, Chapter } from '../../../L0-pure/types/index.js'
-import type { ProduceResult } from '../../../L4-agents/ProducerAgent.js'
 import { PipelineStage } from '../../../L0-pure/types/index.js'
 
 // ---- Hoisted mock variables (vi.mock is hoisted above imports) ----
@@ -20,23 +19,22 @@ const {
   mockMarkFailed,
   // MainVideoAsset method mocks
   mockGetTranscript,
-  mockRemoveSilence,
-  mockTranscribeEditedVideo,
-  mockAnalyzeClipDirection,
+  mockGetEditedVideo,
+  mockGetEnhancedVideo,
+  mockGetCaptions,
+  mockGetCaptionedVideo,
+  mockGetShorts,
+  mockGetMediumClips,
+  mockGetChapters,
+  mockGetSummary,
+  mockGetSocialPosts,
+  mockGenerateShortPostsData,
+  mockGenerateMediumClipPostsData,
+  mockGetBlog,
+  mockBuildQueue,
+  mockCommitAndPushChanges,
   mockGetEditorialDirection,
   mockGetMetadata,
-  mockGenerateCaptionFiles,
-  mockBurnCaptionFiles,
-  mockSinglePassEditAndBurnCaptions,
-  mockGenerateShortClips,
-  mockGenerateMediumClipData,
-  mockGenerateChapterData,
-  mockGenerateSummaryContent,
-  mockGenerateSocialPostsData,
-  mockGenerateShortPostsData,
-  mockGenerateBlogPostContent,
-  mockBuildPublishQueueData,
-  mockCommitAndPushChanges,
 } = vi.hoisted(() => ({
   mockLogger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
   mockGetConfig: vi.fn(),
@@ -52,23 +50,22 @@ const {
   mockMarkFailed: vi.fn().mockResolvedValue(undefined),
   // MainVideoAsset method mocks
   mockGetTranscript: vi.fn(),
-  mockRemoveSilence: vi.fn(),
-  mockTranscribeEditedVideo: vi.fn(),
-  mockAnalyzeClipDirection: vi.fn(),
+  mockGetEditedVideo: vi.fn(),
+  mockGetEnhancedVideo: vi.fn(),
+  mockGetCaptions: vi.fn(),
+  mockGetCaptionedVideo: vi.fn(),
+  mockGetShorts: vi.fn(),
+  mockGetMediumClips: vi.fn(),
+  mockGetChapters: vi.fn(),
+  mockGetSummary: vi.fn(),
+  mockGetSocialPosts: vi.fn(),
+  mockGenerateShortPostsData: vi.fn(),
+  mockGenerateMediumClipPostsData: vi.fn(),
+  mockGetBlog: vi.fn(),
+  mockBuildQueue: vi.fn(),
+  mockCommitAndPushChanges: vi.fn(),
   mockGetEditorialDirection: vi.fn().mockResolvedValue('editorial direction text'),
   mockGetMetadata: vi.fn().mockResolvedValue({ width: 1920, height: 1080, duration: 120 }),
-  mockGenerateCaptionFiles: vi.fn(),
-  mockBurnCaptionFiles: vi.fn(),
-  mockSinglePassEditAndBurnCaptions: vi.fn(),
-  mockGenerateShortClips: vi.fn(),
-  mockGenerateMediumClipData: vi.fn(),
-  mockGenerateChapterData: vi.fn(),
-  mockGenerateSummaryContent: vi.fn(),
-  mockGenerateSocialPostsData: vi.fn(),
-  mockGenerateShortPostsData: vi.fn(),
-  mockGenerateBlogPostContent: vi.fn(),
-  mockBuildPublishQueueData: vi.fn(),
-  mockCommitAndPushChanges: vi.fn(),
 }))
 
 // ---- Mock L1 dependencies ----
@@ -391,20 +388,19 @@ describe('processVideo', () => {
       videoDir: video.videoDir,
       editedVideoPath: `${video.videoDir}/${video.slug}-edited.mp4`,
       getTranscript: mockGetTranscript,
-      removeSilence: mockRemoveSilence,
-      transcribeEditedVideo: mockTranscribeEditedVideo,
-      analyzeClipDirection: mockAnalyzeClipDirection,
-      generateCaptionFiles: mockGenerateCaptionFiles,
-      burnCaptionFiles: mockBurnCaptionFiles,
-      singlePassEditAndBurnCaptions: mockSinglePassEditAndBurnCaptions,
-      generateShortClips: mockGenerateShortClips,
-      generateMediumClipData: mockGenerateMediumClipData,
-      generateChapterData: mockGenerateChapterData,
-      generateSummaryContent: mockGenerateSummaryContent,
-      generateSocialPostsData: mockGenerateSocialPostsData,
+      getEditedVideo: mockGetEditedVideo,
+      getEnhancedVideo: mockGetEnhancedVideo,
+      getCaptions: mockGetCaptions,
+      getCaptionedVideo: mockGetCaptionedVideo,
+      getShorts: mockGetShorts,
+      getMediumClips: mockGetMediumClips,
+      getChapters: mockGetChapters,
+      getSummary: mockGetSummary,
+      getSocialPosts: mockGetSocialPosts,
       generateShortPostsData: mockGenerateShortPostsData,
-      generateBlogPostContent: mockGenerateBlogPostContent,
-      buildPublishQueueData: mockBuildPublishQueueData,
+      generateMediumClipPostsData: mockGenerateMediumClipPostsData,
+      getBlog: mockGetBlog,
+      buildQueue: mockBuildQueue,
       commitAndPushChanges: mockCommitAndPushChanges,
       ...overrides,
     } as any
@@ -415,19 +411,20 @@ describe('processVideo', () => {
     mockGetConfig.mockReturnValue(defaultConfig())
     mockMainVideoAssetIngest.mockResolvedValue(makeAssetMock())
     mockGetTranscript.mockResolvedValue(transcript)
-    mockRemoveSilence.mockResolvedValue({ summary: 'Clean', outputPath: undefined, success: true, editCount: 0, removals: [], keepSegments: [] } as ProduceResult)
-    mockGenerateCaptionFiles.mockResolvedValue(['/captions.ass'])
-    mockBurnCaptionFiles.mockResolvedValue('/captioned.mp4')
-    mockSinglePassEditAndBurnCaptions.mockResolvedValue('/captioned.mp4')
-    mockGenerateShortClips.mockResolvedValue([])
-    mockGenerateMediumClipData.mockResolvedValue([])
-    mockGenerateChapterData.mockResolvedValue([])
-    mockGenerateSummaryContent.mockResolvedValue({ title: 'Test', overview: 'Overview', keyTopics: [], snapshots: [], markdownPath: '/summary.md' } as VideoSummary)
-    mockGenerateSocialPostsData.mockResolvedValue([])
+    mockGetEditedVideo.mockResolvedValue('/edited.mp4')
+    mockGetEnhancedVideo.mockResolvedValue('/enhanced.mp4')
+    mockGetCaptions.mockResolvedValue({ srt: '/captions.srt', vtt: '/captions.vtt', ass: '/captions.ass' })
+    mockGetCaptionedVideo.mockResolvedValue('/captioned.mp4')
+    mockGetShorts.mockResolvedValue([])
+    mockGetMediumClips.mockResolvedValue([])
+    mockGetChapters.mockResolvedValue([])
+    mockGetSummary.mockResolvedValue({ title: 'Test', overview: 'Overview', keyTopics: [], snapshots: [], markdownPath: '/summary.md' } as VideoSummary)
+    mockGetSocialPosts.mockResolvedValue([])
     mockGenerateShortPostsData.mockResolvedValue([])
-    mockGenerateBlogPostContent.mockResolvedValue('# Blog')
+    mockGenerateMediumClipPostsData.mockResolvedValue([])
+    mockGetBlog.mockResolvedValue('# Blog')
     mockCommitAndPushChanges.mockResolvedValue(undefined)
-    mockBuildPublishQueueData.mockResolvedValue({ itemsCreated: 0, itemsSkipped: 0, errors: [] })
+    mockBuildQueue.mockResolvedValue(undefined)
   })
 
   it('returns a PipelineResult with all stages recorded', async () => {
@@ -443,20 +440,20 @@ describe('processVideo', () => {
     const callOrder: string[] = []
     mockMainVideoAssetIngest.mockImplementation(async () => { callOrder.push('ingest'); return makeAssetMock() })
     mockGetTranscript.mockImplementation(async () => { callOrder.push('transcribe'); return transcript })
-    mockRemoveSilence.mockImplementation(async () => { callOrder.push('cleaning'); return { summary: '', success: true, editCount: 0, removals: [], keepSegments: [] } })
-    mockGenerateCaptionFiles.mockImplementation(async () => { callOrder.push('captions'); return ['/captions.ass'] })
-    mockGenerateShortClips.mockImplementation(async () => { callOrder.push('shorts'); return [] })
-    mockGenerateMediumClipData.mockImplementation(async () => { callOrder.push('mediumClips'); return [] })
-    mockGenerateChapterData.mockImplementation(async () => { callOrder.push('chapters'); return [] })
-    mockGenerateSummaryContent.mockImplementation(async () => { callOrder.push('summary'); return { title: '', overview: '', keyTopics: [], snapshots: [], markdownPath: '' } })
-    mockGenerateBlogPostContent.mockImplementation(async () => { callOrder.push('blog'); return '# Blog' })
+    mockGetEditedVideo.mockImplementation(async () => { callOrder.push('editing'); return '/edited.mp4' })
+    mockGetCaptions.mockImplementation(async () => { callOrder.push('captions'); return { srt: '/captions.srt', vtt: '/captions.vtt', ass: '/captions.ass' } })
+    mockGetShorts.mockImplementation(async () => { callOrder.push('shorts'); return [] })
+    mockGetMediumClips.mockImplementation(async () => { callOrder.push('mediumClips'); return [] })
+    mockGetChapters.mockImplementation(async () => { callOrder.push('chapters'); return [] })
+    mockGetSummary.mockImplementation(async () => { callOrder.push('summary'); return { title: '', overview: '', keyTopics: [], snapshots: [], markdownPath: '' } })
+    mockGetBlog.mockImplementation(async () => { callOrder.push('blog'); return '# Blog' })
     mockCommitAndPushChanges.mockImplementation(async () => { callOrder.push('git') })
 
     await processVideo('/videos/test.mp4')
 
     expect(callOrder.indexOf('ingest')).toBeLessThan(callOrder.indexOf('transcribe'))
-    expect(callOrder.indexOf('transcribe')).toBeLessThan(callOrder.indexOf('cleaning'))
-    expect(callOrder.indexOf('cleaning')).toBeLessThan(callOrder.indexOf('captions'))
+    expect(callOrder.indexOf('transcribe')).toBeLessThan(callOrder.indexOf('editing'))
+    expect(callOrder.indexOf('editing')).toBeLessThan(callOrder.indexOf('captions'))
     expect(callOrder.indexOf('captions')).toBeLessThan(callOrder.indexOf('shorts'))
     expect(callOrder.indexOf('shorts')).toBeLessThan(callOrder.indexOf('summary'))
     expect(callOrder.indexOf('summary')).toBeLessThan(callOrder.indexOf('blog'))
@@ -475,98 +472,49 @@ describe('processVideo', () => {
   })
 
   it('continues pipeline when a mid-stage fails', async () => {
-    mockGenerateShortClips.mockRejectedValue(new Error('shorts failed'))
+    mockGetShorts.mockRejectedValue(new Error('shorts failed'))
 
     const result = await processVideo('/videos/test.mp4')
 
     expect(result.shorts).toEqual([])
     // Summary should still be called
-    expect(mockGenerateSummaryContent).toHaveBeenCalled()
+    expect(mockGetSummary).toHaveBeenCalled()
     // stageResults should contain a failure for shorts
     const shortsResult = result.stageResults.find(s => s.stage === PipelineStage.Shorts)
     expect(shortsResult?.success).toBe(false)
     expect(shortsResult?.error).toBe('shorts failed')
   })
 
-  it('calls removeSilence for video cleaning', async () => {
+  it('calls getEditedVideo for video editing', async () => {
     await processVideo('/videos/test.mp4')
 
-    expect(mockRemoveSilence).toHaveBeenCalled()
+    expect(mockGetEditedVideo).toHaveBeenCalled()
   })
 
-  it('re-transcribes edited video after cleaning for accurate timestamps', async () => {
-    const removals = [{ start: 5, end: 10 }]
-    const keepSegments = [{ start: 0, end: 5 }, { start: 10, end: 30 }]
-    mockRemoveSilence.mockResolvedValue({
-      summary: 'Cleaned',
-      outputPath: '/edited.mp4',
-      success: true,
-      editCount: 1,
-      removals,
-      keepSegments,
-    } as ProduceResult)
-
-    const editedTranscript = makeTranscript()
-    editedTranscript.duration = 25
-    mockTranscribeEditedVideo.mockResolvedValue(editedTranscript)
-
+  it('calls getCaptionedVideo for caption burning', async () => {
     await processVideo('/videos/test.mp4')
 
-    // transcribeEditedVideo should be called once for the edited video
-    expect(mockTranscribeEditedVideo).toHaveBeenCalledWith('/edited.mp4')
+    // Pipeline calls getCaptionedVideo which handles the burning internally
+    expect(mockGetCaptionedVideo).toHaveBeenCalled()
   })
 
-  it('uses singlePassEditAndBurnCaptions when keepSegments are available', async () => {
-    const keepSegments = [{ start: 0, end: 5 }, { start: 10, end: 30 }]
-    mockRemoveSilence.mockResolvedValue({
-      summary: 'Cleaned',
-      outputPath: '/edited.mp4',
-      success: true,
-      editCount: 1,
-      removals: [{ start: 5, end: 10 }],
-      keepSegments,
-    } as ProduceResult)
-    mockGenerateCaptionFiles.mockResolvedValue(['/captions.ass'])
+  it('calls getCaptionedVideo even without video edits', async () => {
+    mockGetEditedVideo.mockResolvedValue(undefined)
 
     await processVideo('/videos/test.mp4')
 
-    expect(mockSinglePassEditAndBurnCaptions).toHaveBeenCalledWith(
-      video.repoPath,
-      keepSegments,
-      '/captions.ass',
-      expect.stringContaining('captioned.mp4'),
-    )
-    expect(mockBurnCaptionFiles).not.toHaveBeenCalled()
-  })
-
-  it('uses burnCaptionFiles when no keepSegments (no video cleaning)', async () => {
-    mockRemoveSilence.mockResolvedValue({
-      summary: 'Clean',
-      success: true,
-      editCount: 0,
-      removals: [],
-      keepSegments: [],
-    } as ProduceResult)
-    mockGenerateCaptionFiles.mockResolvedValue(['/captions.ass'])
-
-    await processVideo('/videos/test.mp4')
-
-    expect(mockBurnCaptionFiles).toHaveBeenCalledWith(
-      video.repoPath,
-      '/captions.ass',
-      expect.stringContaining('captioned.mp4'),
-    )
-    expect(mockSinglePassEditAndBurnCaptions).not.toHaveBeenCalled()
+    // Pipeline calls getCaptionedVideo regardless of silence removal results
+    expect(mockGetCaptionedVideo).toHaveBeenCalled()
   })
 
   // ---- Skip flag tests ----
 
-  it('skips video cleaning when SKIP_SILENCE_REMOVAL is true', async () => {
+  it('skips video editing when SKIP_SILENCE_REMOVAL is true', async () => {
     mockGetConfig.mockReturnValue(defaultConfig({ SKIP_SILENCE_REMOVAL: true }))
 
     const result = await processVideo('/videos/test.mp4')
 
-    expect(mockRemoveSilence).not.toHaveBeenCalled()
+    expect(mockGetEditedVideo).not.toHaveBeenCalled()
     expect(result.editedVideoPath).toBeUndefined()
   })
 
@@ -575,7 +523,7 @@ describe('processVideo', () => {
 
     await processVideo('/videos/test.mp4')
 
-    expect(mockGenerateShortClips).not.toHaveBeenCalled()
+    expect(mockGetShorts).not.toHaveBeenCalled()
   })
 
   it('skips medium clips when SKIP_MEDIUM_CLIPS is true', async () => {
@@ -583,7 +531,7 @@ describe('processVideo', () => {
 
     await processVideo('/videos/test.mp4')
 
-    expect(mockGenerateMediumClipData).not.toHaveBeenCalled()
+    expect(mockGetMediumClips).not.toHaveBeenCalled()
   })
 
   it('skips captions when SKIP_CAPTIONS is true', async () => {
@@ -591,7 +539,7 @@ describe('processVideo', () => {
 
     await processVideo('/videos/test.mp4')
 
-    expect(mockGenerateCaptionFiles).not.toHaveBeenCalled()
+    expect(mockGetCaptions).not.toHaveBeenCalled()
   })
 
   it('skips social posts when SKIP_SOCIAL is true', async () => {
@@ -599,7 +547,7 @@ describe('processVideo', () => {
 
     await processVideo('/videos/test.mp4')
 
-    expect(mockGenerateSocialPostsData).not.toHaveBeenCalled()
+    expect(mockGetSocialPosts).not.toHaveBeenCalled()
     expect(mockGenerateShortPostsData).not.toHaveBeenCalled()
   })
 
@@ -611,33 +559,34 @@ describe('processVideo', () => {
     expect(mockCommitAndPushChanges).not.toHaveBeenCalled()
   })
 
-  // ---- Transcription failure blocks downstream ----
+  // ---- Transcription failure behavior ----
 
-  it('skips all transcript-dependent stages when transcription fails', async () => {
+  it('continues pipeline when transcription fails (stages are independent)', async () => {
     mockGetTranscript.mockRejectedValue(new Error('whisper failed'))
 
     const result = await processVideo('/videos/test.mp4')
 
+    // Transcript is undefined due to the error
     expect(result.transcript).toBeUndefined()
-    expect(mockRemoveSilence).not.toHaveBeenCalled()
-    expect(mockGenerateCaptionFiles).not.toHaveBeenCalled()
-    expect(mockGenerateShortClips).not.toHaveBeenCalled()
-    expect(mockGenerateSummaryContent).not.toHaveBeenCalled()
-    expect(mockGenerateBlogPostContent).not.toHaveBeenCalled()
-    // Git should still be attempted
+    // Other stages still get called because trackStage catches errors and continues
+    // The get* methods on the asset handle their own error scenarios
+    expect(mockGetBlog).toHaveBeenCalled()
     expect(mockCommitAndPushChanges).toHaveBeenCalled()
   })
 
-  // ---- Social posts require summary ----
+  // ---- Summary failure behavior ----
 
-  it('skips social posts when summary fails', async () => {
-    mockGenerateSummaryContent.mockRejectedValue(new Error('summary failed'))
+  it('continues pipeline when summary fails (stages are independent)', async () => {
+    mockGetSummary.mockRejectedValue(new Error('summary failed'))
 
     const result = await processVideo('/videos/test.mp4')
 
+    // Summary is undefined due to the error
     expect(result.summary).toBeUndefined()
-    expect(mockGenerateSocialPostsData).not.toHaveBeenCalled()
-    expect(mockGenerateBlogPostContent).not.toHaveBeenCalled()
+    // Social posts stage still runs (trackStage catches and continues)
+    expect(mockGetSocialPosts).toHaveBeenCalled()
+    // Blog still runs
+    expect(mockGetBlog).toHaveBeenCalled()
   })
 
   // ---- Short posts integration ----
@@ -646,30 +595,28 @@ describe('processVideo', () => {
     const shorts: ShortClip[] = [
       { id: 's1', title: 'Short 1', slug: 'short-1', segments: [], totalDuration: 30, outputPath: '/short1.mp4', description: 'desc', tags: ['tag'] },
     ]
-    mockGenerateShortClips.mockResolvedValue(shorts)
+    // Mock getShorts to return mock assets with clip property
+    mockGetShorts.mockResolvedValue(shorts.map(s => ({ clip: s })))
     mockGenerateShortPostsData.mockResolvedValue([{ platform: 'x', content: 'post', hashtags: [], links: [], characterCount: 4, outputPath: '/post.md' }])
 
     const result = await processVideo('/videos/test.mp4')
 
-    expect(mockGenerateShortPostsData).toHaveBeenCalledWith(shorts[0], transcript, undefined)
+    expect(mockGenerateShortPostsData).toHaveBeenCalledWith(shorts[0], transcript)
     expect(result.socialPosts.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('generates medium clip posts and moves files when medium clips exist', async () => {
+  it('generates medium clip posts when medium clips exist', async () => {
     const clips: MediumClip[] = [
       { id: 'm1', title: 'Medium 1', slug: 'medium-1', segments: [{ start: 0, end: 60, description: 'intro' }], totalDuration: 60, outputPath: '/medium1.mp4', description: 'desc', tags: ['tag'], hook: 'hook', topic: 'topic' },
     ]
-    mockGenerateMediumClipData.mockResolvedValue(clips)
-    mockGenerateShortPostsData.mockResolvedValue([{ platform: 'x', content: 'clip post', hashtags: [], links: [], characterCount: 9, outputPath: '/clip-post.md' }])
+    // Mock getMediumClips to return mock assets with clip property
+    mockGetMediumClips.mockResolvedValue(clips.map(c => ({ clip: c })))
+    mockGenerateMediumClipPostsData.mockResolvedValue([{ platform: 'x', content: 'clip post', hashtags: [], links: [], characterCount: 9, outputPath: '/clip-post.md' }])
 
     const result = await processVideo('/videos/test.mp4')
 
-    // generateShortPostsData called with MediumClip cast to ShortClip
-    expect(mockGenerateShortPostsData).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'm1', title: 'Medium 1', slug: 'medium-1' }),
-      transcript,
-      undefined,
-    )
+    // generateMediumClipPostsData called for each medium clip
+    expect(mockGenerateMediumClipPostsData).toHaveBeenCalledWith(clips[0])
     expect(result.socialPosts.length).toBeGreaterThanOrEqual(1)
   })
 })
@@ -691,20 +638,19 @@ describe('processVideoSafe', () => {
       videoDir: '/repo/recordings/test-video',
       editedVideoPath: '/repo/recordings/test-video/test-video-edited.mp4',
       getTranscript: vi.fn().mockResolvedValue(makeTranscript()),
-      removeSilence: vi.fn().mockResolvedValue({ summary: '', success: true, editCount: 0, removals: [], keepSegments: [] }),
-      transcribeEditedVideo: vi.fn().mockResolvedValue(makeTranscript()),
-      analyzeClipDirection: vi.fn().mockResolvedValue(''),
-      generateCaptionFiles: vi.fn().mockResolvedValue([]),
-      burnCaptionFiles: vi.fn().mockResolvedValue(''),
-      singlePassEditAndBurnCaptions: vi.fn().mockResolvedValue(''),
-      generateShortClips: vi.fn().mockResolvedValue([]),
-      generateMediumClipData: vi.fn().mockResolvedValue([]),
-      generateChapterData: vi.fn().mockResolvedValue([]),
-      generateSummaryContent: vi.fn().mockResolvedValue({ title: '', overview: '', keyTopics: [], snapshots: [], markdownPath: '' }),
-      generateSocialPostsData: vi.fn().mockResolvedValue([]),
+      getEditedVideo: vi.fn().mockResolvedValue('/edited.mp4'),
+      getEnhancedVideo: vi.fn().mockResolvedValue('/enhanced.mp4'),
+      getCaptions: vi.fn().mockResolvedValue({ srt: '', vtt: '', ass: '' }),
+      getCaptionedVideo: vi.fn().mockResolvedValue(''),
+      getShorts: vi.fn().mockResolvedValue([]),
+      getMediumClips: vi.fn().mockResolvedValue([]),
+      getChapters: vi.fn().mockResolvedValue([]),
+      getSummary: vi.fn().mockResolvedValue({ title: '', overview: '', keyTopics: [], snapshots: [], markdownPath: '' }),
+      getSocialPosts: vi.fn().mockResolvedValue([]),
       generateShortPostsData: vi.fn().mockResolvedValue([]),
-      generateBlogPostContent: vi.fn().mockResolvedValue(''),
-      buildPublishQueueData: vi.fn().mockResolvedValue({ itemsCreated: 0, itemsSkipped: 0, errors: [] }),
+      generateMediumClipPostsData: vi.fn().mockResolvedValue([]),
+      getBlog: vi.fn().mockResolvedValue(''),
+      buildQueue: vi.fn().mockResolvedValue(undefined),
       commitAndPushChanges: vi.fn().mockResolvedValue(undefined),
     } as any)
   })

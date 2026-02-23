@@ -156,8 +156,10 @@ describe('buildOverlayFilterComplex', () => {
 describe('enhanceVideo wrapper', () => {
   it('delegates to L5 enhanceVideo', async () => {
     mockEnhanceVideo.mockResolvedValue({ enhanced: true })
-    const result = await enhanceVideo('/v.mp4' as never, {} as never)
+    const mockTranscript = { text: 'hello' } as never
+    const mockVideo = { slug: 'test' } as never
+    const result = await enhanceVideo('/v.mp4', mockTranscript, mockVideo)
     expect(result).toEqual({ enhanced: true })
-    expect(mockEnhanceVideo).toHaveBeenCalledWith('/v.mp4', {})
+    expect(mockEnhanceVideo).toHaveBeenCalledWith('/v.mp4', mockTranscript, mockVideo)
   })
 })

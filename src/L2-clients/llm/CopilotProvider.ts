@@ -92,6 +92,9 @@ class CopilotSessionWrapper implements LLMSession {
   private lastUsage: TokenUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
   private lastCost: CostInfo | undefined
   private lastQuotaSnapshots: Record<string, QuotaSnapshot> | undefined
+  
+  // Track tool completions to handle partial success on SDK errors
+  private toolsCompleted = 0
 
   constructor(
     private readonly session: CopilotSession,
@@ -108,11 +111,34 @@ class CopilotSessionWrapper implements LLMSession {
     this.lastUsage = { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
     this.lastCost = undefined
     this.lastQuotaSnapshots = undefined
+    this.toolsCompleted = 0
 
-    const response = await this.session.sendAndWait(
-      { prompt: message },
-      this.timeoutMs,
-    )
+    let response: { data?: { content?: string } } | undefined
+    let sdkError: Error | undefined
+
+    try {
+      response = await this.session.sendAndWait(
+        { prompt: message },
+        this.timeoutMs,
+      )
+    } catch (err) {
+      sdkError = err instanceof Error ? err : new Error(String(err))
+      
+      // Handle the known "missing finish_reason" bug in @github/copilot SDK
+      // This happens when the streaming response ends without proper termination
+      // but tools may have already completed successfully
+      if (sdkError.message.includes('missing finish_reason')) {
+        if (this.toolsCompleted > 0) {
+          logger.warn(`[CopilotProvider] SDK error after ${this.toolsCompleted} tool calls completed - treating as success`)
+          // Return partial success - tools ran, just the final message was lost
+        } else {
+          // No tools completed, this is a real failure - rethrow
+          throw sdkError
+        }
+      } else {
+        throw sdkError
+      }
+    }
 
     const content = response?.data?.content ?? ''
     const toolCalls: ToolCall[] = [] // Copilot SDK handles tool calls internally
@@ -134,7 +160,19 @@ class CopilotSessionWrapper implements LLMSession {
   }
 
   async close(): Promise<void> {
-    await this.session.destroy()
+    // Add timeout to session.destroy() - it can hang on the same SDK bug
+    const DESTROY_TIMEOUT_MS = 5000
+    try {
+      await Promise.race([
+        this.session.destroy(),
+        new Promise<void>((_, reject) => 
+          setTimeout(() => reject(new Error('session.destroy() timed out')), DESTROY_TIMEOUT_MS)
+        ),
+      ])
+    } catch (err) {
+      // Log but don't rethrow - the session may be in a bad state but we still want to clean up
+      logger.warn(`[CopilotProvider] Session destroy failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
     this.eventHandlers.clear()
   }
 
@@ -176,6 +214,7 @@ class CopilotSessionWrapper implements LLMSession {
           this.emit('tool_start', event.data)
           break
         case 'tool.execution_complete':
+          this.toolsCompleted++
           this.emit('tool_end', event.data)
           break
         case 'assistant.usage':

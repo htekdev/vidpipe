@@ -61,8 +61,8 @@ describe('L5 Unit: pipelineServices wrappers', () => {
 
   it('markPending delegates to L4', async () => {
     mockMarkPending.mockResolvedValue(undefined)
-    await markPending('/dir')
-    expect(mockMarkPending).toHaveBeenCalledWith('/dir')
+    await markPending('test-slug', '/source/path.mp4')
+    expect(mockMarkPending).toHaveBeenCalledWith('test-slug', '/source/path.mp4')
   })
 
   it('markProcessing delegates to L4', async () => {
@@ -85,7 +85,8 @@ describe('L5 Unit: pipelineServices wrappers', () => {
 
   it('buildPublishQueue delegates to L4', async () => {
     mockBuildPublishQueue.mockResolvedValue({ items: [] })
-    const result = await buildPublishQueue('/dir')
+    const mockVideo = { slug: 'test' } as never
+    const result = await buildPublishQueue(mockVideo, [], [], [], undefined)
     expect(result).toEqual({ items: [] })
   })
 

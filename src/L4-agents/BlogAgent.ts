@@ -1,6 +1,4 @@
 import type { ToolWithHandler, MCPServerConfig } from '../L3-services/llm/providerFactory.js'
-import { ensureDirectorySync, writeTextFileSync } from '../L1-infra/fileSystem/fileSystem.js'
-import { join } from '../L1-infra/paths/paths.js'
 import { BaseAgent } from './BaseAgent'
 import logger from '../L1-infra/logger/configLogger'
 import { getBrandConfig } from '../L1-infra/config/brand'
@@ -180,14 +178,7 @@ export async function generateBlogPost(
       throw new Error('BlogAgent did not produce any blog content')
     }
 
-    const outDir = join(video.videoDir, 'social-posts')
-    ensureDirectorySync(outDir)
-
-    const outputPath = join(outDir, 'devto.md')
-    writeTextFileSync(outputPath, renderBlogMarkdown(blogContent))
-    logger.info(`[BlogAgent] Wrote blog post to ${outputPath}`)
-
-    return outputPath
+    return renderBlogMarkdown(blogContent)
   } finally {
     await agent.destroy()
   }

@@ -20,7 +20,6 @@ export const costTracker = {
   setStage: (...args: Parameters<typeof _costTracker.setStage>) => _costTracker.setStage(...args),
   getReport: (...args: Parameters<typeof _costTracker.getReport>) => _costTracker.getReport(...args),
   formatReport: (...args: Parameters<typeof _costTracker.formatReport>) => _costTracker.formatReport(...args),
-  recordCall: (...args: Parameters<typeof _costTracker.recordCall>) => _costTracker.recordCall(...args),
   recordServiceUsage: (...args: Parameters<typeof _costTracker.recordServiceUsage>) => _costTracker.recordServiceUsage(...args),
 } as const
 

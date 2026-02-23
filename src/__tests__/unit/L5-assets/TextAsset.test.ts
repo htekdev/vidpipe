@@ -10,6 +10,7 @@ vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   fileExists: vi.fn(),
   readTextFile: vi.fn(),
   writeTextFile: vi.fn(),
+  removeFile: vi.fn(),
 }))
 
 /**

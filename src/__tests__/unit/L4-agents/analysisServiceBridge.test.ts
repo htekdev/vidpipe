@@ -51,32 +51,35 @@ describe('L4 Unit: analysisServiceBridge wrappers', () => {
 
   it('analyzeVideoEditorial delegates to L3', async () => {
     mockAnalyzeVideoEditorial.mockResolvedValue('cut it')
-    const result = await analyzeVideoEditorial('/v.mp4', 'prompt')
+    const result = await analyzeVideoEditorial('/v.mp4', 120)
     expect(result).toBe('cut it')
-    expect(mockAnalyzeVideoEditorial).toHaveBeenCalledWith('/v.mp4', 'prompt')
+    expect(mockAnalyzeVideoEditorial).toHaveBeenCalledWith('/v.mp4', 120)
   })
 
   it('analyzeVideoClipDirection delegates to L3', async () => {
     mockAnalyzeVideoClipDirection.mockResolvedValue('zoom in')
-    const result = await analyzeVideoClipDirection('/v.mp4', 'prompt')
+    const result = await analyzeVideoClipDirection('/v.mp4', 120)
     expect(result).toBe('zoom in')
   })
 
   it('analyzeVideoForEnhancements delegates to L3', async () => {
     mockAnalyzeVideoForEnhancements.mockResolvedValue([])
-    const result = await analyzeVideoForEnhancements('/v.mp4', 'prompt' as never)
+    const result = await analyzeVideoForEnhancements('/v.mp4', 120, 'transcript text')
     expect(result).toEqual([])
   })
 
   it('transcribeVideo delegates to L3', async () => {
     mockTranscribeVideo.mockResolvedValue({ text: 'hello' })
-    const result = await transcribeVideo('/audio.mp3')
+    const mockVideo = { slug: 'test', repoPath: '/v.mp4' } as never
+    const result = await transcribeVideo(mockVideo)
     expect(result).toEqual({ text: 'hello' })
   })
 
   it('generateCaptions delegates to L3', async () => {
     mockGenerateCaptions.mockResolvedValue('/captions.srt')
-    const result = await generateCaptions('/dir', [] as never)
+    const mockVideo = { slug: 'test' } as never
+    const mockTranscript = { text: 'hello', segments: [], words: [] } as never
+    const result = await generateCaptions(mockVideo, mockTranscript)
     expect(result).toBe('/captions.srt')
   })
 

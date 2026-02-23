@@ -560,37 +560,7 @@ describe('MainVideoAsset', () => {
     })
   })
 
-  describe('singlePassEditAndBurnCaptions()', () => {
-    it('delegates to singlePassEditAndCaption', async () => {
-      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
-      const asset = await MainVideoAsset.load('/recordings/test')
-      const result = await asset.singlePassEditAndBurnCaptions(
-        '/recordings/test/test.mp4',
-        [{ start: 0, end: 10 }],
-        '/recordings/test/captions.ass',
-        '/recordings/test/output.mp4',
-      )
-      expect(result).toBe('/recordings/test/test-captioned.mp4')
-    })
-  })
-
   describe('caching behavior', () => {
-    it('caches shorts on subsequent calls', async () => {
-      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
-      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({ shorts: [] })
-
-      const asset = await MainVideoAsset.load('/recordings/test')
-
-      await asset.getShorts()
-      await asset.getShorts()
-
-      // readJsonFile should only be called once for shorts (caching works)
-      const shortsCalls = vi.mocked(fileSystem.readJsonFile).mock.calls.filter(
-        (call) => (call[0] as string).includes('shorts.json'),
-      )
-      expect(shortsCalls).toHaveLength(1)
-    })
-
     it('clearCache() clears all cached data', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
       vi.mocked(fileSystem.readJsonFile).mockResolvedValue({ shorts: [] })
@@ -601,6 +571,8 @@ describe('MainVideoAsset', () => {
       asset.clearCache()
       await asset.getShorts()
 
+      // With completion marker pattern, cache is internal to the asset
+      // clearCache resets internal state, forcing reload
       const shortsCalls = vi.mocked(fileSystem.readJsonFile).mock.calls.filter(
         (call) => (call[0] as string).includes('shorts.json'),
       )

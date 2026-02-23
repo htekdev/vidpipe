@@ -6,25 +6,37 @@
  *
  * Assets follow the "compute once, cache forever" pattern:
  * - `exists()` checks if the asset is already on disk
+ * - `isComplete()` checks if the completion marker exists (generation finished successfully)
  * - `getResult()` returns the asset, computing it only if needed
  * - `generate()` forces regeneration even if the asset exists
  *
  * @example
  * ```typescript
  * class TranscriptAsset extends Asset<Transcript> {
+ *   getCompletionMarkerPath(): string {
+ *     return `${this.transcriptPath}.complete`
+ *   }
+ *
  *   async exists(): Promise<boolean> {
  *     return fs.existsSync(this.transcriptPath)
  *   }
  *
  *   async getResult(opts?: AssetOptions): Promise<Transcript> {
- *     if (!opts?.force && await this.exists()) {
+ *     if (opts?.force) {
+ *       await this.clearCompletion()
+ *     }
+ *     if (await this.isComplete()) {
  *       return this.loadFromDisk()
  *     }
- *     return this.transcribe()
+ *     const result = await this.transcribe()
+ *     await this.markComplete()
+ *     return result
  *   }
  * }
  * ```
  */
+
+import { fileExists, writeTextFile, removeFile } from '../L1-infra/fileSystem/fileSystem.js'
 
 /**
  * Options for asset generation and retrieval.
@@ -51,9 +63,17 @@ export abstract class Asset<T> {
   protected _result: T | undefined
 
   /**
+   * Get the path where the completion marker file should be written.
+   * Each asset defines its own marker location (typically `${primaryOutputPath}.complete`).
+   *
+   * @returns Absolute path to the .complete marker file
+   */
+  abstract getCompletionMarkerPath(): string
+
+  /**
    * Get the asset result, computing it if necessary.
    *
-   * Implementations should check `opts.force` and `exists()` to determine
+   * Implementations should check `opts.force` and `isComplete()` to determine
    * whether to load from disk or regenerate.
    *
    * @param opts - Options controlling generation behavior
@@ -67,6 +87,37 @@ export abstract class Asset<T> {
    * @returns true if the asset exists and doesn't need regeneration
    */
   abstract exists(): Promise<boolean>
+
+  /**
+   * Check if the completion marker file exists.
+   * This confirms the full generation pipeline finished successfully.
+   *
+   * Note: `exists()` checks if the primary output file is present,
+   * while `isComplete()` checks if generation finished successfully.
+   * Both may be needed for full validation.
+   *
+   * @returns true if the completion marker exists
+   */
+  async isComplete(): Promise<boolean> {
+    return fileExists(this.getCompletionMarkerPath())
+  }
+
+  /**
+   * Write the completion marker file with the current ISO timestamp.
+   * Call this after successful generation to mark the asset as complete.
+   */
+  protected async markComplete(): Promise<void> {
+    await writeTextFile(this.getCompletionMarkerPath(), new Date().toISOString())
+  }
+
+  /**
+   * Delete the completion marker file.
+   * Silently ignores if the file doesn't exist.
+   * Call this when forcing regeneration.
+   */
+  protected async clearCompletion(): Promise<void> {
+    await removeFile(this.getCompletionMarkerPath())
+  }
 
   /**
    * Force regeneration of the asset, bypassing any cached or on-disk version.

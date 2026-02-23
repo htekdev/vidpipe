@@ -16,6 +16,7 @@ vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   writeJsonFile: vi.fn(),
   ensureDirectory: vi.fn(),
   writeTextFile: vi.fn(),
+  removeFile: vi.fn(),
 }))
 
 vi.mock('../../../L4-agents/videoServiceBridge.js', () => ({

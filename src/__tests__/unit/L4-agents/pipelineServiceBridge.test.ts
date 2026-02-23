@@ -77,8 +77,8 @@ describe('L4 Unit: pipelineServiceBridge wrappers', () => {
 
   it('markPending delegates to L3', async () => {
     mockMarkPending.mockResolvedValue(undefined)
-    await markPending('/dir')
-    expect(mockMarkPending).toHaveBeenCalledWith('/dir')
+    await markPending('test-slug', '/source/path.mp4')
+    expect(mockMarkPending).toHaveBeenCalledWith('test-slug', '/source/path.mp4')
   })
 
   it('markProcessing delegates to L3', async () => {
@@ -107,7 +107,8 @@ describe('L4 Unit: pipelineServiceBridge wrappers', () => {
 
   it('buildPublishQueue delegates to L3', async () => {
     mockBuildPublishQueue.mockResolvedValue({ items: [] })
-    const result = await buildPublishQueue('/dir')
+    const mockVideo = { slug: 'test' } as never
+    const result = await buildPublishQueue(mockVideo, [], [], [], undefined)
     expect(result).toEqual({ items: [] })
   })
 })

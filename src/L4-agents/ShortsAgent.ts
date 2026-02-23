@@ -271,10 +271,30 @@ export async function generateShorts(
   const prompt = promptParts.join('\n')
 
   try {
-    await agent.run(prompt)
+    let runError: Error | undefined
+    
+    // The Copilot SDK has a known bug where it throws "missing finish_reason"
+    // even after tools completed successfully. We catch that specific error
+    // and check if shorts were planned before re-throwing.
+    try {
+      await agent.run(prompt)
+    } catch (err) {
+      runError = err instanceof Error ? err : new Error(String(err))
+      
+      // Check if shorts were planned despite the error
+      const partialPlanned = agent.getPlannedShorts()
+      if (partialPlanned.length > 0 && runError.message.includes('missing finish_reason')) {
+        logger.warn(`[ShortsAgent] SDK error after ${partialPlanned.length} shorts planned - proceeding with partial result`)
+      } else {
+        throw runError
+      }
+    }
+    
     const planned = agent.getPlannedShorts()
 
     if (planned.length === 0) {
+      // Re-throw original error if we have one but no shorts
+      if (runError) throw runError
       logger.warn('[ShortsAgent] No shorts were planned')
       return []
     }

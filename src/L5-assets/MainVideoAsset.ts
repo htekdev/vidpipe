@@ -13,8 +13,6 @@ import { VideoAsset, VideoMetadata, CaptionFiles } from './VideoAsset.js'
 import { AssetOptions } from './Asset.js'
 import { ShortVideoAsset } from './ShortVideoAsset.js'
 import { MediumClipAsset } from './MediumClipAsset.js'
-import { SocialPostAsset } from './SocialPostAsset.js'
-import { SummaryAsset } from './SummaryAsset.js'
 import { BlogAsset } from './BlogAsset.js'
 import { join, basename, extname, dirname } from '../L1-infra/paths/paths.js'
 import {
@@ -30,10 +28,11 @@ import {
   writeJsonFile,
   readJsonFile,
   readTextFile,
+  writeTextFile,
 } from '../L1-infra/fileSystem/fileSystem.js'
 import { slugify } from '../L0-pure/text/text.js'
-import { ffprobe, burnCaptions, singlePassEditAndCaption } from '../L4-agents/videoServiceBridge.js'
-import { transcribeVideo, analyzeVideoClipDirection, generateCaptions } from '../L4-agents/analysisServiceBridge.js'
+import { ffprobe, burnCaptions } from '../L4-agents/videoServiceBridge.js'
+import { transcribeVideo, analyzeVideoClipDirection } from '../L4-agents/analysisServiceBridge.js'
 import { removeDeadSilence } from '../L4-agents/SilenceRemovalAgent.js'
 import { generateShorts } from '../L4-agents/ShortsAgent.js'
 import { generateMediumClips } from '../L4-agents/MediumVideoAgent.js'
@@ -118,9 +117,19 @@ export class MainVideoAsset extends VideoAsset {
     return join(this.videoDir, 'shorts', 'shorts.json')
   }
 
+  /** Path to shorts completion marker */
+  private get shortsCompletionMarkerPath(): string {
+    return join(this.videoDir, 'shorts', 'shorts.complete')
+  }
+
   /** Path to medium clips metadata JSON */
   get mediumClipsJsonPath(): string {
     return join(this.videoDir, 'medium-clips', 'medium-clips.json')
+  }
+
+  /** Path to medium clips completion marker */
+  private get mediumClipsCompletionMarkerPath(): string {
+    return join(this.videoDir, 'medium-clips', 'medium-clips.complete')
   }
 
   // chaptersJsonPath is inherited from VideoAsset
@@ -130,9 +139,24 @@ export class MainVideoAsset extends VideoAsset {
     return join(this.videoDir, 'README.md')
   }
 
+  /** Path to summary metadata JSON */
+  get summaryJsonPath(): string {
+    return join(this.videoDir, 'summary.json')
+  }
+
   /** Path to blog post */
   get blogPath(): string {
     return join(this.videoDir, 'blog-post.md')
+  }
+
+  /** Path to blog completion marker */
+  get blogCompletionMarkerPath(): string {
+    return join(this.videoDir, 'blog.complete')
+  }
+
+  /** Path to social posts completion marker */
+  private get socialPostsCompletionMarkerPath(): string {
+    return join(this.videoDir, 'social-posts', 'social-posts.complete')
   }
 
   /** Path to adjusted transcript (post silence-removal) */
@@ -457,9 +481,48 @@ export class MainVideoAsset extends VideoAsset {
     return join(this.videoDir, 'shorts')
   }
 
+  /** Check if shorts generation is complete */
+  private async isShortsComplete(): Promise<boolean> {
+    return fileExists(this.shortsCompletionMarkerPath)
+  }
+
+  /** Mark shorts generation as complete */
+  private async markShortsComplete(): Promise<void> {
+    await writeTextFile(this.shortsCompletionMarkerPath, new Date().toISOString())
+  }
+
+  /** Clear shorts completion marker for regeneration */
+  private async clearShortsCompletion(): Promise<void> {
+    await removeFile(this.shortsCompletionMarkerPath)
+  }
+
   /** Directory containing medium clips */
   private get mediumClipsDir(): string {
     return join(this.videoDir, 'medium-clips')
+  }
+
+  /** Check if medium clips generation is complete */
+  private async isMediumClipsComplete(): Promise<boolean> {
+    return fileExists(this.mediumClipsCompletionMarkerPath)
+  }
+
+  /** Mark medium clips generation as complete */
+  private async markMediumClipsComplete(): Promise<void> {
+    await writeTextFile(this.mediumClipsCompletionMarkerPath, new Date().toISOString())
+  }
+
+  /** Clear medium clips completion marker */
+  private async clearMediumClipsCompletion(): Promise<void> {
+    await removeFile(this.mediumClipsCompletionMarkerPath)
+  }
+
+  /** Load medium clips data from disk */
+  private async loadMediumClipsFromDisk(): Promise<MediumClip[]> {
+    if (await fileExists(this.mediumClipsJsonPath)) {
+      const data = await readJsonFile<{ clips: MediumClip[] }>(this.mediumClipsJsonPath)
+      return data.clips ?? []
+    }
+    return []
   }
 
   /** Directory containing social posts */
@@ -467,129 +530,386 @@ export class MainVideoAsset extends VideoAsset {
     return join(this.videoDir, 'social-posts')
   }
 
+  /** Check if social posts generation is complete */
+  private async isSocialPostsComplete(): Promise<boolean> {
+    return fileExists(this.socialPostsCompletionMarkerPath)
+  }
+
+  /** Mark social posts generation as complete */
+  private async markSocialPostsComplete(): Promise<void> {
+    await ensureDirectory(this.socialPostsDir)
+    await writeTextFile(this.socialPostsCompletionMarkerPath, new Date().toISOString())
+  }
+
+  /** Clear social posts completion marker for regeneration */
+  private async clearSocialPostsCompletion(): Promise<void> {
+    if (await fileExists(this.socialPostsCompletionMarkerPath)) {
+      await removeFile(this.socialPostsCompletionMarkerPath)
+    }
+    this.cache.delete('socialPosts')
+  }
+
+  /** Load social posts from disk by parsing markdown files */
+  private async loadSocialPostsFromDisk(): Promise<SocialPost[]> {
+    const posts: SocialPost[] = []
+    const platforms = [Platform.TikTok, Platform.YouTube, Platform.Instagram, Platform.LinkedIn, Platform.X]
+
+    for (const platform of platforms) {
+      const filePath = join(this.socialPostsDir, `${platform.toLowerCase()}.md`)
+      if (await fileExists(filePath)) {
+        const content = await readTextFile(filePath)
+        const post = this.parseSocialPostFile(content, platform, filePath)
+        if (post) {
+          posts.push(post)
+        }
+      }
+    }
+
+    return posts
+  }
+
+  /**
+   * Parse a social post markdown file into a SocialPost object.
+   *
+   * @param content - Markdown file content with YAML frontmatter
+   * @param platform - Target platform
+   * @param filePath - Path to the file (for outputPath field)
+   * @returns Parsed SocialPost or null if parsing fails
+   */
+  private parseSocialPostFile(content: string, platform: Platform, filePath: string): SocialPost | null {
+    // Check for frontmatter delimiters
+    if (!content.startsWith('---')) {
+      return null
+    }
+
+    // Find closing delimiter
+    const endIndex = content.indexOf('---', 3)
+    if (endIndex === -1) {
+      return null
+    }
+
+    const yamlContent = content.slice(3, endIndex).trim()
+    const bodyContent = content.slice(endIndex + 3).trim()
+
+    // Parse YAML frontmatter
+    const hashtags: string[] = []
+    const links: string[] = []
+    let characterCount = bodyContent.length
+
+    const lines = yamlContent.split('\n')
+    let inHashtags = false
+    let inLinks = false
+
+    for (const line of lines) {
+      const trimmed = line.trim()
+
+      // Handle array items
+      if (trimmed.startsWith('- ')) {
+        if (inHashtags) {
+          const tag = trimmed.slice(2).trim().replace(/^["']|["']$/g, '')
+          if (tag) hashtags.push(tag)
+        } else if (inLinks) {
+          // Links can be in format: - url: "..." or just - "..."
+          const urlMatch = trimmed.match(/url:\s*["']([^"']+)["']/)
+          if (urlMatch) {
+            links.push(urlMatch[1])
+          }
+        }
+        continue
+      }
+
+      // Check for section starts
+      const colonIndex = line.indexOf(':')
+      if (colonIndex !== -1) {
+        const key = line.slice(0, colonIndex).trim()
+        const value = line.slice(colonIndex + 1).trim()
+
+        inHashtags = false
+        inLinks = false
+
+        switch (key) {
+          case 'hashtags':
+            inHashtags = value === '' || value === '[]'
+            if (value && value !== '[]') {
+              // Inline array format not expected but handle it
+              inHashtags = true
+            }
+            break
+          case 'links':
+            inLinks = value === '' || value === '[]'
+            if (value && value !== '[]') {
+              inLinks = true
+            }
+            break
+          case 'characterCount':
+            characterCount = parseInt(value, 10) || bodyContent.length
+            break
+        }
+      }
+    }
+
+    return {
+      platform,
+      content: bodyContent,
+      hashtags,
+      links,
+      characterCount,
+      outputPath: filePath,
+    }
+  }
+
   /**
    * Get short clips for this video as ShortVideoAsset objects.
-   * Loads clip data from disk if available, wraps each in ShortVideoAsset.
+   * Uses completion marker pattern for idempotency.
    *
    * @param opts - Options controlling generation
    * @returns Array of ShortVideoAsset objects
    */
   async getShorts(opts?: AssetOptions): Promise<ShortVideoAsset[]> {
-    const clips = await this.loadOrGenerateShorts(opts)
+    if (opts?.force) {
+      await this.clearShortsCompletion()
+    }
+
+    if (await this.isShortsComplete()) {
+      const clips = await this.loadShortsFromDisk()
+      return clips.map((clip) => new ShortVideoAsset(this, clip, this.shortsDir))
+    }
+
+    const clips = await this.generateShortsInternal()
+    await this.markShortsComplete()
     return clips.map((clip) => new ShortVideoAsset(this, clip, this.shortsDir))
   }
 
+  /** Load shorts data from disk */
+  private async loadShortsFromDisk(): Promise<ShortClip[]> {
+    if (await fileExists(this.shortsJsonPath)) {
+      const data = await readJsonFile<{ shorts: ShortClip[] }>(this.shortsJsonPath)
+      return data.shorts ?? []
+    }
+    return []
+  }
+
   /**
-   * Load raw short clip data from disk or generate via ShortsAgent.
+   * Generate shorts via ShortsAgent.
+   * Internal helper called when completion marker is absent.
    *
-   * @param opts - Options controlling generation
    * @returns Array of ShortClip objects
    */
-  private async loadOrGenerateShorts(opts?: AssetOptions): Promise<ShortClip[]> {
-    return this.cached('shortsData', async () => {
-      // Check if shorts already exist on disk
-      if (!opts?.force && await fileExists(this.shortsJsonPath)) {
-        const data = await readJsonFile<{ shorts: ShortClip[] }>(this.shortsJsonPath)
-        return data.shorts ?? []
-      }
-
-      // Check if individual short files exist in shorts directory
-      if (!opts?.force && await fileExists(this.shortsDir)) {
-        const files = await listDirectory(this.shortsDir)
-        const mdFiles = files.filter((f) => f.endsWith('.md') && f !== 'README.md')
-        if (mdFiles.length > 0) {
-          // Parse shorts from individual markdown files
-          // TODO: Implement parsing of individual short files
-          logger.info(`Found ${mdFiles.length} short files, but parsing not yet implemented`)
-        }
-      }
-
-      // Generate via ShortsAgent
-      const transcript = await this.getTranscript()
-      const videoFile = await this.toVideoFile()
-      const shorts = await generateShorts(videoFile, transcript)
-      logger.info(`Generated ${shorts.length} short clips`)
-      return shorts
-    })
+  private async generateShortsInternal(): Promise<ShortClip[]> {
+    const transcript = await this.getTranscript()
+    const videoFile = await this.toVideoFile()
+    const shorts = await generateShorts(videoFile, transcript)
+    logger.info(`Generated ${shorts.length} short clips`)
+    return shorts
   }
 
   /**
    * Get medium clips for this video as MediumClipAsset objects.
-   * Loads clip data from disk if available, wraps each in MediumClipAsset.
+   * Uses completion marker pattern for idempotency.
    *
    * @param opts - Options controlling generation
    * @returns Array of MediumClipAsset objects
    */
   async getMediumClips(opts?: AssetOptions): Promise<MediumClipAsset[]> {
-    const clips = await this.loadOrGenerateMediumClips(opts)
+    if (opts?.force) {
+      await this.clearMediumClipsCompletion()
+    }
+
+    if (await this.isMediumClipsComplete()) {
+      const clips = await this.loadMediumClipsFromDisk()
+      return clips.map((clip) => new MediumClipAsset(this, clip, this.mediumClipsDir))
+    }
+
+    const clips = await this.generateMediumClipsInternal()
+    await this.markMediumClipsComplete()
     return clips.map((clip) => new MediumClipAsset(this, clip, this.mediumClipsDir))
   }
 
   /**
-   * Load raw medium clip data from disk or generate via MediumVideoAgent.
+   * Generate medium clips via MediumVideoAgent.
+   * Internal helper called when completion marker is absent.
    *
-   * @param opts - Options controlling generation
    * @returns Array of MediumClip objects
    */
-  private async loadOrGenerateMediumClips(opts?: AssetOptions): Promise<MediumClip[]> {
-    return this.cached('mediumClipsData', async () => {
-      // Check if medium clips already exist on disk
-      if (await fileExists(this.mediumClipsJsonPath)) {
-        const data = await readJsonFile<{ clips: MediumClip[] }>(this.mediumClipsJsonPath)
-        return data.clips ?? []
-      }
-
-      // Check if individual clip files exist
-      if (await fileExists(this.mediumClipsDir)) {
-        const files = await listDirectory(this.mediumClipsDir)
-        const mdFiles = files.filter((f) => f.endsWith('.md') && f !== 'README.md')
-        if (mdFiles.length > 0) {
-          logger.info(`Found ${mdFiles.length} medium clip files, but parsing not yet implemented`)
-        }
-      }
-
-      // Generate via MediumVideoAgent
-      const transcript = await this.getTranscript()
-      const videoFile = await this.toVideoFile()
-      const clips = await generateMediumClips(videoFile, transcript)
-      logger.info(`Generated ${clips.length} medium clips for ${this.slug}`)
-      return clips
-    })
+  private async generateMediumClipsInternal(): Promise<MediumClip[]> {
+    const transcript = await this.getTranscript()
+    const videoFile = await this.toVideoFile()
+    const clips = await generateMediumClips(videoFile, transcript)
+    logger.info(`Generated ${clips.length} medium clips for ${this.slug}`)
+    return clips
   }
 
   /**
-   * Get social posts for this video as SocialPostAsset objects.
-   * Returns one asset per platform.
+   * Get social posts for this video.
+   * Uses completion marker pattern for idempotency.
+   * Loads from disk if available, otherwise generates via SocialMediaAgent.
    *
-   * @returns Array of SocialPostAsset objects (one per platform)
+   * @param opts - Options controlling generation
+   * @returns Array of SocialPost objects (one per platform)
    */
-  async getSocialPosts(): Promise<SocialPostAsset[]> {
-    const platforms: Platform[] = [
-      Platform.TikTok,
-      Platform.YouTube,
-      Platform.Instagram,
-      Platform.LinkedIn,
-      Platform.X,
-    ]
-    return platforms.map((platform) => new SocialPostAsset(this, platform, this.socialPostsDir))
+  async getSocialPosts(opts?: AssetOptions): Promise<SocialPost[]> {
+    if (opts?.force) {
+      await this.clearSocialPostsCompletion()
+    }
+
+    if (await this.isSocialPostsComplete()) {
+      return this.loadSocialPostsFromDisk()
+    }
+
+    // Generate social posts using SocialMediaAgent
+    const transcript = await this.getTranscript()
+    const summary = await this.getSummary()
+    const video = await this.toVideoFile()
+    await ensureDirectory(this.socialPostsDir)
+    const posts = await generateSocialPosts(video, transcript, summary, this.socialPostsDir)
+
+    await this.markSocialPostsComplete()
+    return posts
   }
 
   /**
-   * Get the summary asset for this video.
+   * Get the summary for this video.
+   * Uses completion marker pattern for idempotency.
+   * Loads from disk if available, otherwise generates via SummaryAgent.
    *
-   * @returns SummaryAsset wrapping the README.md
+   * @param opts - Options controlling generation
+   * @returns VideoSummary with title, overview, keyTopics, snapshots, and markdownPath
    */
-  async getSummary(): Promise<SummaryAsset> {
-    return new SummaryAsset(this)
+  async getSummary(opts?: AssetOptions): Promise<VideoSummary> {
+    if (opts?.force) {
+      await this.clearSummaryCompletion()
+    }
+
+    if (await this.isSummaryComplete()) {
+      return this.loadSummaryFromDisk()
+    }
+
+    // Generate summary using SummaryAgent
+    const transcript = await this.getTranscript()
+    const shorts = await this.getShorts().catch(() => [])
+    const chapters = await this.getChapters().catch(() => [])
+    // Convert ShortVideoAsset[] to ShortClip[]
+    const shortClips = shorts.map((s) => s.clip)
+    const summary = await this.generateSummaryInternal(transcript, shortClips, chapters)
+
+    await this.markSummaryComplete()
+    return summary
   }
 
   /**
-   * Get the blog post asset for this video.
-   *
-   * @returns BlogAsset wrapping the blog-post.md
+   * Check if summary generation is complete.
    */
-  async getBlog(): Promise<BlogAsset> {
-    return new BlogAsset(this)
+  private async isSummaryComplete(): Promise<boolean> {
+    return (await fileExists(this.summaryJsonPath)) && (await fileExists(this.summaryPath))
+  }
+
+  /**
+   * Mark summary as complete by ensuring JSON metadata exists.
+   */
+  private async markSummaryComplete(): Promise<void> {
+    // No-op: summary.json is written during generation
+  }
+
+  /**
+   * Clear summary completion marker to force regeneration.
+   */
+  private async clearSummaryCompletion(): Promise<void> {
+    if (await fileExists(this.summaryJsonPath)) {
+      await removeFile(this.summaryJsonPath)
+    }
+    if (await fileExists(this.summaryPath)) {
+      await removeFile(this.summaryPath)
+    }
+    this.cache.delete('summary')
+  }
+
+  /**
+   * Load summary from disk.
+   * Reads the summary.json metadata file.
+   */
+  private async loadSummaryFromDisk(): Promise<VideoSummary> {
+    const summary = await readJsonFile<VideoSummary>(this.summaryJsonPath)
+    return summary
+  }
+
+  /**
+   * Generate summary via SummaryAgent.
+   * Internal helper called when completion marker is absent.
+   */
+  private async generateSummaryInternal(
+    transcript: Transcript,
+    shorts: ShortClip[],
+    chapters: Chapter[],
+  ): Promise<VideoSummary> {
+    const video = await this.toVideoFile()
+    const summary = await generateSummary(video, transcript, shorts, chapters)
+    // Persist the VideoSummary metadata to JSON
+    await writeJsonFile(this.summaryJsonPath, summary)
+    logger.info(`Generated summary for ${this.slug}`)
+    return summary
+  }
+
+  /**
+   * Get the blog post content for this video.
+   * Uses completion marker pattern for idempotency.
+   * Loads from disk if available, otherwise generates via BlogAgent.
+   *
+   * @param opts - Options controlling generation
+   * @returns Blog post markdown content string
+   */
+  async getBlog(opts?: AssetOptions): Promise<string> {
+    if (opts?.force) {
+      await this.clearBlogCompletion()
+    }
+
+    if (await this.isBlogComplete()) {
+      return this.loadBlogFromDisk()
+    }
+
+    // Generate blog using BlogAgent
+    const transcript = await this.getTranscript()
+    const summary = await this.getSummary()
+    const video = await this.toVideoFile()
+    const blogContent = await generateBlogPost(video, transcript, summary)
+
+    // Write to disk
+    await writeTextFile(this.blogPath, blogContent)
+    await this.markBlogComplete()
+
+    return blogContent
+  }
+
+  /**
+   * Check if blog generation is complete.
+   */
+  private async isBlogComplete(): Promise<boolean> {
+    return fileExists(this.blogCompletionMarkerPath)
+  }
+
+  /**
+   * Mark blog as complete.
+   */
+  private async markBlogComplete(): Promise<void> {
+    await writeTextFile(this.blogCompletionMarkerPath, new Date().toISOString())
+  }
+
+  /**
+   * Clear blog completion marker to force regeneration.
+   */
+  private async clearBlogCompletion(): Promise<void> {
+    if (await fileExists(this.blogCompletionMarkerPath)) {
+      await removeFile(this.blogCompletionMarkerPath)
+    }
+    if (await fileExists(this.blogPath)) {
+      await removeFile(this.blogPath)
+    }
+  }
+
+  /**
+   * Load blog content from disk.
+   */
+  private async loadBlogFromDisk(): Promise<string> {
+    return readTextFile(this.blogPath)
   }
 
   /**
@@ -713,102 +1033,6 @@ export class MainVideoAsset extends VideoAsset {
   }
 
   /**
-   * Generate caption files (SRT, VTT, ASS) from a transcript.
-   * @returns Array of generated caption file paths
-   */
-  async generateCaptionFiles(transcript: Transcript): Promise<string[]> {
-    const video = await this.toVideoFile()
-    return generateCaptions(video, transcript)
-  }
-
-  /**
-   * Burn captions into a video file.
-   * @returns Path to the captioned output video
-   */
-  async burnCaptionFiles(inputVideo: string, assPath: string, outputPath: string): Promise<string> {
-    return burnCaptions(inputVideo, assPath, outputPath)
-  }
-
-  /**
-   * Single-pass edit + caption burn from the original video.
-   * Combines silence removal and caption burning in one FFmpeg encode pass.
-   * @returns Path to the captioned output video
-   */
-  async singlePassEditAndBurnCaptions(
-    originalVideo: string,
-    keepSegments: { start: number; end: number }[],
-    assPath: string,
-    outputPath: string,
-  ): Promise<string> {
-    return singlePassEditAndCaption(originalVideo, keepSegments, assPath, outputPath)
-  }
-
-  /**
-   * Generate short clips via the ShortsAgent.
-   * @param videoPathOverride - Use a different video path (e.g., edited video)
-   */
-  async generateShortClips(
-    transcript: Transcript,
-    modelName?: string,
-    clipDirection?: string,
-    webcamRegion?: WebcamRegion | null,
-    videoPathOverride?: string,
-  ): Promise<ShortClip[]> {
-    let video = await this.toVideoFile()
-    if (videoPathOverride) video = { ...video, repoPath: videoPathOverride }
-    return generateShorts(video, transcript, modelName, clipDirection, webcamRegion)
-  }
-
-  /**
-   * Generate medium clips via the MediumVideoAgent.
-   * @param videoPathOverride - Use a different video path (e.g., enhanced video)
-   */
-  async generateMediumClipData(
-    transcript: Transcript,
-    modelName?: string,
-    clipDirection?: string,
-    videoPathOverride?: string,
-  ): Promise<MediumClip[]> {
-    let video = await this.toVideoFile()
-    if (videoPathOverride) video = { ...video, repoPath: videoPathOverride }
-    return generateMediumClips(video, transcript, modelName, clipDirection)
-  }
-
-  /**
-   * Generate chapters via the ChapterAgent.
-   */
-  async generateChapterData(transcript: Transcript, modelName?: string): Promise<Chapter[]> {
-    const video = await this.toVideoFile()
-    return generateChapters(video, transcript, modelName)
-  }
-
-  /**
-   * Generate summary via the SummaryAgent.
-   */
-  async generateSummaryContent(
-    transcript: Transcript,
-    shorts?: ShortClip[],
-    chapters?: Chapter[],
-    modelName?: string,
-  ): Promise<VideoSummary> {
-    const video = await this.toVideoFile()
-    return generateSummary(video, transcript, shorts, chapters, modelName)
-  }
-
-  /**
-   * Generate social media posts via the SocialMediaAgent.
-   */
-  async generateSocialPostsData(
-    transcript: Transcript,
-    summary: VideoSummary,
-    outputDir: string,
-    modelName?: string,
-  ): Promise<SocialPost[]> {
-    const video = await this.toVideoFile()
-    return generateSocialPosts(video, transcript, summary, outputDir, modelName)
-  }
-
-  /**
    * Generate social posts for a single short/medium clip.
    */
   async generateShortPostsData(
@@ -821,21 +1045,46 @@ export class MainVideoAsset extends VideoAsset {
   }
 
   /**
-   * Generate a blog post via the BlogAgent.
+   * Generate social posts for a single medium clip.
+   * Converts MediumClip to ShortClip format and generates posts,
+   * then moves them to the medium clip's posts directory.
    */
-  async generateBlogPostContent(
-    transcript: Transcript,
-    summary: VideoSummary,
+  async generateMediumClipPostsData(
+    clip: MediumClip,
     modelName?: string,
-  ): Promise<string> {
-    const video = await this.toVideoFile()
-    return generateBlogPost(video, transcript, summary, modelName)
+  ): Promise<SocialPost[]> {
+    const transcript = await this.getAdjustedTranscript()
+    const asShortClip: ShortClip = {
+      id: clip.id,
+      title: clip.title,
+      slug: clip.slug,
+      segments: clip.segments,
+      totalDuration: clip.totalDuration,
+      outputPath: clip.outputPath,
+      captionedPath: clip.captionedPath,
+      description: clip.description,
+      tags: clip.tags,
+    }
+    const posts = await this.generateShortPostsData(asShortClip, transcript, modelName)
+
+    // Move posts to medium-clips/{slug}/posts/
+    const clipsDir = join(this.videoDir, 'medium-clips')
+    const postsDir = join(clipsDir, clip.slug, 'posts')
+    await ensureDirectory(postsDir)
+    for (const post of posts) {
+      const destPath = join(postsDir, basename(post.outputPath))
+      await copyFile(post.outputPath, destPath)
+      await removeFile(post.outputPath)
+      post.outputPath = destPath
+    }
+
+    return posts
   }
 
   /**
    * Build the publish queue via the queue builder service.
    */
-  async buildPublishQueueData(
+  private async buildPublishQueueData(
     shorts: ShortClip[],
     mediumClips: MediumClip[],
     socialPosts: SocialPost[],
@@ -843,6 +1092,19 @@ export class MainVideoAsset extends VideoAsset {
   ): Promise<QueueBuildResult> {
     const video = await this.toVideoFile()
     return buildPublishQueue(video, shorts, mediumClips, socialPosts, captionedVideoPath)
+  }
+
+  /**
+   * Build the publish queue (simplified wrapper for pipeline).
+   * Delegates to buildPublishQueueData with provided clip/post data.
+   */
+  async buildQueue(
+    shorts: ShortClip[],
+    mediumClips: MediumClip[],
+    socialPosts: SocialPost[],
+    captionedVideoPath: string | undefined,
+  ): Promise<void> {
+    await this.buildPublishQueueData(shorts, mediumClips, socialPosts, captionedVideoPath)
   }
 
   /**
