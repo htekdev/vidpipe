@@ -5,7 +5,7 @@ import tmp from 'tmp'
 
 // ── Mock setup ─────────────────────────────────────────────────────────
 
-const tmpDirObj = tmp.dirSync({ prefix: 'vidpipe-review-test-', unsafeCleanup: false })
+const tmpDirObj = tmp.dirSync({ prefix: 'vidpipe-review-test-', unsafeCleanup: true })
 const tmpDir = tmpDirObj.name
 
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
