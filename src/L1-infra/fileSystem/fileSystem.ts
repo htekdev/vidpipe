@@ -170,24 +170,27 @@ export function openReadStream(filePath: string): ReadStream {
 
 /** Write data as JSON. Creates parent dirs. */
 export async function writeJsonFile(filePath: string, data: unknown): Promise<void> {
-  await fsp.mkdir(dirname(filePath), { recursive: true })
-  await fsp.writeFile(filePath, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600 })
+  const safePath = validateFilePath(filePath)
+  await fsp.mkdir(dirname(safePath), { recursive: true })
+  await fsp.writeFile(safePath, JSON.stringify(data, null, 2), { encoding: 'utf-8', mode: 0o600 })
 }
 
 /** Write text file. Creates parent dirs. */
 export async function writeTextFile(filePath: string, content: string): Promise<void> {
   if (typeof content !== 'string') throw new TypeError('content must be a string')
+  const safePath = validateFilePath(filePath)
   const safeContent = sanitizeTextContent(content)
-  await fsp.mkdir(dirname(filePath), { recursive: true })
-  await fsp.writeFile(filePath, safeContent, { encoding: 'utf-8', mode: 0o600 })
+  await fsp.mkdir(dirname(safePath), { recursive: true })
+  await fsp.writeFile(safePath, safeContent, { encoding: 'utf-8', mode: 0o600 })
 }
 
 /** Sync variant of writeTextFile. */
 export function writeTextFileSync(filePath: string, content: string): void {
   if (typeof content !== 'string') throw new TypeError('content must be a string')
+  const safePath = validateFilePath(filePath)
   const safeContent = sanitizeTextContent(content)
-  mkdirSync(dirname(filePath), { recursive: true })
-  writeFileSync(filePath, safeContent, { encoding: 'utf-8', mode: 0o600 })
+  mkdirSync(dirname(safePath), { recursive: true })
+  writeFileSync(safePath, safeContent, { encoding: 'utf-8', mode: 0o600 })
 }
 
 /** Ensure directory exists (recursive). */
