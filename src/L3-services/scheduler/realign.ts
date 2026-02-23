@@ -103,7 +103,7 @@ function normalizeContent(content: string): string {
   return content.toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 200)
 }
 
-interface ClipTypeMaps {
+export interface ClipTypeMaps {
   byLatePostId: Map<string, 'short' | 'medium-clip' | 'video'>
   byContent: Map<string, 'short' | 'medium-clip' | 'video'>
 }
@@ -227,9 +227,11 @@ function generateSlots(
 
 /**
  * Build a realignment plan: determine new scheduledFor for each post.
+ * @param options.clipTypeMaps - Injectable maps for testing (otherwise fetched from disk)
  */
 export async function buildRealignPlan(options: {
   platform?: string
+  clipTypeMaps?: ClipTypeMaps
 } = {}): Promise<RealignPlan> {
   const config = await loadScheduleConfig()
   const { timezone } = config
@@ -243,8 +245,8 @@ export async function buildRealignPlan(options: {
     return { posts: [], toCancel: [], skipped: 0, unmatched: 0, totalFetched: 0 }
   }
 
-  // Build clipType maps from local published metadata
-  const { byLatePostId, byContent } = await buildClipTypeMaps()
+  // Build clipType maps from local published metadata (or use injected)
+  const { byLatePostId, byContent } = options.clipTypeMaps ?? await buildClipTypeMaps()
 
   // Group posts by platform+clipType
   const grouped = new Map<string, Array<{ post: LatePost; platform: string; clipType: 'short' | 'medium-clip' | 'video' }>>()
@@ -407,10 +409,12 @@ function matchesKeywords(content: string, keywords: readonly string[]): boolean 
  *   2. AND Math.random() < saturation
  *   → pull the next keyword-matched post from that rule's queue
  * If no rule fires, pull from the remaining (non-priority) pool sorted by scheduledFor.
+ * @param options.clipTypeMaps - Injectable maps for testing (otherwise fetched from disk)
  */
 export async function buildPrioritizedRealignPlan(options: {
   priorities: PriorityRule[]
   platform?: string
+  clipTypeMaps?: ClipTypeMaps
 } = { priorities: [] }): Promise<RealignPlan> {
   const config = await loadScheduleConfig()
   const { timezone } = config
@@ -423,7 +427,7 @@ export async function buildPrioritizedRealignPlan(options: {
     return { posts: [], toCancel: [], skipped: 0, unmatched: 0, totalFetched: 0 }
   }
 
-  const { byLatePostId, byContent } = await buildClipTypeMaps()
+  const { byLatePostId, byContent } = options.clipTypeMaps ?? await buildClipTypeMaps()
 
   // Tag each post with platform + clipType
   const tagged: TaggedPost[] = []

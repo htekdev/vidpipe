@@ -23,8 +23,14 @@ vi.mock('../../../L2-clients/scheduleStore/scheduleStore.js', () => ({
 }))
 
 import { buildPrioritizedRealignPlan, executeRealignPlan } from '../../../L3-services/scheduler/realign.js'
-import type { PriorityRule } from '../../../L3-services/scheduler/realign.js'
+import type { PriorityRule, ClipTypeMaps } from '../../../L3-services/scheduler/realign.js'
 import { clearScheduleCache } from '../../../L3-services/scheduler/scheduleConfig.js'
+
+// Empty clipTypeMaps to inject (avoids real disk I/O from postStore)
+const EMPTY_CLIP_TYPE_MAPS: ClipTypeMaps = {
+  byLatePostId: new Map(),
+  byContent: new Map(),
+}
 
 // ── Test schedule config ───────────────────────────────────────────────
 // Simple config: platform "x" with 3 daily short slots + 1 daily medium-clip slot
@@ -114,7 +120,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
     seedSchedule()
     mockPosts([])
 
-    const plan = await buildPrioritizedRealignPlan({ priorities: [] })
+    const plan = await buildPrioritizedRealignPlan({ priorities: [], clipTypeMaps: EMPTY_CLIP_TYPE_MAPS })
     expect(plan.posts).toHaveLength(0)
     expect(plan.toCancel).toHaveLength(0)
     expect(plan.totalFetched).toBe(0)
@@ -128,7 +134,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
       makePost('p3', 'Gamma post', 'twitter', '2026-06-03T08:00:00+00:00'),
     ])
 
-    const plan = await buildPrioritizedRealignPlan({ priorities: [] })
+    const plan = await buildPrioritizedRealignPlan({ priorities: [], clipTypeMaps: EMPTY_CLIP_TYPE_MAPS })
     expect(plan.posts).toHaveLength(3)
     // Remaining pool sorts by scheduledFor → p2 (earliest), p1, p3
     const ids = plan.posts.map(p => p.post._id)
@@ -149,6 +155,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
 
     const plan = await buildPrioritizedRealignPlan({
       priorities: [{ keywords: ['devops'], saturation: 1.0 }],
+      clipTypeMaps: EMPTY_CLIP_TYPE_MAPS,
     })
     expect(plan.posts).toHaveLength(4)
 
@@ -179,6 +186,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
         { keywords: ['devops', 'kubernetes'], saturation: 1.0 },
         { keywords: ['react'], saturation: 1.0 },
       ],
+      clipTypeMaps: EMPTY_CLIP_TYPE_MAPS,
     })
 
     const ids = plan.posts.map(p => p.post._id)
@@ -201,6 +209,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
 
     const plan = await buildPrioritizedRealignPlan({
       priorities: [{ keywords: ['devops'], saturation: 0 }],
+      clipTypeMaps: EMPTY_CLIP_TYPE_MAPS,
     })
 
     // With saturation=0, rule never fires. p1 is reserved for rule (excluded from pool).
@@ -230,6 +239,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
 
     const plan = await buildPrioritizedRealignPlan({
       priorities: [{ keywords: ['devops'], saturation: 0.5 }],
+      clipTypeMaps: EMPTY_CLIP_TYPE_MAPS,
     })
 
     const ids = plan.posts.map(p => p.post._id)
@@ -255,6 +265,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
     // Rule only active in far future — shouldn't fire for today's slots
     const plan = await buildPrioritizedRealignPlan({
       priorities: [{ keywords: ['devops'], saturation: 1.0, from: '2099-01-01', to: '2099-12-31' }],
+      clipTypeMaps: EMPTY_CLIP_TYPE_MAPS,
     })
 
     // p1 matches rule → excluded from remaining pool, reserved for rule (which never fires)
@@ -276,6 +287,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
     // Rule active from past to future — covers today
     const plan = await buildPrioritizedRealignPlan({
       priorities: [{ keywords: ['devops'], saturation: 1.0, from: '2020-01-01', to: '2099-12-31' }],
+      clipTypeMaps: EMPTY_CLIP_TYPE_MAPS,
     })
 
     // p1 matches devops → assigned first via rule
@@ -326,6 +338,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
 
     const plan = await buildPrioritizedRealignPlan({
       priorities: [{ keywords: ['hooks'], saturation: 1.0, from, to }],
+      clipTypeMaps: EMPTY_CLIP_TYPE_MAPS,
     })
 
     // Find posts assigned to slots within the rule's date range
@@ -362,6 +375,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
 
     const plan = await buildPrioritizedRealignPlan({
       priorities: [{ keywords: ['devops'], saturation: 1.0 }],
+      clipTypeMaps: EMPTY_CLIP_TYPE_MAPS,
     })
 
     expect(plan.posts[0].post._id).toBe('p1')
@@ -377,6 +391,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
 
     const plan = await buildPrioritizedRealignPlan({
       priorities: [{ keywords: ['kubernetes', 'docker'], saturation: 1.0 }],
+      clipTypeMaps: EMPTY_CLIP_TYPE_MAPS,
     })
 
     // p1 and p2 match the rule (OR logic), p3 doesn't
@@ -395,6 +410,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
 
     const plan = await buildPrioritizedRealignPlan({
       priorities: [{ keywords: ['devops'], saturation: 1.0 }],
+      clipTypeMaps: EMPTY_CLIP_TYPE_MAPS,
     })
 
     // p2 matches rule → first. p1 (empty content) → remaining pool
@@ -417,6 +433,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
         { keywords: ['devops'], saturation: 1.0 },
         { keywords: ['kubernetes'], saturation: 1.0 },
       ],
+      clipTypeMaps: EMPTY_CLIP_TYPE_MAPS,
     })
 
     const ids = plan.posts.map(p => p.post._id)
@@ -455,7 +472,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
     // With 100 posts, all should get slots since 730 > 100
     mockPosts(Array.from({ length: 100 }, (_, i) => makePost(`p${i}`, `content ${i}`, 'twitter')))
 
-    const plan = await buildPrioritizedRealignPlan({ priorities: [] })
+    const plan = await buildPrioritizedRealignPlan({ priorities: [], clipTypeMaps: EMPTY_CLIP_TYPE_MAPS })
     expect(plan.posts.length).toBe(100)
     expect(plan.toCancel).toHaveLength(0)
   })
@@ -485,6 +502,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
 
     const plan = await buildPrioritizedRealignPlan({
       priorities: [{ keywords: ['devops'], saturation: 1.0 }],
+      clipTypeMaps: EMPTY_CLIP_TYPE_MAPS,
     })
 
     expect(plan.posts).toHaveLength(0)
@@ -498,7 +516,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
     seedSchedule()
     mockPosts([makePost('p1', 'test content', 'twitter')])
 
-    const plan = await buildPrioritizedRealignPlan({ priorities: [] })
+    const plan = await buildPrioritizedRealignPlan({ priorities: [], clipTypeMaps: EMPTY_CLIP_TYPE_MAPS })
     // Should find slots via x platform config
     expect(plan.posts).toHaveLength(1)
     expect(plan.toCancel).toHaveLength(0)
@@ -514,6 +532,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
 
     const plan = await buildPrioritizedRealignPlan({
       priorities: [{ keywords: ['devops'], saturation: 1.0 }],
+      clipTypeMaps: EMPTY_CLIP_TYPE_MAPS,
     })
 
     // Each platform group is handled independently
@@ -538,7 +557,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
       makePost('p3', 'third post', 'twitter'),
     ])
 
-    const plan = await buildPrioritizedRealignPlan({ priorities: [] })
+    const plan = await buildPrioritizedRealignPlan({ priorities: [], clipTypeMaps: EMPTY_CLIP_TYPE_MAPS })
     // Final result is sorted by newScheduledFor
     for (let i = 1; i < plan.posts.length; i++) {
       const prev = new Date(plan.posts[i - 1].newScheduledFor).getTime()
@@ -552,7 +571,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
     const origDate = '2026-06-01T08:00:00+00:00'
     mockPosts([makePost('p1', 'test', 'twitter', origDate)])
 
-    const plan = await buildPrioritizedRealignPlan({ priorities: [] })
+    const plan = await buildPrioritizedRealignPlan({ priorities: [], clipTypeMaps: EMPTY_CLIP_TYPE_MAPS })
     expect(plan.posts[0].oldScheduledFor).toBe(origDate)
   })
 
@@ -582,7 +601,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
 
     mockPosts([makePost('p1', 'test', 'twitter', firstSlotIso)])
 
-    const plan = await buildPrioritizedRealignPlan({ priorities: [] })
+    const plan = await buildPrioritizedRealignPlan({ priorities: [], clipTypeMaps: EMPTY_CLIP_TYPE_MAPS })
     // Post already at correct slot → skipped
     expect(plan.skipped).toBe(1)
     expect(plan.posts).toHaveLength(0)
@@ -601,6 +620,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
 
     const plan = await buildPrioritizedRealignPlan({
       priorities: [{ keywords: ['devops'], saturation: 1.0 }],
+      clipTypeMaps: EMPTY_CLIP_TYPE_MAPS,
     })
 
     const ids = plan.posts.map(p => p.post._id)
@@ -616,7 +636,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
     seedSchedule()
     mockPosts([makePost('p1', 'anything', 'twitter')])
 
-    const plan = await buildPrioritizedRealignPlan({ priorities: [] })
+    const plan = await buildPrioritizedRealignPlan({ priorities: [], clipTypeMaps: EMPTY_CLIP_TYPE_MAPS })
     // No published items → all posts are unmatched (defaulting to short)
     expect(plan.unmatched).toBe(1)
   })
@@ -633,6 +653,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
 
     const plan = await buildPrioritizedRealignPlan({
       priorities: [{ keywords: ['devops'], saturation: 1.0 }],
+      clipTypeMaps: EMPTY_CLIP_TYPE_MAPS,
     })
 
     const result = await executeRealignPlan(plan)
@@ -646,7 +667,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
     mockPosts([makePost('p1', 'test', 'twitter')])
     mockSchedulePost.mockResolvedValue({})
 
-    const plan = await buildPrioritizedRealignPlan({ priorities: [] })
+    const plan = await buildPrioritizedRealignPlan({ priorities: [], clipTypeMaps: EMPTY_CLIP_TYPE_MAPS })
     const progress: Array<[number, number, string]> = []
 
     await executeRealignPlan(plan, (completed, total, phase) => {
@@ -662,7 +683,7 @@ describe('buildPrioritizedRealignPlan — comprehensive', () => {
     mockPosts([makePost('p1', 'test', 'twitter')])
     mockSchedulePost.mockRejectedValue(new Error('API rate limit'))
 
-    const plan = await buildPrioritizedRealignPlan({ priorities: [] })
+    const plan = await buildPrioritizedRealignPlan({ priorities: [], clipTypeMaps: EMPTY_CLIP_TYPE_MAPS })
     const result = await executeRealignPlan(plan)
 
     expect(result.failed).toBe(1)
