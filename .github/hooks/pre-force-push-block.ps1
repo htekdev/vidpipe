@@ -14,7 +14,7 @@ try {
         exit 0
     }
 
-    if ($command -notmatch "git\s+push\s+.*(--force|--force-with-lease|-f\b)") {
+    if ($command -notmatch "git\s+(--\S+\s+)*push\s+.*(--force|--force-with-lease|-f\b)") {
         exit 0
     }
 

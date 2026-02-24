@@ -39,56 +39,233 @@ jobs:
       - run: npx tsc --noEmit
 
   test:
-    name: Test (Node ${{ matrix.node-version }})
+    name: ${{ matrix.tier.name }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
       checks: write
     strategy:
+      fail-fast: false
       matrix:
-        node-version: [20, 22]
+        tier:
+          - { name: "Unit Tests", script: "test:unit:coverage", node: 22, coverage: true, key: "unit" }
+          - { name: "Unit Tests (Node 20)", script: "test:unit", node: 20, coverage: false, key: "" }
+          - { name: "Integration L3", script: "test:integration:L3:coverage", node: 22, coverage: true, key: "integration-L3" }
+          - { name: "Integration L4-L6", script: "test:integration:L4-L6:coverage", node: 22, coverage: true, key: "integration-L4-L6" }
+          - { name: "Integration L7", script: "test:integration:L7:coverage", node: 22, coverage: true, key: "integration-L7" }
+          - { name: "E2E", script: "test:e2e:coverage", node: 22, coverage: true, key: "e2e" }
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: ${{ matrix.tier.node }}
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Run tests with coverage
-        run: npx vitest run --coverage --reporter=default --reporter=junit --outputFile.junit=test-results.xml
+      - name: Run ${{ matrix.tier.name }}
+        run: npm run ${{ matrix.tier.script }} -- --reporter=default --reporter=junit --outputFile.junit=test-results.xml
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-results-node-${{ matrix.node-version }}
+          name: test-results-${{ matrix.tier.name }}
           path: test-results.xml
       - name: Upload coverage
-        if: matrix.node-version == 22
+        if: matrix.tier.coverage
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report
-          path: coverage/
+          name: coverage-${{ matrix.tier.key }}
+          path: coverage/${{ matrix.tier.key }}/
 
-  coverage:
-    name: Coverage Report
+  test-summary:
+    name: Test Summary
     needs: test
-    if: github.event_name == 'pull_request'
+    if: github.event_name == 'pull_request' && always()
     runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+
+      - name: Download all coverage artifacts
+        uses: actions/download-artifact@v4
         with:
-          name: coverage-report
-          path: coverage/
-      - name: Coverage PR comment
+          pattern: coverage-*
+          path: coverage-artifacts/
+
+      - name: Download all test result artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-results-*
+          path: test-result-artifacts/
+
+      - name: Generate PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            // ── Parse JUnit XMLs ──
+            function parseJUnit(xml) {
+              const suiteMatch = xml.match(/<testsuites[^>]*tests="(\d+)"[^>]*failures="(\d+)"[^>]*errors="(\d+)"[^>]*time="([^"]*)"[^>]*>/);
+              if (!suiteMatch) {
+                // Try individual testsuite
+                const singleMatch = xml.match(/<testsuite[^>]*tests="(\d+)"[^>]*failures="(\d+)"[^>]*errors="(\d+)"[^>]*time="([^"]*)"[^>]*>/);
+                if (!singleMatch) return null;
+                const tests = parseInt(singleMatch[1]);
+                const failures = parseInt(singleMatch[2]);
+                const errors = parseInt(singleMatch[3]);
+                const time = parseFloat(singleMatch[4]);
+                const skippedMatch = xml.match(/<testsuite[^>]*skipped="(\d+)"/);
+                const skipped = skippedMatch ? parseInt(skippedMatch[1]) : 0;
+                return { tests, failures: failures + errors, skipped, passed: tests - failures - errors - skipped, time };
+              }
+              const tests = parseInt(suiteMatch[1]);
+              const failures = parseInt(suiteMatch[2]);
+              const errors = parseInt(suiteMatch[3]);
+              const time = parseFloat(suiteMatch[4]);
+              const skippedMatch = xml.match(/<testsuites[^>]*skipped="(\d+)"/);
+              const skipped = skippedMatch ? parseInt(skippedMatch[1]) : 0;
+              return { tests, failures: failures + errors, skipped, passed: tests - failures - errors - skipped, time };
+            }
+
+            // ── Parse coverage-summary.json ──
+            function parseCoverage(summaryPath) {
+              try {
+                const data = JSON.parse(fs.readFileSync(summaryPath, 'utf-8'));
+                const total = data.total;
+                return {
+                  statements: total.statements.pct,
+                  branches: total.branches.pct,
+                  functions: total.functions.pct,
+                  lines: total.lines.pct,
+                  statementsTotal: `${total.statements.covered}/${total.statements.total}`,
+                  branchesTotal: `${total.branches.covered}/${total.branches.total}`,
+                  functionsTotal: `${total.functions.covered}/${total.functions.total}`,
+                  linesTotal: `${total.lines.covered}/${total.lines.total}`,
+                };
+              } catch { return null; }
+            }
+
+            // ── Tier definitions ──
+            const tiers = [
+              { name: 'Unit Tests', key: 'unit', resultName: 'Unit Tests', thresholds: { stmts: 69, branch: 61, funcs: 71, lines: 69 } },
+              { name: 'Integration L3', key: 'integration-L3', resultName: 'Integration L3', thresholds: { stmts: 27, branch: 26, funcs: 28, lines: 28 } },
+              { name: 'Integration L4-L6', key: 'integration-L4-L6', resultName: 'Integration L4-L6', thresholds: { stmts: 0, branch: 0, funcs: 0, lines: 0 } },
+              { name: 'Integration L7', key: 'integration-L7', resultName: 'Integration L7', thresholds: { stmts: 59, branch: 46, funcs: 63, lines: 59 } },
+              { name: 'E2E', key: 'e2e', resultName: 'E2E', thresholds: { stmts: 10, branch: 8, funcs: 11, lines: 10 } },
+            ];
+
+            let totalTests = 0, totalPassed = 0, totalFailed = 0, totalSkipped = 0;
+            const rows = [];
+
+            for (const tier of tiers) {
+              // Test results
+              let testInfo = null;
+              const resultDir = `test-result-artifacts/test-results-${tier.resultName}`;
+              const xmlPath = path.join(resultDir, 'test-results.xml');
+              if (fs.existsSync(xmlPath)) {
+                testInfo = parseJUnit(fs.readFileSync(xmlPath, 'utf-8'));
+              }
+
+              // Coverage
+              let covInfo = null;
+              const covDir = `coverage-artifacts/coverage-${tier.key}`;
+              const summaryPath = path.join(covDir, 'coverage-summary.json');
+              if (fs.existsSync(summaryPath)) {
+                covInfo = parseCoverage(summaryPath);
+              }
+
+              if (testInfo) {
+                totalTests += testInfo.tests;
+                totalPassed += testInfo.passed;
+                totalFailed += testInfo.failures;
+                totalSkipped += testInfo.skipped;
+              }
+
+              const testStatus = testInfo
+                ? (testInfo.failures > 0 ? '❌' : '✅')
+                : '⏭️';
+
+              const testsCol = testInfo ? testInfo.tests : '-';
+              const passedCol = testInfo ? `${testInfo.passed}` : '-';
+              const failedCol = testInfo ? (testInfo.failures > 0 ? `**${testInfo.failures}**` : '0') : '-';
+              const skippedCol = testInfo ? (testInfo.skipped > 0 ? `${testInfo.skipped}` : '0') : '-';
+              const timeCol = testInfo ? `${testInfo.time.toFixed(1)}s` : '-';
+
+              const fmtPct = (pct, threshold) => {
+                if (pct === undefined || pct === null) return '-';
+                const icon = pct >= threshold ? '✅' : '❌';
+                return `${pct.toFixed(1)}% ${icon}`;
+              };
+
+              const stmtsCol = covInfo ? fmtPct(covInfo.statements, tier.thresholds.stmts) : '-';
+              const branchCol = covInfo ? fmtPct(covInfo.branches, tier.thresholds.branch) : '-';
+              const funcsCol = covInfo ? fmtPct(covInfo.functions, tier.thresholds.funcs) : '-';
+              const linesCol = covInfo ? fmtPct(covInfo.lines, tier.thresholds.lines) : '-';
+
+              rows.push(`| ${testStatus} ${tier.name} | ${testsCol} | ${passedCol} | ${failedCol} | ${skippedCol} | ${timeCol} | ${stmtsCol} | ${branchCol} | ${funcsCol} | ${linesCol} |`);
+            }
+
+            const allPassed = totalFailed === 0;
+            const summaryIcon = allPassed ? '✅' : '❌';
+
+            let body = `## ${summaryIcon} Test & Coverage Summary\n\n`;
+            body += `| Tier | Tests | Passed | Failed | Skipped | Time | Stmts | Branch | Funcs | Lines |\n`;
+            body += `|------|------:|-------:|-------:|--------:|-----:|------:|-------:|------:|------:|\n`;
+            body += rows.join('\n') + '\n';
+            body += `| **Total** | **${totalTests}** | **${totalPassed}** | **${totalFailed}** | **${totalSkipped}** | | | | | |\n\n`;
+
+            // Add detailed coverage for unit tests
+            const unitCov = parseCoverage('coverage-artifacts/coverage-unit/coverage-summary.json');
+            if (unitCov) {
+              body += `<details><summary>📊 Unit Coverage Details (${unitCov.lines.toFixed(1)}% lines)</summary>\n\n`;
+              body += `| Metric | Covered / Total | Percentage |\n`;
+              body += `|--------|----------------:|-----------:|\n`;
+              body += `| Statements | ${unitCov.statementsTotal} | ${unitCov.statements.toFixed(2)}% |\n`;
+              body += `| Branches | ${unitCov.branchesTotal} | ${unitCov.branches.toFixed(2)}% |\n`;
+              body += `| Functions | ${unitCov.functionsTotal} | ${unitCov.functions.toFixed(2)}% |\n`;
+              body += `| Lines | ${unitCov.linesTotal} | ${unitCov.lines.toFixed(2)}% |\n\n`;
+              body += `</details>\n\n`;
+            }
+
+            body += `\n<!-- vidpipe-test-summary -->`;
+
+            // Find and update or create comment
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              per_page: 100,
+            });
+
+            const marker = '<!-- vidpipe-test-summary -->';
+            const existing = comments.find(c => c.body?.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body,
+              });
+            }
+
+      - name: Unit file coverage details
         uses: davelosert/vitest-coverage-report-action@15b5b41bb7d36796d89f4bf482b09529c53f3446 # v2
         with:
-          json-summary-path: coverage/coverage-summary.json
-          json-final-path: coverage/coverage-final.json
+          name: 'Unit'
+          json-summary-path: coverage-artifacts/coverage-unit/coverage-summary.json
+          json-final-path: coverage-artifacts/coverage-unit/coverage-final.json
           vite-config-path: vitest.config.ts
 
   dependency-review:

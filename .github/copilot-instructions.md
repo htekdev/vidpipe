@@ -235,6 +235,7 @@ Every bug fix **must** include a regression test — see [Bug Fix Testing Conven
 - TypeScript: ES2022 target, `bundler` moduleResolution
 - All imports use `.ts` extensions — tsx handles resolution at runtime
 - Run with `npx tsx src/index.ts`
+- **One-off scripts:** Always create a `.ts` file and run with `npx tsx <file>.ts`. Never use `npx tsx -e ""` — it doesn't work reliably on this system.
 
 ### Imports & Logging
 ```typescript
@@ -554,6 +555,65 @@ Always use `npm run push` (never raw `git push`) to push changes. The push scrip
 - After fixes are applied, run `npm run push` again to verify and re-poll CI
 - **Repeat until all steps pass** — the push is not done until every gate is green
 
+## Spec-Driven Development
+
+This project uses **spec-driven development** where specifications are the source of truth.
+
+### Philosophy
+
+1. **Specs define WHAT** — Requirements describe expected behavior, not implementation
+2. **Tests verify specs** — Every `REQ-XXX` requirement must have a corresponding test
+3. **Code implements** — Implementation can change freely as long as tests pass
+
+### Workflow
+
+1. **Change specs first** — When adding/modifying functionality, update the spec file first
+2. **Add tests for new REQs** — Every new `REQ-XXX` needs a test named `{SpecName}.REQ-XXX`
+3. **Commit gate enforces** — Commits with spec changes require corresponding test changes
+
+### Spec Structure
+
+Specs live in `specs/` mirroring source structure:
+- `src/L5-assets/VideoAsset.ts` → `specs/L5-assets/VideoAsset.md`
+- `src/L3-services/transcription.ts` → `specs/L3-services/transcription.md`
+
+### Requirement Types
+
+| Type | Format | Purpose |
+|------|--------|---------|
+| Behavioral | `REQ-XXX` | What the system must do (tested) |
+| Architectural | `ARCH-XXX` | How the system is structured (enforced by hooks) |
+
+### Test Mapping
+
+Tests in ANY tier (unit, integration, e2e) can reference spec requirements:
+
+```typescript
+// Unit test
+test('VideoAsset.REQ-001: computes transcript path', () => { ... })
+
+// Integration test  
+test('Pipeline.REQ-010: silence removal preserves audio sync', () => { ... })
+
+// E2E test
+test('CLI.REQ-005: process command accepts --stages flag', () => { ... })
+```
+
+### Custom Agent
+
+Use the `spec-out` agent to create specs from existing tests:
+- Analyzes test files to extract requirements
+- Creates spec file with proper REQ-XXX format
+- Renames tests to `{SpecName}.REQ-XXX` format
+- Can delegate to sub-agents for higher quality
+
+### Commit Enforcement
+
+The commit gate (`npm run commit`) validates:
+1. Changed spec REQs have corresponding test changes
+2. Test names follow `{SpecName}.REQ-XXX` format
+3. Similar to code-test coverage enforcement
+
 ## Testing
 
 ### Test Suite
@@ -667,3 +727,25 @@ When addressing code review feedback on testable code:
 2. Verify the test fails, then implement the fix
 3. This ensures every review item becomes a permanent regression test
 4. Exempt: doc changes, YAML/config changes, comment-only changes
+
+## Agent Delegation & Token Preservation
+
+**Always delegate work to sub-agents** to preserve main conversation context tokens:
+
+- **Commands, builds, tests, linting** → use `task` agent (returns brief success/full failure output)
+- **Codebase exploration, file searching, understanding code** → use `explore` agent (returns focused answers)
+- **Complex multi-step implementation** → use `general-purpose` agent (full toolset in separate context)
+- **Code review** → use `code-review` or `code-reviewer` agent
+
+**Rules:**
+- Never run `npm test`, `npm run build`, `npx vitest`, or similar commands directly in the main context — always delegate to a `task` agent
+- Never explore the codebase with multiple grep/glob/view calls when an `explore` agent can answer the question in one call
+- Run multiple independent sub-agents in parallel when possible
+- Only use direct tool calls in the main context for small surgical edits (edit/create) or quick single-file reads
+
+## Git Workflow
+
+- **Commit often** with small, focused changes. Each commit should be a single logical unit (one fix, one feature, one refactor).
+- Don't batch multiple unrelated changes into one large commit.
+- Use `npm run commit -- -m "message"` (direct `git commit` is blocked by pre-commit hook).
+- Write clear, concise commit messages describing what changed and why.

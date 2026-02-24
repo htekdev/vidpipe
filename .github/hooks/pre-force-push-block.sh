@@ -14,7 +14,7 @@ if [ -z "$COMMAND" ]; then
     exit 0
 fi
 
-if ! echo "$COMMAND" | grep -qE 'git\s+push\s+.*(--force|--force-with-lease|-f\b)'; then
+if ! echo "$COMMAND" | grep -qE 'git\s+(--\S+\s+)*push\s+.*(--force|--force-with-lease|-f\b)'; then
     exit 0
 fi
 

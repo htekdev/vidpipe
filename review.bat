@@ -1,4 +1,5 @@
 @echo off
 cd /d C:\Repos\htekdev\video-auto-note-taker
-node dist/index.js review
+call npm run build
+node dist/cli.js review
 pause

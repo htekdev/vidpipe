@@ -2,7 +2,7 @@ import { defineConfig } from 'tsup'
 import { copyFileSync, mkdirSync, readdirSync, statSync } from 'fs'
 
 export default defineConfig({
-  entry: ['src/index.ts'],
+  entry: ['src/L7-app/cli.ts'],
   format: ['esm'],
   target: 'node20',
   platform: 'node',
@@ -22,7 +22,7 @@ export default defineConfig({
   onSuccess: async () => {
     // Copy static assets for review server
     mkdirSync('dist/public', { recursive: true })
-    copyFileSync('src/review/public/index.html', 'dist/public/index.html')
+    copyFileSync('src/L7-app/review/public/index.html', 'dist/public/index.html')
     // Copy fonts for caption burning
     mkdirSync('dist/fonts', { recursive: true })
     const fontFiles = readdirSync('assets/fonts').filter(f => statSync(`assets/fonts/${f}`).isFile())
