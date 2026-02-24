@@ -22,16 +22,16 @@ jobs:
       semver: ${{ steps.gitversion.outputs.semVer }}
       majorMinorPatch: ${{ steps.gitversion.outputs.majorMinorPatch }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: gittools/actions/gitversion/setup@a94a3b62ee018ef5346cb08fd0d63d93811fe691 # v3.0.0
+      - uses: gittools/actions/gitversion/setup@71a79f7569b981036febd9ce5870f87e069928e7 # v4.3.3
         with:
           versionSpec: "6.x"
 
       - id: gitversion
-        uses: gittools/actions/gitversion/execute@a94a3b62ee018ef5346cb08fd0d63d93811fe691 # v3.0.0
+        uses: gittools/actions/gitversion/execute@71a79f7569b981036febd9ce5870f87e069928e7 # v4.3.3
 
   publish:
     needs: version
@@ -41,11 +41,11 @@ jobs:
       contents: write
       id-token: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: npm

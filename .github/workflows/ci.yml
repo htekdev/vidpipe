@@ -16,8 +16,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -30,8 +30,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -55,8 +55,8 @@ jobs:
           - { name: "Integration L7", script: "test:integration:L7:coverage", node: 22, coverage: true, key: "integration-L7" }
           - { name: "E2E", script: "test:e2e:coverage", node: 22, coverage: true, key: "e2e" }
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.tier.node }}
           cache: npm
@@ -66,13 +66,13 @@ jobs:
         run: npm run ${{ matrix.tier.script }} -- --reporter=default --reporter=junit --outputFile.junit=test-results.xml
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: test-results-${{ matrix.tier.name }}
           path: test-results.xml
       - name: Upload coverage
         if: matrix.tier.coverage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-${{ matrix.tier.key }}
           path: coverage/${{ matrix.tier.key }}/
@@ -86,22 +86,22 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download all coverage artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: coverage-*
           path: coverage-artifacts/
 
       - name: Download all test result artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           pattern: test-results-*
           path: test-result-artifacts/
 
       - name: Generate PR comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         with:
           script: |
             const fs = require('fs');
@@ -261,7 +261,7 @@ jobs:
             }
 
       - name: Unit file coverage details
-        uses: davelosert/vitest-coverage-report-action@15b5b41bb7d36796d89f4bf482b09529c53f3446 # v2
+        uses: davelosert/vitest-coverage-report-action@2500dafcee7dd64f85ab689c0b83798a8359770e # v2
         with:
           name: 'Unit'
           json-summary-path: coverage-artifacts/coverage-unit/coverage-summary.json
@@ -275,7 +275,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high
