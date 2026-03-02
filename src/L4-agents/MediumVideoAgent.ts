@@ -102,7 +102,30 @@ Medium clips still compete for attention — grab viewers in the first 5 seconds
 5. Example: content is [300s–420s], best moment is [410s–415s] → segments: [{start: 410, end: 415}, {start: 300, end: 410}]
 6. Provide a \`hook\` text (≤60 chars) — burned as a visual text overlay during the hook segment
 
-If the clip truly has no standout moment, keep segments chronological and just provide hook text.`
+**CRITICAL — Hook segment quality rules:**
+- The hook segment MUST start and end on a **complete sentence or clause boundary** — never cut mid-sentence or mid-word.
+- The hook MUST be a **self-contained, complete thought** — a viewer should understand it without any prior context from the video.
+- The hook MUST be a complete statement, question, or exclamation — never a sentence fragment.
+- Both the hook segment AND the remaining segment must start/end cleanly — no cutting the speaker off mid-thought in either part.
+
+**Good hook examples:**
+- ✅ "You need to STOP doing this right now." (complete statement, punchy)
+- ✅ "This one change saved me 3 hours a day." (complete, curiosity-inducing)
+- ✅ "That's when everything broke." (complete sentence, creates tension)
+
+**Bad hook examples (NEVER do these):**
+- ❌ "...and that's why you should—" (cut off mid-sentence)
+- ❌ "So what I was saying is" (fragment, needs prior context)
+- ❌ "—really important to understand that" (starts mid-sentence)
+- ❌ Starting a hook in the middle of someone explaining a concept (viewer has no idea what's being discussed)
+
+**What makes a good hook moment:**
+- A bold claim or controversial statement
+- An emotional reaction or exclamation
+- A surprising result or reveal
+- A punchy one-liner that makes no sense without context (creates curiosity)
+
+If no moment qualifies as a clean, complete-thought hook, **keep segments in chronological order** and just provide hook text. A chronological clip is better than one with a jarring, confusing hook.`
 
 // ── JSON Schema for the add_medium_clips tool ───────────────────────────────
 

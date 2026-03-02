@@ -61,6 +61,20 @@ describe.skipIf(!ffmpegOk)('Caption Burn Integration', () => {
       const mediumSize = parseInt(mediumStyleMatch![1], 10);
       expect(mediumSize).toBeLessThan(defaultSize);
     });
+
+    it('active word size bump is subtle (under 10% increase)', () => {
+      const ass = generateStyledASS(transcript, 'shorts');
+      // Active word uses \fs62, base uses \fs58 — ~7% bump (not 24%)
+      expect(ass).toContain('\\fs62');
+      expect(ass).toContain('\\fs58');
+      expect(ass).not.toContain('\\fs72');  // old aggressive size
+    });
+
+    it('portrait style does not use scale pop animation', () => {
+      const ass = generateStyledASS(transcript, 'portrait');
+      expect(ass).not.toContain('\\fscx130');
+      expect(ass).not.toContain('\\fscy130');
+    });
   });
 
   // ── 2. Caption Burning with real FFmpeg ────────────────────────────────
