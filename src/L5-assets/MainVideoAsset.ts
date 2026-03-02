@@ -31,6 +31,7 @@ import {
   writeTextFile,
 } from '../L1-infra/fileSystem/fileSystem.js'
 import { slugify } from '../L0-pure/text/text.js'
+import { generateSRT, generateVTT, generateStyledASS } from '../L0-pure/captions/captionGenerator.js'
 import { ffprobe, burnCaptions } from '../L4-agents/videoServiceBridge.js'
 import { transcribeVideo, analyzeVideoClipDirection } from '../L4-agents/analysisServiceBridge.js'
 import { removeDeadSilence } from '../L4-agents/SilenceRemovalAgent.js'
@@ -367,6 +368,13 @@ export class MainVideoAsset extends VideoAsset {
 
     if (result.wasEdited) {
       logger.info(`Silence removal completed: ${result.removals.length} segments removed`)
+
+      // Re-transcribe the edited video so captions align with the new timeline
+      const editedVideoFile = { ...videoFile, repoPath: result.editedPath }
+      const editedTranscript = await transcribeVideo(editedVideoFile)
+      await writeJsonFile(this.adjustedTranscriptPath, editedTranscript)
+      logger.info(`Saved edited-video transcript to ${this.adjustedTranscriptPath}`)
+
       return result.editedPath
     }
 
@@ -976,6 +984,48 @@ export class MainVideoAsset extends VideoAsset {
     }
     // Fall back to original transcript
     return this.getTranscript()
+  }
+
+  /**
+   * Override base getCaptions to use the adjusted transcript (post silence-removal)
+   * so that main video captions align with the edited video timeline.
+   */
+  async getCaptions(opts?: AssetOptions): Promise<CaptionFiles> {
+    if (opts?.force) {
+      this.cache.delete('captions')
+    }
+    return this.cached('captions', async () => {
+      const srtPath = join(this.captionsDir, 'captions.srt')
+      const vttPath = join(this.captionsDir, 'captions.vtt')
+      const assPath = join(this.captionsDir, 'captions.ass')
+
+      const [srtExists, vttExists, assExists] = await Promise.all([
+        fileExists(srtPath),
+        fileExists(vttPath),
+        fileExists(assPath),
+      ])
+
+      if (!opts?.force && srtExists && vttExists && assExists) {
+        return { srt: srtPath, vtt: vttPath, ass: assPath }
+      }
+
+      // Use adjusted transcript (aligned to edited video) instead of original
+      const transcript = await this.getAdjustedTranscript()
+
+      await ensureDirectory(this.captionsDir)
+
+      const srt = generateSRT(transcript)
+      const vtt = generateVTT(transcript)
+      const ass = generateStyledASS(transcript)
+
+      await Promise.all([
+        writeTextFile(srtPath, srt),
+        writeTextFile(vttPath, vtt),
+        writeTextFile(assPath, ass),
+      ])
+
+      return { srt: srtPath, vtt: vttPath, ass: assPath }
+    })
   }
 
   // ── VideoFile Conversion ───────────────────────────────────────────────────

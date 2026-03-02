@@ -6,6 +6,9 @@ import { MainVideoAsset } from '../../../L5-assets/MainVideoAsset.js'
 import * as fileSystem from '../../../L1-infra/fileSystem/fileSystem.js'
 import * as videoServiceBridge from '../../../L4-agents/videoServiceBridge.js'
 import * as environment from '../../../L1-infra/config/environment.js'
+import * as analysisServiceBridge from '../../../L4-agents/analysisServiceBridge.js'
+import * as SilenceRemovalAgent from '../../../L4-agents/SilenceRemovalAgent.js'
+import * as captionGenerator from '../../../L0-pure/captions/captionGenerator.js'
 
 vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   fileExists: vi.fn(),
@@ -577,6 +580,155 @@ describe('MainVideoAsset', () => {
         (call) => (call[0] as string).includes('shorts.json'),
       )
       expect(shortsCalls).toHaveLength(2)
+    })
+  })
+
+  describe('getEditedVideo() transcript alignment', () => {
+    it('re-transcribes the edited video and saves transcript-edited.json', async () => {
+      const editedTranscript = {
+        text: 'edited transcript',
+        segments: [{ id: 0, start: 0, end: 5, text: 'edited', words: [] }],
+        words: [{ word: 'edited', start: 0, end: 1 }],
+        language: 'en',
+        duration: 80,
+      }
+
+      vi.mocked(fileSystem.fileExists)
+        .mockResolvedValueOnce(true)  // load: dir exists
+        .mockResolvedValueOnce(true)  // load: video exists
+        .mockResolvedValueOnce(false) // edited video does not exist
+        .mockResolvedValueOnce(true)  // transcript exists
+
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
+        text: 'original transcript',
+        segments: [],
+        words: [],
+        language: 'en',
+        duration: 100,
+      })
+
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue({
+        format: { duration: 100, size: 1000 },
+        streams: [{ codec_type: 'video', width: 1920, height: 1080 }],
+      } as any)
+      vi.mocked(fileSystem.getFileStats).mockResolvedValue({
+        size: 1000,
+        mtime: new Date(),
+      } as any)
+
+      vi.mocked(SilenceRemovalAgent.removeDeadSilence).mockResolvedValueOnce({
+        editedPath: '/recordings/test/test-edited.mp4',
+        removals: [{ start: 10, end: 30 }],
+        keepSegments: [{ start: 0, end: 10 }, { start: 30, end: 100 }],
+        wasEdited: true,
+      })
+
+      vi.mocked(analysisServiceBridge.transcribeVideo).mockResolvedValueOnce(editedTranscript)
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+      const result = await asset.getEditedVideo()
+
+      expect(result).toBe('/recordings/test/test-edited.mp4')
+      expect(analysisServiceBridge.transcribeVideo).toHaveBeenCalledWith(
+        expect.objectContaining({ repoPath: '/recordings/test/test-edited.mp4' }),
+      )
+      expect(fileSystem.writeJsonFile).toHaveBeenCalledWith(
+        expect.stringMatching(/transcript-edited\.json$/),
+        editedTranscript,
+      )
+    })
+
+    it('does not re-transcribe when no silence was removed', async () => {
+      vi.mocked(fileSystem.fileExists)
+        .mockResolvedValueOnce(true)  // load: dir exists
+        .mockResolvedValueOnce(true)  // load: video exists
+        .mockResolvedValueOnce(false) // edited video does not exist
+        .mockResolvedValueOnce(true)  // transcript exists
+
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
+        text: 'original',
+        segments: [],
+        words: [],
+        language: 'en',
+        duration: 100,
+      })
+
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue({
+        format: { duration: 100, size: 1000 },
+        streams: [{ codec_type: 'video', width: 1920, height: 1080 }],
+      } as any)
+      vi.mocked(fileSystem.getFileStats).mockResolvedValue({
+        size: 1000,
+        mtime: new Date(),
+      } as any)
+
+      vi.mocked(SilenceRemovalAgent.removeDeadSilence).mockResolvedValueOnce({
+        editedPath: '/recordings/test/test.mp4',
+        removals: [],
+        keepSegments: [],
+        wasEdited: false,
+      })
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+      await asset.getEditedVideo()
+
+      expect(analysisServiceBridge.transcribeVideo).not.toHaveBeenCalled()
+      expect(fileSystem.writeJsonFile).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('getCaptions() uses adjusted transcript', () => {
+    it('uses adjusted transcript for caption generation when it exists', async () => {
+      const adjustedTranscript = {
+        text: 'adjusted text',
+        segments: [{ id: 0, start: 0, end: 5, text: 'adjusted', words: [] }],
+        words: [{ word: 'adjusted', start: 0, end: 1 }],
+        language: 'en',
+        duration: 80,
+      }
+
+      vi.mocked(fileSystem.fileExists)
+        .mockResolvedValueOnce(true)  // load: dir
+        .mockResolvedValueOnce(true)  // load: video
+        .mockResolvedValueOnce(false) // srt
+        .mockResolvedValueOnce(false) // vtt
+        .mockResolvedValueOnce(false) // ass
+        .mockResolvedValueOnce(true)  // adjusted transcript exists
+
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue(adjustedTranscript)
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+      await asset.getCaptions()
+
+      expect(captionGenerator.generateSRT).toHaveBeenCalledWith(adjustedTranscript)
+      expect(captionGenerator.generateVTT).toHaveBeenCalledWith(adjustedTranscript)
+      expect(captionGenerator.generateStyledASS).toHaveBeenCalledWith(adjustedTranscript)
+    })
+
+    it('falls back to original transcript when adjusted does not exist', async () => {
+      const originalTranscript = {
+        text: 'original text',
+        segments: [],
+        words: [],
+        language: 'en',
+        duration: 100,
+      }
+
+      vi.mocked(fileSystem.fileExists)
+        .mockResolvedValueOnce(true)  // load: dir
+        .mockResolvedValueOnce(true)  // load: video
+        .mockResolvedValueOnce(false) // srt
+        .mockResolvedValueOnce(false) // vtt
+        .mockResolvedValueOnce(false) // ass
+        .mockResolvedValueOnce(false) // adjusted transcript does NOT exist
+        .mockResolvedValueOnce(true)  // original transcript exists
+
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue(originalTranscript)
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+      await asset.getCaptions()
+
+      expect(captionGenerator.generateSRT).toHaveBeenCalledWith(originalTranscript)
     })
   })
 })
