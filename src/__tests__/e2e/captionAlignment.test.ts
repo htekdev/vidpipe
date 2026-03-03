@@ -141,4 +141,28 @@ describe('Caption alignment with edited transcript', () => {
     expect(srt).not.toContain('00:00:20')
     expect(srt).toContain('00:00:05')
   })
+
+  it('original transcript is not overwritten by second transcription call', async () => {
+    // Simulates the bug: if transcribeVideo() auto-saved, calling it twice
+    // with the same slug would overwrite the original transcript.json.
+    // With the fix, transcribeVideo() does NOT write — callers save explicitly.
+    const videoDir = join(tmpDir, 'no-overwrite-test')
+    await mkdir(videoDir, { recursive: true })
+
+    const originalPath = join(videoDir, 'transcript.json')
+    await writeFile(originalPath, JSON.stringify(originalTranscript))
+
+    // After writing, the original should still be intact
+    const loaded = JSON.parse(await readFile(originalPath, 'utf-8')) as Transcript
+    expect(loaded.duration).toBe(50)
+    expect(loaded.segments[1].start).toBe(20)
+
+    // Writing edited separately should not affect original
+    const editedPath = join(videoDir, 'transcript-edited.json')
+    await writeFile(editedPath, JSON.stringify(editedTranscript))
+
+    const reloaded = JSON.parse(await readFile(originalPath, 'utf-8')) as Transcript
+    expect(reloaded.duration).toBe(50) // original untouched
+    expect(reloaded.segments[1].start).toBe(20) // still original timestamps
+  })
 })

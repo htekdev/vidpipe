@@ -262,6 +262,33 @@ describe('MainVideoAsset', () => {
     })
   })
 
+  describe('getTranscript()', () => {
+    it('saves transcript to disk when generating via transcription service', async () => {
+      vi.mocked(fileSystem.fileExists)
+        .mockResolvedValueOnce(true)   // load: dir
+        .mockResolvedValueOnce(true)   // load: video
+        .mockResolvedValueOnce(false)  // transcript.json does not exist — triggers generation
+
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue({
+        format: { duration: 100, size: 1000 },
+        streams: [{ codec_type: 'video', width: 1920, height: 1080 }],
+      } as any)
+      vi.mocked(fileSystem.getFileStats).mockResolvedValue({
+        size: 1000, mtime: new Date(),
+      } as any)
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+      const transcript = await asset.getTranscript()
+
+      expect(transcript.text).toBe('test transcript')
+      // Caller (MainVideoAsset) saves to transcriptPath
+      expect(fileSystem.writeJsonFile).toHaveBeenCalledWith(
+        expect.stringMatching(/recordings[/\\]test[/\\]transcript\.json$/),
+        expect.objectContaining({ text: 'test transcript' }),
+      )
+    })
+  })
+
   describe('getEditedVideo()', () => {
     it('returns edited video path when exists', async () => {
       vi.mocked(fileSystem.fileExists).mockResolvedValue(true)

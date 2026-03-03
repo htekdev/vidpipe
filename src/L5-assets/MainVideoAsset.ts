@@ -331,6 +331,7 @@ export class MainVideoAsset extends VideoAsset {
       // Generate via transcription service
       const videoFile = await this.toVideoFile()
       const transcript = await transcribeVideo(videoFile)
+      await writeJsonFile(this.transcriptPath, transcript)
       logger.info(`Generated transcript: ${transcript.segments.length} segments`)
       return transcript
     })
