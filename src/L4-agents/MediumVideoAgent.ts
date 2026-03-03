@@ -2,7 +2,7 @@ import type { ToolWithHandler } from '../L3-services/llm/providerFactory.js'
 import { BaseAgent } from './BaseAgent'
 import { VideoFile, Transcript, MediumClip, MediumSegment } from '../L0-pure/types/index'
 import { extractClip, extractCompositeClipWithTransitions, burnCaptions } from '../L3-services/videoOperations/videoOperations.js'
-import { generateStyledASSForSegment, generateStyledASSForComposite, generateMediumASSWithHook, generateMediumASSWithHookComposite } from '../L0-pure/captions/captionGenerator'
+import { generateStyledASSForSegment, generateStyledASSForComposite } from '../L0-pure/captions/captionGenerator'
 
 import { generateId } from '../L0-pure/text/text.js'
 import { slugify } from '../L0-pure/text/text.js'
@@ -69,11 +69,19 @@ Scale your output by video duration:
 3. Prefer natural sentence and paragraph boundaries for clean entry/exit points.
 4. Each clip must be self-contained — a viewer with no other context should understand and get value from the clip.
 5. Every clip needs a descriptive title (5–12 words) and a topic label.
-6. For compilations, specify segments in the order they should appear in the final clip (which may differ from chronological order).
+6. For compilations, specify segments in **chronological order** (earliest timestamp first).
 7. Tags should be lowercase, no hashes, 3–6 per clip.
 8. A 1-second buffer is automatically added around each segment boundary.
-9. Each clip needs a hook — the opening line or concept that draws viewers in.
+9. Each clip needs a hook — a compelling one-liner that captures the core message (used for social posts, NOT video reordering).
 10. Avoid significant overlap with content that would work better as a short (punchy, viral, single-moment).
+
+## Coverage is paramount
+
+Your #1 job is **thorough coverage**. After your first pass, look at what you DIDN'T clip:
+- Calculate the total seconds you've covered vs. the video duration. Aim for **70%+ coverage**.
+- Identify every gap longer than 2 minutes — is there a complete topic arc hiding there?
+- A 20-minute video with only 5 minutes of clips is a failure. Push harder.
+- It's better to have a clip that's "decent" than to leave a complete topic unclipped.
 
 ## Differences from shorts
 
@@ -89,43 +97,12 @@ You may receive AI-generated clip direction with suggested medium clips. Use the
 - You may also find good clips NOT in the suggestions — always analyze the full transcript
 - Pay special attention to suggested hooks and topic arcs — they come from multimodal analysis
 
-## Hook-First Ordering (CRITICAL for viewer retention)
-Medium clips still compete for attention — grab viewers in the first 5 seconds or lose them.
+## Hook-First Ordering — DISABLED for medium clips
+Medium clips are NOT hook-first. Unlike shorts, medium clips should play in **strict chronological order**.
 
-**The pattern:** If a clip's content flows like [A, B, C, D, ..., Y, Z], the final clip should play as [Z, A, B, C, ..., Y] — the most exciting moment moved to the front, then the rest plays from the beginning up to that point. The hook does NOT repeat.
+**Segments must be listed in chronological order** (earliest timestamp first). This ensures a clean, professional viewing experience where the viewer follows the speaker's natural train of thought from start to finish.
 
-**How to implement it:**
-1. Plan the clip's content as normal (the full story: A→Z)
-2. Identify the single most exciting 2–5 second moment — the payoff, climax, or bold statement
-3. Add that moment as the FIRST segment
-4. Then add the remaining content — from the beginning up to where the hook starts
-5. Example: content is [300s–420s], best moment is [410s–415s] → segments: [{start: 410, end: 415}, {start: 300, end: 410}]
-6. Provide a \`hook\` text (≤60 chars) — burned as a visual text overlay during the hook segment
-
-**CRITICAL — Hook segment quality rules:**
-- The hook segment MUST start and end on a **complete sentence or clause boundary** — never cut mid-sentence or mid-word.
-- The hook MUST be a **self-contained, complete thought** — a viewer should understand it without any prior context from the video.
-- The hook MUST be a complete statement, question, or exclamation — never a sentence fragment.
-- Both the hook segment AND the remaining segment must start/end cleanly — no cutting the speaker off mid-thought in either part.
-
-**Good hook examples:**
-- ✅ "You need to STOP doing this right now." (complete statement, punchy)
-- ✅ "This one change saved me 3 hours a day." (complete, curiosity-inducing)
-- ✅ "That's when everything broke." (complete sentence, creates tension)
-
-**Bad hook examples (NEVER do these):**
-- ❌ "...and that's why you should—" (cut off mid-sentence)
-- ❌ "So what I was saying is" (fragment, needs prior context)
-- ❌ "—really important to understand that" (starts mid-sentence)
-- ❌ Starting a hook in the middle of someone explaining a concept (viewer has no idea what's being discussed)
-
-**What makes a good hook moment:**
-- A bold claim or controversial statement
-- An emotional reaction or exclamation
-- A surprising result or reveal
-- A punchy one-liner that makes no sense without context (creates curiosity)
-
-If no moment qualifies as a clean, complete-thought hook, **keep segments in chronological order** and just provide hook text. A chronological clip is better than one with a jarring, confusing hook.`
+Provide a \`hook\` field with a compelling one-liner (≤60 chars) that captures the clip's core message — this is used for social media posts and descriptions, NOT for video reordering.`
 
 // ── JSON Schema for the add_medium_clips tool ───────────────────────────────
 
@@ -357,16 +334,12 @@ export async function generateMediumClips(
         await extractCompositeClipWithTransitions(video.repoPath, segments, outputPath)
       }
 
-      // Generate ASS captions with medium style (smaller font, bottom-positioned)
+      // Generate ASS captions with medium style (chronological, no hook overlay)
       let captionedPath: string | undefined
       try {
-        const assContent = plan.hook
-          ? (segments.length === 1
-              ? generateMediumASSWithHook(transcript, plan.hook, segments[0].start, segments[0].end, 1.0)
-              : generateMediumASSWithHookComposite(transcript, segments, plan.hook, 1.0))
-          : (segments.length === 1
-              ? generateStyledASSForSegment(transcript, segments[0].start, segments[0].end, 1.0, 'medium')
-              : generateStyledASSForComposite(transcript, segments, 1.0, 'medium'))
+        const assContent = segments.length === 1
+          ? generateStyledASSForSegment(transcript, segments[0].start, segments[0].end, 1.0, 'medium')
+          : generateStyledASSForComposite(transcript, segments, 1.0, 'medium')
 
         const assPath = join(clipsDir, `${clipSlug}.ass`)
         await writeTextFile(assPath, assContent)

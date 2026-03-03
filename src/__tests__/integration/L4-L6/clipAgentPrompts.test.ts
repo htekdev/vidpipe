@@ -79,10 +79,11 @@ describe('L4-L6 Integration: clip agent hook-first prompt quality', () => {
     expect(capturedPrompt).toContain('self-contained, complete thought')
   })
 
-  test('MediumVideoAgent prompt requires sentence boundary hooks', async () => {
+  test('MediumVideoAgent prompt enforces chronological order (no hook-first)', async () => {
     const { generateMediumClips } = await import('../../../L4-agents/MediumVideoAgent.js')
     await generateMediumClips(mockVideo, mockTranscript)
-    expect(capturedPrompt).toContain('sentence or clause boundary')
-    expect(capturedPrompt).toContain('self-contained, complete thought')
+    expect(capturedPrompt).toContain('strict chronological order')
+    expect(capturedPrompt).toContain('NOT hook-first')
+    expect(capturedPrompt).toContain('Coverage is paramount')
   })
 })

@@ -6,6 +6,7 @@ import type { Tool } from '@github/copilot-sdk';
 const mockState = vi.hoisted(() => {
   const state = {
     capturedTools: [] as any[],
+    capturedSystemPrompt: '' as string,
     mockSession: {
       sendAndWait: async () => ({ data: { content: '' } }),
       on: () => {},
@@ -23,6 +24,7 @@ vi.mock('@github/copilot-sdk', () => ({
       createSession: async (opts: any) => {
         mockState.capturedTools.length = 0;
         mockState.capturedTools.push(...(opts.tools || []));
+        mockState.capturedSystemPrompt = opts.systemMessage?.content || opts.systemPrompt || '';
         return mockState.mockSession;
       },
       stop: async () => {},
@@ -574,12 +576,15 @@ describe('Real MediumVideoAgent', () => {
     expect(reviewResult).toContain('Deep Dive into Testing');
   });
 
-  it('system prompt enforces sentence boundary rules for hooks', async () => {
+  it('system prompt enforces chronological order and coverage', async () => {
     const { generateMediumClips } = await import('../../../L4-agents/MediumVideoAgent.js');
     await generateMediumClips(mockVideo, mockTranscriptWithWords);
 
-    const addTool = findCapturedTool('add_medium_clips');
-    expect(addTool).toBeDefined();
+    // Verify the captured system prompt contains the key requirements
+    const systemPrompt = mockState.capturedSystemPrompt;
+    expect(systemPrompt).toContain('strict chronological order');
+    expect(systemPrompt).toContain('NOT hook-first');
+    expect(systemPrompt).toContain('Coverage is paramount');
   });
 });
 
