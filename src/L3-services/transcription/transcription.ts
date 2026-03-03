@@ -1,5 +1,5 @@
 import { join } from '../../L1-infra/paths/paths.js'
-import { getFileStats, writeJsonFile, ensureDirectory, removeFile } from '../../L1-infra/fileSystem/fileSystem.js'
+import { getFileStats, ensureDirectory, removeFile } from '../../L1-infra/fileSystem/fileSystem.js'
 import { extractAudio, splitAudioIntoChunks } from '../../L2-clients/ffmpeg/audioExtraction.js'
 import { transcribeAudio } from '../../L2-clients/whisper/whisperClient.js'
 import type { VideoFile, Transcript, Segment, Word } from '../../L0-pure/types/index'
@@ -49,18 +49,11 @@ export async function transcribeVideo(video: VideoFile): Promise<Transcript> {
     }
   }
 
-  // 4. Save transcript JSON
-  const transcriptDir = join(config.OUTPUT_DIR, video.slug)
-  await ensureDirectory(transcriptDir)
-  const transcriptPath = join(transcriptDir, 'transcript.json')
-  await writeJsonFile(transcriptPath, transcript)
-  logger.info(`Transcript saved: ${transcriptPath}`)
-
-  // 5. Clean up temp audio file
+  // 4. Clean up temp audio file
   await removeFile(mp3Path).catch(() => {})
   logger.info(`Cleaned up temp file: ${mp3Path}`)
 
-  // 6. Return the transcript
+  // 5. Return the transcript
   logger.info(
     `Transcription complete for "${video.slug}" — ` +
     `${transcript.segments.length} segments, ${transcript.words.length} words`
