@@ -1,6 +1,7 @@
 import type { ToolWithHandler } from '../L3-services/llm/providerFactory.js'
 import { BaseAgent } from './BaseAgent'
 import { VideoFile, Transcript, MediumClip, MediumSegment } from '../L0-pure/types/index'
+import type { HookType, EmotionalTrigger, MediumNarrativeStructure, MediumClipType } from '../L0-pure/types/index'
 import { extractClip, extractCompositeClipWithTransitions, burnCaptions } from '../L3-services/videoOperations/videoOperations.js'
 import { generateStyledASSForSegment, generateStyledASSForComposite } from '../L0-pure/captions/captionGenerator'
 
@@ -26,83 +27,178 @@ interface PlannedMediumClip {
   totalDuration: number
   hook: string
   topic: string
+  hookType: string
+  emotionalTrigger: string
+  viralScore: number
+  narrativeStructure: string
+  clipType: string
+  saveReason: string
+  microHooks: string[]
 }
 
 // ── System prompt ───────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a medium-form video content strategist. Your job is to **exhaustively** analyze a video transcript with word-level timestamps and extract every viable 1–3 minute segment as a standalone medium-form clip.
+const SYSTEM_PROMPT = `You are a medium-form video content strategist. Your job is to analyze a video transcript with word-level timestamps and extract the **most valuable, engaging 1-3 minute segments** as standalone medium-form clips.
+
+## Core Philosophy: Value Density Over Coverage
+
+Your goal is NOT to cover every minute of the video. Your goal is to find segments where the speaker delivers **concentrated value** — complete ideas, clear tutorials, compelling stories, or insightful analysis that viewers would **save to reference later** or **share because it changed their thinking**.
+
+Platform algorithms heavily weight saves and shares over likes:
+- **Saves** signal "I'll come back to this" — the highest-intent engagement action
+- **Shares** signal "Someone I know needs to see this" — the strongest distribution trigger
+- **Comments** signal "I have something to say about this" — drives conversation
+- **Likes** are passive approval — lowest algorithmic value
+
+Design every clip to maximize saves and shares.
 
 ## Your workflow
 1. Read the transcript and note the total duration.
-2. Work through the transcript **section by section** (roughly 5–8 minute chunks). For each chunk, identify every complete topic or narrative arc.
-3. Call **add_medium_clips** for each batch of clips you find. You can call it as many times as needed.
-4. After your first pass, call **review_medium_clips** to see everything you've planned so far.
-5. Review for gaps: are there complete topics you missed? Could non-contiguous mentions of the same theme be compiled? Is there a tutorial segment that stands alone?
-6. Add any additional clips you find.
-7. When you are confident you've exhausted all opportunities, call **finalize_medium_clips**.
+2. Work through the transcript **section by section** (roughly 5-8 minute chunks). For each chunk, identify segments with genuine standalone value.
+3. For each potential clip, score it using the Viral Score Framework (see below). **Only extract clips scoring 10 or higher.**
+4. Call **add_medium_clips** for each batch of clips you find. You can call it as many times as needed.
+5. After your first pass, call **review_medium_clips** to see everything you've planned so far.
+6. Review critically: Does each clip deliver clear, standalone value? Would someone save it? Could segments be combined into something stronger?
+7. Drop any clip you're not confident about. Fewer, stronger clips beat many mediocre ones.
+8. When you are confident every remaining clip has genuine value, call **finalize_medium_clips**.
 
-## Target quantity
-Scale your output by video duration:
-- **~1 medium clip per 5–8 minutes** of video content.
-- A 10-minute video → 1–2 clips. A 30-minute video → 4–6 clips. A 60-minute video → 8–12 clips.
-- These are guidelines, not hard caps — if the content is rich, find more.
-- **Never stop at 2–4 clips for a long video.** Your job is to be thorough.
+## Viral Score Framework (rate each factor 1-5, then calculate)
 
-## What to look for
+\`\`\`
+Viral Score = (Hook Strength × 3) + (Emotional Intensity × 2) + 
+              (Shareability × 3) + (Completion Likelihood × 2) + 
+              (Replay Potential × 2)
 
-- **Complete topics** — a subject is introduced, explored, and concluded
-- **Narrative arcs** — problem → solution → result; question → exploration → insight
-- **Educational deep dives** — clear, thorough explanations of complex topics
-- **Compelling stories** — anecdotes with setup, tension, and resolution
-- **Strong arguments** — claim → evidence → implication sequences
-- **Topic compilations** — multiple brief mentions of one theme across the video that can be compiled into a cohesive 1–3 minute segment. **Actively look for these** — they often make excellent content.
+Maximum score: 60  →  Normalized to 1-20 scale (divide by 3)
+Minimum to extract: 10/20 (higher bar than shorts — medium clips cost more to produce)
+\`\`\`
 
-## Clip types
+| Factor | 1 (Weak) | 3 (Moderate) | 5 (Strong) |
+|--------|----------|--------------|------------|
+| **Hook Strength** | Slow start, no clear value promise | Decent opening but predictable | Cold open with result/transformation, strong curiosity gap |
+| **Emotional Intensity** | Neutral, lecture-like delivery | Engaged but flat pacing | Genuine passion, escalating energy, vulnerability, or humor |
+| **Shareability** | Niche and theoretical | "Good info" but not shareable | "My coworker/friend NEEDS to see this" |
+| **Completion Likelihood** | No narrative arc, viewer can leave anytime | Has a point but meanders | Clear open loop → structured payoff, viewer must reach the end |
+| **Replay Potential** | One-time information dump | Worth bookmarking | Dense with detail worth rewatching, surprising insights throughout |
 
-- **Deep Dive** — a single contiguous section (1–3 min) covering one topic in depth
-- **Compilation** — multiple non-contiguous segments stitched together around a single theme or narrative thread (1–3 min total)
+## Clip types (classify every clip)
 
-## Rules
+| Type | Pattern | Best For |
+|------|---------|----------|
+| **deep-dive** | Single topic explored thoroughly with multiple angles | Complex explanations, analysis |
+| **tutorial** | Step-by-step instruction with clear outcome | How-to content, demonstrations |
+| **story-arc** | Setup → complication → climax → resolution | Anecdotes, case studies, experiences |
+| **debate** | "X vs Y" with evidence and clear winner | Comparisons, opinionated takes |
+| **problem-solution** | Problem defined → explored → solved | Troubleshooting, advice, recommendations |
 
-1. Each clip must be 60–180 seconds total duration.
-2. Timestamps must align to word boundaries from the transcript.
-3. Prefer natural sentence and paragraph boundaries for clean entry/exit points.
-4. Each clip must be self-contained — a viewer with no other context should understand and get value from the clip.
-5. Every clip needs a descriptive title (5–12 words) and a topic label.
-6. For compilations, specify segments in **chronological order** (earliest timestamp first).
-7. Tags should be lowercase, no hashes, 3–6 per clip.
-8. A 1-second buffer is automatically added around each segment boundary.
-9. Each clip needs a hook — a compelling one-liner that captures the core message (used for social posts, NOT video reordering).
-10. Avoid significant overlap with content that would work better as a short (punchy, viral, single-moment).
+## Hook architecture (first 3-5 seconds decide everything)
 
-## Coverage is paramount
+Medium clips have slightly more hook time than shorts (3-5 seconds vs 1-3 seconds), but the principle is the same: **front-load the value promise**.
 
-Your #1 job is **thorough coverage**. After your first pass, look at what you DIDN'T clip:
-- Calculate the total seconds you've covered vs. the video duration. Aim for **70%+ coverage**.
-- Identify every gap longer than 2 minutes — is there a complete topic arc hiding there?
-- A 20-minute video with only 5 minutes of clips is a failure. Push harder.
-- It's better to have a clip that's "decent" than to leave a complete topic unclipped.
+### Hook types (classify every clip)
+
+| Hook Type | Pattern | Best For |
+|-----------|---------|----------|
+| **cold-open** | Start with the result/conclusion, then explain how you got there | Tutorials, transformations, case studies |
+| **curiosity-gap** | "The one thing that changed everything about how I..." | Deep dives, insights, lessons learned |
+| **contradiction** | "Everyone says X, but here's what actually works" | Debate clips, myth-busting |
+| **result-first** | Show the outcome immediately, then walk through the process | Before/after, demonstrations |
+| **bold-claim** | "This is the single most important thing about X" | Authority content, strong opinions |
+| **question** | "Have you ever wondered why...?" | Explorations, investigations |
+
+### Cold Open Structure for Medium Clips
+
+Unlike shorts (which reorder segments), medium clips should **start with a verbal hook** that front-loads the payoff promise, then play in chronological order:
+
+1. Identify the most compelling conclusion, result, or insight in the clip
+2. Craft a hook that teases this payoff in the first 3-5 seconds
+3. Structure the remaining clip to build toward that payoff naturally
+4. The hook is the \`hook\` text field — it appears as text overlay during the opening
+
+## Narrative structures (classify every clip)
+
+| Structure | Pattern | When to use |
+|-----------|---------|-------------|
+| **open-loop-steps-payoff** | Tease outcome → deliver step-by-step → prove it | Tutorials, how-to, demonstrations |
+| **problem-deepdive-solution** | Define problem → explore thoroughly → resolve | Troubleshooting, advice, analysis |
+| **story-arc** | Setup → rising tension → climax → resolution | Case studies, experiences, anecdotes |
+| **debate-comparison** | Frame the question → present both sides → verdict | Opinions, tool comparisons, trade-offs |
+| **tutorial-micropayoffs** | Step 1 (mini-payoff) → Step 2 (mini-payoff) → final result | Multi-step processes, recipes, workflows |
+
+## Micro-hooks: Retention throughout the clip (CRITICAL for medium clips)
+
+Medium clips are 1-3 minutes — viewers need fresh reasons to keep watching every 15-20 seconds. Plan **micro-hooks** at regular intervals:
+
+- **Every 15-20 seconds**, there should be a new information beat, mini-reveal, or energy shift
+- These are NOT just topic transitions — they are deliberate moments that re-engage attention
+- Examples: surprising data point, contradiction of prior statement, humor, visual transition, "but here's the thing...", escalation of stakes
+
+**Videos with pattern interrupts every 4 seconds average 58% retention vs 41% for static content.** For medium clips, plan at least 3-5 micro-hooks.
+
+Provide a \`microHooks\` array describing each planned retention moment within the clip.
+
+## Emotional triggers (classify every clip)
+
+Identify the PRIMARY emotion driving engagement:
+- **awe** — mind-blowing insight, impressive depth, revelation
+- **humor** — genuine wit, self-deprecation, absurd examples
+- **surprise** — counter-intuitive findings, unexpected conclusions
+- **empathy** — shared struggles, vulnerability, "been there" moments
+- **outrage** — calling out bad practices, exposing misconceptions
+- **practical-value** — actionable steps, time-saving knowledge, "save this for later"
+
+## Duration optimization
+
+- **Sweet spot**: 60-120 seconds (1-2 minutes)
+- **Maximum**: 180 seconds — only if retention quality is exceptional
+- **Under 60 seconds**: Too short for medium format — should be a short instead
+- **Over 120 seconds**: Requires multiple micro-hooks and exceptional pacing
 
 ## Differences from shorts
 
-- Shorts capture *moments*; medium clips capture *complete ideas*.
-- Don't just find the most exciting 60 seconds — find where a topic starts and where it naturally concludes.
-- It's OK if a medium clip has slower pacing — depth and coherence matter more than constant high energy.
-- Look for segments that work as standalone mini-tutorials or explanations.
+- Shorts capture **moments**; medium clips capture **complete ideas**
+- Shorts optimize for **shares** ("send this to someone"); medium clips optimize for **saves** ("I'll reference this later")
+- Shorts use hook-first segment reordering; medium clips use cold-open hooks with **chronological content**
+- Medium clips MUST maintain **strict chronological order** — NOT hook-first reordering
+- Medium clips have room for depth and nuance — don't sacrifice completeness for brevity
+- Medium clips MUST have micro-hooks planned to maintain retention through the full duration
+
+## Compilation opportunities
+
+Compilations (multi-segment clips) work well for medium clips when:
+- Multiple brief discussions of the same theme appear across the video
+- A clear narrative arc can be constructed from non-contiguous segments
+- "Every perspective on X" — collecting viewpoints into a comprehensive take
+
+For compilations, segments must be in chronological order.
+
+## Rules
+
+1. Each clip must be 60-180 seconds total duration.
+2. Timestamps must align to word boundaries from the transcript.
+3. Prefer natural sentence and paragraph boundaries for clean entry/exit points.
+4. Each clip must be self-contained — a viewer with no other context should get value.
+5. Every clip needs a descriptive title (5-12 words) and a topic label.
+6. For compilations, specify segments in **chronological order**.
+7. Tags should be lowercase, no hashes, 3-6 per clip.
+8. A 1-second buffer is automatically added around each segment boundary.
+9. **Minimum viral score of 10/20 to extract.** Medium clips cost more to produce — quality bar is higher.
+10. Every clip MUST have hook, hookType, emotionalTrigger, viralScore, narrativeStructure, clipType, saveReason, and microHooks.
+11. Avoid significant overlap with content that would work better as a short.
+
+## The save test (ask for EVERY clip)
+
+Before adding a clip, ask yourself: **"Would I bookmark this to come back to later?"**
+- If YES → strong clip, add it
+- If "it's informative but not reference-worthy" → score it honestly and only keep if ≥10
+- If NO → drop it or consider if it works better as a short
 
 ## Using Clip Direction
 You may receive AI-generated clip direction with suggested medium clips. Use these as a starting point but make your own decisions:
 - The suggestions are based on visual + audio analysis and may identify narrative arcs you'd miss from transcript alone
 - Feel free to adjust timestamps, combine suggestions, or ignore ones that don't work
 - You may also find good clips NOT in the suggestions — always analyze the full transcript
-- Pay special attention to suggested hooks and topic arcs — they come from multimodal analysis
-
-## Hook-First Ordering — DISABLED for medium clips
-Medium clips are NOT hook-first. Unlike shorts, medium clips should play in **strict chronological order**.
-
-**Segments must be listed in chronological order** (earliest timestamp first). This ensures a clean, professional viewing experience where the viewer follows the speaker's natural train of thought from start to finish.
-
-Provide a \`hook\` field with a compelling one-liner (≤60 chars) that captures the clip's core message — this is used for social media posts and descriptions, NOT for video reordering.`
+- Pay special attention to suggested hooks and topic arcs — they come from multimodal analysis`
 
 // ── JSON Schema for the add_medium_clips tool ───────────────────────────────
 
@@ -124,7 +220,7 @@ const ADD_MEDIUM_CLIPS_SCHEMA = {
           },
           segments: {
             type: 'array',
-            description: 'One or more time segments that compose this clip',
+            description: 'One or more time segments that compose this clip (chronological order)',
             items: {
               type: 'object',
               properties: {
@@ -136,10 +232,43 @@ const ADD_MEDIUM_CLIPS_SCHEMA = {
             },
           },
           totalDuration: { type: 'number', description: 'Total clip duration in seconds (60–180)' },
-          hook: { type: 'string', description: 'Opening hook for the clip' },
+          hook: { type: 'string', description: 'Compelling one-liner (≤60 chars) teasing the clip\'s core value — shown as text overlay during opening' },
           topic: { type: 'string', description: 'Main topic covered in the clip' },
+          hookType: {
+            type: 'string',
+            enum: ['cold-open', 'curiosity-gap', 'contradiction', 'result-first', 'bold-claim', 'question'],
+            description: 'Hook pattern classification — how the opening captures viewer attention',
+          },
+          emotionalTrigger: {
+            type: 'string',
+            enum: ['awe', 'humor', 'surprise', 'empathy', 'outrage', 'practical-value'],
+            description: 'Primary emotional driver that makes this clip engaging',
+          },
+          viralScore: {
+            type: 'number',
+            description: 'Viral potential score (1-20) calculated from Hook Strength×3 + Emotional Intensity×2 + Shareability×3 + Completion Likelihood×2 + Replay Potential×2, then divided by 3',
+          },
+          narrativeStructure: {
+            type: 'string',
+            enum: ['open-loop-steps-payoff', 'problem-deepdive-solution', 'story-arc', 'debate-comparison', 'tutorial-micropayoffs'],
+            description: 'Narrative arc pattern used in this clip',
+          },
+          clipType: {
+            type: 'string',
+            enum: ['deep-dive', 'tutorial', 'story-arc', 'debate', 'problem-solution'],
+            description: 'Content type classification for this clip',
+          },
+          saveReason: {
+            type: 'string',
+            description: 'Why would someone save this to reference later? Be specific.',
+          },
+          microHooks: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Planned retention hooks at ~15-20 second intervals within the clip. Each should describe a specific moment that re-engages viewer attention.',
+          },
         },
-        required: ['title', 'description', 'tags', 'segments', 'totalDuration', 'hook', 'topic'],
+        required: ['title', 'description', 'tags', 'segments', 'totalDuration', 'hook', 'topic', 'hookType', 'emotionalTrigger', 'viralScore', 'narrativeStructure', 'clipType', 'saveReason', 'microHooks'],
       },
     },
   },
@@ -215,10 +344,11 @@ class MediumVideoAgent extends BaseAgent {
         const summary = this.plannedClips.map((c, i) => {
           const totalDur = c.segments.reduce((sum, seg) => sum + (seg.end - seg.start), 0)
           const timeRanges = c.segments.map(seg => `${seg.start.toFixed(1)}s–${seg.end.toFixed(1)}s`).join(', ')
-          const type = c.segments.length > 1 ? 'compilation' : 'deep dive'
-          return `${i + 1}. "${c.title}" (${totalDur.toFixed(1)}s, ${type}) [${timeRanges}]\n   Topic: ${c.topic} | Hook: ${c.hook}\n   ${c.description}`
+          const type = c.segments.length > 1 ? 'compilation' : c.clipType
+          return `${i + 1}. "${c.title}" (${totalDur.toFixed(1)}s, ${type}, score: ${c.viralScore}/20) [${timeRanges}]\n   Hook: ${c.hook} (${c.hookType}) | Emotion: ${c.emotionalTrigger} | Structure: ${c.narrativeStructure}\n   Topic: ${c.topic} | Save reason: ${c.saveReason}\n   Micro-hooks: ${c.microHooks.join(' → ')}`
         }).join('\n')
-        return `## Planned medium clips (${this.plannedClips.length} total)\n\n${summary}\n\nLook for gaps in transcript coverage, missed compilation opportunities, and complete topic arcs you may have overlooked.`
+        const avgScore = this.plannedClips.reduce((sum, c) => sum + c.viralScore, 0) / this.plannedClips.length
+        return `## Planned medium clips (${this.plannedClips.length} total, avg viral score: ${avgScore.toFixed(1)}/20)\n\n${summary}\n\nReview critically:\n- Would YOU save each of these to reference later? Drop any clip scoring below 10.\n- Are the micro-hooks strong enough to maintain retention through the full duration?\n- Could any segments be combined into something stronger?`
       }
 
       case 'finalize_medium_clips': {
@@ -260,10 +390,10 @@ export async function generateMediumClips(
   })
 
   const promptParts = [
-    `Analyze the following transcript (${transcript.duration.toFixed(0)}s total) and plan medium-length clips (1–3 minutes each).\n`,
+    `Analyze the following transcript (${transcript.duration.toFixed(0)}s total) and find the most valuable segments for medium-length clips (1-3 minutes each).\n`,
     `Video: ${video.filename}`,
     `Duration: ${transcript.duration.toFixed(1)}s`,
-    `Target: ~${Math.max(1, Math.round(transcript.duration / 480))}–${Math.max(2, Math.round(transcript.duration / 300))} medium clips (scale by content richness)\n`,
+    `Focus on value density over coverage — only extract clips scoring 10+ on the viral score framework. Every clip must have hook, hookType, emotionalTrigger, viralScore, narrativeStructure, clipType, saveReason, and microHooks.\n`,
     '--- TRANSCRIPT ---\n',
     transcriptLines.join('\n\n'),
     '\n--- END TRANSCRIPT ---',
@@ -357,9 +487,18 @@ export async function generateMediumClips(
       const mdPath = join(clipsDir, `${clipSlug}.md`)
       const mdContent = [
         `# ${plan.title}\n`,
-        `**Topic:** ${plan.topic}\n`,
-        `**Hook:** ${plan.hook}\n`,
+        `**Topic:** ${plan.topic}`,
+        `**Viral Score:** ${plan.viralScore}/20`,
+        `**Hook:** ${plan.hook} (${plan.hookType})`,
+        `**Emotional Trigger:** ${plan.emotionalTrigger}`,
+        `**Narrative Structure:** ${plan.narrativeStructure}`,
+        `**Clip Type:** ${plan.clipType}`,
+        `**Save Reason:** ${plan.saveReason}`,
+        '',
         plan.description,
+        '',
+        '## Micro-Hooks\n',
+        ...plan.microHooks.map((h, i) => `${i + 1}. ${h}`),
         '',
         '## Segments\n',
         ...plan.segments.map(
@@ -384,6 +523,13 @@ export async function generateMediumClips(
         tags: plan.tags,
         hook: plan.hook,
         topic: plan.topic,
+        hookType: plan.hookType as HookType,
+        emotionalTrigger: plan.emotionalTrigger as EmotionalTrigger,
+        viralScore: plan.viralScore,
+        narrativeStructure: plan.narrativeStructure as MediumNarrativeStructure,
+        clipType: plan.clipType as MediumClipType,
+        saveReason: plan.saveReason,
+        microHooks: plan.microHooks,
       })
 
       logger.info(`[MediumVideoAgent] Created medium clip: ${plan.title} (${totalDuration.toFixed(1)}s)`)

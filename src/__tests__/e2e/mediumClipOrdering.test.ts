@@ -11,13 +11,13 @@ import { join } from 'node:path'
 describe('MediumVideoAgent prompt ordering policy', () => {
   let source: string
 
-  it('MediumVideoAgent source enforces chronological order, not hook-first', async () => {
+  it('MediumVideoAgent source enforces chronological order and viral scoring', async () => {
     const agentPath = join(import.meta.dirname, '../../L4-agents/MediumVideoAgent.ts')
     source = await readFile(agentPath, 'utf-8')
 
     expect(source).toContain('strict chronological order')
     expect(source).toContain('NOT hook-first')
-    expect(source).toContain('Coverage is paramount')
+    expect(source).toContain('Viral Score')
     // Should NOT import hook ASS generators
     expect(source).not.toContain('generateMediumASSWithHook')
   })
