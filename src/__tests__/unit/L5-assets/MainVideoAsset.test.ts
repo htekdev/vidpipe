@@ -758,4 +758,86 @@ describe('MainVideoAsset', () => {
       expect(captionGenerator.generateSRT).toHaveBeenCalledWith(originalTranscript)
     })
   })
+  describe('generateShortPostsData() summary context', () => {
+    it('passes summary to generateShortPosts when provided', async () => {
+      const SocialMedia = await import('../../../L4-agents/SocialMediaAgent.js')
+      const mockGenerateShortPosts = vi.mocked(SocialMedia.generateShortPosts)
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.getFileStats).mockResolvedValue({ size: 1000, mtime: Date.now() } as any)
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue({
+        format: { duration: 120, size: 1000 },
+        streams: [{ codec_type: 'video', width: 1920, height: 1080 }],
+      } as any)
+      const asset = await MainVideoAsset.load('/recordings/test')
+      const mockShort = {
+        id: 's1', title: 'Test Short', slug: 'test-short',
+        segments: [{ start: 0, end: 15, description: 'intro' }],
+        totalDuration: 15, outputPath: '/tmp/short.mp4',
+        description: 'A test', tags: ['test'],
+      } as any
+      const mockTranscript = { text: 'Hello', segments: [{ start: 0, end: 10, text: 'Hello' }], words: [] } as any
+      const mockSummary = {
+        title: 'Full Video', overview: 'A comprehensive overview',
+        keyTopics: ['testing'], snapshots: [], markdownPath: '/tmp/README.md',
+      }
+      await asset.generateShortPostsData(mockShort, mockTranscript, undefined, mockSummary)
+      expect(mockGenerateShortPosts).toHaveBeenCalledWith(
+        expect.any(Object), mockShort, mockTranscript, undefined, mockSummary,
+      )
+    })
+    it('works without summary (backward compatible)', async () => {
+      const SocialMedia = await import('../../../L4-agents/SocialMediaAgent.js')
+      const mockGenerateShortPosts = vi.mocked(SocialMedia.generateShortPosts)
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.getFileStats).mockResolvedValue({ size: 1000, mtime: Date.now() } as any)
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue({
+        format: { duration: 120, size: 1000 },
+        streams: [{ codec_type: 'video', width: 1920, height: 1080 }],
+      } as any)
+      const asset = await MainVideoAsset.load('/recordings/test')
+      const mockShort = {
+        id: 's1', title: 'Test Short', slug: 'test-short',
+        segments: [{ start: 0, end: 15, description: 'intro' }],
+        totalDuration: 15, outputPath: '/tmp/short.mp4',
+        description: 'A test', tags: ['test'],
+      } as any
+      const mockTranscript = { text: 'Hello', segments: [{ start: 0, end: 10, text: 'Hello' }], words: [] } as any
+      await asset.generateShortPostsData(mockShort, mockTranscript)
+      expect(mockGenerateShortPosts).toHaveBeenCalledWith(
+        expect.any(Object), mockShort, mockTranscript, undefined, undefined,
+      )
+    })
+    it('generateMediumClipPostsData passes summary through to generateShortPosts', async () => {
+      const SocialMedia = await import('../../../L4-agents/SocialMediaAgent.js')
+      const mockGenerateShortPosts = vi.mocked(SocialMedia.generateShortPosts)
+      mockGenerateShortPosts.mockResolvedValue([])
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.getFileStats).mockResolvedValue({ size: 1000, mtime: Date.now() } as any)
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue({
+        format: { duration: 120, size: 1000 },
+        streams: [{ codec_type: 'video', width: 1920, height: 1080 }],
+      } as any)
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
+        text: 'adjusted', segments: [{ start: 0, end: 10, text: 'adjusted' }], words: [],
+      })
+      const asset = await MainVideoAsset.load('/recordings/test')
+      const mockClip = {
+        id: 'm1', title: 'Medium Clip', slug: 'medium-clip',
+        segments: [{ start: 0, end: 90, description: 'main' }],
+        totalDuration: 90, outputPath: '/tmp/medium.mp4',
+        captionedPath: '/tmp/medium-captioned.mp4',
+        description: 'A medium clip', tags: ['test'],
+        hook: 'Test hook', topic: 'Testing',
+      } as any
+      const mockSummary = {
+        title: 'Full Video', overview: 'Overview text',
+        keyTopics: ['testing'], snapshots: [], markdownPath: '/tmp/README.md',
+      }
+      await asset.generateMediumClipPostsData(mockClip, undefined, mockSummary)
+      expect(mockGenerateShortPosts).toHaveBeenCalledWith(
+        expect.any(Object), expect.objectContaining({ title: 'Medium Clip' }),
+        expect.any(Object), undefined, mockSummary,
+      )
+    })
+  })
 })

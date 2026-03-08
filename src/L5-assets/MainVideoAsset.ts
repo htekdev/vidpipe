@@ -1090,9 +1090,10 @@ export class MainVideoAsset extends VideoAsset {
     short: ShortClip,
     transcript: Transcript,
     modelName?: string,
+    summary?: VideoSummary,
   ): Promise<SocialPost[]> {
     const video = await this.toVideoFile()
-    return generateShortPosts(video, short, transcript, modelName)
+    return generateShortPosts(video, short, transcript, modelName, summary)
   }
 
   /**
@@ -1103,6 +1104,7 @@ export class MainVideoAsset extends VideoAsset {
   async generateMediumClipPostsData(
     clip: MediumClip,
     modelName?: string,
+    summary?: VideoSummary,
   ): Promise<SocialPost[]> {
     const transcript = await this.getAdjustedTranscript()
     const asShortClip: ShortClip = {
@@ -1116,7 +1118,7 @@ export class MainVideoAsset extends VideoAsset {
       description: clip.description,
       tags: clip.tags,
     }
-    const posts = await this.generateShortPostsData(asShortClip, transcript, modelName)
+    const posts = await this.generateShortPostsData(asShortClip, transcript, modelName, summary)
 
     // Move posts to medium-clips/{slug}/posts/
     const clipsDir = join(this.videoDir, 'medium-clips')
