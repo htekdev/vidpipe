@@ -228,6 +228,15 @@ export interface ShortSegment {
  * @property tags - Hashtags / topic tags
  * @property variants - Platform-specific aspect-ratio variants (portrait, square, etc.)
  */
+/** Hook pattern used to capture viewer attention in the first 1-3 seconds */
+export type HookType = 'cold-open' | 'curiosity-gap' | 'contradiction' | 'result-first' | 'bold-claim' | 'question';
+
+/** Primary emotional trigger that drives engagement (shares, saves, comments) */
+export type EmotionalTrigger = 'awe' | 'humor' | 'surprise' | 'empathy' | 'outrage' | 'practical-value';
+
+/** Narrative arc structure used in short clips */
+export type ShortNarrativeStructure = 'result-method-proof' | 'doing-x-wrong' | 'expectation-vs-reality' | 'mini-list' | 'tension-release' | 'loop';
+
 export interface ShortClip {
   id: string;
   title: string;
@@ -240,6 +249,18 @@ export interface ShortClip {
   tags: string[];
   hook?: string;
   variants?: ShortClipVariant[];
+  /** Hook pattern classification — how the opening captures attention */
+  hookType?: HookType;
+  /** Primary emotional driver that makes this clip engaging */
+  emotionalTrigger?: EmotionalTrigger;
+  /** Viral potential score (1-20) based on hook strength, emotion, shareability, completion, replay */
+  viralScore?: number;
+  /** Narrative arc pattern used in this clip */
+  narrativeStructure?: ShortNarrativeStructure;
+  /** Why would someone share this with a friend? */
+  shareReason?: string;
+  /** Whether the content naturally loops back to the beginning */
+  isLoopCandidate?: boolean;
 }
 
 // ============================================================================
@@ -253,6 +274,12 @@ export interface MediumSegment {
   description: string;
 }
 
+/** Narrative arc structure used in medium clips */
+export type MediumNarrativeStructure = 'open-loop-steps-payoff' | 'problem-deepdive-solution' | 'story-arc' | 'debate-comparison' | 'tutorial-micropayoffs';
+
+/** Classification of medium clip content type */
+export type MediumClipType = 'deep-dive' | 'tutorial' | 'story-arc' | 'debate' | 'problem-solution';
+
 export interface MediumClip {
   id: string;
   title: string;
@@ -265,6 +292,20 @@ export interface MediumClip {
   tags: string[];
   hook: string;
   topic: string;
+  /** Hook pattern classification — how the opening captures attention */
+  hookType?: HookType;
+  /** Primary emotional driver that makes this clip engaging */
+  emotionalTrigger?: EmotionalTrigger;
+  /** Viral potential score (1-20) based on hook strength, emotion, shareability, completion, replay */
+  viralScore?: number;
+  /** Narrative arc pattern used in this clip */
+  narrativeStructure?: MediumNarrativeStructure;
+  /** Content type classification */
+  clipType?: MediumClipType;
+  /** Why would someone save this to reference later? */
+  saveReason?: string;
+  /** Retention hooks planned at ~15-20 second intervals within the clip */
+  microHooks?: string[];
 }
 
 // ============================================================================

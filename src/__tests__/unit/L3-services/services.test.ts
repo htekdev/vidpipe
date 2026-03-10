@@ -169,7 +169,7 @@ describe('transcription', () => {
     expect(result.language).toBe('en')
   })
 
-  it('transcribeVideo saves transcript JSON', async () => {
+  it('transcribeVideo does NOT save transcript (caller responsibility)', async () => {
     const corefs = await import('../../../L1-infra/fileSystem/fileSystem.js')
     vi.mocked(corefs.getFileStats).mockResolvedValueOnce({ size: 10 * 1024 * 1024 } as any)
 
@@ -178,10 +178,7 @@ describe('transcription', () => {
 
     await transcribeVideo(video)
 
-    expect(corefs.writeJsonFile).toHaveBeenCalledWith(
-      expect.stringContaining('transcript.json'),
-      expect.any(Object),
-    )
+    expect(corefs.writeJsonFile).not.toHaveBeenCalled()
   })
 
   it('transcribeVideo chunks large audio files', async () => {
