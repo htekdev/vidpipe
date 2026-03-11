@@ -601,7 +601,7 @@ describe('processVideo', () => {
 
     const result = await processVideo('/videos/test.mp4')
 
-    expect(mockGenerateShortPostsData).toHaveBeenCalledWith(shorts[0], transcript)
+    expect(mockGenerateShortPostsData).toHaveBeenCalledWith(shorts[0], transcript, undefined, expect.objectContaining({ title: 'Test' }))
     expect(result.socialPosts.length).toBeGreaterThanOrEqual(1)
   })
 
@@ -616,7 +616,7 @@ describe('processVideo', () => {
     const result = await processVideo('/videos/test.mp4')
 
     // generateMediumClipPostsData called for each medium clip
-    expect(mockGenerateMediumClipPostsData).toHaveBeenCalledWith(clips[0])
+    expect(mockGenerateMediumClipPostsData).toHaveBeenCalledWith(clips[0], undefined, expect.objectContaining({ title: 'Test' }))
     expect(result.socialPosts.length).toBeGreaterThanOrEqual(1)
   })
 })

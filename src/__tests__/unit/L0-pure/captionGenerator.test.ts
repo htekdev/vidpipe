@@ -200,13 +200,13 @@ describe('generateStyledASS', () => {
 
   it('shorts style uses larger font sizes', () => {
     const ass = generateStyledASS(transcriptWithWords, 'shorts');
-    expect(ass).toContain('\\fs72');  // active font size
+    expect(ass).toContain('\\fs62');  // active font size
     expect(ass).toContain('\\fs58');  // base font size
   });
 
   it('medium style uses smaller font sizes', () => {
     const ass = generateStyledASS(transcriptWithWords, 'medium');
-    expect(ass).toContain('\\fs54');  // medium active font size
+    expect(ass).toContain('\\fs47');  // medium active font size
     expect(ass).toContain('\\fs44');  // medium base font size
   });
 
@@ -267,7 +267,7 @@ describe('generateStyledASSForSegment', () => {
 
   it('respects the style parameter', () => {
     const ass = generateStyledASSForSegment(fullTranscript, 5.0, 6.0, 0.5, 'medium');
-    expect(ass).toContain('\\fs54');
+    expect(ass).toContain('\\fs47');
   });
 });
 
@@ -385,15 +385,16 @@ describe('generateStyledASS – portrait style', () => {
     expect(dialogueText).not.toContain('\\c&H00FFFF&');
   });
 
-  it('portrait active word has scale animation', () => {
+  it('portrait active word uses color-only highlighting (no scale animation)', () => {
     const ass = generateStyledASS(transcriptWithWords, 'portrait');
-    expect(ass).toContain('\\fscx130\\fscy130');
-    expect(ass).toContain('\\t(0,150,\\fscx100\\fscy100)');
+    expect(ass).not.toContain('\\fscx130');
+    expect(ass).not.toContain('\\fscy130');
+    expect(ass).toContain('\\c&H00FF00&');  // green active color
   });
 
-  it('portrait active word font size is 144', () => {
+  it('portrait active word font size is 128', () => {
     const ass = generateStyledASS(transcriptWithWords, 'portrait');
-    expect(ass).toContain('\\fs144');
+    expect(ass).toContain('\\fs128');
   });
 
   it('portrait inactive words use white color at size 120', () => {
@@ -524,9 +525,9 @@ describe('generateMediumASSWithHook', () => {
 
   it('uses medium font sizes (not portrait)', () => {
     const ass = generateMediumASSWithHook(transcriptWithWords, 'Hook!', 0, 3.8);
-    expect(ass).toContain('\\fs54');  // medium active
+    expect(ass).toContain('\\fs47');  // medium active
     expect(ass).toContain('\\fs44');  // medium base
-    expect(ass).not.toContain('\\fs144');  // portrait active
+    expect(ass).not.toContain('\\fs128');  // portrait active
   });
 
   it('contains Hook style definition in header', () => {
@@ -578,7 +579,7 @@ describe('generateMediumASSWithHookComposite', () => {
       { start: 10.0, end: 10.5 },
     ];
     const ass = generateMediumASSWithHookComposite(compositeTranscript, segments, 'Test');
-    expect(ass).toContain('\\fs54');
+    expect(ass).toContain('\\fs47');
   });
 });
 
