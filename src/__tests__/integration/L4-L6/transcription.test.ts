@@ -197,4 +197,16 @@ describe('L4-L6 Integration: transcription → FFmpeg + Whisper (mocked L2)', ()
 
     await expect(transcribeVideo(video)).rejects.toThrow('FFmpeg crashed')
   })
+
+  it('does not write transcript to disk (caller responsibility)', async () => {
+    const video = makeVideoFile('test-no-save', tmpDir)
+
+    await transcribeVideo(video)
+
+    // transcribeVideo should NOT write transcript.json — callers save it themselves
+    const { existsSync } = await import('node:fs')
+    const outputDir = join(tmpDir, 'output', 'test-no-save')
+    const transcriptPath = join(outputDir, 'transcript.json')
+    expect(existsSync(transcriptPath)).toBe(false)
+  })
 })

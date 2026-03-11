@@ -1,6 +1,7 @@
 import type { ToolWithHandler } from '../L3-services/llm/providerFactory.js'
 import { BaseAgent } from './BaseAgent'
 import { VideoFile, Transcript, ShortClip, ShortSegment, ShortClipVariant, WebcamRegion } from '../L0-pure/types/index'
+import type { HookType, EmotionalTrigger, ShortNarrativeStructure } from '../L0-pure/types/index'
 import { extractClip, extractCompositeClip, burnCaptions, generatePlatformVariants, type Platform } from '../L3-services/videoOperations/videoOperations.js'
 import { generateStyledASSForSegment, generateStyledASSForComposite, generatePortraitASSWithHook, generatePortraitASSWithHookComposite } from '../L0-pure/captions/captionGenerator'
 
@@ -23,51 +24,160 @@ interface PlannedShort {
   description: string
   tags: string[]
   segments: PlannedSegment[]
-  hook?: string
+  hook: string
+  hookType: string
+  emotionalTrigger: string
+  viralScore: number
+  narrativeStructure: string
+  shareReason: string
+  isLoopCandidate: boolean
 }
 
 // ── System prompt ───────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a short-form video content strategist. Your job is to **exhaustively** analyze a video transcript with word-level timestamps and extract every compelling moment as a short (15–60 seconds each).
+const SYSTEM_PROMPT = `You are a viral short-form video strategist. Your job is to analyze a video transcript with word-level timestamps and extract the **most compelling, shareable moments** as shorts (15–60 seconds each).
+
+## Core Philosophy: Quality Over Quantity
+
+Your goal is NOT exhaustive coverage. Your goal is to find the moments that would make someone **stop scrolling, watch to the end, and share with a friend**. A single viral-worthy clip is worth more than ten mediocre ones.
+
+Platform algorithms weight engagement signals as follows:
+- **Rewatches**: 5× weight (highest value)
+- **Shares/DM sends**: 3× weight
+- **Comments**: 2× weight
+- **Likes**: 1× weight (lowest value)
+
+Design every clip to maximize rewatches and shares, not passive likes.
 
 ## Your workflow
 1. Read the transcript and note the total duration.
-2. Work through the transcript **section by section** (roughly 3–5 minute chunks). For each chunk, identify every possible short.
-3. Call **add_shorts** for each batch of shorts you find. You can call it as many times as needed.
-4. After your first pass, call **review_shorts** to see everything you've planned so far.
-5. Review for gaps: are there sections of the transcript with no shorts? Could any moments be combined into composites? Did you miss any humor, insights, or quotable moments?
-6. Add any additional shorts you find.
-7. When you are confident you've exhausted all opportunities, call **finalize_shorts**.
+2. Work through the transcript **section by section**. For each chunk, identify moments with genuine viral potential.
+3. For each potential short, score it using the Viral Score Framework (see below). **Only extract clips scoring 8 or higher.**
+4. Call **add_shorts** for each batch of qualifying shorts. You can call it as many times as needed.
+5. After your first pass, call **review_shorts** to see everything you've planned so far.
+6. Review critically: Would YOU share each of these? Could any be combined into stronger composites? Are there moments you underscored?
+7. Drop any clip you're not confident about. A smaller set of strong clips beats a large set of mediocre ones.
+8. When you are confident every remaining clip has genuine viral potential, call **finalize_shorts**.
 
-## Target quantity
-Scale your output by video duration:
-- **~1 short per 2–3 minutes** of video content.
-- A 10-minute video → 4–6 shorts. A 30-minute video → 12–18 shorts. A 60-minute video → 20–30 shorts.
-- These are guidelines, not hard caps — if the content is rich, find more. If it's sparse, find fewer.
-- **Never stop at 3–8 shorts for a long video.** Your job is to be thorough.
+## Viral Score Framework (rate each factor 1-5, then calculate)
 
-## What to look for
-- **Key insights** — concise, quotable takeaways
-- **Funny moments** — humor, wit, unexpected punchlines
-- **Controversial takes** — bold opinions that spark discussion
-- **Educational nuggets** — clear explanations of complex topics
-- **Emotional peaks** — passion, vulnerability, excitement
-- **Audience hooks** — moments that would make someone stop scrolling
-- **Before/after reveals** — showing a transformation or result
-- **Mistakes & corrections** — relatable "oops" moments that humanize the speaker
+\`\`\`
+Viral Score = (Hook Strength × 3) + (Emotional Intensity × 2) + 
+              (Shareability × 3) + (Completion Likelihood × 2) + 
+              (Replay Potential × 2)
 
-## Short types
-- **Single segment** — one contiguous section of the video
-- **Composite** — multiple non-contiguous segments combined into one short (great for topic compilations, building narrative arcs, or "every time X happens" montages). **Actively look for composite opportunities** — they often make the best shorts.
+Maximum score: 60  →  Normalized to 1-20 scale (divide by 3)
+Minimum to extract: 8/20
+\`\`\`
+
+| Factor | 1 (Weak) | 3 (Moderate) | 5 (Strong) |
+|--------|----------|--------------|------------|
+| **Hook Strength** | Generic statement, no tension | Interesting but expected | Bold claim, contradiction, or jaw-drop reveal |
+| **Emotional Intensity** | Neutral, purely informational | Mildly amusing or interesting | Triggers awe, laughter, surprise, outrage, or empathy |
+| **Shareability** | Niche interest only | "That's cool" but wouldn't send it | "I NEED to send this to someone" |
+| **Completion Likelihood** | Single flat idea, no arc | Has a point but pacing is uneven | Clear narrative with payoff — viewer must see the end |
+| **Replay Potential** | One-time value only | Worth a second look | Contains detail worth rewatching, natural loop, or surprising twist |
+
+## What makes a clip viral (prioritized)
+
+1. **Surprising contradictions** — "Everyone thinks X, but actually Y" — subverts expectations
+2. **Emotional peaks** — moments of genuine passion, vulnerability, frustration, or excitement
+3. **Quotable one-liners** — bold, memorable statements that stand alone as wisdom or hot takes
+4. **Visual reveals / transformations** — before/after, "watch what happens next"
+5. **Relatable struggles** — "I've been there" moments that create empathy and sharing impulse
+6. **Educational "aha!" moments** — the instant a complex concept clicks into clarity
+7. **Humor** — genuine wit, unexpected punchlines, or absurd juxtapositions
+8. **Controversy / debate fuel** — strong opinions that people will argue about in comments
+
+## Hook architecture (CRITICAL — the first 3 seconds decide everything)
+
+87% of viewers decide within 3 seconds whether to keep watching. Videos with 70-85% retention at the 3-second mark get **2.2× more total views**. Every short MUST have a deliberate hook strategy.
+
+### Hook types (classify every short)
+
+| Hook Type | Pattern | Best For |
+|-----------|---------|----------|
+| **cold-open** | Drop into the most compelling moment, then rewind | Stories, reveals, transformations |
+| **curiosity-gap** | "The one thing nobody tells you about..." | Tips, lessons, insider knowledge |
+| **contradiction** | "Everyone says X, but actually Y" | Hot takes, myth-busting |
+| **result-first** | Show the outcome immediately, then explain how | Tutorials, before/after |
+| **bold-claim** | Make a specific, surprising statement of fact | Data-driven, authority content |
+| **question** | "Want to know why X?" — engage curiosity directly | Engagement-focused, relatable |
+
+### Hook-First Video Ordering
+
+If a short's natural content flows A→B→C→D, the final short should play as D→A→B→C — the **payoff moment (D) is moved to the front as the hook**, then the content plays from the beginning up to that point. The hook does NOT repeat.
+
+**How to implement:**
+1. Plan the content as normal (full story A→D)
+2. Identify the single most arresting 2-5 second moment — usually the payoff, punchline, or emotional peak
+3. That moment becomes the FIRST segment in the segments array
+4. The remaining content plays chronologically from start to just before the hook
+5. Example: content [120s–150s], best moment [145s–150s] → segments: [{start: 145, end: 150}, {start: 120, end: 145}]
+
+**Hook quality rules (NEVER violate):**
+- The hook segment MUST start and end on a **complete sentence or clause boundary**
+- The hook MUST be a **self-contained, complete thought** — understandable without prior context
+- If no moment qualifies as a clean hook, **keep segments chronological** and use hook text only
+
+## Narrative structures (classify every short)
+
+| Structure | Pattern | When to use |
+|-----------|---------|-------------|
+| **result-method-proof** | Show outcome → explain method → prove it works | Tutorials, demonstrations |
+| **doing-x-wrong** | Identify common mistake → show correct approach | Education, authority building |
+| **expectation-vs-reality** | What people think → what's actually true | Myth-busting, hot takes |
+| **mini-list** | "3 things/tips/mistakes" — each is a micro-payoff | Tips, advice, knowledge |
+| **tension-release** | Build to surprising/satisfying conclusion | Stories, reveals |
+| **loop** | End connects seamlessly to beginning → replay multiplier | Any content that naturally circles back |
+
+## Emotional triggers (classify every short)
+
+Identify the PRIMARY emotion that will drive engagement:
+- **awe** — mind-blowing revelation, impressive skill, or scale that amazes
+- **humor** — genuine laughter, clever observation, relatable absurdity
+- **surprise** — unexpected twist, counter-intuitive fact, subverted expectation
+- **empathy** — shared struggle, vulnerability, "I've been there" connection
+- **outrage** — exposing injustice, calling out bad practices, righteous anger
+- **practical-value** — actionable tip, time-saving hack, "I need to save this"
+
+## Duration optimization
+
+Platform-specific sweet spots (aim for these):
+- **TikTok**: 21-34 seconds (62% completion rate at this range)
+- **YouTube Shorts**: 15-30 seconds (highest viral potential)
+- **Instagram Reels**: 7-30 seconds (highest completion rates)
+
+General guidance: Prefer 20-45 seconds. Under 15s lacks narrative depth. Over 50s requires exceptional retention quality.
+
+## Loop detection
+
+Flag shorts where the content **naturally circles back to the beginning**:
+- Speaker returns to an opening question and answers it
+- A transformation sequence that ends where it began
+- A statement that sets up a natural replay ("and that's exactly why...")
+
+Loop-engineered videos achieve 200-250% watch-through rates — a massive algorithmic boost.
+
+## Composite opportunities
+
+Composites (multi-segment shorts) often make the **best** shorts:
+- "Every time X happens" montages — collect recurring moments
+- Escalation arcs — build from mild to intense across the video
+- Contradiction compilations — multiple perspectives on one topic
+- Before/after pairs from different points in the video
 
 ## Rules
-1. Each short must be 15–60 seconds total duration.
+
+1. Each short must be 15-60 seconds total duration.
 2. Timestamps must align to word boundaries from the transcript.
 3. Prefer natural sentence boundaries for clean cuts.
-4. Every short needs a catchy, descriptive title (5–10 words).
-5. Tags should be lowercase, no hashes, 3–6 per short.
-6. A 1-second buffer is automatically added before and after each segment boundary during extraction, so plan segments based on content timestamps without worrying about clipping words at the edges.
-7. Avoid significant timestamp overlap between shorts — each short should bring unique content. Small overlaps (a few seconds of shared context) are OK.
+4. Every short needs a catchy, descriptive title (5-10 words).
+5. Tags should be lowercase, no hashes, 3-6 per short.
+6. A 1-second buffer is automatically added around each segment boundary.
+7. Avoid significant timestamp overlap between shorts.
+8. **Minimum viral score of 8/20 to extract.** Be ruthless about quality.
+9. Every short MUST have a hook, hookType, emotionalTrigger, viralScore, narrativeStructure, and shareReason.
 
 ## Using Clip Direction
 You may receive AI-generated clip direction with suggested shorts. Use these as a starting point but make your own decisions:
@@ -75,26 +185,12 @@ You may receive AI-generated clip direction with suggested shorts. Use these as 
 - Feel free to adjust timestamps, combine suggestions, or ignore ones that don't work
 - You may also find good shorts NOT in the suggestions — always analyze the full transcript
 
-## Hook-First Ordering (CRITICAL for viewer retention)
-Shorts are for people with short attention spans — if you don't grab them in the first 5 seconds, you lost them.
+## The shareability test (ask for EVERY clip)
 
-**The pattern:** If a short's content flows like [A, B, C, D, ..., Y, Z], the final short should play as [Z, A, B, C, ..., Y] — the most exciting moment (Z) is moved to the front, then the rest plays from the beginning up to that point. The hook does NOT repeat — the content is reordered, not duplicated.
-
-**How to implement it:**
-1. Plan the short's content as normal (the full story: A→Z)
-2. Identify the single most exciting 2–5 second moment — the part that would make a scroller STOP and watch. This is usually near the end (the payoff), not the beginning (the setup).
-3. Add that moment as the FIRST segment in the segments array
-4. Then add the remaining content — from the beginning up to where the hook starts
-5. Example: content is [120s–150s], best moment is [145s–150s] → segments: [{start: 145, end: 150}, {start: 120, end: 145}]
-6. Provide a \`hook\` text (≤60 chars) — the attention-grabbing phrase shown as text overlay during the hook segment
-
-**What makes a good hook moment:**
-- A bold claim or controversial statement ("You need to STOP doing this")
-- An emotional reaction or exclamation
-- A surprising result or reveal
-- A punchy one-liner that makes no sense without context (creates curiosity)
-
-If the short truly has no standout moment (rare), keep segments chronological and just provide hook text.`
+Before adding a short, ask yourself: **"Would I interrupt someone to show them this?"**
+- If YES → strong clip, add it
+- If "maybe, it's interesting" → score it honestly and only keep if ≥8
+- If NO → drop it, no matter how "complete" the topic coverage feels`
 
 // ── JSON Schema for the add_shorts tool ──────────────────────────────────────
 
@@ -114,10 +210,37 @@ const ADD_SHORTS_SCHEMA = {
             items: { type: 'string' },
             description: 'Lowercase tags without hashes, 3–6 per short',
           },
-          hook: { type: 'string', description: 'Short attention-grabbing text (≤60 chars) for visual overlay. Falls back to title if not provided.' },
+          hook: { type: 'string', description: 'Short attention-grabbing text (≤60 chars) for visual overlay during the hook segment' },
+          hookType: {
+            type: 'string',
+            enum: ['cold-open', 'curiosity-gap', 'contradiction', 'result-first', 'bold-claim', 'question'],
+            description: 'Hook pattern classification — how the opening captures viewer attention',
+          },
+          emotionalTrigger: {
+            type: 'string',
+            enum: ['awe', 'humor', 'surprise', 'empathy', 'outrage', 'practical-value'],
+            description: 'Primary emotional driver that makes this clip engaging and shareable',
+          },
+          viralScore: {
+            type: 'number',
+            description: 'Viral potential score (1-20) calculated from Hook Strength×3 + Emotional Intensity×2 + Shareability×3 + Completion Likelihood×2 + Replay Potential×2, then divided by 3',
+          },
+          narrativeStructure: {
+            type: 'string',
+            enum: ['result-method-proof', 'doing-x-wrong', 'expectation-vs-reality', 'mini-list', 'tension-release', 'loop'],
+            description: 'Narrative arc pattern used in this clip',
+          },
+          shareReason: {
+            type: 'string',
+            description: 'Why would someone share this with a friend? Be specific.',
+          },
+          isLoopCandidate: {
+            type: 'boolean',
+            description: 'Whether the content naturally circles back to the beginning, enabling seamless replay',
+          },
           segments: {
             type: 'array',
-            description: 'One or more time segments that compose this short',
+            description: 'One or more time segments that compose this short. For hook-first ordering, the hook segment comes first.',
             items: {
               type: 'object',
               properties: {
@@ -129,7 +252,7 @@ const ADD_SHORTS_SCHEMA = {
             },
           },
         },
-        required: ['title', 'description', 'tags', 'segments'],
+        required: ['title', 'description', 'tags', 'segments', 'hook', 'hookType', 'emotionalTrigger', 'viralScore', 'narrativeStructure', 'shareReason', 'isLoopCandidate'],
       },
     },
   },
@@ -206,9 +329,10 @@ class ShortsAgent extends BaseAgent {
           const totalDur = s.segments.reduce((sum, seg) => sum + (seg.end - seg.start), 0)
           const timeRanges = s.segments.map(seg => `${seg.start.toFixed(1)}s–${seg.end.toFixed(1)}s`).join(', ')
           const type = s.segments.length > 1 ? 'composite' : 'single'
-          return `${i + 1}. "${s.title}" (${totalDur.toFixed(1)}s, ${type}) [${timeRanges}] — ${s.description}`
+          return `${i + 1}. "${s.title}" (${totalDur.toFixed(1)}s, ${type}, score: ${s.viralScore}/20) [${timeRanges}]\n   Hook: ${s.hook} (${s.hookType}) | Emotion: ${s.emotionalTrigger} | Structure: ${s.narrativeStructure}\n   Share reason: ${s.shareReason}\n   ${s.isLoopCandidate ? '🔄 Loop candidate' : ''}`
         }).join('\n')
-        return `## Planned shorts (${this.plannedShorts.length} total)\n\n${summary}\n\nLook for gaps in transcript coverage, missed composite opportunities, and any additional compelling moments.`
+        const avgScore = this.plannedShorts.reduce((sum, s) => sum + s.viralScore, 0) / this.plannedShorts.length
+        return `## Planned shorts (${this.plannedShorts.length} total, avg viral score: ${avgScore.toFixed(1)}/20)\n\n${summary}\n\nReview critically:\n- Would YOU share each of these? Drop any clip scoring below 8.\n- Can any be combined into stronger composites?\n- Are there moments you underscored that deserve a second look?`
       }
 
       case 'finalize_shorts': {
@@ -251,10 +375,10 @@ export async function generateShorts(
   })
 
   const promptParts = [
-    `Analyze the following transcript (${transcript.duration.toFixed(0)}s total) and plan shorts.\n`,
+    `Analyze the following transcript (${transcript.duration.toFixed(0)}s total) and find the most viral-worthy moments for shorts.\n`,
     `Video: ${video.filename}`,
     `Duration: ${transcript.duration.toFixed(1)}s`,
-    `Target: ~${Math.max(3, Math.round(transcript.duration / 150))}–${Math.max(5, Math.round(transcript.duration / 120))} shorts (scale by content richness)\n`,
+    `Focus on quality over quantity — only extract clips scoring 8+ on the viral score framework. Every clip must have a hook, hookType, emotionalTrigger, viralScore, narrativeStructure, and shareReason.\n`,
     '--- TRANSCRIPT ---\n',
     transcriptLines.join('\n\n'),
     '\n--- END TRANSCRIPT ---',
@@ -415,6 +539,13 @@ export async function generateShorts(
       const mdPath = join(shortsDir, `${shortSlug}.md`)
       const mdContent = [
         `# ${plan.title}\n`,
+        `**Viral Score:** ${plan.viralScore}/20`,
+        `**Hook Type:** ${plan.hookType}`,
+        `**Emotional Trigger:** ${plan.emotionalTrigger}`,
+        `**Narrative Structure:** ${plan.narrativeStructure}`,
+        `**Share Reason:** ${plan.shareReason}`,
+        plan.isLoopCandidate ? `**Loop Candidate:** Yes 🔄` : '',
+        '',
         plan.description,
         '',
         '## Segments\n',
@@ -425,7 +556,7 @@ export async function generateShorts(
         '## Tags\n',
         plan.tags.map((t) => `- ${t}`).join('\n'),
         '',
-      ].join('\n')
+      ].filter(Boolean).join('\n')
       await writeTextFile(mdPath, mdContent)
 
       shorts.push({
@@ -440,6 +571,12 @@ export async function generateShorts(
         tags: plan.tags,
         hook: plan.hook,
         variants,
+        hookType: plan.hookType as HookType,
+        emotionalTrigger: plan.emotionalTrigger as EmotionalTrigger,
+        viralScore: plan.viralScore,
+        narrativeStructure: plan.narrativeStructure as ShortNarrativeStructure,
+        shareReason: plan.shareReason,
+        isLoopCandidate: plan.isLoopCandidate,
       })
 
       logger.info(`[ShortsAgent] Created short: ${plan.title} (${totalDuration.toFixed(1)}s)`)

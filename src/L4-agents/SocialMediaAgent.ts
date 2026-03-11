@@ -213,6 +213,7 @@ export async function generateShortPosts(
   short: ShortClip,
   transcript: Transcript,
   model?: string,
+  summary?: VideoSummary,
 ): Promise<SocialPost[]> {
   const agent = new SocialMediaAgent(model)
 
@@ -225,16 +226,34 @@ export async function generateShortPosts(
       .map((seg) => seg.text)
       .join(' ')
 
-    const userMessage = [
+    const messageParts = [
       '## Short Clip Metadata',
       `- **Title:** ${short.title}`,
       `- **Description:** ${short.description}`,
       `- **Duration:** ${short.totalDuration.toFixed(1)}s`,
       `- **Tags:** ${short.tags.join(', ')}`,
+    ]
+
+    // Include broader video context when available
+    if (summary) {
+      messageParts.push(
+        '',
+        '## Broader Video Context',
+        `This clip is from a longer video titled "${summary.title}".`,
+        `**Video overview:** ${summary.overview}`,
+        `**Key topics covered in the full video:** ${summary.keyTopics.join(', ')}`,
+        '',
+        'Use this context to position the clip within the larger narrative. The post should tease the broader topic while highlighting what makes this specific clip compelling on its own.',
+      )
+    }
+
+    messageParts.push(
       '',
       '## Relevant Transcript',
       relevantText.slice(0, 3000),
-    ].join('\n')
+    )
+
+    const userMessage = messageParts.join('\n')
 
     await agent.run(userMessage)
 

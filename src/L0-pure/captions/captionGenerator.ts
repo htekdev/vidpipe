@@ -67,8 +67,8 @@ const WORDS_PER_LINE = 3
 const ACTIVE_COLOR = '\\c&H00FFFF&'
 /** ASS BGR color for inactive words – white. */
 const BASE_COLOR = '\\c&HFFFFFF&'
-/** Font size for the active word. */
-const ACTIVE_FONT_SIZE = 72
+/** Font size for the active word — ~7% larger than base for subtle emphasis without layout shift. */
+const ACTIVE_FONT_SIZE = 62
 /** Font size for inactive words (matches style default). */
 const BASE_FONT_SIZE = 58
 
@@ -76,8 +76,8 @@ const BASE_FONT_SIZE = 58
 // Medium caption constants (smaller, bottom-positioned for longer content)
 // ---------------------------------------------------------------------------
 
-/** Font size for the active word in medium style. */
-const MEDIUM_ACTIVE_FONT_SIZE = 54
+/** Font size for the active word in medium style — ~7% larger than base. */
+const MEDIUM_ACTIVE_FONT_SIZE = 47
 /** Font size for inactive words in medium style. */
 const MEDIUM_BASE_FONT_SIZE = 44
 
@@ -85,8 +85,8 @@ const MEDIUM_BASE_FONT_SIZE = 44
 // Portrait caption constants (Opus Clips style)
 // ---------------------------------------------------------------------------
 
-/** Font size for the active word in portrait style. */
-const PORTRAIT_ACTIVE_FONT_SIZE = 144
+/** Font size for the active word in portrait style — ~7% larger than base. */
+const PORTRAIT_ACTIVE_FONT_SIZE = 128
 /** Font size for inactive words in portrait style. */
 const PORTRAIT_BASE_FONT_SIZE = 120
 /** ASS BGR color for the active word in portrait style – green. */
@@ -296,8 +296,8 @@ function buildPremiumDialogueLines(words: Word[], style: CaptionStyle = 'shorts'
           const text = w.word.trim()
           if (idx === activeIdx) {
             if (style === 'portrait') {
-              // Opus Clips style: green color + scale pop animation
-              return `{${PORTRAIT_ACTIVE_COLOR}\\fs${activeFontSize}\\fscx130\\fscy130\\t(0,150,\\fscx100\\fscy100)}${text}`
+              // Portrait style: green color + subtle size change (no scale pop)
+              return `{${PORTRAIT_ACTIVE_COLOR}\\fs${activeFontSize}}${text}`
             }
             return `{${ACTIVE_COLOR}\\fs${activeFontSize}}${text}`
           }

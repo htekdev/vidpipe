@@ -225,7 +225,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
       if (shorts.length > 0) {
         await trackStage<void>(Stage.ShortPosts, async () => {
           for (const short of shorts) {
-            const posts = await asset.generateShortPostsData(short, await asset.getTranscript())
+            const posts = await asset.generateShortPostsData(short, await asset.getTranscript(), undefined, summary ?? undefined)
             socialPosts.push(...posts)
           }
         })
@@ -235,7 +235,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
       if (mediumClips.length > 0) {
         await trackStage<void>(Stage.MediumClipPosts, async () => {
           for (const clip of mediumClips) {
-            const posts = await asset.generateMediumClipPostsData(clip)
+            const posts = await asset.generateMediumClipPostsData(clip, undefined, summary ?? undefined)
             socialPosts.push(...posts)
           }
         })
