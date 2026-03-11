@@ -7,6 +7,7 @@ on:
 permissions:
   issues: read
   contents: read
+  pull-requests: read
 tools:
   github:
     toolsets: [default, search, labels]
@@ -37,12 +38,7 @@ Triage the newly opened issue `#${{ github.event.issue.number }}` — **"${{ git
 
 ## Step 1: Read the Issue
 
-Carefully read the full issue title and body:
-
-- **Title**: ${{ github.event.issue.title }}
-- **Body**:
-  ${{ github.event.issue.body }}
-- **Author**: ${{ github.event.issue.user.login }}
+Use the GitHub tools to fetch the full details of issue `#${{ github.event.issue.number }}` in this repository. Read the complete title, body, existing labels, and author. The title is: **"${{ github.event.issue.title }}"**.
 
 ## Step 2: Classify the Issue Type
 
