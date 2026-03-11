@@ -1,5 +1,0 @@
-export { default as OpenAI } from 'openai'
-export type { ChatCompletionMessageParam, ChatCompletionTool, ChatCompletion } from 'openai/resources/chat/completions.js'
-export { default as Anthropic } from '@anthropic-ai/sdk'
-export { CopilotClient, CopilotSession } from '@github/copilot-sdk'
-export type { SessionEvent } from '@github/copilot-sdk'

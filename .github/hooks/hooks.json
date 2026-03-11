@@ -4,6 +4,14 @@
     "preToolUse": [
       {
         "type": "command",
+        "bash": ".github/hooks/pre-commit-block.sh",
+        "powershell": ".github/hooks/pre-commit-block.ps1",
+        "cwd": ".",
+        "timeoutSec": 5,
+        "comment": "Block git commit -- must use npm run commit instead"
+      },
+      {
+        "type": "command",
         "bash": ".github/hooks/pre-push-block.sh",
         "powershell": ".github/hooks/pre-push-block.ps1",
         "cwd": ".",
@@ -28,11 +36,35 @@
       },
       {
         "type": "command",
-        "bash": ".github/hooks/pre-import-ban.sh",
-        "powershell": ".github/hooks/pre-import-ban.ps1",
+        "bash": ".github/hooks/pre-layer-import.sh",
+        "powershell": ".github/hooks/pre-layer-import.ps1",
         "cwd": ".",
         "timeoutSec": 5,
-        "comment": "Block non-relative imports outside src/core/ — all external deps must go through core modules"
+        "comment": "Enforce layer import boundaries — layer N cannot import from layer N+1+"
+      },
+      {
+        "type": "command",
+        "bash": ".github/hooks/pre-layer-mock.sh",
+        "powershell": ".github/hooks/pre-layer-mock.ps1",
+        "cwd": ".",
+        "timeoutSec": 5,
+        "comment": "Enforce layer-based mocking rules for L0-L7 test architecture"
+      },
+      {
+        "type": "command",
+        "bash": ".github/hooks/pre-reexport-block.sh",
+        "powershell": ".github/hooks/pre-reexport-block.ps1",
+        "cwd": ".",
+        "timeoutSec": 5,
+        "comment": "Block cross-layer re-exports -- must use wrapper functions instead"
+      },
+      {
+        "type": "command",
+        "bash": ".github/hooks/pre-spec-test-coverage.sh",
+        "powershell": ".github/hooks/pre-spec-test-coverage.ps1",
+        "cwd": ".",
+        "timeoutSec": 10,
+        "comment": "Enforce spec requirements have corresponding test cases (specs/{name}.md → specs/__tests__/{name}.test.ts)"
       }
     ],
     "postToolUse": [
@@ -43,6 +75,14 @@
         "cwd": ".",
         "timeoutSec": 5,
         "comment": "Delete .github/reviewed.md when code is edited/created (invalidates review)"
+      },
+      {
+        "type": "command",
+        "bash": ".github/hooks/post-spec-change.sh",
+        "powershell": ".github/hooks/post-spec-change.ps1",
+        "cwd": ".",
+        "timeoutSec": 5,
+        "comment": "Output context reminder when files in specs/ folder are changed"
       }
     ]
   }

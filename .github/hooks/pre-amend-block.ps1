@@ -14,7 +14,7 @@ try {
         exit 0
     }
 
-    if ($command -notmatch "git\s+commit\s+.*--amend") {
+    if ($command -notmatch "git\s+(--\S+\s+)*commit\s+.*--amend") {
         exit 0
     }
 

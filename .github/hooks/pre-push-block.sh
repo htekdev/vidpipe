@@ -13,7 +13,7 @@
     exit 0
   fi
 
-  if ! echo "$COMMAND" | grep -q "git push"; then
+  if ! echo "$COMMAND" | grep -qE 'git\s+(--\S+\s+)*push'; then
     exit 0
   fi
 

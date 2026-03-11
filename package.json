@@ -2,10 +2,10 @@
   "name": "vidpipe",
   "version": "1.3.0",
   "description": "AI-powered pipeline that watches for video recordings and generates transcripts, summaries, short clips, and social media posts",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/cli.js",
+  "types": "dist/cli.d.ts",
   "bin": {
-    "vidpipe": "./dist/index.js"
+    "vidpipe": "./dist/cli.js"
   },
   "files": [
     "dist",
@@ -15,15 +15,26 @@
     "LICENSE"
   ],
   "scripts": {
-    "start": "tsx src/index.ts",
+    "start": "tsx src/L7-app/cli.ts",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch src/L7-app/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:integration": "vitest run src/__tests__/integration/",
-    "test:unit": "vitest run --exclude 'src/__tests__/integration/**'",
+    "test:unit": "vitest run --project unit",
+    "test:unit:coverage": "vitest run --project unit --coverage",
+    "test:integration": "vitest run --project integration-L3 --project integration-L4-L6 --project integration-L7",
+    "test:integration:coverage": "vitest run --project integration-L3 --project integration-L4-L6 --project integration-L7 --coverage",
+    "test:integration:L3": "vitest run --project integration-L3",
+    "test:integration:L3:coverage": "vitest run --project integration-L3 --coverage",
+    "test:integration:L4-L6": "vitest run --project integration-L4-L6",
+    "test:integration:L4-L6:coverage": "vitest run --project integration-L4-L6 --coverage",
+    "test:integration:L7": "vitest run --project integration-L7",
+    "test:integration:L7:coverage": "vitest run --project integration-L7 --coverage",
+    "test:e2e": "vitest run --project e2e",
+    "test:e2e:coverage": "vitest run --project e2e --coverage",
+    "commit": "tsx cicd/commit.ts",
     "push": "tsx cicd/push.ts"
   },
   "keywords": [
