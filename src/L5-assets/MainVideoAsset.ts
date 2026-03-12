@@ -31,6 +31,7 @@ import {
   writeTextFile,
 } from '../L1-infra/fileSystem/fileSystem.js'
 import { slugify } from '../L0-pure/text/text.js'
+import { generateSRT, generateVTT, generateStyledASS } from '../L0-pure/captions/captionGenerator.js'
 import { ffprobe, burnCaptions } from '../L4-agents/videoServiceBridge.js'
 import { transcribeVideo, analyzeVideoClipDirection } from '../L4-agents/analysisServiceBridge.js'
 import { removeDeadSilence } from '../L4-agents/SilenceRemovalAgent.js'
@@ -330,6 +331,7 @@ export class MainVideoAsset extends VideoAsset {
       // Generate via transcription service
       const videoFile = await this.toVideoFile()
       const transcript = await transcribeVideo(videoFile)
+      await writeJsonFile(this.transcriptPath, transcript)
       logger.info(`Generated transcript: ${transcript.segments.length} segments`)
       return transcript
     })
@@ -367,6 +369,13 @@ export class MainVideoAsset extends VideoAsset {
 
     if (result.wasEdited) {
       logger.info(`Silence removal completed: ${result.removals.length} segments removed`)
+
+      // Re-transcribe the edited video so captions align with the new timeline
+      const editedVideoFile = { ...videoFile, repoPath: result.editedPath }
+      const editedTranscript = await transcribeVideo(editedVideoFile)
+      await writeJsonFile(this.adjustedTranscriptPath, editedTranscript)
+      logger.info(`Saved edited-video transcript to ${this.adjustedTranscriptPath}`)
+
       return result.editedPath
     }
 
@@ -978,6 +987,48 @@ export class MainVideoAsset extends VideoAsset {
     return this.getTranscript()
   }
 
+  /**
+   * Override base getCaptions to use the adjusted transcript (post silence-removal)
+   * so that main video captions align with the edited video timeline.
+   */
+  async getCaptions(opts?: AssetOptions): Promise<CaptionFiles> {
+    if (opts?.force) {
+      this.cache.delete('captions')
+    }
+    return this.cached('captions', async () => {
+      const srtPath = join(this.captionsDir, 'captions.srt')
+      const vttPath = join(this.captionsDir, 'captions.vtt')
+      const assPath = join(this.captionsDir, 'captions.ass')
+
+      const [srtExists, vttExists, assExists] = await Promise.all([
+        fileExists(srtPath),
+        fileExists(vttPath),
+        fileExists(assPath),
+      ])
+
+      if (!opts?.force && srtExists && vttExists && assExists) {
+        return { srt: srtPath, vtt: vttPath, ass: assPath }
+      }
+
+      // Use adjusted transcript (aligned to edited video) instead of original
+      const transcript = await this.getAdjustedTranscript()
+
+      await ensureDirectory(this.captionsDir)
+
+      const srt = generateSRT(transcript)
+      const vtt = generateVTT(transcript)
+      const ass = generateStyledASS(transcript)
+
+      await Promise.all([
+        writeTextFile(srtPath, srt),
+        writeTextFile(vttPath, vtt),
+        writeTextFile(assPath, ass),
+      ])
+
+      return { srt: srtPath, vtt: vttPath, ass: assPath }
+    })
+  }
+
   // ── VideoFile Conversion ───────────────────────────────────────────────────
 
   /**
@@ -1039,9 +1090,10 @@ export class MainVideoAsset extends VideoAsset {
     short: ShortClip,
     transcript: Transcript,
     modelName?: string,
+    summary?: VideoSummary,
   ): Promise<SocialPost[]> {
     const video = await this.toVideoFile()
-    return generateShortPosts(video, short, transcript, modelName)
+    return generateShortPosts(video, short, transcript, modelName, summary)
   }
 
   /**
@@ -1052,6 +1104,7 @@ export class MainVideoAsset extends VideoAsset {
   async generateMediumClipPostsData(
     clip: MediumClip,
     modelName?: string,
+    summary?: VideoSummary,
   ): Promise<SocialPost[]> {
     const transcript = await this.getAdjustedTranscript()
     const asShortClip: ShortClip = {
@@ -1065,7 +1118,7 @@ export class MainVideoAsset extends VideoAsset {
       description: clip.description,
       tags: clip.tags,
     }
-    const posts = await this.generateShortPostsData(asShortClip, transcript, modelName)
+    const posts = await this.generateShortPostsData(asShortClip, transcript, modelName, summary)
 
     // Move posts to medium-clips/{slug}/posts/
     const clipsDir = join(this.videoDir, 'medium-clips')
