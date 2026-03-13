@@ -115,6 +115,7 @@ vidpipe [options] [video-path]
 vidpipe init              # Interactive setup wizard
 vidpipe review            # Open post review web app
 vidpipe schedule          # View posting schedule
+vidpipe migrate           # Import legacy JSON state into SQLite
 ```
 
 | Option | Description |
