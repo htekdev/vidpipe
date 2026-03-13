@@ -4,6 +4,8 @@ import logger from '../L1-infra/logger/configLogger'
 import { getBrandConfig } from '../L1-infra/config/brand'
 import { getConfig } from '../L1-infra/config/environment.js'
 import type { Transcript, VideoFile, VideoSummary } from '../L0-pure/types/index'
+import type { Idea } from '../L0-pure/types/index.js'
+import { buildIdeaContextForBlog } from '../L0-pure/ideaContext/ideaContext.js'
 
 // ── Tool argument shapes ────────────────────────────────────────────────────
 
@@ -19,10 +21,10 @@ interface WriteBlogArgs {
 
 // ── Build system prompt from brand config ───────────────────────────────────
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(ideaContext = ''): string {
   const brand = getBrandConfig()
 
-  return `You are a technical blog writer for dev.to, writing from the perspective of ${brand.name} (${brand.handle}).
+  return `You are a technical blog writer for dev.to, writing from the perspective of ${brand.name} (${brand.handle}).${ideaContext}
 
 Voice & style:
 - Tone: ${brand.voice.tone}
@@ -56,8 +58,8 @@ Always call "write_blog" exactly once with the complete post.`
 class BlogAgent extends BaseAgent {
   private blogContent: WriteBlogArgs | null = null
 
-  constructor(model?: string) {
-    super('BlogAgent', buildSystemPrompt(), undefined, model)
+  constructor(systemPrompt: string = buildSystemPrompt(), model?: string) {
+    super('BlogAgent', systemPrompt, undefined, model)
   }
 
   protected getMcpServers(): Record<string, MCPServerConfig> | undefined {
@@ -150,8 +152,10 @@ export async function generateBlogPost(
   transcript: Transcript,
   summary: VideoSummary,
   model?: string,
+  ideas?: Idea[],
 ): Promise<string> {
-  const agent = new BlogAgent(model)
+  const systemPrompt = buildSystemPrompt(ideas?.length ? buildIdeaContextForBlog(ideas) : '')
+  const agent = new BlogAgent(systemPrompt, model)
 
   try {
     const userMessage = [

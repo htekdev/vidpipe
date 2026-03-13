@@ -1,0 +1,29 @@
+{
+  "id": "agents-md-governance-file",
+  "topic": "AGENTS.md: The New File Every Repo Needs for AI Agent Governance",
+  "hook": "There's a new file that controls how AI agents work in your repo. Here's how.",
+  "audience": "Developers and team leads adopting AI coding tools",
+  "keyTakeaway": "AGENTS.md lets you define rules and constraints that AI agents must follow in your repository, bringing governance to agentic development.",
+  "talkingPoints": [
+    "Explain the new AGENTS.md convention (from OpenAI, adopted by GitHub)",
+    "Show how Copilot coding agent respects the nearest AGENTS.md file in directory tree",
+    "Demo creating an AGENTS.md with project-specific rules and constraints",
+    "Compare with copilot-instructions.md—when to use which file",
+    "Show real example: adding 'never modify files in /config' rule and testing it"
+  ],
+  "platforms": [
+    "youtube",
+    "tiktok",
+    "instagram"
+  ],
+  "status": "draft",
+  "tags": [
+    "github-copilot",
+    "agentic-devops",
+    "governance",
+    "tutorial"
+  ],
+  "trendContext": "GitHub now supports AGENTS.md files for agent-specific instructions, with the nearest file taking precedence—a new standard that's not widely known yet among developers.",
+  "createdAt": "2026-03-13T18:10:37.971Z",
+  "updatedAt": "2026-03-13T18:10:37.971Z"
+}

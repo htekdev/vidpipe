@@ -1,3 +1,4 @@
+import type { Platform } from '../../L0-pure/types/index.js'
 import { getConfig } from '../../L1-infra/config/environment'
 import logger from '../../L1-infra/logger/configLogger'
 import { readTextFile, writeTextFile, writeJsonFile, ensureDirectory, copyFile, fileExists, listDirectoryWithTypes, removeDirectory, renameFile, copyDirectory } from '../../L1-infra/fileSystem/fileSystem.js'
@@ -26,6 +27,8 @@ export interface QueueItemMetadata {
   textOnly?: boolean
   /** Type of media attached: video file or generated image */
   mediaType?: 'video' | 'image'
+  /** Content idea IDs that influenced this queue item */
+  ideaIds?: string[]
   platformSpecificData?: Record<string, unknown>
 }
 
@@ -258,6 +261,9 @@ export async function updateItem(
       publishedAt: updates.metadata.publishedAt !== undefined ? (updates.metadata.publishedAt !== null ? String(updates.metadata.publishedAt) : null) : (existing.metadata.publishedAt !== null ? String(existing.metadata.publishedAt) : null),
       textOnly: updates.metadata.textOnly ?? existing.metadata.textOnly,
       mediaType: updates.metadata.mediaType ?? existing.metadata.mediaType,
+      ideaIds: Array.isArray(updates.metadata.ideaIds)
+        ? updates.metadata.ideaIds.map(String)
+        : (Array.isArray(existing.metadata.ideaIds) ? existing.metadata.ideaIds.map(String) : undefined),
       platformSpecificData: updates.metadata.platformSpecificData ?? existing.metadata.platformSpecificData,
     }
     // Use only the sanitized object — do not spread raw HTTP updates (CodeQL js/http-to-file-access)
@@ -312,6 +318,25 @@ export async function approveItem(
   item.metadata.publishedAt = now
   item.metadata.reviewedAt = now
 
+  // Trigger idea status updates when content is published
+  if (item.metadata.ideaIds && item.metadata.ideaIds.length > 0) {
+    try {
+      const { markPublished } = await import('../ideation/ideaService.js')
+      for (const ideaId of item.metadata.ideaIds) {
+        await markPublished(ideaId, {
+          clipType: item.metadata.clipType,
+          platform: item.metadata.platform as Platform,
+          queueItemId: id,
+          publishedAt: now,
+          publishedUrl: item.metadata.publishedUrl ?? undefined,
+        })
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      logger.warn(`Failed to update idea status for ${id}: ${msg}`)
+    }
+  }
+
   // Sanitize metadata before writing - reconstruct with validated fields
   const sanitizedMetadata: QueueItemMetadata = {
     id: String(item.metadata.id),
@@ -335,6 +360,7 @@ export async function approveItem(
     publishedAt: item.metadata.publishedAt !== null ? String(item.metadata.publishedAt) : null,
     textOnly: item.metadata.textOnly,
     mediaType: item.metadata.mediaType,
+    ideaIds: Array.isArray(item.metadata.ideaIds) ? item.metadata.ideaIds.map(String) : undefined,
     platformSpecificData: item.metadata.platformSpecificData,
   }
 

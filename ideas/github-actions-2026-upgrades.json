@@ -1,0 +1,29 @@
+{
+  "id": "github-actions-2026-upgrades",
+  "topic": "GitHub Actions Just Got a MASSIVE Upgrade",
+  "hook": "71 million jobs per day. 10-level nesting. YAML anchors. Actions is reborn.",
+  "audience": "DevOps engineers and developers using GitHub Actions",
+  "keyTakeaway": "GitHub rebuilt Actions architecture in 2025, enabling long-blocked features.",
+  "talkingPoints": [
+    "Start with the scale: 71M jobs per day, up from 23M",
+    "Demo YAML anchors - the number 1 requested feature for years",
+    "Show 10-level nested reusable workflows",
+    "Explain the greater than 10GB cache limit removal",
+    "Connect the dots: this powers Copilot coding agent"
+  ],
+  "platforms": [
+    "youtube",
+    "tiktok",
+    "instagram",
+    "x"
+  ],
+  "status": "draft",
+  "tags": [
+    "github-actions",
+    "devops",
+    "ci-cd"
+  ],
+  "trendContext": "GitHub announced Dec 2025 they rebuilt Actions core to handle 71M daily jobs, shipping YAML anchors and 10-level workflow nesting.",
+  "createdAt": "2026-03-13T18:11:01.633Z",
+  "updatedAt": "2026-03-13T18:11:01.633Z"
+}

@@ -1,0 +1,30 @@
+{
+  "id": "agent-scoped-hooks-tutorial",
+  "topic": "Agent-Scoped Hooks: Pre/Post Processing for Your Custom VS Code Agents",
+  "hook": "Your .agent.md file just learned new tricks — agent-scoped hooks are here",
+  "audience": "Developers building custom agents who need to add validation and processing logic to agent workflows",
+  "keyTakeaway": "Agent-scoped hooks let you attach pre/post processing logic to specific agents without affecting other chat interactions",
+  "talkingPoints": [
+    "What are agent-scoped hooks and how they differ from global hooks",
+    "Walkthrough: Adding hooks in the YAML frontmatter of your .agent.md file",
+    "Use case 1: Pre-processing hook that validates context before agent runs",
+    "Use case 2: Post-processing hook that logs or transforms agent output",
+    "Enable the feature: chat.useCustomAgentHooks setting and how runSubagent triggers hooks"
+  ],
+  "platforms": [
+    "youtube",
+    "tiktok",
+    "instagram"
+  ],
+  "status": "draft",
+  "tags": [
+    "VS Code",
+    "GitHub Copilot",
+    "Custom Agents",
+    "Hooks",
+    "Agent Engineering"
+  ],
+  "trendContext": "Agent-scoped hooks shipped as Preview feature in VS Code 1.111 (March 9, 2026) - enables governance patterns for custom agents that nobody else is covering yet",
+  "createdAt": "2026-03-13T18:23:36.793Z",
+  "updatedAt": "2026-03-13T18:23:36.793Z"
+}

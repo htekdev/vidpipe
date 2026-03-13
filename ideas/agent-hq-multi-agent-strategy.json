@@ -1,0 +1,30 @@
+{
+  "id": "agent-hq-multi-agent-strategy",
+  "topic": "Agent HQ Strategy: Using Copilot, Claude, and Codex Together for Better Code",
+  "hook": "GitHub just became a multi-agent battleground — here's how to play it",
+  "audience": "Teams and enterprise developers evaluating how to use multiple AI agents strategically",
+  "keyTakeaway": "Running Copilot, Claude, and Codex on the same task surfaces different tradeoffs, helping you catch issues before code review",
+  "talkingPoints": [
+    "Agent HQ now supports Copilot, Claude by Anthropic, and OpenAI Codex in one place",
+    "The 3-agent strategy: architecture review, edge case hunting, and minimal implementation",
+    "Demo: Assigning the same refactoring task to multiple agents and comparing approaches",
+    "Enterprise controls: How org admins can manage which agents are permitted",
+    "Real talk: When multiple agents help vs. when they're overkill"
+  ],
+  "platforms": [
+    "youtube",
+    "linkedin"
+  ],
+  "status": "draft",
+  "tags": [
+    "GitHub Copilot",
+    "Agent HQ",
+    "Claude",
+    "Codex",
+    "Multi-Agent",
+    "Enterprise"
+  ],
+  "trendContext": "GitHub announced Claude and Codex integration in Agent HQ on Feb 4, 2026 - now in public preview for Copilot Pro+ and Enterprise, with more agents from Google, Cognition, and xAI coming soon",
+  "createdAt": "2026-03-13T18:23:19.883Z",
+  "updatedAt": "2026-03-13T18:23:19.883Z"
+}

@@ -1,0 +1,30 @@
+{
+  "id": "vscode-weekly-releases-new-era",
+  "topic": "VS Code Goes Weekly: The New Era of Rapid Feature Releases",
+  "hook": "VS Code just went weekly — here's what that means for your workflow",
+  "audience": "VS Code power users and developers who want to stay on top of the latest features",
+  "keyTakeaway": "Weekly stable releases mean faster feature delivery but require new habits for staying current — here's how to adapt",
+  "talkingPoints": [
+    "VS Code 1.111 marks the first weekly Stable release — a major shift from monthly cadence",
+    "Why this matters: AI features are evolving so fast that monthly releases couldn't keep up",
+    "The engineering changes behind this: automated testing, PR media attachment, showcase pipelines",
+    "What's deprecated: Edit Mode is officially deprecated, fully removed by version 1.125",
+    "My strategy: How I'm adapting my content calendar to cover weekly VS Code drops"
+  ],
+  "platforms": [
+    "youtube",
+    "linkedin",
+    "x"
+  ],
+  "status": "draft",
+  "tags": [
+    "VS Code",
+    "Developer Tools",
+    "Microsoft",
+    "Software Updates",
+    "Productivity"
+  ],
+  "trendContext": "VS Code 1.111 (March 9, 2026) explicitly announces 'the first of our weekly Stable releases' - this is a fundamental shift in how VS Code ships features, driven by the pace of AI development",
+  "createdAt": "2026-03-13T18:24:13.057Z",
+  "updatedAt": "2026-03-13T18:24:13.058Z"
+}

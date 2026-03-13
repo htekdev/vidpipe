@@ -1,0 +1,30 @@
+{
+  "id": "vscode-autopilot-mode-explained",
+  "topic": "VS Code Autopilot Mode: Your Agent Never Stops Until the Job Is Done",
+  "hook": "VS Code 1.111 just gave your AI agent a turbo button",
+  "audience": "Developers using GitHub Copilot in VS Code who want to maximize AI productivity",
+  "keyTakeaway": "Autopilot mode lets your agent run autonomously until task completion, but understanding the three permission levels is crucial for safe usage",
+  "talkingPoints": [
+    "VS Code 1.111 dropped March 9th with Autopilot mode - here's what it actually does",
+    "Walk through the three permission levels: Default Approvals, Bypass Approvals, and Autopilot",
+    "Demo: Watch the agent iterate autonomously on a real task using task_complete signaling",
+    "The security warning you need to understand before enabling Bypass or Autopilot",
+    "My recommendation: When to use each permission level based on task type"
+  ],
+  "platforms": [
+    "youtube",
+    "tiktok",
+    "linkedin"
+  ],
+  "status": "draft",
+  "tags": [
+    "VS Code",
+    "GitHub Copilot",
+    "Autopilot",
+    "AI Agents",
+    "Developer Tools"
+  ],
+  "trendContext": "VS Code 1.111 released March 9, 2026 (4 days ago) with Autopilot mode as headline feature - this is the first weekly Stable release in VS Code's new release cadence",
+  "createdAt": "2026-03-13T18:23:01.516Z",
+  "updatedAt": "2026-03-13T18:23:01.516Z"
+}

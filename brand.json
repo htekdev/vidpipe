@@ -36,5 +36,53 @@
     "shortsFocus": "Pull out moments showing excitement about new features, aha moments, live demos, and surprising results",
     "blogFocus": "Educational, tutorial-style, include code when relevant, always tie back to how the technology helps developers",
     "socialFocus": "Hook-driven, authentic excitement, share the journey not just the result"
-  }
+  },
+  "positioning": "Full-stack developer & platform engineer turned SME for agentic development. Microsoft Senior Solutions Engineer championing GitHub Copilot as an agentic platform.",
+  "expertise": [
+    "GitHub Copilot CLI & SDK",
+    "Agentic DevOps & CI/CD",
+    "Agent harnesses & governance",
+    "GitHub Agentic Workflows",
+    "Full-stack TypeScript/Node.js",
+    "Azure & cloud engineering",
+    "Platform engineering"
+  ],
+  "contentPillars": [
+    {
+      "pillar": "GitHub Copilot Deep Dives",
+      "description": "Weekly coverage of Copilot CLI releases, SDK features, and practical applications",
+      "frequency": "weekly",
+      "formats": ["video", "blog", "social"]
+    },
+    {
+      "pillar": "Agentic DevOps",
+      "description": "Building guardrails, governance, and testing practices for AI-assisted development",
+      "frequency": "2x/month",
+      "formats": ["long-form video", "blog"]
+    },
+    {
+      "pillar": "Build in Public",
+      "description": "VidPipe development, open source tooling, real-time problem solving",
+      "frequency": "weekly",
+      "formats": ["video", "shorts", "social"]
+    },
+    {
+      "pillar": "Azure & Cloud Weekly",
+      "description": "Weekly Azure news roundups with developer-focused analysis",
+      "frequency": "weekly",
+      "formats": ["blog", "social"]
+    },
+    {
+      "pillar": "Agent Engineering Tutorials",
+      "description": "Hands-on guides for building agents with Copilot SDK, MCP, and GitHub Actions",
+      "frequency": "2x/month",
+      "formats": ["video", "blog"]
+    }
+  ],
+  "differentiators": [
+    "Practices what he preaches — VidPipe is built with the tools he advocates",
+    "DevOps-first perspective on AI — not just prompting, but governance and testing",
+    "Weekly Copilot CLI coverage that nobody else does consistently",
+    "Real engineer building real tools, not a reviewer reading changelogs"
+  ]
 }

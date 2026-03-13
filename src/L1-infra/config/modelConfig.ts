@@ -18,6 +18,7 @@ export const AGENT_MODEL_MAP: Record<string, string> = {
   SocialMediaAgent: PREMIUM_MODEL,
   BlogAgent: PREMIUM_MODEL,
   SummaryAgent: PREMIUM_MODEL,
+  IdeationAgent: PREMIUM_MODEL,
   ChapterAgent: PREMIUM_MODEL,
   ShortPostsAgent: PREMIUM_MODEL,
   MediumClipPostsAgent: PREMIUM_MODEL,
