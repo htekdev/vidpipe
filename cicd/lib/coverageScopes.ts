@@ -17,6 +17,9 @@ export const L7_ENTRY_POINTS = [
   'src/L7-app/commands/init.ts',
   'src/L7-app/commands/schedule.ts',
   'src/L7-app/commands/chat.ts',
+  'src/L7-app/commands/mcp.ts',
+  'src/L7-app/mcp/server.ts',
+  'src/L7-app/mcp/tools/pipeline.ts',
 ]
 
 export interface CoverageScope {

@@ -11,6 +11,7 @@ import {
   modelsDir,
   assetsDir,
   findRoot,
+  homedir,
 } from '../../../L1-infra/paths/paths.js'
 
 describe('path re-exports', () => {
@@ -78,6 +79,24 @@ describe('findRoot', () => {
     // Starting from filesystem root should not find a vidpipe package.json
     const fsRoot = resolve('/')
     expect(() => findRoot(fsRoot)).toThrow()
+  })
+})
+
+describe('homedir', () => {
+  it('returns a non-empty string', () => {
+    const home = homedir()
+    expect(typeof home).toBe('string')
+    expect(home.length).toBeGreaterThan(0)
+  })
+
+  it('returns an absolute path', () => {
+    const home = homedir()
+    expect(home).toMatch(/^[A-Z]:[/\\]|^\//)
+  })
+
+  it('returns the same value as os.homedir()', () => {
+    const { homedir: osHomedir } = require('os')
+    expect(homedir()).toBe(osHomedir())
   })
 })
 

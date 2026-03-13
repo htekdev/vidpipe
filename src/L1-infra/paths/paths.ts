@@ -1,6 +1,7 @@
 // Re-export all commonly used path functions
 export { join, resolve, dirname, basename, extname, parse, sep, relative, normalize } from 'path'
 export { fileURLToPath } from 'url'
+export { homedir } from 'os'
 
 // Also re-export the path module itself for the rare cases where namespace import is needed
 import pathMod from 'path'
