@@ -9,6 +9,7 @@ import { runInit } from './commands/init'
 import { runSchedule } from './commands/schedule'
 import { runRealign } from './commands/realign'
 import { runChat } from './commands/chat'
+import { runMcp } from './commands/mcp'
 import { startReviewServer } from './review/server'
 import { openUrl } from '../L1-infra/cli/cli.js'
 import { readTextFileSync, listDirectorySync } from '../L1-infra/fileSystem/fileSystem.js'
@@ -111,6 +112,13 @@ program
   .description('Check all prerequisites and dependencies')
   .action(async () => {
     await runDoctor()
+  })
+
+program
+  .command('mcp')
+  .description('Start MCP server for AI assistant integration (stdio transport)')
+  .action(async () => {
+    await runMcp()
   })
 
 // --- Default command (process video or watch) ---
