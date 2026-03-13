@@ -6,6 +6,11 @@
  */
 
 import { costTracker as _costTracker } from '../L3-services/costTracking/costTracker.js'
+import {
+  startRun as _startRun,
+  completeRun as _completeRun,
+  failRun as _failRun,
+} from '../L3-services/pipelineRuns/pipelineRuns.js'
 import { markPending as _markPending, markProcessing as _markProcessing, markCompleted as _markCompleted, markFailed as _markFailed } from '../L3-services/processingState/processingState.js'
 import { commitAndPush as _commitAndPush } from '../L3-services/gitOperations/gitOperations.js'
 import { buildPublishQueue as _buildPublishQueue } from '../L3-services/queueBuilder/queueBuilder.js'
@@ -17,11 +22,25 @@ export type { QueueBuildResult } from '../L3-services/queueBuilder/queueBuilder.
 // Cost tracking — proxy object wrapping L3 singleton
 export const costTracker = {
   reset: (...args: Parameters<typeof _costTracker.reset>) => _costTracker.reset(...args),
+  setRunId: (...args: Parameters<typeof _costTracker.setRunId>) => _costTracker.setRunId(...args),
   setStage: (...args: Parameters<typeof _costTracker.setStage>) => _costTracker.setStage(...args),
   getReport: (...args: Parameters<typeof _costTracker.getReport>) => _costTracker.getReport(...args),
   formatReport: (...args: Parameters<typeof _costTracker.formatReport>) => _costTracker.formatReport(...args),
   recordServiceUsage: (...args: Parameters<typeof _costTracker.recordServiceUsage>) => _costTracker.recordServiceUsage(...args),
 } as const
+
+// Pipeline run audit trail
+export function startRun(...args: Parameters<typeof _startRun>): ReturnType<typeof _startRun> {
+  return _startRun(...args)
+}
+
+export function completeRun(...args: Parameters<typeof _completeRun>): ReturnType<typeof _completeRun> {
+  return _completeRun(...args)
+}
+
+export function failRun(...args: Parameters<typeof _failRun>): ReturnType<typeof _failRun> {
+  return _failRun(...args)
+}
 
 // Processing state
 export function markPending(...args: Parameters<typeof _markPending>): ReturnType<typeof _markPending> {

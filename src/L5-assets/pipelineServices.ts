@@ -5,6 +5,9 @@
 
 import {
   costTracker as _costTracker,
+  startRun as _startRun,
+  completeRun as _completeRun,
+  failRun as _failRun,
   markPending as _markPending,
   markProcessing as _markProcessing,
   markCompleted as _markCompleted,
@@ -20,11 +23,25 @@ export type { CostReport, QueueBuildResult } from '../L4-agents/pipelineServiceB
 // Cost tracking — proxy delegating to L4 bridge
 export const costTracker = {
   reset: (...args: Parameters<typeof _costTracker.reset>) => _costTracker.reset(...args),
+  setRunId: (...args: Parameters<typeof _costTracker.setRunId>) => _costTracker.setRunId(...args),
   setStage: (...args: Parameters<typeof _costTracker.setStage>) => _costTracker.setStage(...args),
   getReport: (...args: Parameters<typeof _costTracker.getReport>) => _costTracker.getReport(...args),
   formatReport: (...args: Parameters<typeof _costTracker.formatReport>) => _costTracker.formatReport(...args),
   recordServiceUsage: (...args: Parameters<typeof _costTracker.recordServiceUsage>) => _costTracker.recordServiceUsage(...args),
 } as const
+
+// Pipeline run audit trail
+export function startRun(...args: Parameters<typeof _startRun>): ReturnType<typeof _startRun> {
+  return _startRun(...args)
+}
+
+export function completeRun(...args: Parameters<typeof _completeRun>): ReturnType<typeof _completeRun> {
+  return _completeRun(...args)
+}
+
+export function failRun(...args: Parameters<typeof _failRun>): ReturnType<typeof _failRun> {
+  return _failRun(...args)
+}
 
 // Processing state
 export function markPending(...args: Parameters<typeof _markPending>): ReturnType<typeof _markPending> {

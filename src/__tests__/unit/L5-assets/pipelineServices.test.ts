@@ -4,12 +4,19 @@
  * Mocks: L4 agents/bridges only
  * Tests that L5 wrapper functions delegate to L4 bridge modules.
  */
-import { vi, describe, it, expect, afterEach } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+
+import { PipelineStage } from '../../../L0-pure/types/index.js'
 
 const mockReset = vi.hoisted(() => vi.fn())
+const mockSetRunId = vi.hoisted(() => vi.fn())
 const mockSetStage = vi.hoisted(() => vi.fn())
 const mockGetReport = vi.hoisted(() => vi.fn())
 const mockFormatReport = vi.hoisted(() => vi.fn())
+const mockRecordServiceUsage = vi.hoisted(() => vi.fn())
+const mockStartRun = vi.hoisted(() => vi.fn())
+const mockCompleteRun = vi.hoisted(() => vi.fn())
+const mockFailRun = vi.hoisted(() => vi.fn())
 const mockMarkPending = vi.hoisted(() => vi.fn())
 const mockMarkProcessing = vi.hoisted(() => vi.fn())
 const mockMarkCompleted = vi.hoisted(() => vi.fn())
@@ -23,12 +30,15 @@ const mockScheduleAgent = vi.hoisted(() => vi.fn().mockImplementation(function(t
 vi.mock('../../../L4-agents/pipelineServiceBridge.js', () => ({
   costTracker: {
     reset: mockReset,
+    setRunId: mockSetRunId,
     setStage: mockSetStage,
     getReport: mockGetReport,
     formatReport: mockFormatReport,
-    recordCall: vi.fn(),
-    recordServiceUsage: vi.fn(),
+    recordServiceUsage: mockRecordServiceUsage,
   },
+  startRun: mockStartRun,
+  completeRun: mockCompleteRun,
+  failRun: mockFailRun,
   markPending: mockMarkPending,
   markProcessing: mockMarkProcessing,
   markCompleted: mockMarkCompleted,
@@ -42,21 +52,68 @@ vi.mock('../../../L4-agents/ScheduleAgent.js', () => ({
 }))
 
 import {
-  costTracker, markPending, markProcessing, markCompleted, markFailed,
-  buildPublishQueue, commitAndPush, createScheduleAgent,
+  buildPublishQueue,
+  commitAndPush,
+  completeRun,
+  costTracker,
+  createScheduleAgent,
+  failRun,
+  markCompleted,
+  markFailed,
+  markPending,
+  markProcessing,
+  startRun,
 } from '../../../L5-assets/pipelineServices.js'
+
+function createStageResults() {
+  return [
+    {
+      stage: PipelineStage.Ingestion,
+      success: true,
+      duration: 120,
+    },
+  ]
+}
 
 describe('L5 Unit: pipelineServices wrappers', () => {
   afterEach(() => vi.clearAllMocks())
+
+  it('exposes the pipeline run re-exports', () => {
+    expect(typeof startRun).toBe('function')
+    expect(typeof completeRun).toBe('function')
+    expect(typeof failRun).toBe('function')
+  })
 
   it('costTracker.reset delegates to L4', () => {
     costTracker.reset()
     expect(mockReset).toHaveBeenCalledOnce()
   })
 
+  it('costTracker.setRunId delegates to L4', () => {
+    costTracker.setRunId('run-123')
+    expect(mockSetRunId).toHaveBeenCalledWith('run-123')
+  })
+
   it('costTracker.setStage delegates to L4', () => {
     costTracker.setStage('ingestion' as never)
     expect(mockSetStage).toHaveBeenCalledWith('ingestion')
+  })
+
+  it('startRun delegates to L4', async () => {
+    await startRun('run-123', 'video-slug')
+    expect(mockStartRun).toHaveBeenCalledWith('run-123', 'video-slug')
+  })
+
+  it('completeRun delegates to L4', async () => {
+    const stageResults = createStageResults()
+    await completeRun('run-123', stageResults, 480)
+    expect(mockCompleteRun).toHaveBeenCalledWith('run-123', stageResults, 480)
+  })
+
+  it('failRun delegates to L4', async () => {
+    const stageResults = createStageResults()
+    await failRun('run-123', 'boom', stageResults)
+    expect(mockFailRun).toHaveBeenCalledWith('run-123', 'boom', stageResults)
   })
 
   it('markPending delegates to L4', async () => {
@@ -88,6 +145,7 @@ describe('L5 Unit: pipelineServices wrappers', () => {
     const mockVideo = { slug: 'test' } as never
     const result = await buildPublishQueue(mockVideo, [], [], [], undefined)
     expect(result).toEqual({ items: [] })
+    expect(mockBuildPublishQueue).toHaveBeenCalledWith(mockVideo, [], [], [], undefined)
   })
 
   it('commitAndPush delegates to L4', async () => {

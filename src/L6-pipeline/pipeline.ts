@@ -3,7 +3,16 @@ import { writeTextFile } from '../L1-infra/fileSystem/fileSystem.js'
 import logger, { pushPipe, popPipe } from '../L1-infra/logger/configLogger'
 import { getConfig } from '../L1-infra/config/environment'
 import { MainVideoAsset } from '../L5-assets/MainVideoAsset.js'
-import { costTracker, markPending, markProcessing, markCompleted, markFailed } from '../L5-assets/pipelineServices.js'
+import {
+  costTracker,
+  startRun,
+  completeRun,
+  failRun,
+  markPending,
+  markProcessing,
+  markCompleted,
+  markFailed,
+} from '../L5-assets/pipelineServices.js'
 import type { CostReport } from '../L5-assets/pipelineServices.js'
 import type {
   Transcript,
@@ -112,6 +121,39 @@ export function adjustTranscript(
   }
 }
 
+function formatPipelineError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function derivePipelineSlug(videoPath: string): string {
+  const filename = basename(videoPath)
+  return filename.replace(/\.(mp4|mov|webm|avi|mkv)$/i, '')
+}
+
+async function startRunSafely(runId: string, slug: string): Promise<void> {
+  try {
+    await startRun(runId, slug)
+  } catch (error) {
+    logger.warn(`[PipelineAudit] Failed to create pipeline run ${runId} for ${slug}: ${formatPipelineError(error)}`)
+  }
+}
+
+async function completeRunSafely(runId: string, stageResults: StageResult[], totalDuration: number): Promise<void> {
+  try {
+    await completeRun(runId, stageResults, totalDuration)
+  } catch (error) {
+    logger.warn(`[PipelineAudit] Failed to complete pipeline run ${runId}: ${formatPipelineError(error)}`)
+  }
+}
+
+async function failRunSafely(runId: string, errorMessage: string, stageResults?: StageResult[]): Promise<void> {
+  try {
+    await failRun(runId, errorMessage, stageResults)
+  } catch (error) {
+    logger.warn(`[PipelineAudit] Failed to fail pipeline run ${runId}: ${formatPipelineError(error)}`)
+  }
+}
+
 /**
  * Run the full video processing pipeline.
  *
@@ -131,9 +173,13 @@ export function adjustTranscript(
 export async function processVideo(videoPath: string): Promise<PipelineResult> {
   const pipelineStart = Date.now()
   const stageResults: StageResult[] = []
-  const cfg = getConfig()
+  const runId = crypto.randomUUID()
+  const slug = derivePipelineSlug(videoPath)
+  let shouldPopPipe = false
 
   costTracker.reset()
+  costTracker.setRunId(runId)
+  await startRunSafely(runId, slug)
 
   // Helper: set cost-tracking stage before running
   function trackStage<T>(stage: PipelineStage, fn: () => Promise<T>): Promise<T | undefined> {
@@ -141,33 +187,38 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
     return runStage(stage, fn, stageResults)
   }
 
-  logger.info(`Pipeline starting for: ${videoPath}`)
-
-  // 1. Ingestion — required for all subsequent stages
-  const asset = await trackStage<MainVideoAsset>(Stage.Ingestion, () => MainVideoAsset.ingest(videoPath))
-  if (!asset) {
-    const totalDuration = Date.now() - pipelineStart
-    logger.error('Ingestion failed — cannot proceed without video metadata')
-    return {
-      video: { originalPath: videoPath, repoPath: '', videoDir: '', slug: '', filename: '', duration: 0, size: 0, createdAt: new Date() },
-      transcript: undefined,
-      editedVideoPath: undefined,
-      captions: undefined,
-      captionedVideoPath: undefined,
-      summary: undefined,
-      shorts: [],
-      mediumClips: [],
-      socialPosts: [],
-      blogPost: undefined,
-      stageResults,
-      totalDuration,
-    }
-  }
-
-  const video = await asset.toVideoFile()
-  pushPipe(video.videoDir)
-
   try {
+    const cfg = getConfig()
+
+    logger.info(`Pipeline starting for: ${videoPath}`)
+
+    // 1. Ingestion — required for all subsequent stages
+    const asset = await trackStage<MainVideoAsset>(Stage.Ingestion, () => MainVideoAsset.ingest(videoPath))
+    if (!asset) {
+      const totalDuration = Date.now() - pipelineStart
+      const errorMessage = 'Ingestion failed — cannot proceed without video metadata'
+      await failRunSafely(runId, errorMessage, stageResults)
+      logger.error(errorMessage)
+      return {
+        video: { originalPath: videoPath, repoPath: '', videoDir: '', slug: '', filename: '', duration: 0, size: 0, createdAt: new Date() },
+        transcript: undefined,
+        editedVideoPath: undefined,
+        captions: undefined,
+        captionedVideoPath: undefined,
+        summary: undefined,
+        shorts: [],
+        mediumClips: [],
+        socialPosts: [],
+        blogPost: undefined,
+        stageResults,
+        totalDuration,
+      }
+    }
+
+    const video = await asset.toVideoFile()
+    pushPipe(video.videoDir)
+    shouldPopPipe = true
+
     // 2. Transcription — asset handles disk check + Whisper call + file write
     const transcript = await trackStage<Transcript>(Stage.Transcription, () => asset.getTranscript())
 
@@ -267,6 +318,7 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
       logger.info(`Cost report saved: ${costPath}`)
     }
 
+    await completeRunSafely(runId, stageResults, totalDuration)
     logger.info(`Pipeline completed in ${totalDuration}ms`)
 
     return {
@@ -285,8 +337,13 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
       stageResults,
       totalDuration,
     }
+  } catch (error) {
+    await failRunSafely(runId, formatPipelineError(error), stageResults)
+    throw error
   } finally {
-    popPipe()
+    if (shouldPopPipe) {
+      popPipe()
+    }
   }
 }
 
@@ -329,9 +386,7 @@ function generateCostMarkdown(report: CostReport): string {
 }
 
 export async function processVideoSafe(videoPath: string): Promise<PipelineResult | null> {
-  // Derive slug from filename for state tracking (same logic as MainVideoAsset.ingest)
-  const filename = basename(videoPath)
-  const slug = filename.replace(/\.(mp4|mov|webm|avi|mkv)$/i, '')
+  const slug = derivePipelineSlug(videoPath)
   await markPending(slug, videoPath)
   await markProcessing(slug)
 

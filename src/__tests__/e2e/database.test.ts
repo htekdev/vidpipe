@@ -278,4 +278,48 @@ describe('E2E: L3 services with real SQLite', () => {
 
     costTracker.reset()
   })
+
+  test('pipelineRuns manages completed and failed runs through real SQLite', async () => {
+    const { PipelineStage } = await import('../../L0-pure/types/index.js')
+    const { getPipelineRun } = await import('../../L2-clients/dataStore/pipelineRunStore.js')
+    const { upsertVideo } = await import('../../L2-clients/dataStore/videoStore.js')
+    const { startRun, completeRun, failRun } = await import('../../L3-services/pipelineRuns/pipelineRuns.js')
+
+    upsertVideo('e2e-pipeline-run', 'C:\\videos\\e2e-pipeline-run.mp4', 'processing')
+
+    const completedStageResults = [
+      { stage: PipelineStage.Ingestion, success: true, duration: 120 },
+      { stage: PipelineStage.Transcription, success: true, duration: 360 },
+    ]
+
+    await startRun('e2e-pipeline-run-1', 'e2e-pipeline-run')
+    await completeRun('e2e-pipeline-run-1', completedStageResults, 480)
+
+    const completedRun = getPipelineRun('e2e-pipeline-run-1')
+    expect(completedRun).toMatchObject({
+      run_id: 'e2e-pipeline-run-1',
+      slug: 'e2e-pipeline-run',
+      status: 'completed',
+      total_duration: 480,
+      error: null,
+    })
+    expect(JSON.parse(completedRun?.stage_results ?? '[]')).toEqual(completedStageResults)
+
+    const failedStageResults = [
+      { stage: PipelineStage.Ingestion, success: true, duration: 100 },
+      { stage: PipelineStage.Transcription, success: false, error: 'transcription timed out', duration: 420 },
+    ]
+
+    await startRun('e2e-pipeline-run-2', 'e2e-pipeline-run')
+    await failRun('e2e-pipeline-run-2', 'transcription timed out', failedStageResults)
+
+    const failedRun = getPipelineRun('e2e-pipeline-run-2')
+    expect(failedRun).toMatchObject({
+      run_id: 'e2e-pipeline-run-2',
+      slug: 'e2e-pipeline-run',
+      status: 'failed',
+      error: 'transcription timed out',
+    })
+    expect(JSON.parse(failedRun?.stage_results ?? '[]')).toEqual(failedStageResults)
+  })
 })
