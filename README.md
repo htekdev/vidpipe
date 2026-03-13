@@ -61,6 +61,10 @@ npm install -g vidpipe
     <td>🔍 <b>Face Detection</b> — ONNX-based webcam cropping</td>
     <td>🚀 <b>Auto-Publish</b> — Scheduled posting to TikTok, YouTube, Instagram, LinkedIn, X</td>
   </tr>
+  <tr>
+    <td>🔌 <b>MCP Server</b> — Control VidPipe from any AI assistant</td>
+    <td>📊 <b>Cost Tracking</b> — Token usage and spend per provider/model</td>
+  </tr>
 </table>
 
 ---
@@ -115,6 +119,7 @@ vidpipe [options] [video-path]
 vidpipe init              # Interactive setup wizard
 vidpipe review            # Open post review web app
 vidpipe schedule          # View posting schedule
+vidpipe mcp               # Start MCP server (stdio transport)
 ```
 
 | Option | Description |
@@ -205,6 +210,133 @@ vidpipe review
 - **Video preview** — See the video thumbnail and content before approving
 - **Keyboard shortcuts** — Arrow keys to navigate, Enter to approve, Backspace to reject
 - **Smart scheduling** — Posts are queued with optimal timing per platform
+
+---
+
+## 🔌 MCP Server
+
+VidPipe exposes all its functionality as an [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server, making it accessible from any MCP-compatible AI assistant — Claude Desktop, GitHub Copilot CLI, Cursor, and more.
+
+```bash
+# Start the MCP server (stdio transport)
+vidpipe mcp
+```
+
+### Why MCP?
+
+| Benefit | Description |
+|---------|-------------|
+| **Selective execution** | Run individual stages (e.g., just transcribe, just generate shorts) without the full pipeline |
+| **Universal agent access** | Any MCP client can use VidPipe — no custom integration needed |
+| **Async operations** | Long-running video processing returns a job ID immediately; poll for progress |
+| **Composability** | Chain VidPipe tools with other MCP servers in multi-step workflows |
+| **Introspection** | Query schedule, posts, cost reports, and diagnostics from your AI assistant |
+
+### Available Tools (17)
+
+<table>
+  <tr>
+    <th>Category</th>
+    <th>Tool</th>
+    <th>Description</th>
+  </tr>
+  <tr>
+    <td rowspan="9"><b>📊 Query</b></td>
+    <td><code>get_schedule_calendar</code></td>
+    <td>View upcoming posting schedule across all platforms</td>
+  </tr>
+  <tr><td><code>get_pending_posts</code></td><td>List posts awaiting review/approval</td></tr>
+  <tr><td><code>get_published_posts</code></td><td>List published posts</td></tr>
+  <tr><td><code>get_post</code></td><td>Get full details of a specific post</td></tr>
+  <tr><td><code>get_video_status</code></td><td>Check processing status of a video by slug</td></tr>
+  <tr><td><code>list_recordings</code></td><td>List all processed recordings</td></tr>
+  <tr><td><code>get_cost_report</code></td><td>LLM spend breakdown by provider/agent/model</td></tr>
+  <tr><td><code>get_job_status</code></td><td>Check progress of a running pipeline job</td></tr>
+  <tr><td><code>list_jobs</code></td><td>List all pipeline jobs (optionally by status)</td></tr>
+  <tr>
+    <td rowspan="5"><b>⚡ Action</b></td>
+    <td><code>approve_posts</code></td>
+    <td>Approve posts for scheduling (sequential to avoid slot collisions)</td>
+  </tr>
+  <tr><td><code>reject_posts</code></td><td>Reject and delete posts from the queue</td></tr>
+  <tr><td><code>find_next_slot</code></td><td>Find next available posting slot for a platform</td></tr>
+  <tr><td><code>realign_schedule</code></td><td>Fix scheduling collisions across all platforms</td></tr>
+  <tr><td><code>cancel_job</code></td><td>Cancel a running pipeline job</td></tr>
+  <tr>
+    <td rowspan="2"><b>🔧 System</b></td>
+    <td><code>get_config</code></td>
+    <td>Current config — output dir, provider, feature flags, API key status</td>
+  </tr>
+  <tr><td><code>doctor</code></td><td>Run diagnostics — FFmpeg, API keys, Node.js, schedule config</td></tr>
+  <tr>
+    <td><b>🎬 Pipeline</b></td>
+    <td><code>process_video</code></td>
+    <td>Start full 15-stage pipeline (async — returns job ID for polling)</td>
+  </tr>
+</table>
+
+### Client Configuration
+
+Add VidPipe to your MCP client's config file:
+
+**Claude Desktop** (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "vidpipe": {
+      "command": "vidpipe",
+      "args": ["mcp"],
+      "env": {
+        "OPENAI_API_KEY": "sk-your-key-here"
+      }
+    }
+  }
+}
+```
+
+**GitHub Copilot CLI** (`.github/copilot/mcp.json`):
+```json
+{
+  "servers": {
+    "vidpipe": {
+      "type": "stdio",
+      "command": "vidpipe",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+**Cursor** (`.cursor/mcp.json`):
+```json
+{
+  "mcpServers": {
+    "vidpipe": {
+      "command": "vidpipe",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Testing with MCP Inspector
+
+```bash
+npx @modelcontextprotocol/inspector
+# Connect with: Transport=STDIO, Command=node, Args=dist/cli.js mcp
+```
+
+### Async Pipeline Jobs
+
+The `process_video` tool fires off the 15-stage pipeline asynchronously:
+
+```
+1. Call process_video → returns { jobId: "job-..." }
+2. Poll get_job_status with the job ID → { status: "running", stage: "transcription", progress: "2/15" }
+3. When done → { status: "completed", result: { slug, completedStages, totalDuration } }
+```
+
+Jobs are persisted to `~/.vidpipe/mcp-jobs.json` and survive MCP server restarts. Stale jobs (no heartbeat for 2+ minutes) are automatically marked as failed.
 
 ---
 
@@ -301,6 +433,7 @@ Social media publishing is configured via `schedule.json` and the Late API. See 
 | [FFmpeg Setup](./docs/ffmpeg-setup.md) | Platform-specific install (Windows, macOS, Linux, ARM64) |
 | [Brand Customization](./docs/brand-customization.md) | Customize AI voice, vocabulary, hashtags, and content style |
 | [Social Publishing](./docs/social-publishing.md) | Review, schedule, and publish social posts via Late API |
+| [MCP Server](#-mcp-server) | Connect AI assistants via Model Context Protocol |
 
 ---
 
@@ -346,12 +479,14 @@ Each agent communicates with the LLM through structured tool calls, ensuring rel
 | [Chokidar](https://github.com/paulmillr/chokidar) | File system watching |
 | [Winston](https://github.com/winstonjs/winston) | Logging |
 | [Exa AI](https://exa.ai/) | Web search for social posts and blog |
+| [MCP SDK](https://modelcontextprotocol.io/) | Model Context Protocol server |
 
 ---
 
 ## 🗺️ Roadmap
 
 - [x] **Automated social posting** — Publish directly to platforms via Late API
+- [x] **MCP server** — Expose all VidPipe functionality to AI assistants via Model Context Protocol
 - [ ] **Multi-language support** — Transcription and summaries in multiple languages
 - [ ] **Custom templates** — User-defined Markdown & social post templates
 - [ ] **Web dashboard** — Browser UI for reviewing and editing outputs
