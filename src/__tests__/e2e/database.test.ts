@@ -322,4 +322,57 @@ describe('E2E: L3 services with real SQLite', () => {
     })
     expect(JSON.parse(failedRun?.stage_results ?? '[]')).toEqual(failedStageResults)
   })
+
+  test('migrateJsonToSqlite imports legacy files into real SQLite', async () => {
+    const migrationDir = path.join(await ensureTempDir(), `migration-e2e-${Date.now()}`)
+    await fs.mkdir(migrationDir, { recursive: true })
+
+    // Write legacy processing-state.json
+    await fs.writeFile(
+      path.join(migrationDir, 'processing-state.json'),
+      JSON.stringify({
+        videos: {
+          'e2e-migrate-1': { status: 'completed', sourcePath: '/e2e/video1.mp4' },
+        },
+      }),
+    )
+
+    // Write a legacy publish-queue item
+    const queueDir = path.join(migrationDir, 'publish-queue', 'item-e2e-1')
+    await fs.mkdir(queueDir, { recursive: true })
+    await fs.writeFile(
+      path.join(queueDir, 'metadata.json'),
+      JSON.stringify({
+        id: 'item-e2e-1',
+        platform: 'youtube',
+        accountId: '',
+        sourceVideo: 'e2e-migrate-1',
+        clipType: 'video',
+        characterCount: 50,
+        platformCharLimit: 5000,
+        status: 'pending_review',
+        createdAt: '2026-01-15T00:00:00Z',
+      }),
+    )
+    await fs.writeFile(path.join(queueDir, 'post.md'), 'E2E migration test post')
+
+    // Point config at temp dir and run migration
+    const { initConfig } = await import('../../L1-infra/config/environment.js')
+    initConfig({ outputDir: migrationDir })
+
+    const { migrateJsonToSqlite } = await import('../../L3-services/migration/jsonToSqlite.js')
+    const result = await migrateJsonToSqlite()
+
+    expect(result.videosImported).toBe(1)
+    expect(result.queueItemsImported).toBe(1)
+    expect(result.errors).toHaveLength(0)
+
+    // Verify in DB
+    const video = getVideo('e2e-migrate-1')
+    expect(video?.status).toBe('completed')
+
+    const queueItem = getQueueItem('item-e2e-1')
+    expect(queueItem?.platform).toBe('youtube')
+    expect(queueItem?.post_content).toBe('E2E migration test post')
+  })
 })
