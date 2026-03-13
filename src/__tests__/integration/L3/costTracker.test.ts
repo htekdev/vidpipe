@@ -1,20 +1,46 @@
 /**
  * L3 Integration Test — costTracker service
  *
- * Mock boundary: None — CostTracker is a pure in-memory singleton.
- * Real code:     L3 costTracker + L0 pricing (pure)
+ * Mock boundary: none.
+ * Real code:     L3 costTracker + L2 costStore + L1 in-memory database + L0 pricing.
  *
- * Validates that the cost tracker correctly records, aggregates,
- * and formats LLM and service usage data.
+ * Validates that the cost tracker still aggregates in memory while persisting
+ * per-run cost records to the database for historical queries.
  */
-import { describe, test, expect, beforeEach } from 'vitest'
-import { costTracker } from '../../../L3-services/costTracking/costTracker.js'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, test, expect } from 'vitest'
+import { closeDatabase, getDatabase, initializeDatabase, resetDatabaseSingleton } from '../../../L1-infra/database/index.js'
 import { COPILOT_PRU_OVERAGE_RATE } from '../../../L0-pure/pricing/pricing.js'
+import { getRunCosts, getRunSummary } from '../../../L2-clients/dataStore/costStore.js'
+import { costTracker } from '../../../L3-services/costTracking/costTracker.js'
+
+function clearCostRecords(): void {
+  getDatabase().exec(`
+    DELETE FROM cost_records;
+    DELETE FROM sqlite_sequence WHERE name = 'cost_records';
+  `)
+}
 
 // Logger is auto-mocked by global setup.ts
 
+beforeAll(() => {
+  closeDatabase()
+  resetDatabaseSingleton()
+  initializeDatabase({ inMemory: true })
+})
+
+afterAll(() => {
+  closeDatabase()
+  resetDatabaseSingleton()
+})
+
 describe('L3 Integration: costTracker', () => {
   beforeEach(() => {
+    clearCostRecords()
+    costTracker.reset()
+  })
+
+  afterEach(() => {
+    clearCostRecords()
     costTracker.reset()
   })
 
@@ -155,6 +181,59 @@ describe('L3 Integration: costTracker', () => {
     // totalCostUSD should include both LLM + service costs
     const llmOnlyCost = report.byProvider['openai'].costUSD
     expect(report.totalCostUSD).toBeCloseTo(llmOnlyCost + 0.05)
+  })
+
+  test('setRunId persists LLM and service records for the current run', () => {
+    costTracker.setRunId('run-cost-tracker-1')
+    costTracker.setAgent('SummaryAgent')
+    costTracker.setStage('summary')
+
+    costTracker.recordUsage('openai', 'gpt-4o', {
+      inputTokens: 400,
+      outputTokens: 100,
+      totalTokens: 500,
+    }, undefined, 1800)
+    costTracker.recordServiceUsage('web-search', 0.4, { query: 'video notes' })
+
+    const inMemoryReport = costTracker.getReport()
+    const persistedSummary = getRunSummary('run-cost-tracker-1')
+
+    expect(getRunCosts('run-cost-tracker-1')).toHaveLength(2)
+    expect(persistedSummary.totalCostUSD).toBeCloseTo(inMemoryReport.totalCostUSD)
+    expect(persistedSummary.totalPRUs).toBe(0)
+    expect(persistedSummary.totalTokens).toEqual({
+      input: 400,
+      output: 100,
+      total: 500,
+    })
+    expect(persistedSummary.llmCalls).toBe(1)
+    expect(persistedSummary.serviceCalls).toBe(1)
+  })
+
+  test('getHistoricalCosts reads persisted rows and respects the since filter', () => {
+    costTracker.setRunId('run-history-old')
+    costTracker.setAgent('AgentA')
+    costTracker.setStage('summary')
+    costTracker.recordUsage('openai', 'gpt-4o', {
+      inputTokens: 100,
+      outputTokens: 50,
+      totalTokens: 150,
+    })
+
+    getDatabase().exec("UPDATE cost_records SET timestamp = '2020-01-01 00:00:00', created_at = '2020-01-01 00:00:00' WHERE run_id = 'run-history-old'")
+
+    costTracker.setRunId('run-history-new')
+    costTracker.setStage('social-media')
+    costTracker.recordServiceUsage('exa', 0.01, { resultCount: 3 })
+
+    const allRows = costTracker.getHistoricalCosts()
+    const recentRows = costTracker.getHistoricalCosts('2021-01-01 00:00:00')
+
+    expect(allRows).toHaveLength(2)
+    expect(allRows.map((row) => row.run_id)).toEqual(['run-history-old', 'run-history-new'])
+    expect(recentRows).toHaveLength(1)
+    expect(recentRows[0].run_id).toBe('run-history-new')
+    expect(recentRows[0].record_type).toBe('service')
   })
 
   // ── formatReport ──────────────────────────────────────────────────────

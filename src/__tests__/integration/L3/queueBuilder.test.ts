@@ -8,7 +8,7 @@
  * Validates media resolution for shorts/medium/video, frontmatter parsing,
  * and the full buildPublishQueue orchestration.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest'
 import { Platform } from '../../../L0-pure/types/index.js'
 import type { VideoFile, ShortClip, MediumClip, SocialPost } from '../../../L0-pure/types/index.js'
 
@@ -18,6 +18,7 @@ const mockReadTextFile = vi.hoisted(() => vi.fn())
 const mockWriteTextFile = vi.hoisted(() => vi.fn())
 const mockWriteJsonFile = vi.hoisted(() => vi.fn())
 const mockFileExists = vi.hoisted(() => vi.fn())
+const mockFileExistsSync = vi.hoisted(() => vi.fn())
 const mockEnsureDirectory = vi.hoisted(() => vi.fn())
 const mockListDirectoryWithTypes = vi.hoisted(() => vi.fn())
 const mockCopyFile = vi.hoisted(() => vi.fn())
@@ -30,6 +31,7 @@ vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   writeTextFile: mockWriteTextFile,
   writeJsonFile: mockWriteJsonFile,
   fileExists: mockFileExists,
+  fileExistsSync: mockFileExistsSync,
   ensureDirectory: mockEnsureDirectory,
   listDirectoryWithTypes: mockListDirectoryWithTypes,
   copyFile: mockCopyFile,
@@ -52,6 +54,17 @@ vi.mock('../../../L1-infra/paths/paths.js', () => {
 
 vi.mock('../../../L1-infra/config/environment.js', () => ({
   getConfig: () => ({ OUTPUT_DIR: '/test/output' }),
+}))
+
+// Mock L1 database — provide in-memory SQLite so L2 queueStore works
+const mockDbInstance = vi.hoisted(() => {
+  const { DatabaseSync } = require('node:sqlite')
+  return new DatabaseSync(':memory:')
+})
+vi.mock('../../../L1-infra/database/database.js', () => ({
+  getDatabase: () => mockDbInstance,
+  closeDatabase: vi.fn(),
+  resetDatabaseSingleton: vi.fn(),
 }))
 
 // Mock L2 image generation client to prevent real API calls
@@ -135,8 +148,42 @@ function makePost(overrides: Partial<SocialPost> = {}): SocialPost {
 // ── Tests ─────────────────────────────────────────────────────────────
 
 describe('L3 Integration: queueBuilder', () => {
+  beforeAll(() => {
+    // Initialize queue_items table in the in-memory database
+    mockDbInstance.exec(`
+      CREATE TABLE IF NOT EXISTS queue_items (
+        id                  TEXT PRIMARY KEY,
+        platform            TEXT NOT NULL,
+        account_id          TEXT NOT NULL DEFAULT '',
+        source_video        TEXT NOT NULL,
+        source_clip         TEXT,
+        clip_type           TEXT NOT NULL CHECK (clip_type IN ('video','short','medium-clip')),
+        source_media_path   TEXT,
+        media_type          TEXT CHECK (media_type IN ('video','image')),
+        hashtags            TEXT,
+        links               TEXT,
+        character_count     INTEGER NOT NULL DEFAULT 0,
+        platform_char_limit INTEGER NOT NULL DEFAULT 0,
+        suggested_slot      TEXT,
+        scheduled_for       TEXT,
+        status              TEXT NOT NULL CHECK (status IN ('pending_review','published')),
+        late_post_id        TEXT,
+        published_url       TEXT,
+        post_content        TEXT NOT NULL,
+        text_only           INTEGER,
+        platform_specific   TEXT,
+        media_folder_path   TEXT,
+        created_at          TEXT NOT NULL DEFAULT (datetime('now')),
+        reviewed_at         TEXT,
+        published_at        TEXT
+      )
+    `)
+  })
+
   beforeEach(() => {
     vi.resetAllMocks()
+    // Clear queue_items between tests
+    mockDbInstance.exec('DELETE FROM queue_items')
     mockEnsureDirectory.mockResolvedValue(undefined)
     mockWriteJsonFile.mockResolvedValue(undefined)
     mockWriteTextFile.mockResolvedValue(undefined)
@@ -148,6 +195,7 @@ describe('L3 Integration: queueBuilder', () => {
     mockReadTextFile.mockResolvedValue('')
     // Default: items don't exist yet
     mockFileExists.mockResolvedValue(false)
+    mockFileExistsSync.mockReturnValue(false)
     mockListDirectoryWithTypes.mockResolvedValue([])
     // Default: image generation succeeds
     mockL2GenerateImage.mockResolvedValue('/tmp/cover.png')
@@ -171,9 +219,11 @@ describe('L3 Integration: queueBuilder', () => {
 
       const result = await buildPublishQueue(video, shorts, [], [post], undefined)
 
-      expect(result.itemsCreated).toBe(1)
       expect(result.errors).toHaveLength(0)
-      expect(mockWriteJsonFile).toHaveBeenCalled()
+      expect(result.itemsCreated).toBe(1)
+      // Verify item was persisted in the database
+      const dbRow = mockDbInstance.prepare('SELECT * FROM queue_items WHERE id LIKE ?').get('%cool-short%')
+      expect(dbRow).toBeDefined()
     })
 
     it('creates queue items for medium clip posts', async () => {
@@ -221,13 +271,11 @@ describe('L3 Integration: queueBuilder', () => {
         '---\nplatform: youtube\nshortSlug: cool-short\n---\nContent',
       )
 
-      // itemExists returns 'published' for the expected item ID
-      mockFileExists.mockResolvedValue(false)
-      mockListDirectoryWithTypes.mockResolvedValue([])
-      // Simulate "published" check: first call (queue) false, second call (published) true
-      mockFileExists
-        .mockResolvedValueOnce(false)  // queue check
-        .mockResolvedValueOnce(true)   // published check
+      // Pre-insert a published item in the DB so itemExists returns 'published'
+      mockDbInstance.prepare(`
+        INSERT INTO queue_items (id, platform, account_id, source_video, clip_type, status, post_content)
+        VALUES (?, 'youtube', '', '/recordings/my-video', 'short', 'published', 'Content')
+      `).run('cool-short-youtube')
 
       const result = await buildPublishQueue(video, [makeShort()], [], [post], undefined)
 

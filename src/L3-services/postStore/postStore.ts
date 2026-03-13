@@ -1,7 +1,17 @@
-import { getConfig } from '../../L1-infra/config/environment'
-import logger from '../../L1-infra/logger/configLogger'
-import { readTextFile, writeTextFile, writeJsonFile, ensureDirectory, copyFile, fileExists, listDirectoryWithTypes, removeDirectory, renameFile, copyDirectory } from '../../L1-infra/fileSystem/fileSystem.js'
+import { getConfig } from '../../L1-infra/config/environment.js'
+import { ensureDirectory, copyFile, fileExists, fileExistsSync, removeDirectory, renameFile, copyDirectory } from '../../L1-infra/fileSystem/fileSystem.js'
+import logger from '../../L1-infra/logger/configLogger.js'
 import { join, basename, resolve, sep, extname } from '../../L1-infra/paths/paths.js'
+import {
+  getQueueItem as dbGetItem,
+  getItemsByStatus as dbGetByStatus,
+  insertQueueItem,
+  updateQueueItem as dbUpdateItem,
+  markPublished,
+  deleteQueueItem,
+  itemExists as dbItemExists,
+} from '../../L2-clients/dataStore/queueStore.js'
+import type { QueueItemInsert, QueueItemRow } from '../../L2-clients/dataStore/queueStore.js'
 
 export interface QueueItemMetadata {
   id: string
@@ -58,84 +68,191 @@ function getPublishedDir(): string {
   return join(OUTPUT_DIR, 'published')
 }
 
-async function readQueueItem(folderPath: string, id: string): Promise<QueueItem | null> {
-  const metadataPath = join(folderPath, 'metadata.json')
-  const postPath = join(folderPath, 'post.md')
+function validateId(id: string): void {
+  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+    throw new Error(`Invalid ID format: ${id}`)
+  }
+}
 
-  try {
-    // Read directly without prior existence check to avoid TOCTOU race
-    const metadataRaw = await readTextFile(metadataPath)
-    const metadata: QueueItemMetadata = JSON.parse(metadataRaw)
+function parseJson<T>(value: string | null, fallback: T): T {
+  if (!value) return fallback
+  return JSON.parse(value) as T
+}
 
-    let postContent = ''
-    try {
-      postContent = await readTextFile(postPath)
-    } catch {
-      logger.debug(`No post.md found for ${String(id).replace(/[\r\n]/g, '')}`)
+function toNullableString(value: string | null | undefined): string | null {
+  return value === undefined ? null : value === null ? null : String(value)
+}
+
+function normalizeLinks(links: Array<{ url: string; title?: string }>): Array<{ url: string; title?: string }> {
+  return links.map((link) => {
+    const normalized = { url: String(link.url) }
+    if (link.title !== undefined) {
+      return { ...normalized, title: String(link.title) }
     }
+    return normalized
+  })
+}
 
-    // Check for media file (could be video or image)
-    const videoPath = join(folderPath, 'media.mp4')
-    const imagePath = join(folderPath, 'media.png')
-    let mediaPath: string | null = null
-    let hasMedia = false
+function rowToMetadata(row: QueueItemRow): QueueItemMetadata {
+  return {
+    id: row.id,
+    platform: row.platform,
+    accountId: row.account_id,
+    sourceVideo: row.source_video,
+    sourceClip: row.source_clip,
+    clipType: row.clip_type,
+    sourceMediaPath: row.source_media_path,
+    hashtags: parseJson<string[]>(row.hashtags, []),
+    links: parseJson<Array<{ url: string; title?: string }>>(row.links, []),
+    characterCount: row.character_count,
+    platformCharLimit: row.platform_char_limit,
+    suggestedSlot: row.suggested_slot,
+    scheduledFor: row.scheduled_for,
+    status: row.status,
+    latePostId: row.late_post_id,
+    publishedUrl: row.published_url,
+    createdAt: row.created_at,
+    reviewedAt: row.reviewed_at,
+    publishedAt: row.published_at,
+    textOnly: row.text_only === 1 ? true : row.text_only === 0 ? false : undefined,
+    mediaType: row.media_type ?? undefined,
+    platformSpecificData: row.platform_specific ? parseJson<Record<string, unknown>>(row.platform_specific, {}) : undefined,
+  }
+}
 
-    if (await fileExists(videoPath)) {
-      mediaPath = videoPath
-      hasMedia = true
-    } else if (await fileExists(imagePath)) {
-      mediaPath = imagePath
-      hasMedia = true
-    }
+function findMediaPath(folderPath: string): string | null {
+  const videoPath = join(folderPath, 'media.mp4')
+  const imagePath = join(folderPath, 'media.png')
 
-    return {
-      id,
-      metadata,
-      postContent,
-      hasMedia,
-      mediaPath,
-      folderPath,
-    }
-  } catch (err) {
-    logger.debug(`Failed to read queue item ${String(id).replace(/[\r\n]/g, '')}: ${String(err).replace(/[\r\n]/g, '')}`)
-    return null
+  if (fileExistsSync(videoPath)) return videoPath
+  if (fileExistsSync(imagePath)) return imagePath
+  return null
+}
+
+function rowToQueueItem(row: QueueItemRow): QueueItem {
+  const folderPath = row.media_folder_path || join(getQueueDir(), row.id)
+  const hasMedia = row.media_folder_path !== null
+
+  return {
+    id: row.id,
+    metadata: rowToMetadata(row),
+    postContent: row.post_content,
+    hasMedia,
+    mediaPath: hasMedia ? findMediaPath(folderPath) : null,
+    folderPath,
+  }
+}
+
+function metadataToInsert(
+  id: string,
+  metadata: QueueItemMetadata,
+  postContent: string,
+  mediaFolderPath: string | null,
+): QueueItemInsert {
+  return {
+    id,
+    platform: metadata.platform,
+    account_id: metadata.accountId,
+    source_video: metadata.sourceVideo,
+    source_clip: metadata.sourceClip,
+    clip_type: metadata.clipType,
+    source_media_path: metadata.sourceMediaPath,
+    media_type: metadata.mediaType,
+    hashtags: metadata.hashtags,
+    links: metadata.links,
+    character_count: metadata.characterCount,
+    platform_char_limit: metadata.platformCharLimit,
+    suggested_slot: metadata.suggestedSlot,
+    scheduled_for: metadata.scheduledFor,
+    status: metadata.status,
+    late_post_id: metadata.latePostId,
+    published_url: metadata.publishedUrl,
+    post_content: postContent,
+    text_only: metadata.textOnly,
+    platform_specific: metadata.platformSpecificData,
+    media_folder_path: mediaFolderPath,
+  }
+}
+
+function mergeMetadata(existing: QueueItemMetadata, updates: Partial<QueueItemMetadata>): QueueItemMetadata {
+  return {
+    id: String(existing.id),
+    platform: String(updates.platform ?? existing.platform),
+    accountId: String(updates.accountId ?? existing.accountId),
+    sourceVideo: String(existing.sourceVideo),
+    sourceClip: existing.sourceClip !== null ? String(existing.sourceClip) : null,
+    clipType: existing.clipType,
+    sourceMediaPath: existing.sourceMediaPath !== null ? String(existing.sourceMediaPath) : null,
+    hashtags: Array.isArray(updates.hashtags)
+      ? updates.hashtags.map(String)
+      : Array.isArray(existing.hashtags)
+        ? existing.hashtags.map(String)
+        : [],
+    links: Array.isArray(updates.links)
+      ? normalizeLinks(updates.links)
+      : Array.isArray(existing.links)
+        ? normalizeLinks(existing.links)
+        : [],
+    characterCount: updates.characterCount !== undefined
+      ? Number(updates.characterCount) || 0
+      : Number(existing.characterCount) || 0,
+    platformCharLimit: updates.platformCharLimit !== undefined
+      ? Number(updates.platformCharLimit) || 0
+      : Number(existing.platformCharLimit) || 0,
+    suggestedSlot: updates.suggestedSlot !== undefined
+      ? toNullableString(updates.suggestedSlot)
+      : toNullableString(existing.suggestedSlot),
+    scheduledFor: updates.scheduledFor !== undefined
+      ? toNullableString(updates.scheduledFor)
+      : toNullableString(existing.scheduledFor),
+    status: updates.status ?? existing.status,
+    latePostId: updates.latePostId !== undefined
+      ? toNullableString(updates.latePostId)
+      : toNullableString(existing.latePostId),
+    publishedUrl: updates.publishedUrl !== undefined
+      ? toNullableString(updates.publishedUrl)
+      : toNullableString(existing.publishedUrl),
+    createdAt: String(existing.createdAt),
+    reviewedAt: updates.reviewedAt !== undefined
+      ? toNullableString(updates.reviewedAt)
+      : toNullableString(existing.reviewedAt),
+    publishedAt: updates.publishedAt !== undefined
+      ? toNullableString(updates.publishedAt)
+      : toNullableString(existing.publishedAt),
+    textOnly: updates.textOnly ?? existing.textOnly,
+    mediaType: updates.mediaType ?? existing.mediaType,
+    platformSpecificData: updates.platformSpecificData ?? existing.platformSpecificData,
+  }
+}
+
+function metadataToUpdateInsert(metadata: QueueItemMetadata): Partial<QueueItemInsert> {
+  return {
+    platform: metadata.platform,
+    account_id: metadata.accountId,
+    hashtags: metadata.hashtags,
+    links: metadata.links,
+    character_count: metadata.characterCount,
+    platform_char_limit: metadata.platformCharLimit,
+    suggested_slot: metadata.suggestedSlot,
+    scheduled_for: metadata.scheduledFor,
+    status: metadata.status,
+    late_post_id: metadata.latePostId,
+    published_url: metadata.publishedUrl,
+    text_only: metadata.textOnly,
+    media_type: metadata.mediaType,
+    platform_specific: metadata.platformSpecificData,
   }
 }
 
 export async function getPendingItems(): Promise<QueueItem[]> {
-  const queueDir = getQueueDir()
-  await ensureDirectory(queueDir)
-
-  let entries: string[]
-  try {
-    const dirents = await listDirectoryWithTypes(queueDir)
-    entries = dirents.filter(d => d.isDirectory()).map(d => d.name)
-  } catch {
-    return []
-  }
-
-  const items: QueueItem[] = []
-  for (const name of entries) {
-    const item = await readQueueItem(join(queueDir, name), name)
-    if (item) items.push(item)
-  }
-
-  // Sort: items with media first (shorts/clips), then text-only (video-level), then by date
-  items.sort((a, b) => {
-    if (a.hasMedia !== b.hasMedia) return a.hasMedia ? -1 : 1
-    return a.metadata.createdAt.localeCompare(b.metadata.createdAt)
-  })
-  return items
+  return dbGetByStatus('pending_review').map(rowToQueueItem)
 }
 
 export async function getGroupedPendingItems(): Promise<GroupedQueueItem[]> {
   const items = await getPendingItems()
-  
-  // Group by clip slug — strip the platform suffix from item ID so platform
-  // variants of the same clip (e.g. "my-clip-youtube", "my-clip-instagram")
-  // land in the same group.
+
   const groups = new Map<string, QueueItem[]>()
-  
+
   for (const item of items) {
     const platform = item.metadata.platform.toLowerCase()
     const clipSlug = item.id.endsWith(`-${platform}`)
@@ -145,14 +262,13 @@ export async function getGroupedPendingItems(): Promise<GroupedQueueItem[]> {
     if (!groups.has(groupKey)) {
       groups.set(groupKey, [])
     }
-    groups.get(groupKey)!.push(item)
+    groups.get(groupKey)?.push(item)
   }
-  
-  // Convert to GroupedQueueItem array
+
   const result: GroupedQueueItem[] = []
   for (const [groupKey, groupItems] of groups) {
     if (groupItems.length === 0) continue
-    
+
     const first = groupItems[0]
     result.push({
       groupKey,
@@ -164,25 +280,21 @@ export async function getGroupedPendingItems(): Promise<GroupedQueueItem[]> {
       items: groupItems,
     })
   }
-  
-  // Sort groups: media first, then by earliest createdAt in group
+
   result.sort((a, b) => {
     if (a.hasMedia !== b.hasMedia) return a.hasMedia ? -1 : 1
-    const aDate = Math.min(...a.items.map(i => new Date(i.metadata.createdAt).getTime()))
-    const bDate = Math.min(...b.items.map(i => new Date(i.metadata.createdAt).getTime()))
+    const aDate = Math.min(...a.items.map((item) => new Date(item.metadata.createdAt).getTime()))
+    const bDate = Math.min(...b.items.map((item) => new Date(item.metadata.createdAt).getTime()))
     return aDate - bDate
   })
-  
+
   return result
 }
 
 export async function getItem(id: string): Promise<QueueItem | null> {
-  // Inline validation to prevent path traversal - CodeQL recognizes this pattern
-  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
-    throw new Error(`Invalid ID format: ${id}`)
-  }
-  const folderPath = join(getQueueDir(), basename(id))
-  return readQueueItem(folderPath, id)
+  validateId(id)
+  const row = dbGetItem(id)
+  return row ? rowToQueueItem(row) : null
 }
 
 export async function createItem(
@@ -191,191 +303,102 @@ export async function createItem(
   postContent: string,
   mediaSourcePath?: string,
 ): Promise<QueueItem> {
-  // Inline validation to prevent path traversal - CodeQL recognizes this pattern
-  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
-    throw new Error(`Invalid ID format: ${id}`)
-  }
+  validateId(id)
+
   const folderPath = join(getQueueDir(), basename(id))
-  await ensureDirectory(folderPath)
-
-  await writeJsonFile(join(folderPath, 'metadata.json'), metadata)
-  await writeTextFile(join(folderPath, 'post.md'), postContent)
-
-  let hasMedia = false
-  const ext = mediaSourcePath ? extname(mediaSourcePath) : '.mp4'
-  const mediaFilename = `media${ext}`
-  const mediaPath = join(folderPath, mediaFilename)
+  let mediaFolderPath: string | null = null
 
   if (mediaSourcePath) {
+    await ensureDirectory(folderPath)
+    const ext = extname(mediaSourcePath) || '.mp4'
+    const mediaPath = join(folderPath, `media${ext}`)
     await copyFile(mediaSourcePath, mediaPath)
-    hasMedia = true
+    mediaFolderPath = folderPath
+  }
+
+  insertQueueItem(metadataToInsert(id, metadata, postContent, mediaFolderPath))
+
+  const row = dbGetItem(id)
+  if (!row) {
+    throw new Error(`Failed to load created queue item: ${id}`)
   }
 
   logger.debug(`Created queue item: ${String(id).replace(/[\r\n]/g, '')}`)
-
-  return {
-    id,
-    metadata,
-    postContent,
-    hasMedia,
-    mediaPath: hasMedia ? mediaPath : null,
-    folderPath,
-  }
+  return rowToQueueItem(row)
 }
 
 export async function updateItem(
   id: string,
   updates: { postContent?: string; metadata?: Partial<QueueItemMetadata> },
 ): Promise<QueueItem | null> {
-  // Inline validation to prevent path traversal - CodeQL recognizes this pattern
-  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
-    throw new Error(`Invalid ID format: ${id}`)
-  }
-  const existing = await getItem(id)
-  if (!existing) return null
+  validateId(id)
+
+  const existingRow = dbGetItem(id)
+  if (!existingRow) return null
+
+  const existingItem = rowToQueueItem(existingRow)
+  const dbUpdates: Partial<QueueItemInsert> = {}
 
   if (updates.metadata) {
-    // Sanitize metadata by re-constructing with only expected fields before writing
-    const sanitized: QueueItemMetadata = {
-      id: String(existing.metadata.id),
-      platform: String(updates.metadata.platform ?? existing.metadata.platform),
-      accountId: String(updates.metadata.accountId ?? existing.metadata.accountId),
-      sourceVideo: String(existing.metadata.sourceVideo),
-      sourceClip: existing.metadata.sourceClip !== null ? String(existing.metadata.sourceClip) : null,
-      clipType: existing.metadata.clipType,
-      sourceMediaPath: existing.metadata.sourceMediaPath !== null ? String(existing.metadata.sourceMediaPath) : null,
-      hashtags: Array.isArray(updates.metadata.hashtags) ? updates.metadata.hashtags.map(String) : (Array.isArray(existing.metadata.hashtags) ? existing.metadata.hashtags.map(String) : []),
-      links: Array.isArray(updates.metadata.links) ? updates.metadata.links : (Array.isArray(existing.metadata.links) ? existing.metadata.links : []),
-      characterCount: updates.metadata.characterCount !== undefined ? Number(updates.metadata.characterCount) || 0 : (Number(existing.metadata.characterCount) || 0),
-      platformCharLimit: updates.metadata.platformCharLimit !== undefined ? Number(updates.metadata.platformCharLimit) || 0 : (Number(existing.metadata.platformCharLimit) || 0),
-      suggestedSlot: updates.metadata.suggestedSlot !== undefined ? (updates.metadata.suggestedSlot !== null ? String(updates.metadata.suggestedSlot) : null) : (existing.metadata.suggestedSlot !== null ? String(existing.metadata.suggestedSlot) : null),
-      scheduledFor: updates.metadata.scheduledFor !== undefined ? (updates.metadata.scheduledFor !== null ? String(updates.metadata.scheduledFor) : null) : (existing.metadata.scheduledFor !== null ? String(existing.metadata.scheduledFor) : null),
-      status: updates.metadata.status ?? existing.metadata.status,
-      latePostId: updates.metadata.latePostId !== undefined ? (updates.metadata.latePostId !== null ? String(updates.metadata.latePostId) : null) : (existing.metadata.latePostId !== null ? String(existing.metadata.latePostId) : null),
-      publishedUrl: updates.metadata.publishedUrl !== undefined ? (updates.metadata.publishedUrl !== null ? String(updates.metadata.publishedUrl) : null) : (existing.metadata.publishedUrl !== null ? String(existing.metadata.publishedUrl) : null),
-      createdAt: String(existing.metadata.createdAt),
-      reviewedAt: updates.metadata.reviewedAt !== undefined ? (updates.metadata.reviewedAt !== null ? String(updates.metadata.reviewedAt) : null) : (existing.metadata.reviewedAt !== null ? String(existing.metadata.reviewedAt) : null),
-      publishedAt: updates.metadata.publishedAt !== undefined ? (updates.metadata.publishedAt !== null ? String(updates.metadata.publishedAt) : null) : (existing.metadata.publishedAt !== null ? String(existing.metadata.publishedAt) : null),
-      textOnly: updates.metadata.textOnly ?? existing.metadata.textOnly,
-      mediaType: updates.metadata.mediaType ?? existing.metadata.mediaType,
-      platformSpecificData: updates.metadata.platformSpecificData ?? existing.metadata.platformSpecificData,
-    }
-    // Use only the sanitized object — do not spread raw HTTP updates (CodeQL js/http-to-file-access)
-    existing.metadata = sanitized
-    // Validate write target is within the expected queue directory
-    const metadataWritePath = resolve(join(existing.folderPath, 'metadata.json'))
-    if (!metadataWritePath.startsWith(resolve(getQueueDir()) + sep)) {
-      throw new Error('Write target outside queue directory')
-    }
-    await writeTextFile(
-      metadataWritePath,
-      JSON.stringify(existing.metadata, null, 2),
-    )
+    const mergedMetadata = mergeMetadata(existingItem.metadata, updates.metadata)
+    Object.assign(dbUpdates, metadataToUpdateInsert(mergedMetadata))
   }
 
   if (updates.postContent !== undefined) {
-    // Sanitize post content - ensure it's a string
-    const sanitizedContent = String(updates.postContent)
-    existing.postContent = sanitizedContent
-    // Validate write target is within the expected queue directory (CodeQL js/http-to-file-access)
-    const postWritePath = resolve(join(existing.folderPath, 'post.md'))
-    if (!postWritePath.startsWith(resolve(getQueueDir()) + sep)) {
-      throw new Error('Write target outside queue directory')
-    }
-    // lgtm[js/http-to-file-access] - Writing user-provided post content to queue is intended functionality with path validation
-    await writeTextFile(postWritePath, sanitizedContent)
+    dbUpdates.post_content = String(updates.postContent)
   }
 
+  dbUpdateItem(id, dbUpdates)
+
+  const updatedRow = dbGetItem(id)
+  if (!updatedRow) return null
+
   logger.debug(`Updated queue item: ${String(id).replace(/[\r\n]/g, '')}`)
-  return existing
+  return rowToQueueItem(updatedRow)
 }
 
 export async function approveItem(
   id: string,
   publishData: { latePostId: string; scheduledFor: string; publishedUrl?: string; accountId?: string },
 ): Promise<void> {
-  // Inline validation to prevent path traversal - CodeQL recognizes this pattern
-  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
-    throw new Error(`Invalid ID format: ${id}`)
-  }
-  const item = await getItem(id)
-  if (!item) return
+  validateId(id)
 
-  const now = new Date().toISOString()
-  if (publishData.accountId) {
-    item.metadata.accountId = String(publishData.accountId)
-  }
-  item.metadata.status = 'published'
-  item.metadata.latePostId = String(publishData.latePostId)
-  item.metadata.scheduledFor = String(publishData.scheduledFor)
-  item.metadata.publishedUrl = publishData.publishedUrl ? String(publishData.publishedUrl) : null
-  item.metadata.publishedAt = now
-  item.metadata.reviewedAt = now
+  const row = dbGetItem(id)
+  if (!row) return
 
-  // Sanitize metadata before writing - reconstruct with validated fields
-  const sanitizedMetadata: QueueItemMetadata = {
-    id: String(item.metadata.id),
-    platform: String(item.metadata.platform),
-    accountId: String(item.metadata.accountId),
-    sourceVideo: String(item.metadata.sourceVideo),
-    sourceClip: item.metadata.sourceClip !== null ? String(item.metadata.sourceClip) : null,
-    clipType: item.metadata.clipType,
-    sourceMediaPath: item.metadata.sourceMediaPath !== null ? String(item.metadata.sourceMediaPath) : null,
-    hashtags: Array.isArray(item.metadata.hashtags) ? item.metadata.hashtags.map(String) : [],
-    links: Array.isArray(item.metadata.links) ? item.metadata.links : [],
-    characterCount: Number(item.metadata.characterCount) || 0,
-    platformCharLimit: Number(item.metadata.platformCharLimit) || 0,
-    suggestedSlot: item.metadata.suggestedSlot !== null ? String(item.metadata.suggestedSlot) : null,
-    scheduledFor: item.metadata.scheduledFor !== null ? String(item.metadata.scheduledFor) : null,
-    status: item.metadata.status,
-    latePostId: item.metadata.latePostId !== null ? String(item.metadata.latePostId) : null,
-    publishedUrl: item.metadata.publishedUrl !== null ? String(item.metadata.publishedUrl) : null,
-    createdAt: String(item.metadata.createdAt),
-    reviewedAt: item.metadata.reviewedAt !== null ? String(item.metadata.reviewedAt) : null,
-    publishedAt: item.metadata.publishedAt !== null ? String(item.metadata.publishedAt) : null,
-    textOnly: item.metadata.textOnly,
-    mediaType: item.metadata.mediaType,
-    platformSpecificData: item.metadata.platformSpecificData,
-  }
+  markPublished(id, publishData)
 
-  // Validate write target is within the expected queue directory (CodeQL js/http-to-file-access)
-  const approveMetadataPath = resolve(join(item.folderPath, 'metadata.json'))
-  if (!approveMetadataPath.startsWith(resolve(getQueueDir()) + sep)) {
-    throw new Error('Write target outside queue directory')
-  }
-  // lgtm[js/http-to-file-access] - Writing sanitized metadata to queue is intended functionality with path validation
-  await writeTextFile(
-    approveMetadataPath,
-    JSON.stringify(sanitizedMetadata, null, 2),
-  )
+  if (row.media_folder_path) {
+    const sourcePath = row.media_folder_path
+    if (await fileExists(sourcePath)) {
+      const publishedDir = getPublishedDir()
+      await ensureDirectory(publishedDir)
 
-  const publishedDir = getPublishedDir()
-  await ensureDirectory(publishedDir)
-  
-  // Validate destination path to prevent path traversal - use basename inline
-  const destPath = join(publishedDir, basename(id))
-  const resolvedDest = resolve(destPath)
-  const resolvedPublishedDir = resolve(publishedDir)
-  if (!resolvedDest.startsWith(resolvedPublishedDir + sep) && resolvedDest !== resolvedPublishedDir) {
-    throw new Error(`Invalid destination path for item ${id}`)
-  }
+      const destPath = join(publishedDir, basename(id))
+      const resolvedDest = resolve(destPath)
+      const resolvedPublishedDir = resolve(publishedDir)
+      if (!resolvedDest.startsWith(resolvedPublishedDir + sep) && resolvedDest !== resolvedPublishedDir) {
+        throw new Error(`Invalid destination path for item ${id}`)
+      }
 
-  try {
-    await renameFile(item.folderPath, destPath)
-  } catch (renameErr: unknown) {
-    // On Windows, rename can fail with EPERM if a file handle is still releasing.
-    // Fall back to recursive copy + delete.
-    const errCode = (renameErr as NodeJS.ErrnoException | null)?.code
-    if (errCode === 'EPERM') {
-      logger.warn(`rename failed (EPERM) for ${String(id).replace(/[\r\n]/g, '')}, falling back to copy+delete`)
-      await copyDirectory(item.folderPath, destPath)
-      await removeDirectory(item.folderPath, { recursive: true, force: true })
-    } else {
-      throw renameErr
+      try {
+        await renameFile(sourcePath, destPath)
+      } catch (renameErr: unknown) {
+        const errCode = (renameErr as NodeJS.ErrnoException | null)?.code
+        if (errCode === 'EPERM') {
+          logger.warn(`rename failed (EPERM) for ${String(id).replace(/[\r\n]/g, '')}, falling back to copy+delete`)
+          await copyDirectory(sourcePath, destPath)
+          await removeDirectory(sourcePath, { recursive: true, force: true })
+        } else {
+          throw renameErr
+        }
+      }
+
+      dbUpdateItem(id, { media_folder_path: destPath })
     }
   }
 
-  logger.debug(`Approved and moved queue item: ${String(id).replace(/[\r\n]/g, '')}`)
+  logger.debug(`Approved queue item: ${String(id).replace(/[\r\n]/g, '')}`)
 }
 
 export interface BulkApprovalResult {
@@ -392,7 +415,7 @@ export async function approveBulk(
 ): Promise<BulkApprovalResult[]> {
   const results: BulkApprovalResult[] = []
   const errors: Array<{ itemId: string; error: string }> = []
-  
+
   for (const id of itemIds) {
     try {
       const publishData = publishDataMap.get(id)
@@ -400,9 +423,9 @@ export async function approveBulk(
         errors.push({ itemId: id, error: 'No publish data provided' })
         continue
       }
-      
+
       await approveItem(id, publishData)
-      
+
       results.push({
         itemId: id,
         platform: id.split('-').pop() || 'unknown',
@@ -416,22 +439,25 @@ export async function approveBulk(
       logger.error(`Bulk approve failed for ${String(id).replace(/[\r\n]/g, '')}: ${msg}`)
     }
   }
-  
+
   if (errors.length > 0) {
     logger.warn(`Bulk approval completed with ${errors.length} errors`)
   }
-  
+
   return results
 }
 
 export async function rejectItem(id: string): Promise<void> {
-  // Inline validation to prevent path traversal - CodeQL recognizes this pattern
-  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
-    throw new Error(`Invalid ID format: ${id}`)
-  }
-  const folderPath = join(getQueueDir(), basename(id))
+  validateId(id)
+
+  const row = dbGetItem(id)
+  const folderPath = row?.media_folder_path ?? join(getQueueDir(), basename(id))
+  deleteQueueItem(id)
+
   try {
-    await removeDirectory(folderPath, { recursive: true })
+    if (await fileExists(folderPath)) {
+      await removeDirectory(folderPath, { recursive: true })
+    }
     logger.debug(`Rejected and deleted queue item: ${String(id).replace(/[\r\n]/g, '')}`)
   } catch (err) {
     logger.debug(`Failed to reject queue item ${String(id).replace(/[\r\n]/g, '')}: ${String(err).replace(/[\r\n]/g, '')}`)
@@ -439,39 +465,13 @@ export async function rejectItem(id: string): Promise<void> {
 }
 
 export async function getPublishedItems(): Promise<QueueItem[]> {
-  const publishedDir = getPublishedDir()
-  await ensureDirectory(publishedDir)
-
-  let entries: string[]
-  try {
-    const dirents = await listDirectoryWithTypes(publishedDir)
-    entries = dirents.filter(d => d.isDirectory()).map(d => d.name)
-  } catch {
-    return []
-  }
-
-  const items: QueueItem[] = []
-  for (const name of entries) {
-    const item = await readQueueItem(join(publishedDir, name), name)
-    if (item) items.push(item)
-  }
-
-  items.sort((a, b) => a.metadata.createdAt.localeCompare(b.metadata.createdAt))
-  return items
+  return dbGetByStatus('published').map(rowToQueueItem)
 }
 
 export async function itemExists(id: string): Promise<'pending' | 'published' | null> {
-  // Inline validation to prevent path traversal - CodeQL recognizes this pattern
-  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
-    throw new Error(`Invalid ID format: ${id}`)
-  }
-  if (await fileExists(join(getQueueDir(), basename(id)))) {
-    return 'pending'
-  }
+  validateId(id)
 
-  if (await fileExists(join(getPublishedDir(), basename(id)))) {
-    return 'published'
-  }
-
-  return null
+  const status = dbItemExists(id)
+  if (status === 'pending_review') return 'pending'
+  return status
 }

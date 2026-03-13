@@ -1,13 +1,15 @@
 import { Platform } from '../../L0-pure/types/index.js'
+import {
+  clearAccountCache as clearStoredAccountCache,
+  getCachedAccounts,
+  setCachedAccounts,
+} from '../../L2-clients/dataStore/accountCacheStore.js'
 import { LateApiClient } from '../../L2-clients/late/lateApi.js'
 import type { LateAccount } from '../../L2-clients/late/lateApi.js'
 import logger from '../../L1-infra/logger/configLogger.js'
-import { readTextFile, writeTextFile, removeFile } from '../../L1-infra/fileSystem/fileSystem.js'
-import { join, resolve, sep } from '../../L1-infra/paths/paths.js'
 
 // ── Cache ──────────────────────────────────────────────────────────────
 
-const CACHE_FILE = '.vidpipe-cache.json'
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 interface AccountCache {
@@ -26,10 +28,6 @@ function toLatePlatform(platform: Platform): string {
   return platform === Platform.X ? 'twitter' : platform
 }
 
-function cachePath(): string {
-  return join(process.cwd(), CACHE_FILE)
-}
-
 function isCacheValid(cache: AccountCache): boolean {
   const fetchedAtTime = new Date(cache.fetchedAt).getTime()
   if (Number.isNaN(fetchedAtTime)) {
@@ -40,50 +38,6 @@ function isCacheValid(cache: AccountCache): boolean {
   }
   const age = Date.now() - fetchedAtTime
   return age < CACHE_TTL_MS
-}
-
-async function readFileCache(): Promise<AccountCache | null> {
-  try {
-    const raw = await readTextFile(cachePath())
-    const cache = JSON.parse(raw) as AccountCache
-    if (cache.accounts && cache.fetchedAt && isCacheValid(cache)) {
-      return cache
-    }
-    return null
-  } catch {
-    return null
-  }
-}
-
-async function writeFileCache(cache: AccountCache): Promise<void> {
-  try {
-    // Validate cache structure before writing to prevent malformed data
-    if (!cache || typeof cache !== 'object' || !cache.accounts || !cache.fetchedAt) {
-      logger.warn('Invalid cache structure, skipping write')
-      return
-    }
-    // Sanitize by re-constructing with only expected fields
-    const sanitized: AccountCache = {
-      accounts: typeof cache.accounts === 'object' ? { ...cache.accounts } : {},
-      fetchedAt: String(cache.fetchedAt),
-    }
-    // Validate HTTP-sourced account data before writing to cache (CodeQL js/http-to-file-access)
-    for (const [platform, accountId] of Object.entries(sanitized.accounts)) {
-      if (typeof platform !== 'string' || typeof accountId !== 'string' ||
-          /[\x00-\x1f]/.test(platform) || /[\x00-\x1f]/.test(accountId)) {
-        logger.warn('Invalid account mapping data from API, skipping cache write')
-        return
-      }
-    }
-    const resolvedCachePath = resolve(cachePath())
-    if (!resolvedCachePath.startsWith(resolve(process.cwd()) + sep)) {
-      throw new Error('Cache path outside working directory')
-    }
-    // lgtm[js/http-to-file-access] - Writing sanitized account cache is intended functionality with path validation
-    await writeTextFile(resolvedCachePath, JSON.stringify(sanitized, null, 2))
-  } catch (err) {
-    logger.warn('Failed to write account cache file', { error: err })
-  }
 }
 
 async function fetchAndCache(): Promise<Record<string, string>> {
@@ -102,7 +56,12 @@ async function fetchAndCache(): Promise<Record<string, string>> {
     fetchedAt: new Date().toISOString(),
   }
   memoryCache = cache
-  await writeFileCache(cache)
+
+  try {
+    setCachedAccounts(mapping)
+  } catch (err) {
+    logger.warn('Failed to persist account cache', { error: err })
+  }
 
   logger.info('Refreshed Late account mappings', {
     platforms: Object.keys(mapping),
@@ -116,11 +75,18 @@ async function ensureMappings(): Promise<Record<string, string>> {
     return memoryCache.accounts
   }
 
-  // 2. File cache
-  const fileCache = await readFileCache()
-  if (fileCache) {
-    memoryCache = fileCache
-    return fileCache.accounts
+  // 2. Database cache
+  try {
+    const cachedAccounts = getCachedAccounts(CACHE_TTL_MS)
+    if (cachedAccounts) {
+      memoryCache = {
+        accounts: cachedAccounts,
+        fetchedAt: new Date().toISOString(),
+      }
+      return cachedAccounts
+    }
+  } catch {
+    // Fall through to API fetch when the datastore cache is unavailable.
   }
 
   // 3. Fetch from Late API
@@ -139,7 +105,7 @@ async function ensureMappings(): Promise<Record<string, string>> {
  *
  * Resolution order:
  * 1. In-memory cache
- * 2. File cache (.vidpipe-cache.json)
+ * 2. Database cache
  * 3. Fetch from Late API and cache
  *
  * Returns null if the platform is not connected.
@@ -173,13 +139,13 @@ export async function refreshAccountMappings(): Promise<
 }
 
 /**
- * Clear the account cache (both memory and file).
+ * Clear the account cache (both memory and database).
  */
 export async function clearAccountCache(): Promise<void> {
   memoryCache = null
   try {
-    await removeFile(cachePath())
+    clearStoredAccountCache()
   } catch {
-    // File may not exist — that's fine
+    // Ignore cache clear failures to keep cache invalidation best-effort.
   }
 }

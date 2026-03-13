@@ -215,3 +215,67 @@ describe('Database E2E', () => {
     expect(journalMode.journal_mode.toLowerCase()).toBe('wal')
   })
 })
+
+// ── L3 Service E2E Tests ──────────────────────────────────────────────────
+// These verify L3 services work correctly with a real SQLite database (no mocks)
+
+describe('E2E: L3 services with real SQLite', () => {
+  beforeEach(async () => {
+    closeDatabase()
+    resetDatabaseSingleton()
+    const dir = await ensureTempDir()
+    const dbPath = path.join(dir, `l3-e2e-${Date.now()}.sqlite`)
+    initializeDatabase({ dbPath })
+  })
+
+  afterEach(() => {
+    closeDatabase()
+    resetDatabaseSingleton()
+  })
+
+  test('processingState manages video lifecycle through DB', async () => {
+    const { markPending, markProcessing, markCompleted, getVideoStatus, isCompleted, getUnprocessed } = await import('../../L3-services/processingState/processingState.js')
+
+    await markPending('e2e-video', '/videos/e2e.mp4')
+    const pending = await getVideoStatus('e2e-video')
+    expect(pending?.status).toBe('pending')
+    expect(pending?.sourcePath).toBe('/videos/e2e.mp4')
+
+    await markProcessing('e2e-video')
+    const processing = await getVideoStatus('e2e-video')
+    expect(processing?.status).toBe('processing')
+    expect(processing?.startedAt).toBeDefined()
+
+    await markCompleted('e2e-video')
+    expect(await isCompleted('e2e-video')).toBe(true)
+
+    const unprocessed = await getUnprocessed()
+    expect(unprocessed).not.toHaveProperty('e2e-video')
+  })
+
+  test('costTracker persists costs to DB via setRunId', async () => {
+    const { costTracker } = await import('../../L3-services/costTracking/costTracker.js')
+
+    costTracker.reset()
+    costTracker.setRunId('e2e-run-1')
+    costTracker.setAgent('TestAgent')
+    costTracker.setStage('summary')
+
+    costTracker.recordUsage(
+      'openai',
+      'gpt-5.1',
+      { inputTokens: 100, outputTokens: 50, totalTokens: 150 },
+      { amount: 0.5, unit: 'usd', model: 'gpt-5.1' },
+    )
+
+    // Verify in-memory records exist
+    const report = costTracker.getReport()
+    expect(report.records).toHaveLength(1)
+
+    // Verify in DB
+    const dbCosts = getRunCosts('e2e-run-1')
+    expect(dbCosts.length).toBeGreaterThanOrEqual(1)
+
+    costTracker.reset()
+  })
+})

@@ -1,6 +1,16 @@
 import type { TokenUsage, CostInfo, QuotaSnapshot } from '../../L2-clients/llm/types.js';
+import {
+  getCostsSince,
+  recordLLMCost,
+  recordServiceCost,
+  type CostRecordRow,
+} from '../../L2-clients/dataStore/costStore.js';
 import { calculateTokenCost, calculatePRUCost, COPILOT_PRU_OVERAGE_RATE } from '../../L0-pure/pricing/pricing.js';
 import logger from '../../L1-infra/logger/configLogger.js';
+
+function formatErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 /** Record of a single LLM usage event */
 export interface UsageRecord {
@@ -46,6 +56,7 @@ class CostTracker {
   private latestQuota?: QuotaSnapshot;
   private currentAgent = 'unknown';
   private currentStage = 'unknown';
+  private runId = 'unknown';
 
   /** Set the current agent name (called by BaseAgent before LLM calls) */
   setAgent(agent: string): void {
@@ -55,6 +66,11 @@ class CostTracker {
   /** Set the current pipeline stage */
   setStage(stage: string): void {
     this.currentStage = stage;
+  }
+
+  /** Set the current pipeline run ID for DB persistence. */
+  setRunId(runId: string): void {
+    this.runId = runId;
   }
 
   /** Record a usage event from any provider */
@@ -88,6 +104,26 @@ class CostTracker {
 
     this.records.push(record);
 
+    try {
+      recordLLMCost({
+        runId: this.runId,
+        provider,
+        model,
+        agent: this.currentAgent,
+        stage: this.currentStage,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        totalTokens: usage.totalTokens,
+        costAmount: finalCost.amount,
+        costUnit: finalCost.unit,
+        durationMs,
+      });
+    } catch (error) {
+      logger.warn(
+        `[CostTracker] Failed to persist LLM cost for run ${this.runId}: ${formatErrorMessage(error)}`
+      );
+    }
+
     if (quotaSnapshot) {
       this.latestQuota = quotaSnapshot;
     }
@@ -111,9 +147,37 @@ class CostTracker {
 
     this.serviceRecords.push(record);
 
+    try {
+      recordServiceCost({
+        runId: this.runId,
+        service,
+        stage: this.currentStage,
+        costAmount: costUSD,
+        metadata: record.metadata,
+      });
+    } catch (error) {
+      logger.warn(
+        `[CostTracker] Failed to persist service cost for run ${this.runId}: ${formatErrorMessage(error)}`
+      );
+    }
+
     logger.debug(
       `[CostTracker] service=${service} | stage=${this.currentStage} | cost=$${costUSD.toFixed(4)}`
     );
+  }
+
+  /** Get historical cost data from the database. */
+  getHistoricalCosts(since?: string): CostRecordRow[] {
+    const sinceTimestamp = since ?? '1970-01-01 00:00:00';
+
+    try {
+      return getCostsSince(sinceTimestamp);
+    } catch (error) {
+      logger.warn(
+        `[CostTracker] Failed to load historical costs since ${sinceTimestamp}: ${formatErrorMessage(error)}`
+      );
+      return [];
+    }
   }
 
   /** Get the full cost report */
@@ -247,6 +311,7 @@ class CostTracker {
     this.latestQuota = undefined;
     this.currentAgent = 'unknown';
     this.currentStage = 'unknown';
+    this.runId = 'unknown';
   }
 }
 

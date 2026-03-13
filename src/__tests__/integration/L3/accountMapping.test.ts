@@ -1,175 +1,142 @@
 /**
- * L3 Integration Test — accountMapping service (cache layer)
+ * L3 Integration Test — accountMapping service (cache orchestration)
  *
- * Mock boundary: L1 infrastructure (fileSystem, paths, logger)
- * Real code:     L3 accountMapping cache logic + L0 types
- *
- * Since accountMapping calls L2 (LateApiClient) for API fetches,
- * we only test the cache layer paths that work through L1 mocks:
- * file cache reads, clearAccountCache, and cache miss fallthrough.
+ * Mock boundary: L2 account cache store + Late API client
+ * Real code:     L3 accountMapping logic + L0 types
  */
-import { describe, test, expect, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, test, vi } from 'vitest'
 
-// ── Mock L1 infrastructure ────────────────────────────────────────────
+const mockGetCachedAccounts = vi.hoisted(() => vi.fn())
+const mockSetCachedAccounts = vi.hoisted(() => vi.fn())
+const mockClearStoredAccountCache = vi.hoisted(() => vi.fn())
+const mockListAccounts = vi.hoisted(() => vi.fn())
 
-const mockReadTextFile = vi.hoisted(() => vi.fn())
-const mockWriteTextFile = vi.hoisted(() => vi.fn())
-const mockRemoveFile = vi.hoisted(() => vi.fn())
-
-vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
-  readTextFile: mockReadTextFile,
-  writeTextFile: mockWriteTextFile,
-  removeFile: mockRemoveFile,
-  fileExistsSync: vi.fn(() => false),
+vi.mock('../../../L2-clients/dataStore/accountCacheStore.js', () => ({
+  getCachedAccounts: mockGetCachedAccounts,
+  setCachedAccounts: mockSetCachedAccounts,
+  clearAccountCache: mockClearStoredAccountCache,
 }))
 
-vi.mock('../../../L1-infra/paths/paths.js', () => ({
-  join: vi.fn((...args: string[]) => args.join('/')),
-  resolve: vi.fn((...args: string[]) => args.join('/')),
-  sep: '/',
+vi.mock('../../../L2-clients/late/lateApi.js', () => ({
+  LateApiClient: class {
+    listAccounts = mockListAccounts
+  },
 }))
 
-// Logger is auto-mocked by global setup.ts
-
-// ── Import after mocks ───────────────────────────────────────────────
-
-import {
-  getAllAccountMappings,
-  getAccountId,
-  clearAccountCache,
-} from '../../../L3-services/socialPosting/accountMapping.js'
 import { Platform } from '../../../L0-pure/types/index.js'
-
-// ── Tests ─────────────────────────────────────────────────────────────
+import {
+  clearAccountCache,
+  getAccountId,
+  getAllAccountMappings,
+} from '../../../L3-services/socialPosting/accountMapping.js'
 
 describe('L3 Integration: accountMapping', () => {
   beforeEach(async () => {
+    mockGetCachedAccounts.mockReset()
+    mockSetCachedAccounts.mockReset()
+    mockClearStoredAccountCache.mockReset()
+    mockListAccounts.mockReset()
+
+    mockGetCachedAccounts.mockReturnValue(null)
+    mockSetCachedAccounts.mockImplementation(() => undefined)
+    mockClearStoredAccountCache.mockImplementation(() => undefined)
+
     await clearAccountCache()
-    vi.clearAllMocks()
+    mockClearStoredAccountCache.mockClear()
   })
 
-  // ── clearAccountCache ─────────────────────────────────────────────
-
-  test('clearAccountCache calls removeFile on cache path', async () => {
-    mockRemoveFile.mockResolvedValueOnce(undefined)
-
+  test('clearAccountCache calls the datastore clear function', async () => {
     await clearAccountCache()
 
-    expect(mockRemoveFile).toHaveBeenCalledWith(
-      expect.stringContaining('.vidpipe-cache.json'),
-    )
+    expect(mockClearStoredAccountCache).toHaveBeenCalledTimes(1)
   })
 
-  test('clearAccountCache tolerates missing file', async () => {
-    mockRemoveFile.mockRejectedValueOnce(new Error('ENOENT'))
+  test('clearAccountCache tolerates datastore clear failures', async () => {
+    mockClearStoredAccountCache.mockImplementationOnce(() => {
+      throw new Error('database unavailable')
+    })
 
-    // Should not throw
     await expect(clearAccountCache()).resolves.toBeUndefined()
   })
 
-  // ── File cache reads via getAllAccountMappings ─────────────────────
-
-  test('getAllAccountMappings loads from file cache when valid', async () => {
-    const cacheData = {
-      accounts: { twitter: 'acc-123', linkedin: 'acc-456' },
-      fetchedAt: new Date().toISOString(),
-    }
-    mockReadTextFile.mockResolvedValueOnce(JSON.stringify(cacheData))
+  test('getAllAccountMappings loads from database cache when valid', async () => {
+    mockGetCachedAccounts.mockReturnValueOnce({ twitter: 'acc-123', linkedin: 'acc-456' })
 
     const mappings = await getAllAccountMappings()
 
     expect(mappings).toEqual({ twitter: 'acc-123', linkedin: 'acc-456' })
-    expect(mockReadTextFile).toHaveBeenCalledWith(
-      expect.stringContaining('.vidpipe-cache.json'),
-    )
+    expect(mockGetCachedAccounts).toHaveBeenCalledWith(24 * 60 * 60 * 1000)
+    expect(mockListAccounts).not.toHaveBeenCalled()
   })
 
-  test('getAccountId returns correct ID from file cache', async () => {
-    const cacheData = {
-      accounts: { twitter: 'acc-x', linkedin: 'acc-li', tiktok: 'acc-tt' },
-      fetchedAt: new Date().toISOString(),
-    }
-    mockReadTextFile.mockResolvedValueOnce(JSON.stringify(cacheData))
+  test('getAccountId returns correct ID from database cache', async () => {
+    mockGetCachedAccounts.mockReturnValueOnce({
+      twitter: 'acc-x',
+      linkedin: 'acc-li',
+      tiktok: 'acc-tt',
+    })
 
-    // Platform.X maps to 'twitter' in Late API
     const xId = await getAccountId(Platform.X)
+
     expect(xId).toBe('acc-x')
+    expect(mockListAccounts).not.toHaveBeenCalled()
   })
 
   test('getAccountId returns null for unconnected platform from cache', async () => {
-    const cacheData = {
-      accounts: { twitter: 'acc-x' },
-      fetchedAt: new Date().toISOString(),
-    }
-    // First call reads file cache
-    mockReadTextFile.mockResolvedValueOnce(JSON.stringify(cacheData))
+    mockGetCachedAccounts.mockReturnValueOnce({ twitter: 'acc-x' })
 
-    // Instagram is not in the cache
     const id = await getAccountId(Platform.Instagram)
+
     expect(id).toBeNull()
+    expect(mockListAccounts).not.toHaveBeenCalled()
   })
 
-  test('stale file cache is ignored', async () => {
-    const staleDate = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString() // 25 hours ago
-    const cacheData = {
-      accounts: { twitter: 'acc-old' },
-      fetchedAt: staleDate,
-    }
-    mockReadTextFile.mockResolvedValueOnce(JSON.stringify(cacheData))
+  test('stale database cache is ignored', async () => {
+    mockGetCachedAccounts.mockReturnValueOnce(null)
+    mockListAccounts.mockRejectedValueOnce(new Error('Network error'))
 
-    // After stale cache, it falls through to L2 fetch which will fail
-    // (no L2 mock), so it returns empty mappings
     const mappings = await getAllAccountMappings()
+
     expect(mappings).toEqual({})
+    expect(mockListAccounts).toHaveBeenCalledTimes(1)
   })
 
-  test('invalid file cache JSON is ignored', async () => {
-    mockReadTextFile.mockResolvedValueOnce('not json')
+  test('invalid database cache data is ignored', async () => {
+    mockGetCachedAccounts.mockImplementationOnce(() => {
+      throw new Error('malformed cache row')
+    })
+    mockListAccounts.mockRejectedValueOnce(new Error('Network error'))
 
-    // Falls through to L2 fetch which fails → empty mappings
     const mappings = await getAllAccountMappings()
+
     expect(mappings).toEqual({})
+    expect(mockListAccounts).toHaveBeenCalledTimes(1)
   })
 
-  test('missing file cache falls through gracefully', async () => {
-    mockReadTextFile.mockRejectedValueOnce(new Error('ENOENT'))
+  test('missing database cache falls through gracefully', async () => {
+    mockGetCachedAccounts.mockReturnValueOnce(null)
+    mockListAccounts.mockRejectedValueOnce(new Error('Network error'))
 
-    // Falls through to L2 fetch which fails → empty mappings
     const mappings = await getAllAccountMappings()
+
     expect(mappings).toEqual({})
+    expect(mockListAccounts).toHaveBeenCalledTimes(1)
   })
 
-  // ── Memory cache ──────────────────────────────────────────────────
-
-  test('second call uses memory cache without re-reading file', async () => {
-    const cacheData = {
-      accounts: { linkedin: 'acc-mem' },
-      fetchedAt: new Date().toISOString(),
-    }
-    mockReadTextFile.mockResolvedValueOnce(JSON.stringify(cacheData))
+  test('second call uses memory cache without re-reading the datastore', async () => {
+    mockGetCachedAccounts.mockReturnValueOnce({ linkedin: 'acc-mem' })
 
     const first = await getAllAccountMappings()
     const second = await getAllAccountMappings()
 
     expect(first).toEqual(second)
-    // Only one file read — second call uses memory
-    expect(mockReadTextFile).toHaveBeenCalledTimes(1)
+    expect(mockGetCachedAccounts).toHaveBeenCalledTimes(1)
   })
 
-  test('clearAccountCache forces file re-read on next call', async () => {
-    const cacheA = {
-      accounts: { linkedin: 'acc-a' },
-      fetchedAt: new Date().toISOString(),
-    }
-    const cacheB = {
-      accounts: { linkedin: 'acc-b' },
-      fetchedAt: new Date().toISOString(),
-    }
-
-    mockReadTextFile
-      .mockResolvedValueOnce(JSON.stringify(cacheA))
-      .mockResolvedValueOnce(JSON.stringify(cacheB))
-    mockRemoveFile.mockResolvedValue(undefined)
+  test('clearAccountCache forces database re-read on next call', async () => {
+    mockGetCachedAccounts
+      .mockReturnValueOnce({ linkedin: 'acc-a' })
+      .mockReturnValueOnce({ linkedin: 'acc-b' })
 
     const first = await getAllAccountMappings()
     expect(first).toEqual({ linkedin: 'acc-a' })
@@ -177,7 +144,9 @@ describe('L3 Integration: accountMapping', () => {
     await clearAccountCache()
 
     const second = await getAllAccountMappings()
+
     expect(second).toEqual({ linkedin: 'acc-b' })
-    expect(mockReadTextFile).toHaveBeenCalledTimes(2)
+    expect(mockClearStoredAccountCache).toHaveBeenCalledTimes(1)
+    expect(mockGetCachedAccounts).toHaveBeenCalledTimes(2)
   })
 })

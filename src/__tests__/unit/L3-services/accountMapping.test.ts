@@ -1,119 +1,122 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { promises as fs } from 'fs'
-import path from 'path'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-// ── Mocks ──────────────────────────────────────────────────────────────
+const mockGetCachedAccounts = vi.hoisted(() => vi.fn())
+const mockSetCachedAccounts = vi.hoisted(() => vi.fn())
+const mockClearStoredAccountCache = vi.hoisted(() => vi.fn())
+const mockListAccounts = vi.hoisted(() => vi.fn())
 
-vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-  sanitizeForLog: vi.fn((v) => String(v)),
+vi.mock('../../../L2-clients/dataStore/accountCacheStore.js', () => ({
+  getCachedAccounts: mockGetCachedAccounts,
+  setCachedAccounts: mockSetCachedAccounts,
+  clearAccountCache: mockClearStoredAccountCache,
 }))
 
-vi.mock('../../../L1-infra/config/environment.js', () => ({
-  getConfig: () => ({ LATE_API_KEY: 'test-key' }),
+vi.mock('../../../L2-clients/late/lateApi.js', () => ({
+  LateApiClient: class {
+    listAccounts = mockListAccounts
+  },
 }))
-
-// Mock fetch globally so LateApiClient.listAccounts() returns controlled data
-const mockFetch = vi.fn()
-vi.stubGlobal('fetch', mockFetch)
 
 import { Platform } from '../../../L0-pure/types/index.js'
 import {
-  getAccountId,
   clearAccountCache,
+  getAccountId,
 } from '../../../L3-services/socialPosting/accountMapping.js'
 
-function accountsResponse(accounts: Array<Record<string, unknown>>) {
-  return {
-    ok: true,
-    status: 200,
-    json: () => Promise.resolve({ accounts }),
-    text: () => Promise.resolve(JSON.stringify({ accounts })),
-    headers: new Map(),
-  }
-}
-
-// ── Tests ──────────────────────────────────────────────────────────────
-
 describe('accountMapping', () => {
-  const cacheFile = path.join(process.cwd(), '.vidpipe-cache.json')
-
   beforeEach(async () => {
-    vi.clearAllMocks()
-    await clearAccountCache()
-  })
+    mockGetCachedAccounts.mockReset()
+    mockSetCachedAccounts.mockReset()
+    mockClearStoredAccountCache.mockReset()
+    mockListAccounts.mockReset()
 
-  afterEach(async () => {
-    // Clean up cache file
-    try { await fs.unlink(cacheFile) } catch { /* ok */ }
+    mockGetCachedAccounts.mockReturnValue(null)
+    mockSetCachedAccounts.mockImplementation(() => undefined)
+    mockClearStoredAccountCache.mockImplementation(() => undefined)
+
+    await clearAccountCache()
+    mockClearStoredAccountCache.mockClear()
   })
 
   it('fetches from API on first call', async () => {
-    mockFetch.mockResolvedValue(accountsResponse([
-      { _id: 'acct-tw', platform: 'twitter', displayName: 'Me', username: 'me', isActive: true, profileId: { _id: 'p1', name: 'default' } },
-      { _id: 'acct-li', platform: 'linkedin', displayName: 'Me', username: 'me', isActive: true, profileId: { _id: 'p1', name: 'default' } },
-    ]))
+    mockListAccounts.mockResolvedValue([
+      { _id: 'acct-tw', platform: 'twitter', isActive: true },
+      { _id: 'acct-li', platform: 'linkedin', isActive: true },
+    ])
 
     const id = await getAccountId(Platform.X)
+
     expect(id).toBe('acct-tw')
-    expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(mockGetCachedAccounts).toHaveBeenCalledWith(24 * 60 * 60 * 1000)
+    expect(mockListAccounts).toHaveBeenCalledTimes(1)
+    expect(mockSetCachedAccounts).toHaveBeenCalledWith({
+      twitter: 'acct-tw',
+      linkedin: 'acct-li',
+    })
   })
 
   it('returns cached value on second call', async () => {
-    mockFetch.mockResolvedValue(accountsResponse([
-      { _id: 'acct-tw', platform: 'twitter', displayName: 'Me', username: 'me', isActive: true, profileId: { _id: 'p1', name: 'default' } },
-    ]))
+    mockListAccounts.mockResolvedValue([
+      { _id: 'acct-tw', platform: 'twitter', isActive: true },
+    ])
 
     await getAccountId(Platform.X)
     const id2 = await getAccountId(Platform.X)
+
     expect(id2).toBe('acct-tw')
-    // Should only have fetched once
-    expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(mockGetCachedAccounts).toHaveBeenCalledTimes(1)
+    expect(mockListAccounts).toHaveBeenCalledTimes(1)
   })
 
   it('returns null for unconnected platform', async () => {
-    mockFetch.mockResolvedValue(accountsResponse([
-      { _id: 'acct-tw', platform: 'twitter', displayName: 'Me', username: 'me', isActive: true, profileId: { _id: 'p1', name: 'default' } },
-    ]))
+    mockListAccounts.mockResolvedValue([
+      { _id: 'acct-tw', platform: 'twitter', isActive: true },
+    ])
 
     const id = await getAccountId(Platform.TikTok)
+
     expect(id).toBeNull()
   })
 
   it('clearAccountCache forces re-fetch', async () => {
-    mockFetch.mockResolvedValueOnce(accountsResponse([
-      { _id: 'acct-tw-v1', platform: 'twitter', displayName: 'Me', username: 'me', isActive: true, profileId: { _id: 'p1', name: 'default' } },
-    ]))
+    mockListAccounts
+      .mockResolvedValueOnce([
+        { _id: 'acct-tw-v1', platform: 'twitter', isActive: true },
+      ])
+      .mockResolvedValueOnce([
+        { _id: 'acct-tw-v2', platform: 'twitter', isActive: true },
+      ])
 
     const id1 = await getAccountId(Platform.X)
     expect(id1).toBe('acct-tw-v1')
-    expect(mockFetch).toHaveBeenCalledTimes(1)
+    expect(mockListAccounts).toHaveBeenCalledTimes(1)
 
     await clearAccountCache()
 
-    mockFetch.mockResolvedValueOnce(accountsResponse([
-      { _id: 'acct-tw-v2', platform: 'twitter', displayName: 'Me', username: 'me', isActive: true, profileId: { _id: 'p1', name: 'default' } },
-    ]))
-
     const id2 = await getAccountId(Platform.X)
+
     expect(id2).toBe('acct-tw-v2')
-    expect(mockFetch).toHaveBeenCalledTimes(2)
+    expect(mockClearStoredAccountCache).toHaveBeenCalledTimes(1)
+    expect(mockGetCachedAccounts).toHaveBeenCalledTimes(2)
+    expect(mockListAccounts).toHaveBeenCalledTimes(2)
   })
 
   it('maps Platform.X to twitter', async () => {
-    mockFetch.mockResolvedValue(accountsResponse([
-      { _id: 'acct-tw', platform: 'twitter', displayName: 'Me', username: 'me', isActive: true, profileId: { _id: 'p1', name: 'default' } },
-    ]))
+    mockListAccounts.mockResolvedValue([
+      { _id: 'acct-tw', platform: 'twitter', isActive: true },
+    ])
 
-    // Platform.X should resolve to 'twitter' platform in Late
     const id = await getAccountId(Platform.X)
+
     expect(id).toBe('acct-tw')
   })
 
   it('returns empty mappings when API fails', async () => {
-    mockFetch.mockRejectedValue(new Error('Network error'))
+    mockListAccounts.mockRejectedValue(new Error('Network error'))
 
     const id = await getAccountId(Platform.X)
+
     expect(id).toBeNull()
+    expect(mockSetCachedAccounts).not.toHaveBeenCalled()
   })
 })
