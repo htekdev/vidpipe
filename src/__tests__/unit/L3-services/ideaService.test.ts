@@ -55,6 +55,7 @@ describe('ideaService', () => {
 
   it('marks ideas as recorded and stores the video slug on the idea', async () => {
     const idea = createIdea({ id: 'idea-1', topic: 'First idea', status: 'ready' })
+    const originalUpdatedAt = idea.updatedAt
     await writeIdea(idea, tempDir)
 
     await markRecorded('idea-1', 'session-42', tempDir)
@@ -66,6 +67,6 @@ describe('ideaService', () => {
       status: 'recorded',
       sourceVideoSlug: 'session-42',
     })
-    expect(recordedIdea.updatedAt).not.toBe(idea.updatedAt)
+    expect(recordedIdea.updatedAt).not.toBe(originalUpdatedAt)
   })
 })

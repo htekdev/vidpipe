@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Platform } from '../../L0-pure/types/index.js'
 import type { Idea } from '../../L0-pure/types/index.js'
 import type { QueueItemMetadata } from '../../L3-services/postStore/postStore.js'
 
@@ -18,7 +19,7 @@ function buildIdea(): Idea {
     audience: 'Developers maintaining publish workflows',
     keyTakeaway: 'Idea publish records should use normalized platform names.',
     talkingPoints: ['Approve queue item', 'Persist idea publish record'],
-    platforms: ['x'],
+    platforms: [Platform.X],
     status: 'recorded',
     tags: ['poststore', 'regression'],
     createdAt: '2026-02-01T00:00:00.000Z',
