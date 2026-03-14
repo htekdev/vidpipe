@@ -110,4 +110,95 @@ describe('ideate command', () => {
     expect(getOutput()).toContain('Use `vidpipe ideate --list` to view all ideas.')
     expect(getOutput()).toContain('Use `vidpipe process video.mp4 --ideas <issueNumber1>,<issueNumber2>` to link ideas to a recording.')
   })
+
+  it('ideate.REQ-030 outputs JSON array when --list --format json is used', async () => {
+    mockListIdeas.mockResolvedValue([
+      { issueNumber: 1, id: 'idea-1', topic: 'First idea', hook: 'A great hook', audience: 'Devs', status: 'draft', platforms: [Platform.YouTube] },
+      { issueNumber: 2, id: 'idea-2', topic: 'Second idea', hook: 'Another hook', audience: 'Creators', status: 'ready', platforms: [Platform.LinkedIn, Platform.X] },
+    ])
+
+    const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+    await runIdeate({ list: true, format: 'json' })
+
+    const output = getOutput()
+    const parsed = JSON.parse(output)
+    expect(Array.isArray(parsed)).toBe(true)
+    expect(parsed).toHaveLength(2)
+    expect(parsed[0]).toEqual({
+      issueNumber: 1,
+      id: 'idea-1',
+      topic: 'First idea',
+      hook: 'A great hook',
+      audience: 'Devs',
+      platforms: [Platform.YouTube],
+      status: 'draft',
+    })
+    expect(parsed[1]).toMatchObject({ id: 'idea-2', status: 'ready' })
+  })
+
+  it('ideate.REQ-031 JSON output respects --status filter', async () => {
+    mockListIdeas.mockResolvedValue([
+      { issueNumber: 1, id: 'idea-1', topic: 'Draft idea', hook: 'Hook', audience: 'Devs', status: 'draft', platforms: [Platform.YouTube] },
+      { issueNumber: 2, id: 'idea-2', topic: 'Ready idea', hook: 'Hook', audience: 'Devs', status: 'ready', platforms: [Platform.LinkedIn] },
+    ])
+
+    const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+    await runIdeate({ list: true, format: 'json', status: 'ready' })
+
+    const parsed = JSON.parse(getOutput())
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0].id).toBe('idea-2')
+  })
+
+  it('ideate.REQ-032 JSON output returns empty array when no ideas match', async () => {
+    mockListIdeas.mockResolvedValue([])
+
+    const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+    await runIdeate({ list: true, format: 'json' })
+
+    const parsed = JSON.parse(getOutput())
+    expect(parsed).toEqual([])
+  })
+
+  it('ideate.REQ-033 JSON output contains no decorative text', async () => {
+    mockListIdeas.mockResolvedValue([
+      { issueNumber: 1, id: 'idea-1', topic: 'Test', hook: 'H', audience: 'A', status: 'draft', platforms: [Platform.YouTube] },
+    ])
+
+    const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+    await runIdeate({ list: true, format: 'json' })
+
+    const output = getOutput()
+    expect(output).not.toContain('💡')
+    expect(output).not.toContain('─')
+    expect(output).not.toContain('idea(s) total')
+    // Should be valid JSON
+    expect(() => JSON.parse(output)).not.toThrow()
+  })
+
+  it('ideate.REQ-034 JSON output works for generate mode', async () => {
+    mockGenerateIdeas.mockResolvedValue([
+      { issueNumber: 5, id: 'new-idea', topic: 'Generated idea', hook: 'Fresh hook', audience: 'Builders', status: 'draft', platforms: ['youtube'] },
+    ])
+
+    const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+    await runIdeate({ format: 'json' })
+
+    const output = getOutput()
+    const parsed = JSON.parse(output)
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0]).toMatchObject({ id: 'new-idea', topic: 'Generated idea' })
+    expect(output).not.toContain('🧠')
+    expect(output).not.toContain('Generated 1 idea(s)')
+  })
+
+  it('ideate.REQ-035 JSON generate mode outputs empty array when no ideas generated', async () => {
+    mockGenerateIdeas.mockResolvedValue([])
+
+    const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+    await runIdeate({ format: 'json' })
+
+    const parsed = JSON.parse(getOutput())
+    expect(parsed).toEqual([])
+  })
 })
