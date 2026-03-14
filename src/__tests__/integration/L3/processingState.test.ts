@@ -1,57 +1,116 @@
 /**
- * L3 Integration Test — processingState service
- *
- * Mock boundary: L1 infrastructure (fileSystem, paths, config, logger)
- * Real code:     L3 processingState business logic
- *
- * Validates that the state machine correctly transitions videos
- * through pending → processing → completed/failed when given
- * controlled file I/O.
+ * processingState service integration-style tests with a stateful L2 videoStore mock.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// ── Mock L1 infrastructure ────────────────────────────────────────────
+const { mockStore } = vi.hoisted(() => {
+  type Status = 'pending' | 'processing' | 'completed' | 'failed'
+  type Row = {
+    slug: string
+    source_path: string
+    status: Status
+    started_at: string | null
+    completed_at: string | null
+    error: string | null
+    created_at: string
+    updated_at: string
+  }
 
-const mockState: Record<string, unknown> = {}
+  const rows = new Map<string, Row>()
 
-vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
-  readJsonFile: vi.fn(async (_path: string, fallback: unknown) => mockState.data ?? fallback),
-  writeJsonFile: vi.fn(async (_path: string, data: unknown) => { mockState.data = data }),
-  fileExistsSync: vi.fn(() => mockState.data !== undefined),
+  function cloneRow(row: Row): Row {
+    return { ...row }
+  }
+
+  function sortRows(values: Iterable<Row>): Row[] {
+    return Array.from(values)
+      .map(cloneRow)
+      .sort((left, right) => right.created_at.localeCompare(left.created_at))
+  }
+
+  return {
+    mockStore: {
+      reset() {
+        rows.clear()
+      },
+      getVideo(slug: string) {
+        const row = rows.get(slug)
+        return row ? cloneRow(row) : undefined
+      },
+      getVideosByStatus(status: Status) {
+        return sortRows(Array.from(rows.values()).filter(row => row.status === status))
+      },
+      getUnprocessedVideos() {
+        return sortRows(Array.from(rows.values()).filter(row => row.status === 'pending' || row.status === 'failed'))
+      },
+      upsertVideo(slug: string, sourcePath: string, status: Status) {
+        const existing = rows.get(slug)
+        const now = new Date().toISOString()
+        rows.set(slug, {
+          slug,
+          source_path: sourcePath,
+          status,
+          started_at: null,
+          completed_at: null,
+          error: null,
+          created_at: existing?.created_at ?? now,
+          updated_at: now,
+        })
+      },
+      updateVideoStatus(slug: string, status: Status, extras?: { startedAt?: string; completedAt?: string; error?: string }) {
+        const existing = rows.get(slug)
+        if (!existing) {
+          return
+        }
+
+        rows.set(slug, {
+          ...existing,
+          status,
+          started_at: extras?.startedAt ?? existing.started_at,
+          completed_at: extras?.completedAt ?? existing.completed_at,
+          error: extras?.error ?? existing.error,
+          updated_at: new Date().toISOString(),
+        })
+      },
+      getAllVideos() {
+        return sortRows(rows.values())
+      },
+    },
+  }
+})
+
+vi.mock('../../../L2-clients/dataStore/videoStore.js', () => ({
+  getVideo: (slug: string) => mockStore.getVideo(slug),
+  getVideosByStatus: (status: 'pending' | 'processing' | 'completed' | 'failed') => mockStore.getVideosByStatus(status),
+  getUnprocessedVideos: () => mockStore.getUnprocessedVideos(),
+  upsertVideo: (slug: string, sourcePath: string, status: 'pending' | 'processing' | 'completed' | 'failed') => mockStore.upsertVideo(slug, sourcePath, status),
+  updateVideoStatus: (slug: string, status: 'pending' | 'processing' | 'completed' | 'failed', extras?: { startedAt?: string; completedAt?: string; error?: string }) => mockStore.updateVideoStatus(slug, status, extras),
+  getAllVideos: () => mockStore.getAllVideos(),
 }))
-
-vi.mock('../../../L1-infra/paths/paths.js', () => ({
-  join: vi.fn((...args: string[]) => args.join('/')),
-}))
-
-vi.mock('../../../L1-infra/config/environment.js', () => ({
-  getConfig: () => ({ OUTPUT_DIR: '/test/output' }),
-}))
-
-// Logger is auto-mocked by global setup.ts
-
-// ── Import after mocks ───────────────────────────────────────────────
 
 import {
-  getVideoStatus,
+  getFullState,
   getUnprocessed,
+  getVideoStatus,
   isCompleted,
-  markPending,
-  markProcessing,
   markCompleted,
   markFailed,
-  getFullState,
+  markPending,
+  markProcessing,
 } from '../../../L3-services/processingState/processingState.js'
-
-// ── Tests ─────────────────────────────────────────────────────────────
 
 describe('L3 Integration: processingState', () => {
   beforeEach(() => {
-    mockState.data = undefined
-    vi.clearAllMocks()
+    mockStore.reset()
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2025-06-01T12:00:00.000Z'))
   })
 
-  it('returns empty state when no file exists', async () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('returns empty state when no videos exist', async () => {
     const state = await getFullState()
     expect(state).toEqual({ videos: {} })
   })
@@ -66,12 +125,12 @@ describe('L3 Integration: processingState', () => {
     await markProcessing('my-video')
     status = await getVideoStatus('my-video')
     expect(status?.status).toBe('processing')
-    expect(status?.startedAt).toBeDefined()
+    expect(status?.startedAt).toBe('2025-06-01T12:00:00.000Z')
 
     await markCompleted('my-video')
     status = await getVideoStatus('my-video')
     expect(status?.status).toBe('completed')
-    expect(status?.completedAt).toBeDefined()
+    expect(status?.completedAt).toBe('2025-06-01T12:00:00.000Z')
 
     expect(await isCompleted('my-video')).toBe(true)
   })
@@ -82,8 +141,13 @@ describe('L3 Integration: processingState', () => {
     await markFailed('fail-video', 'FFmpeg crashed')
 
     const status = await getVideoStatus('fail-video')
-    expect(status?.status).toBe('failed')
-    expect(status?.error).toBe('FFmpeg crashed')
+    expect(status).toEqual({
+      status: 'failed',
+      sourcePath: '/path/to/fail.mp4',
+      startedAt: '2025-06-01T12:00:00.000Z',
+      completedAt: '2025-06-01T12:00:00.000Z',
+      error: 'FFmpeg crashed',
+    })
   })
 
   it('getUnprocessed returns pending and failed videos only', async () => {

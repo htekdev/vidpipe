@@ -9,6 +9,7 @@ import { runInit } from './commands/init'
 import { runSchedule } from './commands/schedule'
 import { runRealign } from './commands/realign'
 import { runChat } from './commands/chat'
+import { runMigrate } from './commands/migrate.js'
 import { startReviewServer } from './review/server'
 import { openUrl } from '../L1-infra/cli/cli.js'
 import { readTextFileSync, listDirectorySync } from '../L1-infra/fileSystem/fileSystem.js'
@@ -111,6 +112,14 @@ program
   .description('Check all prerequisites and dependencies')
   .action(async () => {
     await runDoctor()
+  })
+
+program
+  .command('migrate')
+  .description('Import legacy JSON processing state and queue data into SQLite')
+  .action(async () => {
+    const result = await runMigrate()
+    process.exit(result.errors.length === 0 ? 0 : 1)
   })
 
 // --- Default command (process video or watch) ---

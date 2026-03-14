@@ -13,6 +13,9 @@ const {
   mockWriteTextFile,
   mockWriteJsonFile,
   mockCostTracker,
+  mockStartRun,
+  mockCompleteRun,
+  mockFailRun,
   mockMarkPending,
   mockMarkProcessing,
   mockMarkCompleted,
@@ -43,7 +46,16 @@ const {
   mockReadTextFile: vi.fn().mockResolvedValue(''),
   mockWriteTextFile: vi.fn().mockResolvedValue(undefined),
   mockWriteJsonFile: vi.fn().mockResolvedValue(undefined),
-  mockCostTracker: { reset: vi.fn(), setStage: vi.fn(), getReport: vi.fn().mockReturnValue({ records: [] }), formatReport: vi.fn().mockReturnValue('') },
+  mockCostTracker: {
+    reset: vi.fn(),
+    setRunId: vi.fn(),
+    setStage: vi.fn(),
+    getReport: vi.fn().mockReturnValue({ records: [] }),
+    formatReport: vi.fn().mockReturnValue(''),
+  },
+  mockStartRun: vi.fn().mockResolvedValue(undefined),
+  mockCompleteRun: vi.fn().mockResolvedValue(undefined),
+  mockFailRun: vi.fn().mockResolvedValue(undefined),
   mockMarkPending: vi.fn().mockResolvedValue(undefined),
   mockMarkProcessing: vi.fn().mockResolvedValue(undefined),
   mockMarkCompleted: vi.fn().mockResolvedValue(undefined),
@@ -99,6 +111,9 @@ vi.mock('../../../L5-assets/MainVideoAsset.js', () => ({
 
 vi.mock('../../../L5-assets/pipelineServices.js', () => ({
   costTracker: mockCostTracker,
+  startRun: mockStartRun,
+  completeRun: mockCompleteRun,
+  failRun: mockFailRun,
   markPending: mockMarkPending,
   markProcessing: mockMarkProcessing,
   markCompleted: mockMarkCompleted,
@@ -436,6 +451,42 @@ describe('processVideo', () => {
     expect(result.totalDuration).toBeGreaterThanOrEqual(0)
   })
 
+  it('creates and completes a tracked pipeline run with per-stage cost context', async () => {
+    const result = await processVideo('/videos/test.mp4')
+
+    const runId = mockCostTracker.setRunId.mock.calls[0]?.[0]
+
+    expect(mockCostTracker.reset).toHaveBeenCalledOnce()
+    expect(runId).toEqual(expect.any(String))
+    expect(mockStartRun).toHaveBeenCalledWith(runId, 'test')
+    expect(mockCompleteRun).toHaveBeenCalledWith(runId, result.stageResults, result.totalDuration)
+    expect(mockFailRun).not.toHaveBeenCalled()
+    expect(mockCostTracker.setStage.mock.calls.map(([stage]) => stage)).toEqual([
+      PipelineStage.Ingestion,
+      PipelineStage.Transcription,
+      PipelineStage.SilenceRemoval,
+      PipelineStage.Captions,
+      PipelineStage.CaptionBurn,
+      PipelineStage.Shorts,
+      PipelineStage.MediumClips,
+      PipelineStage.Chapters,
+      PipelineStage.Summary,
+      PipelineStage.SocialMedia,
+      PipelineStage.Blog,
+      PipelineStage.GitPush,
+    ])
+  })
+
+  it('warns and continues when pipeline run audit creation fails', async () => {
+    mockStartRun.mockRejectedValueOnce(new Error('db unavailable'))
+
+    const result = await processVideo('/videos/test.mp4')
+
+    expect(result.video).toEqual(video)
+    expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining('Failed to create pipeline run'))
+    expect(mockCompleteRun).toHaveBeenCalledOnce()
+  })
+
   it('calls stages in correct order', async () => {
     const callOrder: string[] = []
     mockMainVideoAssetIngest.mockImplementation(async () => { callOrder.push('ingest'); return makeAssetMock() })
@@ -464,10 +515,13 @@ describe('processVideo', () => {
     mockMainVideoAssetIngest.mockRejectedValue(new Error('ingest failed'))
 
     const result = await processVideo('/videos/test.mp4')
+    const runId = mockCostTracker.setRunId.mock.calls[0]?.[0]
 
     expect(result.video.originalPath).toBe('/videos/test.mp4')
     expect(result.transcript).toBeUndefined()
     expect(mockGetTranscript).not.toHaveBeenCalled()
+    expect(mockFailRun).toHaveBeenCalledWith(runId, 'Ingestion failed — cannot proceed without video metadata', result.stageResults)
+    expect(mockCompleteRun).not.toHaveBeenCalled()
     expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('cannot proceed'))
   })
 
@@ -666,8 +720,12 @@ describe('processVideoSafe', () => {
     mockGetConfig.mockImplementation(() => { throw new Error('config explosion') })
 
     const result = await processVideoSafe('/videos/test.mp4')
+    const runId = mockCostTracker.setRunId.mock.calls[0]?.[0]
 
     expect(result).toBeNull()
+    expect(mockStartRun).toHaveBeenCalledWith(runId, 'test')
+    expect(mockFailRun).toHaveBeenCalledWith(runId, 'config explosion', [])
+    expect(mockCompleteRun).not.toHaveBeenCalled()
     expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('config explosion'))
   })
 })

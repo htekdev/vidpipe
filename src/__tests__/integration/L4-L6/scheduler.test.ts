@@ -22,6 +22,17 @@ vi.mock('../../../L2-clients/late/lateApi.js', () => ({
   }),
 }))
 
+// Mock L2 data stores — postStore depends on queueStore after SQLite migration
+vi.mock('../../../L2-clients/dataStore/queueStore.js', () => ({
+  getQueueItem: vi.fn().mockReturnValue(null),
+  getItemsByStatus: vi.fn().mockReturnValue([]),
+  insertQueueItem: vi.fn(),
+  updateQueueItem: vi.fn(),
+  markPublished: vi.fn(),
+  deleteQueueItem: vi.fn(),
+  itemExists: vi.fn().mockReturnValue(null),
+}))
+
 // ── Import after mocks ───────────────────────────────────────────────
 
 import { findNextSlot, getScheduleCalendar } from '../../../L3-services/scheduler/scheduler.js'
