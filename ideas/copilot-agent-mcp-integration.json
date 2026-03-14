@@ -22,7 +22,8 @@
     "automation",
     "tutorial"
   ],
-  "trendContext": "Copilot coding agent now supports MCP server configuration in repo settings, plus vision models for images in issues.",
   "createdAt": "2026-03-13T18:11:01.633Z",
-  "updatedAt": "2026-03-13T18:11:01.633Z"
+  "updatedAt": "2026-03-13T18:11:01.633Z",
+  "publishBy": "2026-03-27",
+  "trendContext": "Copilot coding agent now supports MCP server configuration in repo settings, plus vision models for images in issues."
 }

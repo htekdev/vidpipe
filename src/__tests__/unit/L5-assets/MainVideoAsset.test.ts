@@ -783,6 +783,7 @@ describe('MainVideoAsset', () => {
           tags: ['tag-1'],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
+          publishBy: '2026-02-01',
         },
       ])
 

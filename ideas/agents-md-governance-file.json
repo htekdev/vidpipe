@@ -23,7 +23,8 @@
     "governance",
     "tutorial"
   ],
-  "trendContext": "GitHub now supports AGENTS.md files for agent-specific instructions, with the nearest file taking precedence—a new standard that's not widely known yet among developers.",
   "createdAt": "2026-03-13T18:10:37.971Z",
-  "updatedAt": "2026-03-13T18:10:37.971Z"
+  "updatedAt": "2026-03-13T18:10:37.971Z",
+  "publishBy": "2026-03-27",
+  "trendContext": "GitHub now supports AGENTS.md files for agent-specific instructions, with the nearest file taking precedence—a new standard that's not widely known yet among developers."
 }

@@ -15,7 +15,7 @@
     "youtube",
     "linkedin"
   ],
-  "status": "draft",
+  "status": "recorded",
   "tags": [
     "GitHub Copilot",
     "Agent HQ",
@@ -24,7 +24,9 @@
     "Multi-Agent",
     "Enterprise"
   ],
-  "trendContext": "GitHub announced Claude and Codex integration in Agent HQ on Feb 4, 2026 - now in public preview for Copilot Pro+ and Enterprise, with more agents from Google, Cognition, and xAI coming soon",
   "createdAt": "2026-03-13T18:23:19.883Z",
-  "updatedAt": "2026-03-13T18:23:19.883Z"
+  "updatedAt": "2026-03-13T19:15:01.707Z",
+  "publishBy": "2026-03-27",
+  "sourceVideoSlug": "bandicam 2026-03-13 13-52-34-460",
+  "trendContext": "GitHub announced Claude and Codex integration in Agent HQ on Feb 4, 2026 - now in public preview for Copilot Pro+ and Enterprise, with more agents from Google, Cognition, and xAI coming soon"
 }

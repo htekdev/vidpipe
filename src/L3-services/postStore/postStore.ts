@@ -486,6 +486,25 @@ export async function getPublishedItems(): Promise<QueueItem[]> {
   return items
 }
 
+export async function getScheduledItemsByIdeaIds(ideaIds: string[]): Promise<QueueItem[]> {
+  if (ideaIds.length === 0) return []
+
+  const ideaIdSet = new Set(ideaIds)
+  const [pendingItems, publishedItems] = await Promise.all([
+    getPendingItems(),
+    getPublishedItems(),
+  ])
+
+  return [...pendingItems, ...publishedItems].filter(item =>
+    item.metadata.ideaIds?.some(id => ideaIdSet.has(id)) ?? false,
+  )
+}
+
+export async function getPublishedItemByLatePostId(latePostId: string): Promise<QueueItem | null> {
+  const publishedItems = await getPublishedItems()
+  return publishedItems.find(item => item.metadata.latePostId === latePostId) ?? null
+}
+
 export async function itemExists(id: string): Promise<'pending' | 'published' | null> {
   // Inline validation to prevent path traversal - CodeQL recognizes this pattern
   if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {

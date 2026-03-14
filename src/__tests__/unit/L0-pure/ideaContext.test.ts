@@ -20,6 +20,7 @@ function createIdea(overrides: Partial<Idea> = {}): Idea {
     tags: ['video', 'automation'],
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
+    publishBy: '2026-04-01',
     ...overrides,
   }
 }

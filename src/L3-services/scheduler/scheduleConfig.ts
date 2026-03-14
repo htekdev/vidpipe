@@ -20,19 +20,41 @@ export interface PlatformSchedule {
   byClipType?: Record<string, ClipTypeSchedule>
 }
 
+export interface IdeaSpacingConfig {
+  samePlatformHours: number
+  crossPlatformHours: number
+}
+
+export interface DisplacementConfig {
+  enabled: boolean
+  canDisplace: 'non-idea-only'
+}
+
 export interface ScheduleConfig {
   timezone: string
   platforms: Record<string, PlatformSchedule>
+  ideaSpacing?: IdeaSpacingConfig
+  displacement?: DisplacementConfig
 }
 
 const VALID_DAYS: DayOfWeek[] = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 const TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/
+const defaultIdeaSpacing: IdeaSpacingConfig = {
+  samePlatformHours: 24,
+  crossPlatformHours: 6,
+}
+const defaultDisplacement: DisplacementConfig = {
+  enabled: true,
+  canDisplace: 'non-idea-only',
+}
 
 let cachedConfig: ScheduleConfig | null = null
 
 export function getDefaultScheduleConfig(): ScheduleConfig {
   return {
     timezone: 'America/Chicago',
+    ideaSpacing: { ...defaultIdeaSpacing },
+    displacement: { ...defaultDisplacement },
     platforms: {
       linkedin: {
         slots: [
@@ -165,6 +187,53 @@ function validateByClipType(byClipType: Record<string, unknown>, platformName: s
   return validated
 }
 
+function validatePositiveNumber(value: unknown, fieldName: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`${fieldName} must be a positive number`)
+  }
+
+  return value
+}
+
+function validateIdeaSpacingConfig(ideaSpacing: unknown): IdeaSpacingConfig {
+  if (!ideaSpacing || typeof ideaSpacing !== 'object' || Array.isArray(ideaSpacing)) {
+    throw new Error('Schedule config "ideaSpacing" must be an object')
+  }
+
+  const spacing = ideaSpacing as Record<string, unknown>
+  return {
+    samePlatformHours: validatePositiveNumber(
+      spacing.samePlatformHours,
+      'Schedule config "ideaSpacing.samePlatformHours"'
+    ),
+    crossPlatformHours: validatePositiveNumber(
+      spacing.crossPlatformHours,
+      'Schedule config "ideaSpacing.crossPlatformHours"'
+    ),
+  }
+}
+
+function validateDisplacementConfig(displacement: unknown): DisplacementConfig {
+  if (!displacement || typeof displacement !== 'object' || Array.isArray(displacement)) {
+    throw new Error('Schedule config "displacement" must be an object')
+  }
+
+  const validated = displacement as Record<string, unknown>
+
+  if (typeof validated.enabled !== 'boolean') {
+    throw new Error('Schedule config "displacement.enabled" must be a boolean')
+  }
+
+  if (validated.canDisplace !== 'non-idea-only') {
+    throw new Error('Schedule config "displacement.canDisplace" must be "non-idea-only"')
+  }
+
+  return {
+    enabled: validated.enabled,
+    canDisplace: 'non-idea-only',
+  }
+}
+
 export function validateScheduleConfig(config: unknown): ScheduleConfig {
   if (!config || typeof config !== 'object') {
     throw new Error('Schedule config must be a non-null object')
@@ -184,6 +253,14 @@ export function validateScheduleConfig(config: unknown): ScheduleConfig {
   const validated: ScheduleConfig = {
     timezone: cfg.timezone,
     platforms: {},
+  }
+
+  if (cfg.ideaSpacing !== undefined) {
+    validated.ideaSpacing = validateIdeaSpacingConfig(cfg.ideaSpacing)
+  }
+
+  if (cfg.displacement !== undefined) {
+    validated.displacement = validateDisplacementConfig(cfg.displacement)
   }
 
   for (const [name, value] of Object.entries(platforms)) {
@@ -294,6 +371,14 @@ export function getPlatformSchedule(platform: string, clipType?: string): Platfo
   }
 
   return schedule
+}
+
+export function getIdeaSpacingConfig(): IdeaSpacingConfig {
+  return cachedConfig?.ideaSpacing ?? { ...defaultIdeaSpacing }
+}
+
+export function getDisplacementConfig(): DisplacementConfig {
+  return cachedConfig?.displacement ?? { ...defaultDisplacement }
 }
 
 export function clearScheduleCache(): void {

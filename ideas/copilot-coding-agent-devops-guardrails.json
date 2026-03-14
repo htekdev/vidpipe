@@ -23,7 +23,8 @@
     "enterprise",
     "security"
   ],
-  "trendContext": "GitHub's coding agent (GA May 2025) enforces branch protection, required reviews, and Actions approval by default—a major differentiator from competitors that most DevOps content hasn't covered yet.",
-  "createdAt": "2026-03-13T18:10:37.970Z",
-  "updatedAt": "2026-03-13T18:10:37.970Z"
+  "createdAt": "2026-03-13T18:10:37.97Z",
+  "updatedAt": "2026-03-13T18:10:37.97Z",
+  "publishBy": "2026-06-13",
+  "trendContext": "GitHub's coding agent (GA May 2025) enforces branch protection, required reviews, and Actions approval by default—a major differentiator from competitors that most DevOps content hasn't covered yet."
 }

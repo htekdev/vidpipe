@@ -9,6 +9,11 @@ import { readIdeaBank } from '../../../L1-infra/ideaStore/ideaStore.js'
 const mockState = vi.hoisted(() => ({
   systemPrompt: '',
   mcpServers: undefined as Record<string, unknown> | undefined,
+  tools: [] as Array<{
+    name: string
+    parameters?: Record<string, unknown>
+    handler: (args: Record<string, unknown>) => Promise<unknown>
+  }>,
   runScenario: 'ideas' as 'ideas' | 'inspect',
 }))
 
@@ -20,11 +25,12 @@ vi.mock('../../../L3-services/llm/providerFactory.js', async () => {
       getDefaultModel: () => 'mock-model',
       createSession: async (config: {
         systemPrompt: string
-        tools: Array<{ name: string; handler: (args: Record<string, unknown>) => Promise<unknown> }>
+        tools: Array<{ name: string; parameters?: Record<string, unknown>; handler: (args: Record<string, unknown>) => Promise<unknown> }>
         mcpServers?: Record<string, unknown>
       }) => {
         mockState.systemPrompt = config.systemPrompt
         mockState.mcpServers = config.mcpServers
+        mockState.tools = config.tools
 
         return {
           on: () => {},
@@ -47,6 +53,7 @@ vi.mock('../../../L3-services/llm/providerFactory.js', async () => {
                 talkingPoints: ['Newest CLI capabilities', 'Who benefits first', 'How to test the update today'],
                 platforms: ['youtube', 'linkedin', 'x'],
                 tags: ['copilot', 'release-notes', 'developer-tools'],
+                publishBy: '2026-03-18',
                 trendContext: 'Weekly Copilot releases create a recurring news peg for timely commentary.',
               })
               await createIdea?.handler({
@@ -58,6 +65,7 @@ vi.mock('../../../L3-services/llm/providerFactory.js', async () => {
                 talkingPoints: ['Where teams overcorrect', 'Hookflow-style guardrails', 'How to measure signal vs friction'],
                 platforms: ['youtube', 'tiktok', 'linkedin'],
                 tags: ['devops', 'agents', 'governance'],
+                publishBy: '2026-03-27',
                 trendContext: 'Teams are actively adding governance around agentic coding and CI/CD workflows.',
               })
               await createIdea?.handler({
@@ -69,6 +77,7 @@ vi.mock('../../../L3-services/llm/providerFactory.js', async () => {
                 talkingPoints: ['What changed', 'Which teams should care', 'Immediate next experiments'],
                 platforms: ['youtube', 'instagram', 'x'],
                 tags: ['azure', 'ai', 'cloud'],
+                publishBy: '2026-06-13',
                 trendContext: 'Monthly Azure AI releases create urgency for explainers and implementation guidance.',
               })
               await finalizeIdeas?.handler({})
@@ -104,6 +113,7 @@ describe('IdeationAgent', () => {
     config.PERPLEXITY_API_KEY = ''
     mockState.systemPrompt = ''
     mockState.mcpServers = undefined
+    mockState.tools = []
     mockState.runScenario = 'ideas'
 
     await writeFile(
@@ -152,7 +162,7 @@ describe('IdeationAgent', () => {
     await rm(sandboxDir, { recursive: true, force: true })
   })
 
-  test('IdeationAgent.REQ-001 - generateIdeas includes seed topics and content pillars in the prompt', async () => {
+  test('IdeationAgent.REQ-001 - generateIdeas includes seed topics, content pillars, and publish-by guidance in the prompt', async () => {
     const { generateIdeas } = await import('../../../L4-agents/IdeationAgent.js')
 
     await generateIdeas({
@@ -167,6 +177,7 @@ describe('IdeationAgent', () => {
     expect(mockState.systemPrompt).toContain('Azure AI')
     expect(mockState.systemPrompt).toContain('GitHub Copilot Deep Dives')
     expect(mockState.systemPrompt).toContain('Agentic DevOps')
+    expect(mockState.systemPrompt).toContain('Set publishBy based on timeliness')
   })
 
   test('IdeationAgent.REQ-002 - create_idea persists draft ideas and generateIdeas returns them', async () => {
@@ -182,6 +193,7 @@ describe('IdeationAgent', () => {
     expect(ideas).toHaveLength(3)
     expect(ideas.every((idea) => idea.status === 'draft')).toBe(true)
     expect(ideas.every((idea) => typeof idea.createdAt === 'string' && typeof idea.updatedAt === 'string')).toBe(true)
+    expect(ideas.map((idea) => idea.publishBy)).toEqual(['2026-03-18', '2026-03-27', '2026-06-13'])
 
     const storedIdeas = await readIdeaBank(ideasDir)
     expect(storedIdeas.map((idea) => idea.id).sort()).toEqual(ideas.map((idea) => idea.id).sort())
@@ -222,5 +234,28 @@ describe('IdeationAgent', () => {
         tools: ['*'],
       },
     })
+  })
+
+  test('IdeationAgent.REQ-004 - create_idea requires publishBy in tool parameters', async () => {
+    const { generateIdeas } = await import('../../../L4-agents/IdeationAgent.js')
+
+    await generateIdeas({
+      count: 3,
+      brandPath,
+      ideasDir,
+    })
+
+    const createIdeaTool = mockState.tools.find((tool) => tool.name === 'create_idea')
+    const parameters = createIdeaTool?.parameters as {
+      properties?: Record<string, unknown>
+      required?: string[]
+    } | undefined
+    const publishBy = parameters?.properties?.publishBy as { type?: string; description?: string } | undefined
+
+    expect(publishBy).toMatchObject({
+      type: 'string',
+    })
+    expect(publishBy?.description).toContain('Hot trends: 3-5 days')
+    expect(parameters?.required).toContain('publishBy')
   })
 })

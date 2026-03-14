@@ -24,7 +24,8 @@
     "Agent Development",
     "Developer Tools"
   ],
-  "trendContext": "Debug events snapshot is a new feature in VS Code 1.111 (March 9, 2026) - perfect complement to the existing custom agent content pillar on troubleshooting agent behavior",
   "createdAt": "2026-03-13T18:23:53.409Z",
-  "updatedAt": "2026-03-13T18:23:53.409Z"
+  "updatedAt": "2026-03-13T18:23:53.409Z",
+  "publishBy": "2026-03-20",
+  "trendContext": "Debug events snapshot is a new feature in VS Code 1.111 (March 9, 2026) - perfect complement to the existing custom agent content pillar on troubleshooting agent behavior"
 }

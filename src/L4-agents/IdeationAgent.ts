@@ -32,6 +32,10 @@ Every idea must:
 - Deliver one memorable takeaway
 - Be timely — the trendContext field MUST reference specific findings from your research (e.g., "GitHub Copilot just released X feature this week" or "This topic has 2M views in the last 7 days on YouTube")
 - Fit within the creator's established content pillars
+- Set publishBy based on timeliness:
+  * Breaking news / hot trend: 3-5 days from now
+  * Timely topic (release, event, announcement): 1-2 weeks from now
+  * Evergreen content (tutorials, fundamentals): 3-6 months from now
 
 ## Platform Targeting
 - Short-form (TikTok, YouTube Shorts, Instagram Reels): Hook-first, single concept, ≤60s
@@ -70,6 +74,7 @@ interface CreateIdeaArgs {
   talkingPoints: string[]
   platforms: string[]
   tags: string[]
+  publishBy: string
   trendContext?: string
 }
 
@@ -297,9 +302,14 @@ function assertKebabCaseId(id: string): string {
 
 function buildIdea(args: CreateIdeaArgs): Idea {
   const now = new Date().toISOString()
+  const publishBy = args.publishBy.trim()
 
   if (args.hook.trim().length > 80) {
     throw new Error(`Idea hook must be 80 characters or fewer: ${args.id}`)
+  }
+
+  if (Number.isNaN(new Date(publishBy).getTime())) {
+    throw new Error(`Invalid publishBy date: ${args.publishBy}`)
   }
 
   return {
@@ -315,6 +325,7 @@ function buildIdea(args: CreateIdeaArgs): Idea {
     trendContext: args.trendContext?.trim() || undefined,
     createdAt: now,
     updatedAt: now,
+    publishBy,
   }
 }
 
@@ -424,12 +435,16 @@ class IdeationAgent extends BaseAgent {
               items: { type: 'string' },
               description: 'Categorization tags',
             },
+            publishBy: {
+              type: 'string',
+              description: 'ISO 8601 date for when this content should be published by. Hot trends: 3-5 days, timely events: 1-2 weeks, evergreen: 3-6 months.',
+            },
             trendContext: {
               type: 'string',
               description: 'Why this idea is timely right now',
             },
           },
-          required: ['id', 'topic', 'hook', 'audience', 'keyTakeaway', 'talkingPoints', 'platforms', 'tags'],
+          required: ['id', 'topic', 'hook', 'audience', 'keyTakeaway', 'talkingPoints', 'platforms', 'tags', 'publishBy'],
         },
         handler: async (args: Record<string, unknown>) => this.handleToolCall('create_idea', args),
       },
@@ -492,7 +507,7 @@ class IdeationAgent extends BaseAgent {
   }
 
   private parseCreateIdeaArgs(args: Record<string, unknown>): CreateIdeaArgs {
-    const { id, topic, hook, audience, keyTakeaway, talkingPoints, platforms, tags, trendContext } = args
+    const { id, topic, hook, audience, keyTakeaway, talkingPoints, platforms, tags, publishBy, trendContext } = args
 
     if (
       typeof id !== 'string'
@@ -503,6 +518,7 @@ class IdeationAgent extends BaseAgent {
       || !isStringArray(talkingPoints)
       || !isStringArray(platforms)
       || !isStringArray(tags)
+      || typeof publishBy !== 'string'
       || (trendContext !== undefined && typeof trendContext !== 'string')
     ) {
       throw new Error('Invalid create_idea arguments')
@@ -517,6 +533,7 @@ class IdeationAgent extends BaseAgent {
       talkingPoints,
       platforms,
       tags,
+      publishBy,
       trendContext,
     }
   }

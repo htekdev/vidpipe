@@ -55,6 +55,10 @@ function isPlatformArray(value: unknown): value is Platform[] {
   return Array.isArray(value) && value.every((item) => isPlatform(item))
 }
 
+function isValidIsoDateString(value: unknown): value is string {
+  return typeof value === 'string' && !Number.isNaN(new Date(value).getTime())
+}
+
 function isIdeaPublishRecord(value: unknown): value is IdeaPublishRecord {
   return isRecord(value)
     && typeof value.queueItemId === 'string'
@@ -78,6 +82,7 @@ function isIdea(value: unknown): value is Idea {
     && isStringArray(value.tags)
     && typeof value.createdAt === 'string'
     && typeof value.updatedAt === 'string'
+    && isValidIsoDateString(value.publishBy)
     && (value.sourceVideoSlug === undefined || typeof value.sourceVideoSlug === 'string')
     && (value.trendContext === undefined || typeof value.trendContext === 'string')
     && (value.publishedContent === undefined
@@ -115,6 +120,10 @@ export async function writeIdea(idea: Idea, dir?: string): Promise<void> {
   const ideasDir = resolveIdeasDir(dir)
   const ideaPath = getIdeaFilePath(idea.id, ideasDir)
   const now = new Date().toISOString()
+
+  if (!isValidIsoDateString(idea.publishBy)) {
+    throw new Error(`Invalid publishBy date: ${idea.publishBy}`)
+  }
 
   idea.updatedAt = now
 

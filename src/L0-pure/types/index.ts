@@ -618,6 +618,11 @@ export interface Idea {
   createdAt: string
   /** When the idea was last updated (ISO 8601) */
   updatedAt: string
+  /** Deadline for publishing this idea's content (ISO 8601 date). Agent sets based on timeliness:
+   * - Hot trend: 3-5 days out
+   * - Timely event: 1-2 weeks out
+   * - Evergreen: 3-6 months out */
+  publishBy: string
   /** Video slug linked after recording (back-reference) */
   sourceVideoSlug?: string
   /** Why this is timely — context from trend research */

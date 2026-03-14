@@ -19,6 +19,8 @@ File I/O module for idea-bank persistence. Each idea is stored as a standalone J
 | REQ-005 | `readIdea()` returns `null` when the requested `{id}.json` file does not exist. | P0 |
 | REQ-006 | `listIdeaIds()` returns the basename of each `*.json` file in the ideas directory without reading file contents. | P0 |
 | REQ-007 | `deleteIdea()` removes `{id}.json` and does not fail when the file is already absent. | P0 |
+| REQ-008 | `writeIdea()` must reject ideas whose `publishBy` field is missing or not a valid ISO 8601 date string. | P0 |
+| REQ-009 | `readIdea()` and `readIdeaBank()` must treat `publishBy` as a required ISO 8601 date field when validating persisted idea payloads. | P0 |
 
 ---
 

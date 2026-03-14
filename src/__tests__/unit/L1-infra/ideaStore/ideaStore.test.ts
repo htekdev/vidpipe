@@ -4,8 +4,8 @@ import { join } from 'node:path'
 
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { Platform, type Idea } from '../../../L0-pure/types/index.js'
-import { deleteIdea, listIdeaIds, readIdea, readIdeaBank, writeIdea } from '../../../L1-infra/ideaStore/ideaStore.js'
+import { Platform, type Idea } from '../../../../L0-pure/types/index.js'
+import { deleteIdea, listIdeaIds, readIdea, readIdeaBank, writeIdea } from '../../../../L1-infra/ideaStore/ideaStore.js'
 
 let tempDirs: string[] = []
 
@@ -28,6 +28,7 @@ function createIdea(overrides: Partial<Idea> = {}): Idea {
     tags: overrides.tags ?? ['copilot', 'debugging'],
     createdAt: overrides.createdAt ?? '2026-01-01T00:00:00.000Z',
     updatedAt: overrides.updatedAt ?? '2026-01-01T00:00:00.000Z',
+    publishBy: overrides.publishBy ?? '2026-04-01',
     sourceVideoSlug: overrides.sourceVideoSlug,
     trendContext: overrides.trendContext,
     publishedContent: overrides.publishedContent,
@@ -74,8 +75,42 @@ describe('ideaStore', () => {
 
       const persisted = JSON.parse(await readFile(join(dir, `${idea.id}.json`), 'utf-8')) as Idea
       expect(persisted.id).toBe(idea.id)
+      expect(persisted.publishBy).toBe(idea.publishBy)
       expect(persisted.updatedAt).not.toBe('2024-01-01T00:00:00.000Z')
       expect(idea.updatedAt).toBe(persisted.updatedAt)
+    })
+  })
+
+  describe('REQ-008: writeIdea rejects invalid publishBy dates', () => {
+    it('ideaStore.REQ-008 - throws when publishBy is not a valid ISO 8601 date', async () => {
+      const dir = await makeTempDir()
+      const idea = createIdea({ publishBy: 'not-a-date' })
+
+      await expect(writeIdea(idea, dir)).rejects.toThrow('Invalid publishBy date: not-a-date')
+    })
+  })
+
+  describe('REQ-009: readIdea and readIdeaBank validate publishBy on persisted payloads', () => {
+    it('ideaStore.REQ-009 - rejects persisted ideas with invalid publishBy', async () => {
+      const dir = await makeTempDir()
+      const invalidIdea = createIdea({ id: 'idea-invalid-publish-by', publishBy: 'invalid-date' })
+
+      await writeFile(join(dir, `${invalidIdea.id}.json`), JSON.stringify(invalidIdea, null, 2), 'utf-8')
+
+      await expect(readIdea(invalidIdea.id, dir)).rejects.toThrow(`File does not contain a valid idea: ${join(dir, `${invalidIdea.id}.json`)}`)
+      await expect(readIdeaBank(dir)).resolves.toEqual([])
+    })
+
+    it('ideaStore.REQ-009 - accepts persisted ideas with valid publishBy dates', async () => {
+      const dir = await makeTempDir()
+      const idea = createIdea({ id: 'idea-valid-publish-by', publishBy: '2026-05-15' })
+
+      await writeIdea(idea, dir)
+
+      await expect(readIdea(idea.id, dir)).resolves.toMatchObject({
+        id: idea.id,
+        publishBy: '2026-05-15',
+      })
     })
   })
 

@@ -23,7 +23,8 @@
     "devops",
     "ci-cd"
   ],
-  "trendContext": "GitHub announced Dec 2025 they rebuilt Actions core to handle 71M daily jobs, shipping YAML anchors and 10-level workflow nesting.",
   "createdAt": "2026-03-13T18:11:01.633Z",
-  "updatedAt": "2026-03-13T18:11:01.633Z"
+  "updatedAt": "2026-03-13T18:11:01.633Z",
+  "publishBy": "2026-03-27",
+  "trendContext": "GitHub announced Dec 2025 they rebuilt Actions core to handle 71M daily jobs, shipping YAML anchors and 10-level workflow nesting."
 }
