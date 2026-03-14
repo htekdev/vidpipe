@@ -123,6 +123,7 @@ program
   .option('--brand <path>', 'Brand config path (default: ./brand.json)')
   .option('--list', 'List existing ideas instead of generating')
   .option('--status <status>', 'Filter by status when listing (draft|ready|recorded|published)')
+  .option('--format <format>', 'Output format: table (default) or json')
   .action(async (opts) => {
     initConfig()
     await runIdeate(opts)

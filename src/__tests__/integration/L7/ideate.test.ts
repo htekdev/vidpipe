@@ -96,4 +96,66 @@ describe('ideate command', () => {
     expect(getOutput()).toContain('Use `vidpipe ideate --list` to view all ideas.')
     expect(getOutput()).toContain('Use `vidpipe process video.mp4 --ideas <issueNumber1>,<issueNumber2>` to link ideas to a recording.')
   })
+
+  it('outputs valid JSON array when --list --format json is used', async () => {
+    mockListIdeas.mockResolvedValue([
+      {
+        id: 'idea-1',
+        issueNumber: 10,
+        topic: 'First idea',
+        hook: 'A great hook',
+        audience: 'Developers',
+        status: 'draft',
+        platforms: [Platform.YouTube],
+        tags: ['ai'],
+        createdAt: '2026-03-01T00:00:00Z',
+        updatedAt: '2026-03-01T00:00:00Z',
+      },
+      {
+        id: 'idea-2',
+        issueNumber: 11,
+        topic: 'Second idea',
+        hook: 'Another hook',
+        audience: 'Creators',
+        status: 'ready',
+        platforms: [Platform.LinkedIn, Platform.X],
+        tags: [],
+        createdAt: '2026-03-02T00:00:00Z',
+        updatedAt: '2026-03-02T00:00:00Z',
+      },
+    ])
+
+    const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+    await runIdeate({ list: true, format: 'json' })
+
+    const output = getOutput()
+    const parsed = JSON.parse(output)
+    expect(Array.isArray(parsed)).toBe(true)
+    expect(parsed).toHaveLength(2)
+    expect(parsed[0]).toEqual({
+      issueNumber: 10,
+      id: 'idea-1',
+      topic: 'First idea',
+      hook: 'A great hook',
+      audience: 'Developers',
+      platforms: [Platform.YouTube],
+      status: 'draft',
+    })
+    expect(output).not.toContain('💡')
+    expect(output).not.toContain('idea(s) total')
+  })
+
+  it('JSON format with --status filter returns only matching ideas', async () => {
+    mockListIdeas.mockResolvedValue([
+      { id: 'draft-idea', issueNumber: 1, topic: 'Draft', hook: 'H', audience: 'A', status: 'draft', platforms: [Platform.YouTube] },
+      { id: 'ready-idea', issueNumber: 2, topic: 'Ready', hook: 'H', audience: 'A', status: 'ready', platforms: [Platform.LinkedIn] },
+    ])
+
+    const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+    await runIdeate({ list: true, format: 'json', status: 'ready' })
+
+    const parsed = JSON.parse(getOutput())
+    expect(parsed).toHaveLength(1)
+    expect(parsed[0].id).toBe('ready-idea')
+  })
 })

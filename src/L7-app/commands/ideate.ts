@@ -9,6 +9,7 @@ export interface IdeateCommandOptions {
   brand?: string
   list?: boolean
   status?: string
+  format?: 'table' | 'json'
 }
 
 export async function runIdeate(options: IdeateCommandOptions = {}): Promise<void> {
@@ -19,6 +20,20 @@ export async function runIdeate(options: IdeateCommandOptions = {}): Promise<voi
     const filtered = options.status
       ? ideas.filter((idea) => idea.status === options.status)
       : ideas
+
+    if (options.format === 'json') {
+      const jsonIdeas = filtered.map((idea) => ({
+        issueNumber: idea.issueNumber,
+        id: idea.id,
+        topic: idea.topic,
+        hook: idea.hook,
+        audience: idea.audience,
+        platforms: idea.platforms,
+        status: idea.status,
+      }))
+      console.log(JSON.stringify(jsonIdeas, null, 2))
+      return
+    }
 
     if (filtered.length === 0) {
       console.log('No ideas found.')
@@ -44,11 +59,13 @@ export async function runIdeate(options: IdeateCommandOptions = {}): Promise<voi
   const seedTopics = options.topics?.split(',').map(t => t.trim()).filter(Boolean)
   const count = options.count ? parseInt(options.count, 10) : 5
 
-  console.log('\n🧠 Generating content ideas...\n')
-  if (seedTopics?.length) {
-    console.log(`Seed topics: ${seedTopics.join(', ')}`)
+  if (options.format !== 'json') {
+    console.log('\n🧠 Generating content ideas...\n')
+    if (seedTopics?.length) {
+      console.log(`Seed topics: ${seedTopics.join(', ')}`)
+    }
+    console.log(`Target count: ${count}\n`)
   }
-  console.log(`Target count: ${count}\n`)
 
   const ideas = await generateIdeas({
     seedTopics,
@@ -58,7 +75,25 @@ export async function runIdeate(options: IdeateCommandOptions = {}): Promise<voi
   })
 
   if (ideas.length === 0) {
-    console.log('No ideas were generated. Check your API key configuration.')
+    if (options.format === 'json') {
+      console.log(JSON.stringify([], null, 2))
+    } else {
+      console.log('No ideas were generated. Check your API key configuration.')
+    }
+    return
+  }
+
+  if (options.format === 'json') {
+    const jsonIdeas = ideas.map((idea) => ({
+      issueNumber: idea.issueNumber,
+      id: idea.id,
+      topic: idea.topic,
+      hook: idea.hook,
+      audience: idea.audience,
+      platforms: idea.platforms,
+      status: idea.status,
+    }))
+    console.log(JSON.stringify(jsonIdeas, null, 2))
     return
   }
 
