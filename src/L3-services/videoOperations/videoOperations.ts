@@ -8,6 +8,7 @@ import { captureFrame as _captureFrame } from '../../L2-clients/ffmpeg/frameCapt
 import { generatePlatformVariants as _generatePlatformVariants } from '../../L2-clients/ffmpeg/aspectRatio.js'
 import { detectWebcamRegion as _detectWebcamRegion, getVideoResolution as _getVideoResolution } from '../../L2-clients/ffmpeg/faceDetection.js'
 import { compositeOverlays as _compositeOverlays, buildOverlayFilterComplex as _buildOverlayFilterComplex, getOverlayPosition as _getOverlayPosition } from '../../L2-clients/ffmpeg/overlayCompositing.js'
+import { transcodeToMp4 as _transcodeToMp4 } from '../../L2-clients/ffmpeg/transcoding.js'
 
 // Re-export types (exempt from layer rules)
 export type { KeepSegment } from '../../L2-clients/ffmpeg/singlePassEdit.js'
@@ -98,4 +99,8 @@ export function buildOverlayFilterComplex(...args: Parameters<typeof _buildOverl
 
 export function getOverlayPosition(...args: Parameters<typeof _getOverlayPosition>): ReturnType<typeof _getOverlayPosition> {
   return _getOverlayPosition(...args)
+}
+
+export function transcodeToMp4(...args: Parameters<typeof _transcodeToMp4>): ReturnType<typeof _transcodeToMp4> {
+  return _transcodeToMp4(...args)
 }

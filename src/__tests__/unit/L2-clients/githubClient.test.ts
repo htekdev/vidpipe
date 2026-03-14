@@ -90,11 +90,17 @@ describe('GitHubClient', () => {
     })
 
     it('throws when no token is available', () => {
-      initConfig({ githubToken: '', ideasRepo: 'owner/repo' })
+      const savedToken = process.env.GITHUB_TOKEN
+      delete process.env.GITHUB_TOKEN
+      try {
+        initConfig({ githubToken: '', ideasRepo: 'owner/repo' })
 
-      expect(() => new GitHubClient('', 'owner/repo')).toThrow(
-        'GITHUB_TOKEN is required for GitHub API access',
-      )
+        expect(() => new GitHubClient('', 'owner/repo')).toThrow(
+          'GITHUB_TOKEN is required for GitHub API access',
+        )
+      } finally {
+        if (savedToken !== undefined) process.env.GITHUB_TOKEN = savedToken
+      }
     })
 
     it('throws when repo format is invalid', () => {

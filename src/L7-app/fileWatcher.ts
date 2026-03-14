@@ -4,6 +4,7 @@ import { EventEmitter } from '../L1-infra/watcher/watcher.js'
 import { join, extname } from '../L1-infra/paths/paths.js'
 import { fileExistsSync, ensureDirectorySync, getFileStatsSync, listDirectorySync } from '../L1-infra/fileSystem/fileSystem.js'
 import logger from '../L1-infra/logger/configLogger'
+import { isSupportedVideoExtension } from '../L0-pure/types/index'
 
 export interface FileWatcherOptions {
   processExisting?: boolean
@@ -42,8 +43,8 @@ export class FileWatcher extends EventEmitter {
   }
 
   private async handleDetectedFile(filePath: string): Promise<void> {
-    if (extname(filePath).toLowerCase() !== '.mp4') {
-      logger.debug(`[watcher] Ignoring non-mp4 file: ${filePath}`)
+    if (!isSupportedVideoExtension(extname(filePath).toLowerCase())) {
+      logger.debug(`[watcher] Ignoring unsupported file: ${filePath}`)
       return
     }
 
@@ -83,7 +84,7 @@ export class FileWatcher extends EventEmitter {
       throw err
     }
     for (const file of files) {
-      if (extname(file).toLowerCase() === '.mp4') {
+      if (isSupportedVideoExtension(extname(file).toLowerCase())) {
         const filePath = join(this.watchFolder, file)
         this.handleDetectedFile(filePath).catch(err =>
           logger.error(`Error processing ${filePath}: ${err instanceof Error ? err.message : String(err)}`)
@@ -116,7 +117,7 @@ export class FileWatcher extends EventEmitter {
 
     this.watcher.on('change', (filePath: string) => {
       logger.debug(`[watcher] 'change' event: ${filePath}`)
-      if (extname(filePath).toLowerCase() !== '.mp4') return
+      if (!isSupportedVideoExtension(extname(filePath).toLowerCase())) return
       logger.info(`Change detected on video file: ${filePath}`)
       this.handleDetectedFile(filePath).catch(err =>
         logger.error(`Error processing ${filePath}: ${err instanceof Error ? err.message : String(err)}`)
@@ -142,7 +143,7 @@ export class FileWatcher extends EventEmitter {
       }
     })
 
-    logger.info(`Watching for new .mp4 files in: ${this.watchFolder}`)
+    logger.info(`Watching for new video files in: ${this.watchFolder}`)
   }
 
   stop(): void {

@@ -8,7 +8,7 @@
  * Only tests sync functions since async FFmpeg calls need real binaries.
  */
 import { describe, test, expect } from 'vitest'
-import { getFFmpegPath, getFFprobePath } from '../../../L3-services/videoOperations/videoOperations.js'
+import { getFFmpegPath, getFFprobePath, transcodeToMp4 } from '../../../L3-services/videoOperations/videoOperations.js'
 
 describe('L3 Integration: videoOperations → L2 FFmpeg chain', () => {
   test('getFFmpegPath returns a string path', () => {
@@ -21,5 +21,9 @@ describe('L3 Integration: videoOperations → L2 FFmpeg chain', () => {
     const path = getFFprobePath()
     expect(typeof path).toBe('string')
     expect(path.length).toBeGreaterThan(0)
+  })
+
+  test('transcodeToMp4 is exported from L3 videoOperations', () => {
+    expect(typeof transcodeToMp4).toBe('function')
   })
 })

@@ -19,6 +19,7 @@ const mockGetVideoResolution = vi.hoisted(() => vi.fn())
 const mockCompositeOverlays = vi.hoisted(() => vi.fn())
 const mockBuildOverlayFilterComplex = vi.hoisted(() => vi.fn())
 const mockGetOverlayPosition = vi.hoisted(() => vi.fn())
+const mockTranscodeToMp4 = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../../L2-clients/ffmpeg/ffmpeg.js', () => ({
   ffprobe: mockFfprobe,
@@ -59,6 +60,9 @@ vi.mock('../../../../L2-clients/ffmpeg/overlayCompositing.js', () => ({
   buildOverlayFilterComplex: mockBuildOverlayFilterComplex,
   getOverlayPosition: mockGetOverlayPosition,
 }))
+vi.mock('../../../../L2-clients/ffmpeg/transcoding.js', () => ({
+  transcodeToMp4: mockTranscodeToMp4,
+}))
 
 import {
   ffprobe, getFFmpegPath, getFFprobePath,
@@ -68,6 +72,7 @@ import {
   burnCaptions, detectSilence, captureFrame,
   generatePlatformVariants, detectWebcamRegion, getVideoResolution,
   compositeOverlays, buildOverlayFilterComplex, getOverlayPosition,
+  transcodeToMp4,
 } from '../../../../L3-services/videoOperations/videoOperations.js'
 
 describe('L3 videoOperations wrappers', () => {
@@ -185,5 +190,12 @@ describe('L3 videoOperations wrappers', () => {
     mockGetOverlayPosition.mockReturnValue({ x: '10', y: '10' })
     const result = getOverlayPosition({ position: 'top-left' } as never, 10)
     expect(result).toEqual({ x: '10', y: '10' })
+  })
+
+  test('transcodeToMp4 delegates to L2', async () => {
+    mockTranscodeToMp4.mockResolvedValue('/tmp/output.mp4')
+    const result = await transcodeToMp4('/tmp/input.webm', '/tmp/output.mp4')
+    expect(result).toBe('/tmp/output.mp4')
+    expect(mockTranscodeToMp4).toHaveBeenCalledWith('/tmp/input.webm', '/tmp/output.mp4')
   })
 })
