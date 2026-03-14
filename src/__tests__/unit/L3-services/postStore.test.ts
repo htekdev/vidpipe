@@ -283,6 +283,22 @@ describe('postStore', () => {
       expect(publishedMeta.ideaIds).toEqual(['idea-1', 'idea-2'])
     })
 
+    it('derives a Late dashboard URL when publishedUrl is missing', async () => {
+      const meta = makeMetadata({ id: 'approve-dashboard-url', ideaIds: ['idea-1'], clipType: 'video', platform: 'linkedin' })
+      await createItem('approve-dashboard-url', meta, 'Dashboard URL fallback')
+
+      await approveItem('approve-dashboard-url', {
+        latePostId: 'late-dashboard',
+        scheduledFor: '2025-06-01T12:00:00Z',
+      })
+
+      expect(mockMarkPublished).toHaveBeenCalledTimes(1)
+      expect(mockMarkPublished).toHaveBeenCalledWith(1, expect.objectContaining({
+        latePostId: 'late-dashboard',
+        lateUrl: 'https://app.late.co/dashboard/post/late-dashboard',
+      }))
+    })
+
     it('normalizes twitter platform to x when writing idea publish records', async () => {
       const meta = makeMetadata({ id: 'approve-twitter', ideaIds: ['idea-x'], clipType: 'video', platform: 'twitter' })
       await createItem('approve-twitter', meta, 'Twitter normalization test')

@@ -169,6 +169,26 @@ describe('Review Server API', () => {
       const ids = res.body.items.map((i: { id: string }) => i.id)
       expect(ids).toEqual(['oldest', 'older', 'newer'])
     })
+
+    it('batches idea enrichment across pending queue items', async () => {
+      await createTestItem('idea-a', { ideaIds: ['idea-1', '42'] })
+      await createTestItem('idea-b', { ideaIds: ['idea-2', 'idea-1'] })
+      mockGetIdeasByIds.mockResolvedValue([
+        { id: 'idea-1', issueNumber: 41, publishBy: '2026-03-20' },
+        { id: 'idea-2', issueNumber: 42, publishBy: '2026-03-01' },
+      ])
+
+      const res = await request(app).get('/api/posts/pending')
+
+      expect(res.status).toBe(200)
+      expect(mockGetIdeasByIds).toHaveBeenCalledTimes(1)
+      expect(mockGetIdeasByIds).toHaveBeenCalledWith(expect.arrayContaining(['idea-1', 'idea-2', '42']))
+      const itemsById = new Map<string, { id: string; ideaPublishBy?: string }>(
+        res.body.items.map((item: { id: string; ideaPublishBy?: string }) => [item.id, item] as const),
+      )
+      expect(itemsById.get('idea-a')?.ideaPublishBy).toBe('2026-03-01')
+      expect(itemsById.get('idea-b')?.ideaPublishBy).toBe('2026-03-01')
+    })
   })
 
   // ─── GET /api/posts/:id ────────────────────────────────────────────

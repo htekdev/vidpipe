@@ -58,7 +58,38 @@ async function enrichQueueItem(item: QueueItem): Promise<ReviewQueueItem> {
 }
 
 async function enrichQueueItems(items: QueueItem[]): Promise<ReviewQueueItem[]> {
-  return Promise.all(items.map((item) => enrichQueueItem(item)))
+  const allIdeaIds = new Set<string>()
+  for (const item of items) {
+    if (item.metadata.ideaIds?.length) {
+      for (const ideaId of item.metadata.ideaIds) {
+        allIdeaIds.add(ideaId)
+      }
+    }
+  }
+
+  let publishByMap = new Map<string, string | undefined>()
+  if (allIdeaIds.size > 0) {
+    try {
+      const ideas = await getIdeasByIds([...allIdeaIds])
+      for (const idea of ideas) {
+        publishByMap.set(idea.id, idea.publishBy)
+        publishByMap.set(String(idea.issueNumber), idea.publishBy)
+      }
+    } catch {
+      // Silently degrade — no publishBy enrichment
+    }
+  }
+
+  return items.map((item) => {
+    if (!item.metadata.ideaIds?.length) return { ...item }
+
+    const dates = item.metadata.ideaIds
+      .map((id) => publishByMap.get(id))
+      .filter((publishBy): publishBy is string => Boolean(publishBy))
+      .sort()
+    const ideaPublishBy = dates[0]
+    return ideaPublishBy ? { ...item, ideaPublishBy } : { ...item }
+  })
 }
 
 async function enrichGroupedQueueItems(groups: GroupedQueueItem[]): Promise<ReviewGroupedQueueItem[]> {

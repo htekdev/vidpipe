@@ -81,7 +81,7 @@ function classifyIdeaPriority(publishBy: string, createdAtIso: string): IdeaPrio
   if (diffDays <= 7) {
     return 'hot-trend'
   }
-  if (diffDays <= 21) {
+  if (diffDays <= 14) {
     return 'timely'
   }
 

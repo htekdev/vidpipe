@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Platform, type CreateIdeaInput, type IdeaPublishRecord } from '../../../L0-pure/types/index.js'
 import logger from '../../../L1-infra/logger/configLogger.js'
@@ -168,6 +168,10 @@ describe('ideaService GitHub integration', () => {
     mockGitHubClient.listComments.mockResolvedValue([])
   })
 
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('ideaService.REQ-001 ideaService.REQ-012 ideaService.REQ-013 - createIdea formats the body, applies GitHub labels, and maps the created issue', async () => {
     const input: CreateIdeaInput = {
       topic: 'Build reliable agent loops',
@@ -194,6 +198,30 @@ describe('ideaService GitHub integration', () => {
       status: 'draft',
       platforms: [Platform.YouTube],
     })
+  })
+
+  it('ideaService.REQ-013 - createIdea uses the 14-day threshold for priority:timely labels', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-02-15T12:00:00.000Z'))
+
+    await createIdea({
+      topic: 'Evergreen release notes',
+      hook: 'Ship once, explain twice',
+      audience: 'Developers documenting launches',
+      keyTakeaway: 'Ideas beyond two weeks should not be labeled timely.',
+      talkingPoints: ['Capture the change', 'Explain the why'],
+      platforms: [Platform.YouTube],
+      tags: ['docs'],
+      publishBy: '2026-03-05',
+      trendContext: 'Release communication keeps teams aligned.',
+    })
+
+    expect(mockGitHubClient.createIssue).toHaveBeenCalledWith(expect.objectContaining({
+      labels: expect.arrayContaining(['priority:evergreen']),
+    }))
+    expect(mockGitHubClient.createIssue).toHaveBeenCalledWith(expect.not.objectContaining({
+      labels: expect.arrayContaining(['priority:timely']),
+    }))
   })
 
   it('ideaService.REQ-003 ideaService.REQ-014 ideaService.REQ-015 - getIdea reconstructs the full idea from issue body, labels, and structured comments', async () => {

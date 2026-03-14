@@ -3,7 +3,7 @@
 ## Overview
 
 `vidpipe ideate` generates and lists saved content ideas for future recordings.
-It provides an L7 command surface over the L6 → L5 → L4 ideation chain and persists ideas in the local idea bank.
+It provides an L7 command surface over the L6 → L5 → L4 ideation chain and persists ideas through the GitHub Issues-backed idea service.
 
 **Source:** `src/L7-app/commands/ideate.ts`
 
@@ -15,7 +15,7 @@ It provides an L7 command surface over the L6 → L5 → L4 ideation chain and p
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| REQ-001 | `runIdeate({ list: true, status })` must read the saved idea bank, filter by status when requested, and print the resulting saved ideas | P0 |
+| REQ-001 | `runIdeate({ list: true, status })` must read ideas from the GitHub-backed idea service, filter by status when requested, and print the resulting saved ideas | P0 |
 
 ### Generating ideas
 
@@ -35,12 +35,11 @@ It provides an L7 command surface over the L6 → L5 → L4 ideation chain and p
 
 | ID | Constraint | Priority |
 |----|------------|----------|
-| ARCH-001 | The L7 ideate command may import only L0, L1, and L6 modules | P0 |
+| ARCH-001 | The L7 ideate command may import only L0, L1, L3, and L6 modules | P0 |
 | ARCH-002 | Idea generation must flow through the L6 wrapper instead of importing L4 agents directly in L7 | P0 |
 
 ---
 
 ## Notes
 
-- The persisted idea bank uses the default `./ideas` directory unless `output` overrides it.
 - Idea statuses follow the lightweight editorial-direction model used elsewhere in the pipeline.

@@ -360,7 +360,7 @@ export async function approveItem(
           queueItemId: id,
           publishedAt: now,
           latePostId: item.metadata.latePostId ?? '',
-          lateUrl: item.metadata.publishedUrl ?? '',
+          lateUrl: item.metadata.publishedUrl || (item.metadata.latePostId ? `https://app.late.co/dashboard/post/${item.metadata.latePostId}` : ''),
         })
       }
     } catch (err: unknown) {

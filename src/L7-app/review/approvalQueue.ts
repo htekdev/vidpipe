@@ -80,24 +80,40 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
     itemIds.map(async (id) => ({ id, item: await getItem(id) })),
   )
   const itemMap = new Map(loadedItems.map(({ id, item }) => [id, item]))
-  const enriched: EnrichedItem[] = await Promise.all(
-    loadedItems.map(async ({ id, item }) => {
-      if (!item?.metadata.ideaIds?.length) {
-        return { id, publishBy: null, hasIdeas: false }
-      }
 
-      try {
-        const ideas = await getIdeasByIds(item.metadata.ideaIds)
-        const dates = ideas
-          .map((idea) => idea.publishBy)
-          .filter((publishBy): publishBy is string => Boolean(publishBy))
-          .sort()
-        return { id, publishBy: dates[0] ?? null, hasIdeas: true }
-      } catch {
-        return { id, publishBy: null, hasIdeas: true }
+  const allIdeaIds = new Set<string>()
+  for (const { item } of loadedItems) {
+    if (item?.metadata.ideaIds?.length) {
+      for (const ideaId of item.metadata.ideaIds) {
+        allIdeaIds.add(ideaId)
       }
-    }),
-  )
+    }
+  }
+
+  let ideaMap = new Map<string, { publishBy?: string }>()
+  if (allIdeaIds.size > 0) {
+    try {
+      const allIdeas = await getIdeasByIds([...allIdeaIds])
+      for (const idea of allIdeas) {
+        ideaMap.set(idea.id, idea)
+        ideaMap.set(String(idea.issueNumber), idea)
+      }
+    } catch {
+      // Fall through — enriched items will have no publishBy
+    }
+  }
+
+  const enriched: EnrichedItem[] = loadedItems.map(({ id, item }) => {
+    if (!item?.metadata.ideaIds?.length) {
+      return { id, publishBy: null, hasIdeas: false }
+    }
+
+    const dates = item.metadata.ideaIds
+      .map((ideaId) => ideaMap.get(ideaId)?.publishBy)
+      .filter((publishBy): publishBy is string => Boolean(publishBy))
+      .sort()
+    return { id, publishBy: dates[0] ?? null, hasIdeas: true }
+  })
 
   const now = Date.now()
   const sevenDays = 7 * 24 * 60 * 60 * 1000

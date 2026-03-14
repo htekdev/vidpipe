@@ -174,6 +174,32 @@ describe('L7 Unit: approvalQueue', () => {
     ])
   })
 
+  it('batches idea lookups across approval items', async () => {
+    const earliest = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+    const later = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+    mockItemsById({
+      'idea-item-a': makeItem('idea-item-a', { ideaIds: ['idea-1', '42'] }),
+      'idea-item-b': makeItem('idea-item-b', { ideaIds: ['idea-2', 'idea-1'] }),
+    })
+    mockGetIdeasByIds.mockResolvedValue([
+      { id: 'idea-1', issueNumber: 41, publishBy: later },
+      { id: 'idea-2', issueNumber: 42, publishBy: earliest },
+    ])
+
+    await enqueueApproval(['idea-item-a', 'idea-item-b'])
+
+    expect(mockGetIdeasByIds).toHaveBeenCalledTimes(1)
+    expect(mockGetIdeasByIds).toHaveBeenCalledWith(expect.arrayContaining(['idea-1', 'idea-2', '42']))
+    expect(mockFindNextSlot).toHaveBeenNthCalledWith(1, 'youtube', 'short', {
+      ideaIds: ['idea-1', '42'],
+      publishBy: earliest,
+    })
+    expect(mockFindNextSlot).toHaveBeenNthCalledWith(2, 'youtube', 'short', {
+      ideaIds: ['idea-2', 'idea-1'],
+      publishBy: earliest,
+    })
+  })
+
   it('passes ideaIds and publishBy to findNextSlot for idea-linked items', async () => {
     const publishBy = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
     mockItemsById({
