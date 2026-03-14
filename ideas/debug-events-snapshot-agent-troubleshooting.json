@@ -1,0 +1,31 @@
+{
+  "id": "debug-events-snapshot-agent-troubleshooting",
+  "topic": "Debug Your AI Agent: How to See Exactly What Copilot Is Thinking",
+  "hook": "Your agent isn't broken — you just can't see what it's thinking (until now)",
+  "audience": "Developers who troubleshoot agent behavior or want to understand why their agent customizations aren't working",
+  "keyTakeaway": "The #debugEventsSnapshot context attachment reveals exactly what customizations loaded, token usage, and agent decision points",
+  "talkingPoints": [
+    "The problem: Your agent customizations don't seem to be working and you have no idea why",
+    "New in VS Code 1.111: #debugEventsSnapshot lets you attach agent debug info to chat",
+    "Demo: Using the sparkle icon in Agent Debug panel to capture a snapshot",
+    "What the snapshot reveals: loaded customizations, token consumption, and decision paths",
+    "Real troubleshooting example: Finding why my copilot-instructions.md wasn't being applied"
+  ],
+  "platforms": [
+    "youtube",
+    "tiktok",
+    "linkedin"
+  ],
+  "status": "draft",
+  "tags": [
+    "VS Code",
+    "GitHub Copilot",
+    "Debugging",
+    "Agent Development",
+    "Developer Tools"
+  ],
+  "createdAt": "2026-03-13T18:23:53.409Z",
+  "updatedAt": "2026-03-13T18:23:53.409Z",
+  "publishBy": "2026-03-20",
+  "trendContext": "Debug events snapshot is a new feature in VS Code 1.111 (March 9, 2026) - perfect complement to the existing custom agent content pillar on troubleshooting agent behavior"
+}

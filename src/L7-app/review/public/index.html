@@ -81,6 +81,21 @@
     .platform-tab { transition: all 0.2s ease; }
     .platform-tab.active { border-bottom: 2px solid currentColor; }
 
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .badge-danger { background: #f85149; color: white; }
+    .badge-warning { background: #d29922; color: white; }
+    .badge-success { background: #3fb950; color: white; }
+    .badge-info { background: #58a6ff; color: white; }
+
     body { background: #0f0f23; }
   </style>
 </head>
@@ -125,6 +140,49 @@
         return d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) +
           ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
       } catch { return iso }
+    }
+
+    function getGroupTitle(group) {
+      const raw = group.sourceClip || group.sourceVideo || 'Queued post'
+      const segments = String(raw).split(/[\\/]/).filter(Boolean)
+      return segments[segments.length - 1] || raw
+    }
+
+    function getGroupPlatforms(group) {
+      return [...new Set(group.items.map(item => {
+        const platform = normalizePlatform(item.metadata.platform)
+        return PLATFORMS[platform]?.name || item.metadata.platform
+      }))]
+    }
+
+    function getGroupIdeaPublishBy(group) {
+      const publishByDates = group.items
+        .map(item => item.ideaPublishBy)
+        .filter(Boolean)
+        .sort()
+      return publishByDates[0]
+    }
+
+    function TimelinessBadge({ publishBy }) {
+      if (!publishBy) return null
+
+      const now = new Date()
+      const deadline = new Date(publishBy)
+      if (Number.isNaN(deadline.getTime())) return null
+
+      const daysLeft = Math.ceil((deadline - now) / (1000 * 60 * 60 * 24))
+      const formattedDeadline = deadline.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+
+      if (daysLeft < 0) {
+        return html`<span class="badge badge-danger" title="Trend window has passed">⚠️ Trend expired</span>`
+      }
+      if (daysLeft <= 7) {
+        return html`<span class="badge badge-warning" title=${`Publish within ${daysLeft} days`}>⚡ ${daysLeft}d window</span>`
+      }
+      if (daysLeft > 30) {
+        return html`<span class="badge badge-success" title="Evergreen content">🌿 Evergreen</span>`
+      }
+      return html`<span class="badge badge-info" title=${`Publish by ${formattedDeadline}`}>${daysLeft}d remaining</span>`
     }
 
     // ── Toast Container (imperative, lives outside Preact tree) ──
@@ -419,13 +477,21 @@
 
     function GroupedPostCard({ group, accounts, selectedPlatforms, onTogglePlatform, animClass, onReject, onSkip, onApprove }) {
       const selectedCount = selectedPlatforms.length
+      const groupTitle = getGroupTitle(group)
+      const groupPlatforms = getGroupPlatforms(group)
+      const ideaPublishBy = getGroupIdeaPublishBy(group)
       return html`
         <div class="w-full max-w-2xl" style="max-height: calc(100vh - 160px); display: flex; flex-direction: column;">
           <div class="bg-card rounded-2xl shadow-2xl border border-white/5 overflow-hidden flex flex-col ${animClass}" style="max-height: 100%;" key=${group.groupKey}>
             <!-- Fixed top: clip type badge -->
-            <div class="flex-shrink-0 flex items-center justify-between px-5 pt-4 pb-2">
-              <div class="flex items-center gap-2">
-                <${ClipTypeBadge} clipType=${group.clipType} />
+            <div class="flex-shrink-0 flex items-start justify-between px-5 pt-4 pb-2 gap-3">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <${ClipTypeBadge} clipType=${group.clipType} />
+                  <span class="text-sm font-semibold text-gray-200">${truncate(groupTitle, 48)}</span>
+                  <${TimelinessBadge} publishBy=${ideaPublishBy} />
+                </div>
+                <div class="mt-1 text-xs text-gray-500">${groupPlatforms.join(' · ')}</div>
               </div>
             </div>
             <!-- Scrollable middle: video + checkboxes + preview -->

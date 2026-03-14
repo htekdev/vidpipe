@@ -9,6 +9,7 @@ import { runInit } from './commands/init'
 import { runSchedule } from './commands/schedule'
 import { runRealign } from './commands/realign'
 import { runChat } from './commands/chat'
+import { runIdeate } from './commands/ideate'
 import { startReviewServer } from './review/server'
 import { openUrl } from '../L1-infra/cli/cli.js'
 import { readTextFileSync, listDirectorySync } from '../L1-infra/fileSystem/fileSystem.js'
@@ -113,6 +114,21 @@ program
     await runDoctor()
   })
 
+program
+  .command('ideate')
+  .description('Generate AI-powered content ideas using trend research')
+  .option('--topics <topics>', 'Comma-separated seed topics')
+  .option('--count <n>', 'Number of ideas to generate (default: 5)', '5')
+  .option('--output <dir>', 'Ideas directory (default: ./ideas)')
+  .option('--brand <path>', 'Brand config path (default: ./brand.json)')
+  .option('--list', 'List existing ideas instead of generating')
+  .option('--status <status>', 'Filter by status when listing (draft|ready|recorded|published)')
+  .action(async (opts) => {
+    initConfig()
+    await runIdeate(opts)
+    process.exit(0)
+  })
+
 // --- Default command (process video or watch) ---
 // This must come after subcommands so they take priority
 
@@ -123,6 +139,8 @@ const defaultCmd = program
   .option('--output-dir <path>', 'Output directory for processed videos (default: ./recordings)')
   .option('--openai-key <key>', 'OpenAI API key (default: env OPENAI_API_KEY)')
   .option('--exa-key <key>', 'Exa AI API key for web search (default: env EXA_API_KEY)')
+  .option('--youtube-key <key>', 'YouTube API key (default: env YOUTUBE_API_KEY)')
+  .option('--perplexity-key <key>', 'Perplexity API key (default: env PERPLEXITY_API_KEY)')
   .option('--once', 'Process a single video and exit (no watching)')
   .option('--brand <path>', 'Path to brand.json config (default: ./brand.json)')
   .option('--no-git', 'Skip git commit/push stage')
@@ -135,6 +153,7 @@ const defaultCmd = program
   .option('--no-social-publish','Skip social media publishing/queue-build stage')
   .option('--late-api-key <key>', 'Late API key (default: env LATE_API_KEY)')
   .option('--late-profile-id <id>', 'Late profile ID (default: env LATE_PROFILE_ID)')
+  .option('--ideas <ids>', 'Comma-separated idea IDs to link to this video')
   .option('-v, --verbose', 'Verbose logging')
   .option('--doctor', 'Check all prerequisites and exit')
   .action(async (videoPath: string | undefined) => {
@@ -153,6 +172,8 @@ const defaultCmd = program
       outputDir: opts.outputDir,
       openaiKey: opts.openaiKey,
       exaKey: opts.exaKey,
+      youtubeKey: opts.youtubeKey,
+      perplexityKey: opts.perplexityKey,
       brand: opts.brand,
       verbose: opts.verbose,
       git: opts.git,
@@ -176,11 +197,42 @@ const defaultCmd = program
     logger.info(`Watch folder: ${config.WATCH_FOLDER}`)
     logger.info(`Output dir:   ${config.OUTPUT_DIR}`)
 
+    // Resolve ideas if --ideas flag is provided
+    let ideas: import('../L0-pure/types/index.js').Idea[] | undefined
+    if (opts.ideas) {
+      const { getIdeasByIds } = await import('../L3-services/ideation/ideaService.js')
+      const ideaIds = (opts.ideas as string).split(',').map((id: string) => id.trim()).filter(Boolean)
+      try {
+        ideas = await getIdeasByIds(ideaIds)
+        logger.info(`Linked ${ideas.length} idea(s): ${ideas.map(i => i.topic).join(', ')}`)
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err)
+        logger.error(`Failed to resolve ideas: ${msg}`)
+        process.exit(1)
+      }
+    }
+
     // Direct file mode
     if (videoPath) {
       const resolvedPath = resolve(videoPath)
       logger.info(`Processing single video: ${resolvedPath}`)
-      await processVideoSafe(resolvedPath)
+      await processVideoSafe(resolvedPath, ideas)
+
+      // Mark ideas as recorded
+      if (ideas && ideas.length > 0) {
+        try {
+          const { markRecorded } = await import('../L3-services/ideation/ideaService.js')
+          const slug = resolvedPath.replace(/\\/g, '/').split('/').pop()?.replace(/\.(mp4|mov|webm|avi|mkv)$/i, '') || ''
+          for (const idea of ideas) {
+            await markRecorded(idea.id, slug)
+          }
+          logger.info(`Marked ${ideas.length} idea(s) as recorded`)
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err)
+          logger.warn(`Failed to mark ideas as recorded: ${msg}`)
+        }
+      }
+
       logger.info('Done.')
       process.exit(0)
     }
@@ -198,7 +250,7 @@ const defaultCmd = program
         while (queue.length > 0) {
           const vp = queue.shift()!
           logger.info(`Processing video: ${vp}`)
-          await processVideoSafe(vp)
+          await processVideoSafe(vp, ideas)
           if (onceMode) {
             logger.info('--once flag set, exiting after first video.')
             await shutdown()

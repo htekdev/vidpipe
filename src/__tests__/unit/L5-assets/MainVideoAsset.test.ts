@@ -758,6 +758,48 @@ describe('MainVideoAsset', () => {
       expect(captionGenerator.generateSRT).toHaveBeenCalledWith(originalTranscript)
     })
   })
+  describe('buildQueue()', () => {
+    it('passes linked idea IDs to buildPublishQueue', async () => {
+      const pipelineBridge = await import('../../../L4-agents/pipelineServiceBridge.js')
+      const mockBuildPublishQueue = vi.mocked(pipelineBridge.buildPublishQueue)
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.getFileStats).mockResolvedValue({ size: 1000, mtime: Date.now() } as any)
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue({
+        format: { duration: 120, size: 1000 },
+        streams: [{ codec_type: 'video', width: 1920, height: 1080 }],
+      } as any)
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+      asset.setIdeas([
+        {
+          id: 'idea-1',
+          topic: 'Topic 1',
+          hook: 'Hook 1',
+          audience: 'Developers',
+          keyTakeaway: 'Takeaway 1',
+          talkingPoints: ['Point 1'],
+          platforms: [],
+          status: 'recorded',
+          tags: ['tag-1'],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          publishBy: '2026-02-01',
+        },
+      ])
+
+      await asset.buildQueue([], [], [], '/recordings/test/test-captioned.mp4')
+
+      expect(mockBuildPublishQueue).toHaveBeenCalledWith(
+        expect.any(Object),
+        [],
+        [],
+        [],
+        '/recordings/test/test-captioned.mp4',
+        ['idea-1'],
+      )
+    })
+  })
+
   describe('generateShortPostsData() summary context', () => {
     it('passes summary to generateShortPosts when provided', async () => {
       const SocialMedia = await import('../../../L4-agents/SocialMediaAgent.js')

@@ -31,6 +31,8 @@ import logger from '../L1-infra/logger/configLogger.js'
  * Sessions are reusable: calling `run()` multiple times on the same agent
  * sends additional messages within the same conversation context.
  */
+export type { ToolWithHandler } from '../L3-services/llm/providerFactory.js'
+
 export abstract class BaseAgent {
   protected provider: LLMProvider
   protected session: LLMSession | null = null

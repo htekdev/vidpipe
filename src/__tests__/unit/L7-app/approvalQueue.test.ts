@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // ── Mocks (L3 services + L1 infra) ────────────────────────────────────
 
@@ -20,6 +20,11 @@ vi.mock('../../../L3-services/postStore/postStore.js', () => ({
   approveBulk: mockApproveBulk,
 }))
 
+const mockGetIdeasByIds = vi.hoisted(() => vi.fn())
+vi.mock('../../../L3-services/ideation/ideaService.js', () => ({
+  getIdeasByIds: mockGetIdeasByIds,
+}))
+
 const mockFindNextSlot = vi.hoisted(() => vi.fn())
 vi.mock('../../../L3-services/scheduler/scheduler.js', () => ({
   findNextSlot: mockFindNextSlot,
@@ -35,11 +40,12 @@ vi.mock('../../../L3-services/socialPosting/accountMapping.js', () => ({
   getAccountId: mockGetAccountId,
 }))
 
+const mockUploadMedia = vi.hoisted(() => vi.fn())
 const mockCreatePost = vi.hoisted(() => vi.fn())
 vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
   createLateApiClient: () => ({
     createPost: mockCreatePost,
-    uploadMedia: vi.fn().mockResolvedValue({ type: 'video', url: 'https://cdn/v.mp4' }),
+    uploadMedia: mockUploadMedia,
   }),
 }))
 
@@ -47,50 +53,77 @@ vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
 
 import { enqueueApproval } from '../../../L7-app/review/approvalQueue.js'
 
+interface QueueItemOverrides {
+  platform?: string
+  accountId?: string
+  clipType?: 'video' | 'short' | 'medium-clip'
+  ideaIds?: string[]
+  mediaPath?: string | null
+  sourceMediaPath?: string | null
+  postContent?: string
+}
+
+function makeItem(id: string, overrides: QueueItemOverrides = {}) {
+  return {
+    id,
+    metadata: {
+      id,
+      platform: overrides.platform ?? 'youtube',
+      accountId: overrides.accountId ?? 'acc-yt',
+      sourceVideo: '/v.mp4',
+      sourceClip: null,
+      clipType: overrides.clipType ?? 'short',
+      sourceMediaPath: overrides.sourceMediaPath ?? null,
+      hashtags: [],
+      links: [],
+      characterCount: 10,
+      platformCharLimit: 5000,
+      suggestedSlot: null,
+      scheduledFor: null,
+      status: 'pending_review' as const,
+      latePostId: null,
+      publishedUrl: null,
+      createdAt: new Date().toISOString(),
+      reviewedAt: null,
+      publishedAt: null,
+      ...(overrides.ideaIds ? { ideaIds: overrides.ideaIds } : {}),
+    },
+    postContent: overrides.postContent ?? id,
+    hasMedia: Boolean(overrides.mediaPath ?? overrides.sourceMediaPath),
+    mediaPath: overrides.mediaPath ?? null,
+    folderPath: `/queue/${id}`,
+  }
+}
+
+function mockItemsById(items: Record<string, ReturnType<typeof makeItem>>): void {
+  mockGetItem.mockImplementation(async (id: string) => items[id] ?? null)
+}
+
 // ── Lifecycle ─────────────────────────────────────────────────────────
 
 beforeEach(() => {
   vi.clearAllMocks()
   mockLoadScheduleConfig.mockResolvedValue({ timezone: 'America/Chicago', platforms: {} })
   mockFindNextSlot.mockResolvedValue('2026-04-01T10:00:00-06:00')
+  mockGetIdeasByIds.mockResolvedValue([])
   mockGetAccountId.mockResolvedValue('acc-123')
   mockFileExists.mockResolvedValue(true)
-  mockCreatePost.mockResolvedValue({ _id: 'late-1', status: 'scheduled' })
+  mockUploadMedia.mockResolvedValue({ type: 'video', url: 'https://cdn/v.mp4' })
+  mockCreatePost.mockImplementation(async ({ content }: { content: string }) => ({ _id: `late-${content}`, status: 'scheduled' }))
   mockApproveItem.mockResolvedValue(undefined)
   mockApproveBulk.mockResolvedValue(undefined)
 })
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
-describe('L7 Unit: approvalQueue isDraft', () => {
+describe('L7 Unit: approvalQueue', () => {
   it('passes isDraft: false to createPost', async () => {
-    mockGetItem.mockResolvedValue({
-      id: 'item-1',
-      metadata: {
-        id: 'item-1',
-        platform: 'youtube',
-        accountId: 'acc-yt',
-        sourceVideo: '/v.mp4',
-        sourceClip: null,
-        clipType: 'short',
+    mockItemsById({
+      'item-1': makeItem('item-1', {
+        mediaPath: '/m.mp4',
         sourceMediaPath: '/m.mp4',
-        hashtags: [],
-        links: [],
-        characterCount: 10,
-        platformCharLimit: 5000,
-        suggestedSlot: null,
-        scheduledFor: null,
-        status: 'pending_review',
-        latePostId: null,
-        publishedUrl: null,
-        createdAt: new Date().toISOString(),
-        reviewedAt: null,
-        publishedAt: null,
-      },
-      postContent: 'Test content',
-      hasMedia: true,
-      mediaPath: '/m.mp4',
-      folderPath: '/queue/item-1',
+        postContent: 'Test content',
+      }),
     })
 
     const result = await enqueueApproval(['item-1'])
@@ -99,5 +132,74 @@ describe('L7 Unit: approvalQueue isDraft', () => {
     expect(mockCreatePost).toHaveBeenCalledWith(
       expect.objectContaining({ isDraft: false }),
     )
+  })
+
+  it('processes idea-linked items before non-idea items', async () => {
+    const publishBy = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    mockItemsById({
+      'non-idea': makeItem('non-idea'),
+      'with-idea': makeItem('with-idea', { ideaIds: ['idea-1'] }),
+    })
+    mockGetIdeasByIds.mockResolvedValue([{ id: 'idea-1', publishBy }])
+
+    await enqueueApproval(['non-idea', 'with-idea'])
+
+    expect(mockCreatePost.mock.calls.map(([args]) => args.content)).toEqual(['with-idea', 'non-idea'])
+  })
+
+  it('processes urgent idea-linked items before other idea-linked items', async () => {
+    const urgentPublishBy = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+    const laterPublishBy = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString()
+    mockItemsById({
+      'non-urgent-idea': makeItem('non-urgent-idea', { ideaIds: ['idea-later'] }),
+      'urgent-idea': makeItem('urgent-idea', { ideaIds: ['idea-soon'] }),
+      'non-idea': makeItem('non-idea'),
+    })
+    mockGetIdeasByIds.mockImplementation(async (ideaIds: string[]) => {
+      if (ideaIds.includes('idea-soon')) {
+        return [{ id: 'idea-soon', publishBy: urgentPublishBy }]
+      }
+      if (ideaIds.includes('idea-later')) {
+        return [{ id: 'idea-later', publishBy: laterPublishBy }]
+      }
+      return []
+    })
+
+    await enqueueApproval(['non-urgent-idea', 'non-idea', 'urgent-idea'])
+
+    expect(mockCreatePost.mock.calls.map(([args]) => args.content)).toEqual([
+      'urgent-idea',
+      'non-urgent-idea',
+      'non-idea',
+    ])
+  })
+
+  it('passes ideaIds and publishBy to findNextSlot for idea-linked items', async () => {
+    const publishBy = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
+    mockItemsById({
+      'idea-item': makeItem('idea-item', { ideaIds: ['idea-1', 'idea-2'] }),
+    })
+    mockGetIdeasByIds.mockResolvedValue([
+      { id: 'idea-1', publishBy: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString() },
+      { id: 'idea-2', publishBy },
+    ])
+
+    await enqueueApproval(['idea-item'])
+
+    expect(mockFindNextSlot).toHaveBeenCalledWith('youtube', 'short', {
+      ideaIds: ['idea-1', 'idea-2'],
+      publishBy,
+    })
+  })
+
+  it('calls findNextSlot with only platform and clipType for non-idea items', async () => {
+    mockItemsById({
+      'plain-item': makeItem('plain-item'),
+    })
+
+    await enqueueApproval(['plain-item'])
+
+    expect(mockFindNextSlot).toHaveBeenCalledWith('youtube', 'short')
+    expect(mockFindNextSlot.mock.calls[0]).toHaveLength(2)
   })
 })

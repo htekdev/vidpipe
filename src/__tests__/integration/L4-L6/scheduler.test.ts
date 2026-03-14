@@ -24,9 +24,38 @@ vi.mock('../../../L2-clients/late/lateApi.js', () => ({
 
 // ── Import after mocks ───────────────────────────────────────────────
 
+import { createItem, type QueueItemMetadata } from '../../../L3-services/postStore/postStore.js'
 import { findNextSlot, getScheduleCalendar } from '../../../L3-services/scheduler/scheduler.js'
 import { clearScheduleCache } from '../../../L3-services/scheduler/scheduleConfig.js'
 import { initConfig } from '../../../L1-infra/config/environment.js'
+
+function makeQueueItemMetadata(
+  id: string,
+  overrides: Partial<QueueItemMetadata> = {},
+): QueueItemMetadata {
+  return {
+    id,
+    platform: 'linkedin',
+    accountId: 'acc-1',
+    sourceVideo: '/recordings/test-video',
+    sourceClip: null,
+    clipType: 'medium-clip',
+    sourceMediaPath: null,
+    hashtags: [],
+    links: [],
+    characterCount: 42,
+    platformCharLimit: 3000,
+    suggestedSlot: null,
+    scheduledFor: null,
+    status: 'pending_review',
+    latePostId: null,
+    publishedUrl: null,
+    createdAt: '2026-01-01T00:00:00Z',
+    reviewedAt: null,
+    publishedAt: null,
+    ...overrides,
+  }
+}
 
 // ── Tests ─────────────────────────────────────────────────────────────
 
@@ -45,10 +74,11 @@ describe('L4-L6 Integration: scheduler → Late API (mocked L2)', () => {
     await rm(tmpDir, { recursive: true, force: true })
   })
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
     clearScheduleCache()
     mockGetScheduledPosts.mockResolvedValue([])
+    await rm(join(tmpDir, 'output'), { recursive: true, force: true })
   })
 
   it('findNextSlot returns a datetime string for a known platform + clipType', async () => {
@@ -92,6 +122,63 @@ describe('L4-L6 Integration: scheduler → Late API (mocked L2)', () => {
     const secondSlot = await findNextSlot('linkedin', 'medium-clip')
     expect(secondSlot).toBeTruthy()
     expect(secondSlot).not.toBe(firstSlot)
+  })
+
+  it('findNextSlot with ideaIds and publishBy finds slot respecting spacing', async () => {
+    const baselineSlot = await findNextSlot('linkedin', 'medium-clip')
+    expect(baselineSlot).toBeTruthy()
+
+    const publishBy = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+    const slot = await findNextSlot('linkedin', 'medium-clip', {
+      ideaIds: ['idea-1'],
+      publishBy,
+    })
+
+    expect(slot).toBe(baselineSlot)
+  })
+
+  it('findNextSlot with ideaIds avoids slots near same-idea posts', async () => {
+    const firstSlot = await findNextSlot('linkedin', 'medium-clip')
+    expect(firstSlot).toBeTruthy()
+    if (!firstSlot) throw new Error('Expected a first available slot')
+
+    await createItem(
+      'idea-linked-linkedin-slot',
+      makeQueueItemMetadata('idea-linked-linkedin-slot', {
+        scheduledFor: firstSlot,
+        ideaIds: ['idea-1'],
+      }),
+      'Idea-linked queued post',
+    )
+
+    const nextSlot = await findNextSlot('linkedin', 'medium-clip', {
+      ideaIds: ['idea-1'],
+    })
+
+    expect(nextSlot).toBeTruthy()
+    expect(nextSlot).not.toBe(firstSlot)
+    if (!nextSlot) throw new Error('Expected a next available slot')
+
+    const spacingMs = new Date(nextSlot).getTime() - new Date(firstSlot).getTime()
+    expect(spacingMs).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000)
+  })
+
+  it('findNextSlot without options still works identically', async () => {
+    const baselineSlot = await findNextSlot('linkedin', 'medium-clip')
+    expect(baselineSlot).toBeTruthy()
+    if (!baselineSlot) throw new Error('Expected a baseline slot')
+
+    await createItem(
+      'idea-linked-legacy-regression',
+      makeQueueItemMetadata('idea-linked-legacy-regression', {
+        scheduledFor: baselineSlot,
+        ideaIds: ['idea-1'],
+      }),
+      'Idea-linked queued post',
+    )
+
+    const legacySlot = await findNextSlot('linkedin', 'medium-clip')
+    expect(legacySlot).toBe(baselineSlot)
   })
 
   it('getScheduleCalendar returns booked slots from Late API', async () => {
