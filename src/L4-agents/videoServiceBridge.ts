@@ -16,4 +16,5 @@ export {
   detectWebcamRegion,
   burnCaptions,
   singlePassEditAndCaption,
+  transcodeToMp4,
 } from '../L3-services/videoOperations/videoOperations.js'

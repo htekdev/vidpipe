@@ -32,7 +32,7 @@ import {
 } from '../L1-infra/fileSystem/fileSystem.js'
 import { slugify } from '../L0-pure/text/text.js'
 import { generateSRT, generateVTT, generateStyledASS } from '../L0-pure/captions/captionGenerator.js'
-import { ffprobe, burnCaptions } from '../L4-agents/videoServiceBridge.js'
+import { ffprobe, burnCaptions, transcodeToMp4 } from '../L4-agents/videoServiceBridge.js'
 import { transcribeVideo, analyzeVideoClipDirection } from '../L4-agents/analysisServiceBridge.js'
 import { removeDeadSilence } from '../L4-agents/SilenceRemovalAgent.js'
 import { generateShorts } from '../L4-agents/ShortsAgent.js'
@@ -236,30 +236,45 @@ export class MainVideoAsset extends VideoAsset {
 
     const destFilename = `${slug}.mp4`
     const destPath = join(videoDir, destFilename)
+    const sourceExt = extname(sourcePath).toLowerCase()
+    const needsTranscode = sourceExt !== '.mp4'
 
-    // Copy video if needed
-    let needsCopy = true
+    // Check if destination already exists (skip copy/transcode if so)
+    let needsIngest = true
     try {
       const destStats = await getFileStats(destPath)
-      const srcStats = await getFileStats(sourcePath)
-      if (destStats.size === srcStats.size) {
-        logger.info(`Video already copied (same size), skipping copy`)
-        needsCopy = false
+      if (needsTranscode) {
+        // For transcoded files, sizes will differ — just check dest exists and is non-trivial
+        if (destStats.size > 1024) {
+          logger.info(`Transcoded MP4 already exists (${(destStats.size / 1024 / 1024).toFixed(1)} MB), skipping transcode`)
+          needsIngest = false
+        }
+      } else {
+        const srcStats = await getFileStats(sourcePath)
+        if (destStats.size === srcStats.size) {
+          logger.info(`Video already copied (same size), skipping copy`)
+          needsIngest = false
+        }
       }
     } catch {
-      // Dest doesn't exist, need to copy
+      // Dest doesn't exist, need to ingest
     }
 
-    if (needsCopy) {
-      await new Promise<void>((resolve, reject) => {
-        const readStream = openReadStream(sourcePath)
-        const writeStream = openWriteStream(destPath)
-        readStream.on('error', reject)
-        writeStream.on('error', reject)
-        writeStream.on('finish', resolve)
-        readStream.pipe(writeStream)
-      })
-      logger.info(`Copied video to ${destPath}`)
+    if (needsIngest) {
+      if (needsTranscode) {
+        await transcodeToMp4(sourcePath, destPath)
+        logger.info(`Transcoded video to ${destPath}`)
+      } else {
+        await new Promise<void>((resolve, reject) => {
+          const readStream = openReadStream(sourcePath)
+          const writeStream = openWriteStream(destPath)
+          readStream.on('error', reject)
+          writeStream.on('error', reject)
+          writeStream.on('finish', resolve)
+          readStream.pipe(writeStream)
+        })
+        logger.info(`Copied video to ${destPath}`)
+      }
     }
 
     // Create the asset instance

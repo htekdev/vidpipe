@@ -31,6 +31,7 @@ vi.mock('../../../L4-agents/videoServiceBridge.js', () => ({
   getFFmpegPath: vi.fn().mockReturnValue('/usr/bin/ffmpeg'),
   getFFprobePath: vi.fn().mockReturnValue('/usr/bin/ffprobe'),
   burnCaptions: vi.fn().mockResolvedValue('/recordings/test/test-captioned.mp4'),
+  transcodeToMp4: vi.fn().mockResolvedValue('/recordings/test/test.mp4'),
   singlePassEditAndCaption: vi.fn().mockResolvedValue('/recordings/test/test-captioned.mp4'),
   extractCompositeClip: vi.fn(),
   compositeOverlays: vi.fn(),
@@ -162,6 +163,91 @@ describe('MainVideoAsset', () => {
       await expect(MainVideoAsset.load('/recordings/my-video')).rejects.toThrow(
         'Video file not found',
       )
+    })
+  })
+
+  describe('ingest() — webm transcoding', () => {
+    const mockProbeData = {
+      format: { duration: 120, size: 5_000_000 },
+      streams: [{ codec_type: 'video', width: 1920, height: 1080 }],
+    }
+
+    const setupIngestMocks = (): void => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(false)
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue(mockProbeData as any)
+    }
+
+    it('transcodes .webm files to MP4 instead of copying', async () => {
+      setupIngestMocks()
+      vi.mocked(fileSystem.getFileStats)
+        .mockRejectedValueOnce(new Error('missing destination'))
+        .mockResolvedValueOnce({ size: 5_000_000 } as any)
+
+      const asset = await MainVideoAsset.ingest('/watch/recording.webm')
+
+      expect(videoServiceBridge.transcodeToMp4).toHaveBeenCalledWith(
+        '/watch/recording.webm',
+        expect.stringMatching(/recordings[/\\]recording[/\\]recording\.mp4$/),
+      )
+      expect(fileSystem.openReadStream).not.toHaveBeenCalled()
+      expect(fileSystem.openWriteStream).not.toHaveBeenCalled()
+      expect(asset.slug).toBe('recording')
+    })
+
+    it('copies .mp4 files without transcoding', async () => {
+      setupIngestMocks()
+      vi.mocked(fileSystem.getFileStats)
+        .mockRejectedValueOnce(new Error('missing destination'))
+        .mockResolvedValueOnce({ size: 5_000_000 } as any)
+
+      const mockReadStream = {
+        on: vi.fn().mockReturnThis(),
+        pipe: vi.fn().mockReturnThis(),
+      }
+      const mockWriteStream = {
+        on: vi.fn().mockImplementation((event: string, cb: () => void) => {
+          if (event === 'finish') {
+            setTimeout(() => cb(), 0)
+          }
+          return mockWriteStream
+        }),
+      }
+
+      vi.mocked(fileSystem.openReadStream).mockReturnValue(mockReadStream as any)
+      vi.mocked(fileSystem.openWriteStream).mockReturnValue(mockWriteStream as any)
+
+      await MainVideoAsset.ingest('/watch/recording.mp4')
+
+      expect(videoServiceBridge.transcodeToMp4).not.toHaveBeenCalled()
+      expect(fileSystem.openReadStream).toHaveBeenCalledWith('/watch/recording.mp4')
+      expect(fileSystem.openWriteStream).toHaveBeenCalledWith(
+        expect.stringMatching(/recordings[/\\]recording[/\\]recording\.mp4$/),
+      )
+      expect(mockReadStream.pipe).toHaveBeenCalledWith(mockWriteStream)
+    })
+
+    it('skips transcode when transcoded MP4 already exists', async () => {
+      setupIngestMocks()
+      vi.mocked(fileSystem.getFileStats).mockResolvedValue({ size: 5_000_000 } as any)
+
+      await MainVideoAsset.ingest('/watch/recording.webm')
+
+      expect(videoServiceBridge.transcodeToMp4).not.toHaveBeenCalled()
+    })
+
+    it('generates correct slug from .webm filename', async () => {
+      setupIngestMocks()
+      vi.mocked(fileSystem.getFileStats)
+        .mockRejectedValueOnce(new Error('missing destination'))
+        .mockResolvedValueOnce({ size: 5_000_000 } as any)
+
+      const asset = await MainVideoAsset.ingest('/watch/my-screen-recording.webm')
+
+      expect(videoServiceBridge.transcodeToMp4).toHaveBeenCalledWith(
+        '/watch/my-screen-recording.webm',
+        expect.stringMatching(/recordings[/\\]my-screen-recording[/\\]my-screen-recording\.mp4$/),
+      )
+      expect(asset.slug).toBe('my-screen-recording')
     })
   })
 
