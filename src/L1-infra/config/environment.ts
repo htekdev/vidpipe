@@ -16,6 +16,8 @@ export interface AppEnvironment {
   FFPROBE_PATH: string
   EXA_API_KEY: string
   EXA_MCP_URL: string
+  YOUTUBE_API_KEY: string
+  PERPLEXITY_API_KEY: string
   LLM_PROVIDER: string
   LLM_MODEL: string
   ANTHROPIC_API_KEY: string
@@ -41,6 +43,8 @@ export interface CLIOptions {
   outputDir?: string
   openaiKey?: string
   exaKey?: string
+  youtubeKey?: string
+  perplexityKey?: string
   brand?: string
   verbose?: boolean
   git?: boolean
@@ -75,6 +79,8 @@ export function initConfig(cli: CLIOptions = {}): AppEnvironment {
     FFPROBE_PATH: process.env.FFPROBE_PATH || 'ffprobe', // legacy; prefer ffmpegResolver
     EXA_API_KEY: cli.exaKey || process.env.EXA_API_KEY || '',
     EXA_MCP_URL: process.env.EXA_MCP_URL || 'https://mcp.exa.ai/mcp',
+    YOUTUBE_API_KEY: cli.youtubeKey || process.env.YOUTUBE_API_KEY || '',
+    PERPLEXITY_API_KEY: cli.perplexityKey || process.env.PERPLEXITY_API_KEY || '',
     LLM_PROVIDER: process.env.LLM_PROVIDER || 'copilot',
     LLM_MODEL: process.env.LLM_MODEL || '',
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',

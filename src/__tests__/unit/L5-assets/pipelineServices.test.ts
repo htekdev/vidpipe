@@ -16,6 +16,7 @@ const mockMarkCompleted = vi.hoisted(() => vi.fn())
 const mockMarkFailed = vi.hoisted(() => vi.fn())
 const mockBuildPublishQueue = vi.hoisted(() => vi.fn())
 const mockCommitAndPush = vi.hoisted(() => vi.fn())
+const mockGenerateIdeas = vi.hoisted(() => vi.fn())
 const mockScheduleAgent = vi.hoisted(() => vi.fn().mockImplementation(function(this: Record<string, unknown>) {
   this.run = vi.fn()
 }))
@@ -37,13 +38,17 @@ vi.mock('../../../L4-agents/pipelineServiceBridge.js', () => ({
   commitAndPush: mockCommitAndPush,
 }))
 
+vi.mock('../../../L4-agents/IdeationAgent.js', () => ({
+  generateIdeas: mockGenerateIdeas,
+}))
+
 vi.mock('../../../L4-agents/ScheduleAgent.js', () => ({
   ScheduleAgent: mockScheduleAgent,
 }))
 
 import {
   costTracker, markPending, markProcessing, markCompleted, markFailed,
-  buildPublishQueue, commitAndPush, createScheduleAgent,
+  buildPublishQueue, commitAndPush, generateIdeas, createScheduleAgent,
 } from '../../../L5-assets/pipelineServices.js'
 
 describe('L5 Unit: pipelineServices wrappers', () => {
@@ -94,6 +99,14 @@ describe('L5 Unit: pipelineServices wrappers', () => {
     mockCommitAndPush.mockResolvedValue(undefined)
     await commitAndPush('/dir', 'msg')
     expect(mockCommitAndPush).toHaveBeenCalledWith('/dir', 'msg')
+  })
+
+  it('generateIdeas delegates to L4 IdeationAgent module', async () => {
+    const ideas = [{ id: 'idea-1', title: 'Ship an ideation CLI' }]
+    mockGenerateIdeas.mockResolvedValue(ideas)
+
+    await expect(generateIdeas({ count: 2 })).resolves.toEqual(ideas)
+    expect(mockGenerateIdeas).toHaveBeenCalledWith({ count: 2 })
   })
 
   it('createScheduleAgent delegates to L4 ScheduleAgent constructor', () => {
