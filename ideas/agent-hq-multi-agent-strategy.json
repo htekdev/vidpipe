@@ -15,7 +15,7 @@
     "youtube",
     "linkedin"
   ],
-  "status": "recorded",
+  "status": "published",
   "tags": [
     "GitHub Copilot",
     "Agent HQ",
@@ -25,8 +25,34 @@
     "Enterprise"
   ],
   "createdAt": "2026-03-13T18:23:19.883Z",
-  "updatedAt": "2026-03-13T19:15:01.707Z",
+  "updatedAt": "2026-03-14T03:26:40.593Z",
   "publishBy": "2026-03-27",
   "sourceVideoSlug": "bandicam 2026-03-13 13-52-34-460",
-  "trendContext": "GitHub announced Claude and Codex integration in Agent HQ on Feb 4, 2026 - now in public preview for Copilot Pro+ and Enterprise, with more agents from Google, Cognition, and xAI coming soon"
+  "trendContext": "GitHub announced Claude and Codex integration in Agent HQ on Feb 4, 2026 - now in public preview for Copilot Pro+ and Enterprise, with more agents from Google, Cognition, and xAI coming soon",
+  "publishedContent": [
+    {
+      "clipType": "video",
+      "platform": "youtube",
+      "queueItemId": "bandicam-2026-03-13-13-52-34-460-youtube",
+      "publishedAt": "2026-03-14T03:26:40.554Z"
+    },
+    {
+      "clipType": "video",
+      "platform": "instagram",
+      "queueItemId": "bandicam-2026-03-13-13-52-34-460-instagram",
+      "publishedAt": "2026-03-14T03:26:40.560Z"
+    },
+    {
+      "clipType": "video",
+      "platform": "linkedin",
+      "queueItemId": "bandicam-2026-03-13-13-52-34-460-linkedin",
+      "publishedAt": "2026-03-14T03:26:40.580Z"
+    },
+    {
+      "clipType": "video",
+      "platform": "x",
+      "queueItemId": "bandicam-2026-03-13-13-52-34-460-twitter",
+      "publishedAt": "2026-03-14T03:26:40.592Z"
+    }
+  ]
 }

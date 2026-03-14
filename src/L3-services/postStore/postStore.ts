@@ -1,4 +1,4 @@
-import type { Platform } from '../../L0-pure/types/index.js'
+import { fromLatePlatform } from '../../L0-pure/types/index.js'
 import { getConfig } from '../../L1-infra/config/environment'
 import logger from '../../L1-infra/logger/configLogger'
 import { readTextFile, writeTextFile, writeJsonFile, ensureDirectory, copyFile, fileExists, listDirectoryWithTypes, removeDirectory, renameFile, copyDirectory } from '../../L1-infra/fileSystem/fileSystem.js'
@@ -325,7 +325,7 @@ export async function approveItem(
       for (const ideaId of item.metadata.ideaIds) {
         await markPublished(ideaId, {
           clipType: item.metadata.clipType,
-          platform: item.metadata.platform as Platform,
+          platform: fromLatePlatform(item.metadata.platform),
           queueItemId: id,
           publishedAt: now,
           publishedUrl: item.metadata.publishedUrl ?? undefined,

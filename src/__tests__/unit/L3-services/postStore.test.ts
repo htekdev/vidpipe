@@ -266,6 +266,22 @@ describe('postStore', () => {
       expect(publishedMeta.ideaIds).toEqual(['idea-1', 'idea-2'])
     })
 
+    it('normalizes twitter platform to x when writing idea publish records', async () => {
+      const meta = makeMetadata({ id: 'approve-twitter', ideaIds: ['idea-x'], clipType: 'video', platform: 'twitter' })
+      await createItem('approve-twitter', meta, 'Twitter normalization test')
+
+      await approveItem('approve-twitter', {
+        latePostId: 'late-twitter',
+        scheduledFor: '2025-06-01T12:00:00Z',
+      })
+
+      expect(mockMarkPublished).toHaveBeenCalledTimes(1)
+      expect(mockMarkPublished).toHaveBeenCalledWith('idea-x', expect.objectContaining({
+        platform: 'x',
+        queueItemId: 'approve-twitter',
+      }))
+    })
+
     it('falls back to copy+delete when rename fails with EPERM', async () => {
       const meta = makeMetadata({ id: 'approve-eperm' })
       const item = await createItem('approve-eperm', meta, 'EPERM test', undefined)
