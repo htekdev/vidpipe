@@ -1,5 +1,6 @@
 import { fileExists } from '../../L1-infra/fileSystem/fileSystem.js'
 import { getItem, approveItem, approveBulk } from '../../L3-services/postStore/postStore.js'
+import { getIdeasByIds } from '../../L3-services/ideation/ideaService.js'
 import { findNextSlot } from '../../L3-services/scheduler/scheduler.js'
 import { loadScheduleConfig } from '../../L3-services/scheduler/scheduleConfig.js'
 import { getAccountId } from '../../L3-services/socialPosting/accountMapping.js'
@@ -69,9 +70,58 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
   const results: ApprovalResult['results'] = []
   const rateLimitedPlatforms = new Set<string>()
 
-  for (const itemId of itemIds) {
+  interface EnrichedItem {
+    id: string
+    publishBy: string | null
+    hasIdeas: boolean
+  }
+
+  const loadedItems = await Promise.all(
+    itemIds.map(async (id) => ({ id, item: await getItem(id) })),
+  )
+  const itemMap = new Map(loadedItems.map(({ id, item }) => [id, item]))
+  const enriched: EnrichedItem[] = await Promise.all(
+    loadedItems.map(async ({ id, item }) => {
+      if (!item?.metadata.ideaIds?.length) {
+        return { id, publishBy: null, hasIdeas: false }
+      }
+
+      try {
+        const ideas = await getIdeasByIds(item.metadata.ideaIds)
+        const dates = ideas
+          .map((idea) => idea.publishBy)
+          .filter((publishBy): publishBy is string => Boolean(publishBy))
+          .sort()
+        return { id, publishBy: dates[0] ?? null, hasIdeas: true }
+      } catch {
+        return { id, publishBy: null, hasIdeas: true }
+      }
+    }),
+  )
+
+  const now = Date.now()
+  const sevenDays = 7 * 24 * 60 * 60 * 1000
+  enriched.sort((a, b) => {
+    const aPublishByTime = a.publishBy ? new Date(a.publishBy).getTime() : Number.NaN
+    const bPublishByTime = b.publishBy ? new Date(b.publishBy).getTime() : Number.NaN
+    const aUrgent = a.hasIdeas && Number.isFinite(aPublishByTime) && (aPublishByTime - now) < sevenDays
+    const bUrgent = b.hasIdeas && Number.isFinite(bPublishByTime) && (bPublishByTime - now) < sevenDays
+    if (aUrgent && !bUrgent) return -1
+    if (!aUrgent && bUrgent) return 1
+    if (a.hasIdeas && !b.hasIdeas) return -1
+    if (!a.hasIdeas && b.hasIdeas) return 1
+    return 0
+  })
+
+  const sortedIds = enriched.map((entry) => entry.id)
+  const publishByMap = new Map(
+    enriched.flatMap((entry) => (entry.publishBy ? [[entry.id, entry.publishBy] as const] : [])),
+  )
+
+  for (const itemId of sortedIds) {
+    const item = itemMap.get(itemId) ?? null
+
     try {
-      const item = await getItem(itemId)
       if (!item) {
         results.push({ itemId, success: false, error: 'Item not found' })
         continue
@@ -84,7 +134,11 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
         continue
       }
 
-      const slot = await findNextSlot(latePlatform, item.metadata.clipType)
+      const ideaIds = item.metadata.ideaIds
+      const publishBy = publishByMap.get(itemId)
+      const slot = ideaIds?.length
+        ? await findNextSlot(latePlatform, item.metadata.clipType, { ideaIds, publishBy })
+        : await findNextSlot(latePlatform, item.metadata.clipType)
       if (!slot) {
         results.push({ itemId, success: false, error: `No available slot for ${latePlatform}` })
         continue
@@ -141,7 +195,7 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
     } catch (itemErr) {
       const itemMsg = itemErr instanceof Error ? itemErr.message : String(itemErr)
       if (itemMsg.includes('429') || itemMsg.includes('Daily post limit')) {
-        const latePlatform = normalizePlatformString((await getItem(itemId))?.metadata.platform ?? '')
+        const latePlatform = normalizePlatformString(item?.metadata.platform ?? '')
         rateLimitedPlatforms.add(latePlatform)
         logger.warn(`Approval queue: ${latePlatform} hit daily post limit, skipping remaining ${latePlatform} items`)
         results.push({ itemId, success: false, error: `${latePlatform} rate-limited` })

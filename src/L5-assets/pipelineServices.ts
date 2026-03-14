@@ -13,6 +13,7 @@ import {
   commitAndPush as _commitAndPush,
 } from '../L4-agents/pipelineServiceBridge.js'
 import { ScheduleAgent as _ScheduleAgent } from '../L4-agents/ScheduleAgent.js'
+import { generateIdeas as _generateIdeas } from '../L4-agents/IdeationAgent.js'
 
 // Re-export types (exempt from layer rules)
 export type { CostReport, QueueBuildResult } from '../L4-agents/pipelineServiceBridge.js'
@@ -51,6 +52,11 @@ export function buildPublishQueue(...args: Parameters<typeof _buildPublishQueue>
 // Git operations
 export function commitAndPush(...args: Parameters<typeof _commitAndPush>): ReturnType<typeof _commitAndPush> {
   return _commitAndPush(...args)
+}
+
+// Ideation
+export function generateIdeas(...args: Parameters<typeof _generateIdeas>): ReturnType<typeof _generateIdeas> {
+  return _generateIdeas(...args)
 }
 
 // Schedule agent factory

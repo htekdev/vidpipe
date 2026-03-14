@@ -2,6 +2,8 @@ import type { ToolWithHandler } from '../L3-services/llm/providerFactory.js'
 import { BaseAgent } from './BaseAgent'
 import { VideoFile, Transcript, MediumClip, MediumSegment } from '../L0-pure/types/index'
 import type { HookType, EmotionalTrigger, MediumNarrativeStructure, MediumClipType } from '../L0-pure/types/index'
+import type { Idea } from '../L0-pure/types/index.js'
+import { buildIdeaContext } from '../L0-pure/ideaContext/ideaContext.js'
 import { extractClip, extractCompositeClipWithTransitions, burnCaptions } from '../L3-services/videoOperations/videoOperations.js'
 import { generateStyledASSForSegment, generateStyledASSForComposite } from '../L0-pure/captions/captionGenerator'
 
@@ -281,8 +283,8 @@ class MediumVideoAgent extends BaseAgent {
   private plannedClips: PlannedMediumClip[] = []
   private isFinalized = false
 
-  constructor(model?: string) {
-    super('MediumVideoAgent', SYSTEM_PROMPT, undefined, model)
+  constructor(systemPrompt: string = SYSTEM_PROMPT, model?: string) {
+    super('MediumVideoAgent', systemPrompt, undefined, model)
   }
 
   protected resetForRetry(): void {
@@ -378,8 +380,10 @@ export async function generateMediumClips(
   transcript: Transcript,
   model?: string,
   clipDirection?: string,
+  ideas?: Idea[],
 ): Promise<MediumClip[]> {
-  const agent = new MediumVideoAgent(model)
+  const systemPrompt = SYSTEM_PROMPT + (ideas?.length ? buildIdeaContext(ideas) : '')
+  const agent = new MediumVideoAgent(systemPrompt, model)
 
   // Build prompt with full transcript including word-level timestamps
   const transcriptLines = transcript.segments.map((seg) => {

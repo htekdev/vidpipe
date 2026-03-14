@@ -140,6 +140,7 @@ export async function buildPublishQueue(
   mediumClips: MediumClip[],
   socialPosts: SocialPost[],
   captionedVideoPath: string | undefined,
+  ideaIds?: string[],
 ): Promise<QueueBuildResult> {
   const result: QueueBuildResult = { itemsCreated: 0, itemsSkipped: 0, errors: [] }
 
@@ -233,6 +234,7 @@ export async function buildPublishQueue(
         createdAt: new Date().toISOString(),
         reviewedAt: null,
         publishedAt: null,
+        ideaIds: ideaIds && ideaIds.length > 0 ? ideaIds : undefined,
       }
 
       // Use raw post content (strip frontmatter if the content includes it)

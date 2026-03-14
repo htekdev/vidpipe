@@ -116,6 +116,21 @@ describe('queueBuilder', () => {
     expect(mockCreateItem).toHaveBeenCalledTimes(1);
   });
 
+  it('stamps idea IDs onto queue metadata when provided', async () => {
+    const { buildPublishQueue } = await getModule();
+    const post = createPost(Platform.YouTube);
+    mockReadTextFile.mockResolvedValue('---\nplatform: youtube\n---\nPost content here');
+
+    await buildPublishQueue(mockVideo, [], [], [post], '/captioned.mp4', ['idea-1', 'idea-2']);
+
+    expect(mockCreateItem).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ ideaIds: ['idea-1', 'idea-2'] }),
+      expect.any(String),
+      expect.any(String),
+    );
+  });
+
   it('skips already published items', async () => {
     const { buildPublishQueue } = await getModule();
     mockItemExists.mockResolvedValue('published');

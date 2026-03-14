@@ -7,8 +7,10 @@ vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
 }))
 
 const mockFileExists = vi.hoisted(() => vi.fn())
+const mockFileExistsSync = vi.hoisted(() => vi.fn().mockReturnValue(false))
 vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   fileExists: mockFileExists,
+  fileExistsSync: mockFileExistsSync,
 }))
 
 const mockGetItem = vi.hoisted(() => vi.fn())

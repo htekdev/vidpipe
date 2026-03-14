@@ -15,6 +15,7 @@ import type {
   PipelineResult,
   PipelineStage,
   Chapter,
+  Idea,
 } from '../L0-pure/types/index'
 import { PipelineStage as Stage } from '../L0-pure/types/index'
 import type { ShortVideoAsset } from '../L5-assets/ShortVideoAsset.js'
@@ -128,7 +129,7 @@ export function adjustTranscript(
  * transcription failure still lets git-push run (committing whatever was produced),
  * and a shorts failure doesn't block summary generation.
  */
-export async function processVideo(videoPath: string): Promise<PipelineResult> {
+export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<PipelineResult> {
   const pipelineStart = Date.now()
   const stageResults: StageResult[] = []
   const cfg = getConfig()
@@ -166,6 +167,12 @@ export async function processVideo(videoPath: string): Promise<PipelineResult> {
 
   const video = await asset.toVideoFile()
   pushPipe(video.videoDir)
+
+  // Set editorial direction from ideas (if provided)
+  if (ideas && ideas.length > 0) {
+    asset.setIdeas(ideas)
+    logger.info(`Pipeline using ${ideas.length} idea(s) for editorial direction`)
+  }
 
   try {
     // 2. Transcription — asset handles disk check + Whisper call + file write
@@ -328,7 +335,7 @@ function generateCostMarkdown(report: CostReport): string {
   return md
 }
 
-export async function processVideoSafe(videoPath: string): Promise<PipelineResult | null> {
+export async function processVideoSafe(videoPath: string, ideas?: Idea[]): Promise<PipelineResult | null> {
   // Derive slug from filename for state tracking (same logic as MainVideoAsset.ingest)
   const filename = basename(videoPath)
   const slug = filename.replace(/\.(mp4|mov|webm|avi|mkv)$/i, '')
@@ -336,7 +343,7 @@ export async function processVideoSafe(videoPath: string): Promise<PipelineResul
   await markProcessing(slug)
 
   try {
-    const result = await processVideo(videoPath)
+    const result = await processVideo(videoPath, ideas)
     await markCompleted(slug)
     return result
   } catch (err: unknown) {

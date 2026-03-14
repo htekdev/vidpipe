@@ -13,6 +13,8 @@ import {
   VideoFile,
   VideoSummary,
 } from '../L0-pure/types/index'
+import type { Idea } from '../L0-pure/types/index.js'
+import { buildIdeaContextForPosts } from '../L0-pure/ideaContext/ideaContext.js'
 
 // ── JSON shape the LLM returns via the create_posts tool ────────────────────
 
@@ -57,8 +59,8 @@ Always call "create_posts" exactly once with all 5 platform posts.`
 class SocialMediaAgent extends BaseAgent {
   private collectedPosts: PlatformPost[] = []
 
-  constructor(model?: string) {
-    super('SocialMediaAgent', SYSTEM_PROMPT, undefined, model)
+  constructor(systemPrompt: string = SYSTEM_PROMPT, model?: string) {
+    super('SocialMediaAgent', systemPrompt, undefined, model)
   }
 
   protected resetForRetry(): void {
@@ -215,7 +217,7 @@ export async function generateShortPosts(
   model?: string,
   summary?: VideoSummary,
 ): Promise<SocialPost[]> {
-  const agent = new SocialMediaAgent(model)
+  const agent = new SocialMediaAgent(undefined, model)
 
   try {
     // Extract transcript segments that overlap with the short's time ranges
@@ -296,8 +298,10 @@ export async function generateSocialPosts(
   summary: VideoSummary,
   outputDir?: string,
   model?: string,
+  ideas?: Idea[],
 ): Promise<SocialPost[]> {
-  const agent = new SocialMediaAgent(model)
+  const systemPrompt = SYSTEM_PROMPT + (ideas?.length ? buildIdeaContextForPosts(ideas) : '')
+  const agent = new SocialMediaAgent(systemPrompt, model)
 
   try {
     // Build the user prompt with transcript summary and metadata

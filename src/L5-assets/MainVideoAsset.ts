@@ -52,6 +52,7 @@ import {
   Platform,
 } from '../L0-pure/types/index.js'
 import type {
+  Idea,
   ShortClip,
   MediumClip,
   Chapter,
@@ -72,6 +73,19 @@ export class MainVideoAsset extends VideoAsset {
   readonly sourcePath: string
   readonly videoDir: string
   readonly slug: string
+
+  /** Content ideas linked to this video for editorial direction */
+  private _ideas: Idea[] = []
+
+  /** Set ideas for editorial direction */
+  setIdeas(ideas: Idea[]): void {
+    this._ideas = ideas
+  }
+
+  /** Get linked ideas */
+  get ideas(): Idea[] {
+    return this._ideas
+  }
 
   private constructor(sourcePath: string, videoDir: string, slug: string) {
     super()
@@ -1159,7 +1173,8 @@ export class MainVideoAsset extends VideoAsset {
     captionedVideoPath: string | undefined,
   ): Promise<QueueBuildResult> {
     const video = await this.toVideoFile()
-    return buildPublishQueue(video, shorts, mediumClips, socialPosts, captionedVideoPath)
+    const ideaIds = this._ideas.length > 0 ? this._ideas.map((idea) => idea.id) : undefined
+    return buildPublishQueue(video, shorts, mediumClips, socialPosts, captionedVideoPath, ideaIds)
   }
 
   /**

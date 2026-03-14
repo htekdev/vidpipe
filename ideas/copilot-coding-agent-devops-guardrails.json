@@ -1,0 +1,30 @@
+{
+  "id": "copilot-coding-agent-devops-guardrails",
+  "topic": "Why Copilot Coding Agent is the First AI Tool Built for DevOps Governance",
+  "hook": "Most AI coding tools ignore your CI/CD. Copilot coding agent was BUILT for it.",
+  "audience": "DevOps engineers and platform teams evaluating AI coding assistants",
+  "keyTakeaway": "Copilot coding agent's security-by-default design (branch protection, required reviews, action approval) makes it the only AI tool enterprise teams can trust.",
+  "talkingPoints": [
+    "Open with the problem: other AI tools generate code but bypass your entire governance pipeline",
+    "Show Copilot coding agent's security policies: can only push to branches IT created, required reviews enforced, Actions need manual approval",
+    "Demonstrate assigning an issue to Copilot and watching it respect your branch protection rules",
+    "Explain how network access is limited to trusted destinations you customize",
+    "Connect to Agentic DevOps: this is what 'guardrails for AI' actually looks like in production"
+  ],
+  "platforms": [
+    "youtube",
+    "linkedin"
+  ],
+  "status": "draft",
+  "tags": [
+    "github-copilot",
+    "agentic-devops",
+    "governance",
+    "enterprise",
+    "security"
+  ],
+  "createdAt": "2026-03-13T18:10:37.97Z",
+  "updatedAt": "2026-03-13T18:10:37.97Z",
+  "publishBy": "2026-06-13",
+  "trendContext": "GitHub's coding agent (GA May 2025) enforces branch protection, required reviews, and Actions approval by default—a major differentiator from competitors that most DevOps content hasn't covered yet."
+}
