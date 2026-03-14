@@ -641,6 +641,21 @@ export interface ScheduleSlot {
 }
 
 // ============================================================================
+// VIDEO FORMAT
+// ============================================================================
+
+/** File extensions accepted as pipeline input. */
+export const SUPPORTED_VIDEO_EXTENSIONS = ['.mp4', '.webm'] as const
+
+/** Type for a supported video extension string. */
+export type SupportedVideoExtension = (typeof SUPPORTED_VIDEO_EXTENSIONS)[number]
+
+/** Check whether a file extension (including the dot) is a supported video format. */
+export function isSupportedVideoExtension(ext: string): ext is SupportedVideoExtension {
+  return (SUPPORTED_VIDEO_EXTENSIONS as readonly string[]).includes(ext.toLowerCase())
+}
+
+// ============================================================================
 // EDITORIAL DIRECTION (Gemini Video Understanding)
 // ============================================================================
 

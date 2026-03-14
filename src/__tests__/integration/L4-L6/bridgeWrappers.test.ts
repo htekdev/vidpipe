@@ -12,12 +12,17 @@ vi.mock('../../../L2-clients/ffmpeg/ffmpeg.js', () => ({
   ffprobe: vi.fn(),
 }))
 
+vi.mock('../../../L2-clients/ffmpeg/transcoding.js', () => ({
+  transcodeToMp4: vi.fn(),
+}))
+
 import {
   markPending, markProcessing, markCompleted, markFailed,
 } from '../../../L4-agents/pipelineServiceBridge.js'
 import {
   analyzeVideoEditorial, transcribeVideo,
 } from '../../../L4-agents/analysisServiceBridge.js'
+import { transcodeToMp4 } from '../../../L4-agents/videoServiceBridge.js'
 
 describe('L4-L6 Integration: bridge wrappers', () => {
   test('pipelineServiceBridge markPending is a function', () => {
@@ -30,5 +35,9 @@ describe('L4-L6 Integration: bridge wrappers', () => {
   test('analysisServiceBridge functions are callable', () => {
     expect(typeof analyzeVideoEditorial).toBe('function')
     expect(typeof transcribeVideo).toBe('function')
+  })
+
+  test('videoServiceBridge transcodeToMp4 is a function', () => {
+    expect(typeof transcodeToMp4).toBe('function')
   })
 })
