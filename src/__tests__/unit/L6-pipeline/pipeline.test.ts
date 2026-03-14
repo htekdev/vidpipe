@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { Transcript, VideoFile, StageResult, VideoSummary, ShortClip, MediumClip, SocialPost, Chapter } from '../../../L0-pure/types/index.js'
-import { PipelineStage } from '../../../L0-pure/types/index.js'
+import type { Transcript, VideoFile, StageResult, VideoSummary, ShortClip, MediumClip, SocialPost, Chapter, Idea } from '../../../L0-pure/types/index.js'
+import { PipelineStage, Platform } from '../../../L0-pure/types/index.js'
 
 // ---- Hoisted mock variables (vi.mock is hoisted above imports) ----
 
@@ -33,6 +33,7 @@ const {
   mockGetBlog,
   mockBuildQueue,
   mockCommitAndPushChanges,
+  mockSetIdeas,
   mockGetEditorialDirection,
   mockGetMetadata,
 } = vi.hoisted(() => ({
@@ -64,6 +65,7 @@ const {
   mockGetBlog: vi.fn(),
   mockBuildQueue: vi.fn(),
   mockCommitAndPushChanges: vi.fn(),
+  mockSetIdeas: vi.fn(),
   mockGetEditorialDirection: vi.fn().mockResolvedValue('editorial direction text'),
   mockGetMetadata: vi.fn().mockResolvedValue({ width: 1920, height: 1080, duration: 120 }),
 }))
@@ -402,6 +404,7 @@ describe('processVideo', () => {
       getBlog: mockGetBlog,
       buildQueue: mockBuildQueue,
       commitAndPushChanges: mockCommitAndPushChanges,
+      setIdeas: mockSetIdeas,
       ...overrides,
     } as any
   }
@@ -434,6 +437,28 @@ describe('processVideo', () => {
     expect(result.transcript).toEqual(transcript)
     expect(result.stageResults.length).toBeGreaterThanOrEqual(1)
     expect(result.totalDuration).toBeGreaterThanOrEqual(0)
+  })
+
+  it('sets ideas on the asset when provided', async () => {
+    const ideas: Idea[] = [{
+      id: 'idea-1',
+      topic: 'Hook-first clip',
+      hook: 'Lead with the strongest payoff',
+      audience: 'Developers watching workflow demos',
+      keyTakeaway: 'Open with the result before walking through the steps.',
+      talkingPoints: ['Show the payoff', 'Explain how to reproduce it'],
+      platforms: [Platform.YouTube],
+      status: 'ready',
+      tags: ['workflow'],
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      publishBy: '2026-02-01',
+    }]
+
+    await processVideo('/videos/test.mp4', ideas)
+
+    expect(mockSetIdeas).toHaveBeenCalledWith(ideas)
+    expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining('Pipeline using 1 idea(s)'))
   })
 
   it('calls stages in correct order', async () => {
@@ -652,6 +677,7 @@ describe('processVideoSafe', () => {
       getBlog: vi.fn().mockResolvedValue(''),
       buildQueue: vi.fn().mockResolvedValue(undefined),
       commitAndPushChanges: vi.fn().mockResolvedValue(undefined),
+      setIdeas: vi.fn(),
     } as any)
   })
 

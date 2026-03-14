@@ -2,6 +2,8 @@ import type { ToolWithHandler } from '../L3-services/llm/providerFactory.js'
 import { BaseAgent } from './BaseAgent'
 import { VideoFile, Transcript, ShortClip, ShortSegment, ShortClipVariant, WebcamRegion } from '../L0-pure/types/index'
 import type { HookType, EmotionalTrigger, ShortNarrativeStructure } from '../L0-pure/types/index'
+import type { Idea } from '../L0-pure/types/index.js'
+import { buildIdeaContext } from '../L0-pure/ideaContext/ideaContext.js'
 import { extractClip, extractCompositeClip, burnCaptions, generatePlatformVariants, type Platform } from '../L3-services/videoOperations/videoOperations.js'
 import { generateStyledASSForSegment, generateStyledASSForComposite, generatePortraitASSWithHook, generatePortraitASSWithHookComposite } from '../L0-pure/captions/captionGenerator'
 
@@ -265,8 +267,8 @@ class ShortsAgent extends BaseAgent {
   private plannedShorts: PlannedShort[] = []
   private isFinalized = false
 
-  constructor(model?: string) {
-    super('ShortsAgent', SYSTEM_PROMPT, undefined, model)
+  constructor(systemPrompt: string = SYSTEM_PROMPT, model?: string) {
+    super('ShortsAgent', systemPrompt, undefined, model)
   }
 
   protected resetForRetry(): void {
@@ -363,8 +365,10 @@ export async function generateShorts(
   model?: string,
   clipDirection?: string,
   webcamOverride?: WebcamRegion | null,
+  ideas?: Idea[],
 ): Promise<ShortClip[]> {
-  const agent = new ShortsAgent(model)
+  const systemPrompt = SYSTEM_PROMPT + (ideas?.length ? buildIdeaContext(ideas) : '')
+  const agent = new ShortsAgent(systemPrompt, model)
 
   // Build prompt with full transcript including word-level timestamps
   const transcriptLines = transcript.segments.map((seg) => {

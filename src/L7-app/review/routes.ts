@@ -1,5 +1,14 @@
 import { Router } from '../../L1-infra/http/http.js'
-import { getPendingItems, getGroupedPendingItems, getItem, updateItem, rejectItem } from '../../L3-services/postStore/postStore.js'
+import {
+  getPendingItems,
+  getGroupedPendingItems,
+  getItem,
+  updateItem,
+  rejectItem,
+  type GroupedQueueItem,
+  type QueueItem,
+} from '../../L3-services/postStore/postStore.js'
+import { getIdeasByIds } from '../../L3-services/ideation/ideaService.js'
 import { findNextSlot, getScheduleCalendar } from '../../L3-services/scheduler/scheduler.js'
 import { createLateApiClient, type LateApiClient, type LateAccount, type LateProfile } from '../../L3-services/lateApi/lateApiService.js'
 import { normalizePlatformString } from '../../L0-pure/types/index.js'
@@ -21,25 +30,63 @@ function setCache(key: string, data: unknown, ttl = CACHE_TTL_MS): void {
   cache.set(key, { data, expiry: Date.now() + ttl })
 }
 
+type ReviewQueueItem = QueueItem & { ideaPublishBy?: string }
+type ReviewGroupedQueueItem = Omit<GroupedQueueItem, 'items'> & { items: ReviewQueueItem[] }
+
+async function getEarliestPublishBy(ideaIds: string[]): Promise<string | undefined> {
+  try {
+    const ideas = await getIdeasByIds(ideaIds)
+    const publishByDates = ideas
+      .map((idea) => idea.publishBy)
+      .filter((publishBy): publishBy is string => Boolean(publishBy))
+      .sort()
+    return publishByDates[0]
+  } catch {
+    return undefined
+  }
+}
+
+async function enrichQueueItem(item: QueueItem): Promise<ReviewQueueItem> {
+  const ideaPublishBy = item.metadata.ideaIds?.length
+    ? await getEarliestPublishBy(item.metadata.ideaIds)
+    : undefined
+
+  return {
+    ...item,
+    ...(ideaPublishBy ? { ideaPublishBy } : {}),
+  }
+}
+
+async function enrichQueueItems(items: QueueItem[]): Promise<ReviewQueueItem[]> {
+  return Promise.all(items.map((item) => enrichQueueItem(item)))
+}
+
+async function enrichGroupedQueueItems(groups: GroupedQueueItem[]): Promise<ReviewGroupedQueueItem[]> {
+  return Promise.all(groups.map(async (group) => ({
+    ...group,
+    items: await enrichQueueItems(group.items),
+  })))
+}
+
 export function createRouter(): Router {
   const router = Router()
 
   // GET /api/posts/pending — list all pending review items
   router.get('/api/posts/pending', async (req, res) => {
-    const items = await getPendingItems()
+    const items = await enrichQueueItems(await getPendingItems())
     res.json({ items, total: items.length })
   })
 
   // GET /api/posts/grouped — list pending items grouped by video/clip
   router.get('/api/posts/grouped', async (req, res) => {
-    const groups = await getGroupedPendingItems()
+    const groups = await enrichGroupedQueueItems(await getGroupedPendingItems())
     res.json({ groups, total: groups.length })
   })
 
   // GET /api/init — combined endpoint for initial page load (1 request instead of 3)
   router.get('/api/init', async (req, res) => {
     const [groupsResult, accountsResult, profileResult] = await Promise.allSettled([
-      getGroupedPendingItems(),
+      (async () => enrichGroupedQueueItems(await getGroupedPendingItems()))(),
       (async () => {
         const cached = getCached<LateAccount[]>('accounts')
         if (cached) return cached
@@ -70,7 +117,7 @@ export function createRouter(): Router {
   router.get('/api/posts/:id', async (req, res) => {
     const item = await getItem(req.params.id)
     if (!item) return res.status(404).json({ error: 'Item not found' })
-    res.json(item)
+    res.json(await enrichQueueItem(item))
   })
 
   // POST /api/posts/:id/approve — enqueue for sequential processing, return 202

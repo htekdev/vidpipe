@@ -89,6 +89,9 @@ vidpipe /path/to/video.mp4
 # Watch a folder for new recordings
 vidpipe --watch-dir ~/Videos/Recordings
 
+# Generate a saved idea bank for future recordings
+vidpipe ideate --topics "GitHub Copilot, Azure, TypeScript" --count 4
+
 # Full example with options
 vidpipe \
   --watch-dir ~/Videos/Recordings \
@@ -115,6 +118,7 @@ vidpipe [options] [video-path]
 vidpipe init              # Interactive setup wizard
 vidpipe review            # Open post review web app
 vidpipe schedule          # View posting schedule
+vidpipe ideate            # Generate or list saved content ideas
 ```
 
 | Option | Description |

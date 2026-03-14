@@ -1,0 +1,29 @@
+{
+  "id": "copilot-agent-mcp-integration",
+  "topic": "Supercharge Copilot Coding Agent with MCP Servers",
+  "hook": "Copilot agent can now reach OUTSIDE GitHub using MCP. This changes everything.",
+  "audience": "Developers building AI-assisted workflows and automation",
+  "keyTakeaway": "MCP servers give Copilot coding agent access to external data and capabilities.",
+  "talkingPoints": [
+    "Explain what MCP enables for Copilot coding agent",
+    "Show how to configure MCP servers in repository settings",
+    "Demo adding the official GitHub MCP Server",
+    "Walk through an example with external API data",
+    "Bonus: Copilot can see images in issues thanks to vision models"
+  ],
+  "platforms": [
+    "youtube",
+    "linkedin"
+  ],
+  "status": "draft",
+  "tags": [
+    "github-copilot",
+    "mcp",
+    "automation",
+    "tutorial"
+  ],
+  "createdAt": "2026-03-13T18:11:01.633Z",
+  "updatedAt": "2026-03-13T18:11:01.633Z",
+  "publishBy": "2026-03-27",
+  "trendContext": "Copilot coding agent now supports MCP server configuration in repo settings, plus vision models for images in issues."
+}
