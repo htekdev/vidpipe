@@ -1158,7 +1158,7 @@ export class MainVideoAsset extends VideoAsset {
     captionedVideoPath: string | undefined,
   ): Promise<QueueBuildResult> {
     const video = await this.toVideoFile()
-    const ideaIds = this._ideas.length > 0 ? this._ideas.map((idea) => idea.id) : undefined
+    const ideaIds = this._ideas.length > 0 ? this._ideas.map((idea) => String(idea.issueNumber)) : undefined
     return buildPublishQueue(video, shorts, mediumClips, socialPosts, captionedVideoPath, ideaIds)
   }
 

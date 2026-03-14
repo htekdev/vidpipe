@@ -1,5 +1,5 @@
 import { initConfig } from '../../L1-infra/config/environment.js'
-import { readIdeaBank } from '../../L1-infra/ideaStore/ideaStore.js'
+import { listIdeas } from '../../L3-services/ideaService/ideaService.js'
 import { generateIdeas } from '../../L6-pipeline/ideation.js'
 
 export interface IdeateCommandOptions {
@@ -15,9 +15,9 @@ export async function runIdeate(options: IdeateCommandOptions = {}): Promise<voi
   initConfig()
 
   if (options.list) {
-    const ideas = await readIdeaBank(options.output)
+    const ideas = await listIdeas()
     const filtered = options.status
-      ? ideas.filter(i => i.status === options.status)
+      ? ideas.filter((idea) => idea.status === options.status)
       : ideas
 
     if (filtered.length === 0) {
@@ -72,7 +72,7 @@ export async function runIdeate(options: IdeateCommandOptions = {}): Promise<voi
     console.log('')
   }
 
-  console.log('Ideas saved to ./ideas/ directory.')
+  console.log('Ideas saved to the GitHub-backed idea service.')
   console.log('Use `vidpipe ideate --list` to view all ideas.')
-  console.log('Use `vidpipe process video.mp4 --ideas <id1>,<id2>` to link ideas to a recording.')
+  console.log('Use `vidpipe process video.mp4 --ideas <issueNumber1>,<issueNumber2>` to link ideas to a recording.')
 }

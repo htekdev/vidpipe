@@ -36,6 +36,10 @@ export interface AppEnvironment {
   SKIP_SOCIAL_PUBLISH: boolean
   GEMINI_API_KEY: string
   GEMINI_MODEL: string
+  /** GitHub repository for idea tracking (format: owner/repo) */
+  IDEAS_REPO: string
+  /** GitHub Personal Access Token with repo + project scopes */
+  GITHUB_TOKEN: string
 }
 
 export interface CLIOptions {
@@ -57,6 +61,8 @@ export interface CLIOptions {
   socialPublish?: boolean
   lateApiKey?: string
   lateProfileId?: string
+  ideasRepo?: string
+  githubToken?: string
 }
 
 let config: AppEnvironment | null = null
@@ -99,6 +105,8 @@ export function initConfig(cli: CLIOptions = {}): AppEnvironment {
     SKIP_SOCIAL_PUBLISH: cli.socialPublish === false,
     GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
     GEMINI_MODEL: process.env.GEMINI_MODEL || 'gemini-2.5-pro',
+    IDEAS_REPO: cli.ideasRepo || process.env.IDEAS_REPO || 'htekdev/content-management',
+    GITHUB_TOKEN: cli.githubToken || process.env.GITHUB_TOKEN || '',
   }
 
   return config

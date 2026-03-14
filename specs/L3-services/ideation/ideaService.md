@@ -2,7 +2,7 @@
 
 ## Overview
 
-Business logic service for working with ideation records. It resolves ideas from the idea store, manages lifecycle transitions, and optionally uses the configured LLM provider to match ready ideas against a transcript.
+Business logic service for working with GitHub-backed ideation records. It resolves ideas through the GitHub-backed idea service, manages lifecycle transitions, and optionally uses the configured LLM provider to match ready ideas against a transcript.
 
 **Source:** `src/L3-services/ideation/ideaService.ts`
 
@@ -26,5 +26,5 @@ Business logic service for working with ideation records. It resolves ideas from
 | ID | Constraint | Priority |
 |----|------------|----------|
 | ARCH-001 | `ideaService.ts` may only import from L0, L1, and L2-backed L3 wrappers. | P0 |
-| ARCH-002 | Idea persistence must go through `src/L1-infra/ideaStore/ideaStore.ts`. | P0 |
+| ARCH-002 | Idea persistence must go through `src/L3-services/ideaService/ideaService.ts`. | P0 |
 | ARCH-003 | LLM access must go through `src/L3-services/llm/providerFactory.ts` and use a tool-free non-streaming session for transcript matching. | P0 |

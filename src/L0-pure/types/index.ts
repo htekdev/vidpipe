@@ -584,8 +584,10 @@ export interface IdeaPublishRecord {
   queueItemId: string
   /** When the content was published (ISO 8601) */
   publishedAt: string
-  /** Final published URL if available */
-  publishedUrl?: string
+  /** Late API post ID for tracking/managing the scheduled post */
+  latePostId: string
+  /** Late API dashboard URL for viewing the post */
+  lateUrl: string
 }
 
 /**
@@ -596,9 +598,50 @@ export interface IdeaPublishRecord {
  * The `status` field tracks the lifecycle: draft → ready → recorded → published.
  */
 export interface Idea {
-  /** Unique identifier, e.g. "idea-copilot-debugging" */
+  /** GitHub Issue number — the primary identifier */
+  issueNumber: number
+  /** GitHub Issue URL (e.g., https://github.com/htekdev/content-management/issues/1) */
+  issueUrl: string
+  /** Repository full name (e.g., htekdev/content-management) */
+  repoFullName: string
+  /** Legacy slug ID for migration compatibility (e.g., "idea-copilot-debugging") */
   id: string
-  /** Main topic/title of the idea */
+  /** Main topic/title of the idea (= issue title) */
+  topic: string
+  /** The attention-grabbing angle (≤80 chars) */
+  hook: string
+  /** Who this content is for */
+  audience: string
+  /** The one thing the viewer should remember */
+  keyTakeaway: string
+  /** Bullet points to cover in the recording */
+  talkingPoints: string[]
+  /** Target platforms for this content (derived from platform:* labels) */
+  platforms: Platform[]
+  /** Lifecycle status (derived from status:* label) */
+  status: IdeaStatus
+  /** Tags for categorization and matching (derived from freeform labels) */
+  tags: string[]
+  /** When the idea was created (from issue created_at) */
+  createdAt: string
+  /** When the idea was last updated (from issue updated_at) */
+  updatedAt: string
+  /** Deadline for publishing this idea's content (ISO 8601 date). Agent sets based on timeliness:
+   * - Hot trend: 3-5 days out
+   * - Timely event: 1-2 weeks out
+   * - Evergreen: 3-6 months out */
+  publishBy: string
+  /** Video slug linked after recording — parsed from video-link issue comments */
+  sourceVideoSlug?: string
+  /** Why this is timely — context from trend research */
+  trendContext?: string
+  /** Tracks every piece of content published for this idea — parsed from issue comments */
+  publishedContent?: IdeaPublishRecord[]
+}
+
+/** Input for creating a new idea — omits fields derived from GitHub Issue metadata */
+export interface CreateIdeaInput {
+  /** Main topic/title (becomes issue title) */
   topic: string
   /** The attention-grabbing angle (≤80 chars) */
   hook: string
@@ -610,26 +653,32 @@ export interface Idea {
   talkingPoints: string[]
   /** Target platforms for this content */
   platforms: Platform[]
-  /** Lifecycle status */
-  status: IdeaStatus
   /** Tags for categorization and matching */
   tags: string[]
-  /** When the idea was created (ISO 8601) */
-  createdAt: string
-  /** When the idea was last updated (ISO 8601) */
-  updatedAt: string
-  /** Deadline for publishing this idea's content (ISO 8601 date). Agent sets based on timeliness:
-   * - Hot trend: 3-5 days out
-   * - Timely event: 1-2 weeks out
-   * - Evergreen: 3-6 months out */
+  /** Deadline for publishing (ISO 8601 date) */
   publishBy: string
-  /** Video slug linked after recording (back-reference) */
-  sourceVideoSlug?: string
   /** Why this is timely — context from trend research */
   trendContext?: string
-  /** Tracks every piece of content published for this idea */
-  publishedContent?: IdeaPublishRecord[]
 }
+
+/** Filters for querying ideas from GitHub Issues */
+export interface IdeaFilters {
+  /** Filter by lifecycle status */
+  status?: IdeaStatus
+  /** Filter by target platform */
+  platform?: Platform
+  /** Filter by tag label */
+  tag?: string
+  /** Filter by priority label */
+  priority?: 'hot-trend' | 'timely' | 'evergreen'
+  /** Maximum number of results */
+  limit?: number
+}
+
+/** Discriminated type for structured issue comments */
+export type IdeaCommentData =
+  | { type: 'publish-record'; record: IdeaPublishRecord }
+  | { type: 'video-link'; videoSlug: string; linkedAt: string }
 
 /** Schedule time slot for a platform */
 export interface ScheduleSlot {

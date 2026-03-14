@@ -9,19 +9,24 @@ import {
 
 function createIdea(overrides: Partial<Idea> = {}): Idea {
   return {
-    id: 'idea-agentic-video-workflows',
-    topic: 'Agentic video workflows',
-    hook: 'The one workflow change that saves hours per video',
-    audience: 'Developer creators shipping educational videos',
-    keyTakeaway: 'Systematic prompts produce more reusable content than ad hoc recording.',
-    talkingPoints: ['Prompt planning', 'Clip extraction', 'Distribution reuse'],
-    platforms: [Platform.TikTok, Platform.YouTube],
-    status: 'ready',
-    tags: ['video', 'automation'],
-    createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z',
-    publishBy: '2026-04-01',
-    ...overrides,
+    issueNumber: overrides.issueNumber ?? 1,
+    issueUrl: overrides.issueUrl ?? 'https://github.com/htekdev/content-management/issues/1',
+    repoFullName: overrides.repoFullName ?? 'htekdev/content-management',
+    id: overrides.id ?? 'idea-agentic-video-workflows',
+    topic: overrides.topic ?? 'Agentic video workflows',
+    hook: overrides.hook ?? 'The one workflow change that saves hours per video',
+    audience: overrides.audience ?? 'Developer creators shipping educational videos',
+    keyTakeaway: overrides.keyTakeaway ?? 'Systematic prompts produce more reusable content than ad hoc recording.',
+    talkingPoints: overrides.talkingPoints ?? ['Prompt planning', 'Clip extraction', 'Distribution reuse'],
+    platforms: overrides.platforms ?? [Platform.TikTok, Platform.YouTube],
+    status: overrides.status ?? 'ready',
+    tags: overrides.tags ?? ['video', 'automation'],
+    createdAt: overrides.createdAt ?? '2026-01-01T00:00:00.000Z',
+    updatedAt: overrides.updatedAt ?? '2026-01-01T00:00:00.000Z',
+    publishBy: overrides.publishBy ?? '2026-04-01',
+    sourceVideoSlug: overrides.sourceVideoSlug,
+    trendContext: overrides.trendContext,
+    publishedContent: overrides.publishedContent,
   }
 }
 

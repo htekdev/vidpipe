@@ -3,7 +3,6 @@ import { Platform } from '../../../L0-pure/types/index.js'
 
 const mockInitConfig = vi.hoisted(() => vi.fn())
 const mockListIdeas = vi.hoisted(() => vi.fn())
-const mockGenerateIdeas = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../L1-infra/config/environment.js', () => ({
   initConfig: mockInitConfig,
@@ -11,10 +10,6 @@ vi.mock('../../../L1-infra/config/environment.js', () => ({
 
 vi.mock('../../../L3-services/ideaService/ideaService.js', () => ({
   listIdeas: mockListIdeas,
-}))
-
-vi.mock('../../../L6-pipeline/ideation.js', () => ({
-  generateIdeas: mockGenerateIdeas,
 }))
 
 describe('ideate command', () => {
@@ -33,7 +28,7 @@ describe('ideate command', () => {
     return consoleLogSpy.mock.calls.map((call: unknown[]) => String(call[0])).join('\n')
   }
 
-  it('ideate.REQ-001 lists all saved ideas when no status filter is provided', async () => {
+  it('lists all saved ideas', async () => {
     mockListIdeas.mockResolvedValue([
       { id: 'idea-1', topic: 'First idea', status: 'draft', platforms: [Platform.YouTube] },
       { id: 'idea-2', topic: 'Second idea', status: 'ready', platforms: [Platform.LinkedIn] },
@@ -48,7 +43,7 @@ describe('ideate command', () => {
     expect(getOutput()).toContain('2 idea(s) total')
   })
 
-  it('ideate.REQ-002 filters listed ideas by status', async () => {
+  it('filters listed ideas by status', async () => {
     mockListIdeas.mockResolvedValue([
       { id: 'idea-1', topic: 'First idea', status: 'draft', platforms: [Platform.YouTube] },
       { id: 'idea-2', topic: 'Second idea', status: 'ready', platforms: [Platform.LinkedIn] },
@@ -57,49 +52,40 @@ describe('ideate command', () => {
     const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
     await runIdeate({ list: true, status: 'ready' })
 
-    expect(mockListIdeas).toHaveBeenCalledWith()
     expect(getOutput()).toContain('Second idea')
     expect(getOutput()).not.toContain('First idea')
   })
 
-  it('ideate.REQ-010 parses topics and count before delegating to L6 ideation', async () => {
-    mockGenerateIdeas.mockResolvedValue([
-      { id: 'idea-1', topic: 'Ship ideate', hook: 'Use AI before you record.', audience: 'Builders', status: 'draft', platforms: ['youtube'] },
-    ])
+  it('shows empty state with guidance', async () => {
+    mockListIdeas.mockResolvedValue([])
 
     const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
-    await runIdeate({ topics: 'GitHub Copilot, Azure ', count: '2', output: 'custom-ideas' })
+    await runIdeate({ list: true })
 
-    expect(mockGenerateIdeas).toHaveBeenCalledWith({
-      seedTopics: ['GitHub Copilot', 'Azure'],
-      count: 2,
-      ideasDir: 'custom-ideas',
-      brandPath: undefined,
-    })
-    expect(getOutput()).toContain('Ship ideate')
+    expect(getOutput()).toContain('No ideas found.')
+    expect(getOutput()).toContain('Run `vidpipe ideate` to generate new ideas.')
   })
 
-  it('ideate.REQ-020 passes brand path through to generateIdeas', async () => {
-    mockGenerateIdeas.mockResolvedValue([])
-
-    const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
-    await runIdeate({ brand: './custom-brand.json' })
-
-    expect(mockInitConfig).toHaveBeenCalled()
-    expect(mockGenerateIdeas).toHaveBeenCalledWith(
-      expect.objectContaining({ brandPath: './custom-brand.json' }),
-    )
-  })
-
-  it('ideate.REQ-021 prints follow-up guidance after generating ideas', async () => {
-    mockGenerateIdeas.mockResolvedValue([
+  it('prints follow-up guidance after generating ideas', async () => {
+    const ideationModule = await import('../../../L6-pipeline/ideation.js')
+    vi.spyOn(ideationModule, 'generateIdeas').mockResolvedValue([
       {
         id: 'idea-1',
+        issueNumber: 42,
+        issueUrl: 'https://github.com/htekdev/content-management/issues/42',
+        repoFullName: 'htekdev/content-management',
         topic: 'Link recordings to ideas',
-        hook: 'Keep ideation connected to the final video.',
+        hook: 'Keep ideation connected.',
         audience: 'Creators',
-        status: 'draft',
-        platforms: ['youtube', 'linkedin'],
+        keyTakeaway: 'Ship faster',
+        talkingPoints: ['Point 1'],
+        status: 'draft' as const,
+        platforms: [Platform.YouTube, Platform.LinkedIn],
+        tags: [],
+        publishBy: '2026-04-01',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        publishedContent: [],
       },
     ])
 

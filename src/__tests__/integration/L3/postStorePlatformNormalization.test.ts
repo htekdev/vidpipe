@@ -1,9 +1,3 @@
-/**
- * L3 Integration Test — postStore twitter/x normalization
- *
- * Mock boundary: L1 infrastructure (fileSystem, paths, config, logger)
- * Real code:     L3 postStore + ideaService business logic, L0 pure types
- */
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Idea, Platform } from '../../../L0-pure/types/index.js'
@@ -22,6 +16,9 @@ const mockRenameFile = vi.hoisted(() => vi.fn())
 const mockRemoveDirectory = vi.hoisted(() => vi.fn())
 const mockCopyDirectory = vi.hoisted(() => vi.fn())
 const mockRemoveFile = vi.hoisted(() => vi.fn())
+const mockGetIdea = vi.hoisted(() => vi.fn())
+const mockListIdeas = vi.hoisted(() => vi.fn())
+const mockMarkPublished = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   readTextFile: mockReadTextFile,
@@ -39,8 +36,8 @@ vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   removeFile: mockRemoveFile,
 }))
 
-vi.mock('../../../L1-infra/paths/paths.js', () => {
-  const path = require('path')
+vi.mock('../../../L1-infra/paths/paths.js', async () => {
+  const path = await import('node:path')
   return {
     join: (...args: string[]) => path.join(...args),
     resolve: (...args: string[]) => path.resolve(...args),
@@ -55,7 +52,12 @@ vi.mock('../../../L1-infra/config/environment.js', () => ({
   getConfig: () => ({ OUTPUT_DIR: '/test/output' }),
 }))
 
-import * as ideaService from '../../../L3-services/ideation/ideaService.js'
+vi.mock('../../../L3-services/ideaService/ideaService.js', () => ({
+  getIdea: mockGetIdea,
+  listIdeas: mockListIdeas,
+  markPublished: mockMarkPublished,
+}))
+
 import { approveItem } from '../../../L3-services/postStore/postStore.js'
 
 function makeMetadata(overrides: Partial<QueueItemMetadata> = {}): QueueItemMetadata {
@@ -84,20 +86,26 @@ function makeMetadata(overrides: Partial<QueueItemMetadata> = {}): QueueItemMeta
 }
 
 function makeIdea(overrides: Partial<Idea> = {}): Idea {
+  const issueNumber = overrides.issueNumber ?? 1
   return {
-    id: 'idea-1',
-    topic: 'Topic',
-    hook: 'Hook',
-    audience: 'Creators',
-    keyTakeaway: 'Takeaway',
-    talkingPoints: ['Point 1'],
-    platforms: ['x'] as Platform[],
-    status: 'recorded',
-    tags: ['test'],
-    createdAt: '2026-01-01T00:00:00Z',
-    updatedAt: '2026-01-01T00:00:00Z',
-    publishBy: '2026-03-01T00:00:00Z',
-    ...overrides,
+    issueNumber,
+    issueUrl: overrides.issueUrl ?? `https://github.com/htekdev/content-management/issues/${issueNumber}`,
+    repoFullName: overrides.repoFullName ?? 'htekdev/content-management',
+    id: overrides.id ?? 'idea-1',
+    topic: overrides.topic ?? 'Topic',
+    hook: overrides.hook ?? 'Hook',
+    audience: overrides.audience ?? 'Creators',
+    keyTakeaway: overrides.keyTakeaway ?? 'Takeaway',
+    talkingPoints: overrides.talkingPoints ?? ['Point 1'],
+    platforms: overrides.platforms ?? (['x'] as Platform[]),
+    status: overrides.status ?? 'recorded',
+    tags: overrides.tags ?? ['test'],
+    createdAt: overrides.createdAt ?? '2026-01-01T00:00:00Z',
+    updatedAt: overrides.updatedAt ?? '2026-01-01T00:00:00Z',
+    publishBy: overrides.publishBy ?? '2026-03-01T00:00:00Z',
+    sourceVideoSlug: overrides.sourceVideoSlug,
+    trendContext: overrides.trendContext,
+    publishedContent: overrides.publishedContent,
   }
 }
 
@@ -114,12 +122,12 @@ describe('L3 Integration: postStore platform normalization', () => {
     mockListDirectory.mockResolvedValue([])
     mockListDirectoryWithTypes.mockResolvedValue([])
     mockRemoveFile.mockResolvedValue(undefined)
+    mockMarkPublished.mockResolvedValue(undefined)
   })
 
   it('normalizes twitter queue items to x before marking ideas published', async () => {
     const metadata = makeMetadata({ ideaIds: ['idea-1'] })
-    const idea = makeIdea()
-    const markPublishedSpy = vi.spyOn(ideaService, 'markPublished')
+    const idea = makeIdea({ issueNumber: 1, id: 'idea-1' })
 
     mockReadTextFile
       .mockResolvedValueOnce(JSON.stringify(metadata))
@@ -129,6 +137,8 @@ describe('L3 Integration: postStore platform normalization', () => {
       .mockResolvedValueOnce(false)
       .mockResolvedValueOnce(true)
     mockReadJsonFile.mockResolvedValue(idea)
+    mockListIdeas.mockResolvedValue([idea])
+    mockGetIdea.mockResolvedValue(idea)
 
     await approveItem('clip-twitter', {
       latePostId: 'late-123',
@@ -136,15 +146,16 @@ describe('L3 Integration: postStore platform normalization', () => {
       publishedUrl: 'https://x.com/example/status/123',
     })
 
-    expect(markPublishedSpy).toHaveBeenCalledTimes(1)
-    expect(markPublishedSpy).toHaveBeenCalledWith(
-      'idea-1',
+    expect(mockMarkPublished).toHaveBeenCalledTimes(1)
+    expect(mockMarkPublished).toHaveBeenCalledWith(
+      1,
       expect.objectContaining({
         clipType: 'short',
         platform: 'x',
         queueItemId: 'clip-twitter',
         publishedAt: expect.any(String),
-        publishedUrl: 'https://x.com/example/status/123',
+        latePostId: 'late-123',
+        lateUrl: 'https://x.com/example/status/123',
       }),
     )
   })

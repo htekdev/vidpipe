@@ -4,6 +4,9 @@ import type { IdeaServiceModule } from '../../../L7-app/processIdeas.js'
 
 function createIdea(overrides: Partial<Idea> = {}): Idea {
   return {
+    issueNumber: overrides.issueNumber ?? 1,
+    issueUrl: overrides.issueUrl ?? 'https://github.com/htekdev/content-management/issues/1',
+    repoFullName: overrides.repoFullName ?? 'htekdev/content-management',
     id: overrides.id ?? 'idea-1',
     topic: overrides.topic ?? 'Lead with the payoff',
     hook: overrides.hook ?? 'Start with the strongest result',
@@ -28,13 +31,22 @@ const mockLogger = vi.hoisted(() => ({
   error: vi.fn(),
   debug: vi.fn(),
 }))
+const mockGetIdeasByIds = vi.hoisted(() => vi.fn())
+const mockMarkRecorded = vi.hoisted(() => vi.fn())
+const mockDynamicGetIdeasByIds = vi.hoisted(() => vi.fn())
+const mockDynamicMarkRecorded = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
   default: mockLogger,
 }))
 
-const mockGetIdeasByIds = vi.hoisted(() => vi.fn())
-const mockMarkRecorded = vi.hoisted(() => vi.fn())
+vi.mock('../../../L3-services/ideation/ideaService.js', () => ({
+  getIdeasByIds: mockDynamicGetIdeasByIds,
+}))
+
+vi.mock('../../../L3-services/ideaService/ideaService.js', () => ({
+  markRecorded: mockDynamicMarkRecorded,
+}))
 
 import { markIdeasRecorded, resolveIdeas } from '../../../L7-app/processIdeas.js'
 
@@ -60,6 +72,19 @@ describe('resolveIdeas', () => {
     expect(mockGetIdeasByIds).toHaveBeenCalledWith(['idea-1', 'idea-2'])
     expect(mockLogger.info).toHaveBeenCalledWith('Linked 2 idea(s): Lead with the payoff, Teach through the build')
   })
+
+  it('loads the L3 lookup service when no override is provided', async () => {
+    const ideas: Idea[] = [
+      createIdea({ id: 'idea-3', topic: 'Ship the workflow' }),
+      createIdea({ id: 'idea-4', topic: 'Explain the handoff' }),
+    ]
+    mockDynamicGetIdeasByIds.mockResolvedValue(ideas)
+
+    await expect(resolveIdeas(' idea-3, idea-4 ')).resolves.toEqual(ideas)
+
+    expect(mockDynamicGetIdeasByIds).toHaveBeenCalledWith(['idea-3', 'idea-4'])
+    expect(mockLogger.info).toHaveBeenCalledWith('Linked 2 idea(s): Ship the workflow, Explain the handoff')
+  })
 })
 
 describe('markIdeasRecorded', () => {
@@ -69,8 +94,8 @@ describe('markIdeasRecorded', () => {
 
   it('marks each idea recorded using the video slug derived from the file path', async () => {
     const ideas: Idea[] = [
-      createIdea({ id: 'idea-1', topic: 'Lead with the payoff' }),
-      createIdea({ id: 'idea-2', topic: 'Teach through the build' }),
+      createIdea({ id: 'idea-1', issueNumber: 101, topic: 'Lead with the payoff' }),
+      createIdea({ id: 'idea-2', issueNumber: 202, topic: 'Teach through the build' }),
     ]
 
     const loadIdeaService = async (): Promise<IdeaServiceModule> => ({
@@ -80,8 +105,21 @@ describe('markIdeasRecorded', () => {
 
     await markIdeasRecorded(ideas, 'C:\\videos\\session-42.mp4', loadIdeaService)
 
-    expect(mockMarkRecorded).toHaveBeenNthCalledWith(1, 'idea-1', 'session-42')
-    expect(mockMarkRecorded).toHaveBeenNthCalledWith(2, 'idea-2', 'session-42')
+    expect(mockMarkRecorded).toHaveBeenNthCalledWith(1, 101, 'session-42')
+    expect(mockMarkRecorded).toHaveBeenNthCalledWith(2, 202, 'session-42')
+    expect(mockLogger.info).toHaveBeenCalledWith('Marked 2 idea(s) as recorded')
+  })
+
+  it('loads the L3 recorder service when no override is provided', async () => {
+    const ideas: Idea[] = [
+      createIdea({ id: 'idea-5', issueNumber: 303, topic: 'Narrate the output' }),
+      createIdea({ id: 'idea-6', issueNumber: 404, topic: 'Attach context to clips' }),
+    ]
+
+    await markIdeasRecorded(ideas, 'C:\\videos\\session-99.mp4')
+
+    expect(mockDynamicMarkRecorded).toHaveBeenNthCalledWith(1, 303, 'session-99')
+    expect(mockDynamicMarkRecorded).toHaveBeenNthCalledWith(2, 404, 'session-99')
     expect(mockLogger.info).toHaveBeenCalledWith('Marked 2 idea(s) as recorded')
   })
 })

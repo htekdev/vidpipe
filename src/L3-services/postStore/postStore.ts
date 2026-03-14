@@ -321,14 +321,46 @@ export async function approveItem(
   // Trigger idea status updates when content is published
   if (item.metadata.ideaIds && item.metadata.ideaIds.length > 0) {
     try {
-      const { markPublished } = await import('../ideation/ideaService.js')
-      for (const ideaId of item.metadata.ideaIds) {
-        await markPublished(ideaId, {
+      const { getIdea, listIdeas, markPublished } = await import('../ideaService/ideaService.js')
+      let cachedIdeas: Map<string, number> | undefined
+
+      for (const rawIdeaId of item.metadata.ideaIds) {
+        const normalizedIdeaId = String(rawIdeaId).trim()
+        if (!normalizedIdeaId) {
+          continue
+        }
+
+        const parsedIssueNumber = Number.parseInt(normalizedIdeaId, 10)
+        let issueNumber: number | undefined
+
+        if (Number.isInteger(parsedIssueNumber)) {
+          issueNumber = parsedIssueNumber
+        } else {
+          if (!cachedIdeas) {
+            const ideas = await listIdeas()
+            cachedIdeas = new Map(ideas.flatMap((idea) => [[idea.id, idea.issueNumber], [String(idea.issueNumber), idea.issueNumber]]))
+          }
+          issueNumber = cachedIdeas.get(normalizedIdeaId)
+        }
+
+        if (!issueNumber) {
+          logger.warn(`Skipping publish record for unknown idea identifier: ${normalizedIdeaId}`)
+          continue
+        }
+
+        const idea = await getIdea(issueNumber)
+        if (!idea) {
+          logger.warn(`Skipping publish record for missing idea #${issueNumber}`)
+          continue
+        }
+
+        await markPublished(issueNumber, {
           clipType: item.metadata.clipType,
           platform: fromLatePlatform(item.metadata.platform),
           queueItemId: id,
           publishedAt: now,
-          publishedUrl: item.metadata.publishedUrl ?? undefined,
+          latePostId: item.metadata.latePostId ?? '',
+          lateUrl: item.metadata.publishedUrl ?? '',
         })
       }
     } catch (err: unknown) {

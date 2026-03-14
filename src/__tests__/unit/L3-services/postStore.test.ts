@@ -18,8 +18,10 @@ vi.mock('../../../L1-infra/config/environment.js', () => ({
 }))
 
 // Allow spying on renameFile from core/fileSystem for the EPERM fallback test
-const { mockRenameFile, mockMarkPublished } = vi.hoisted(() => ({
+const { mockRenameFile, mockGetIdea, mockListIdeas, mockMarkPublished } = vi.hoisted(() => ({
   mockRenameFile: vi.fn() as ReturnType<typeof vi.fn>,
+  mockGetIdea: vi.fn() as ReturnType<typeof vi.fn>,
+  mockListIdeas: vi.fn() as ReturnType<typeof vi.fn>,
   mockMarkPublished: vi.fn() as ReturnType<typeof vi.fn>,
 }))
 
@@ -29,7 +31,9 @@ vi.mock('../../../L1-infra/fileSystem/fileSystem.js', async (importOriginal) => 
   return { ...mod, renameFile: mockRenameFile }
 })
 
-vi.mock('../../../L3-services/ideation/ideaService.js', () => ({
+vi.mock('../../../L3-services/ideaService/ideaService.js', () => ({
+  getIdea: mockGetIdea,
+  listIdeas: mockListIdeas,
   markPublished: mockMarkPublished,
 }))
 
@@ -78,6 +82,19 @@ function makeMetadata(overrides: Partial<QueueItemMetadata> = {}): QueueItemMeta
 describe('postStore', () => {
   beforeEach(async () => {
     vi.clearAllMocks()
+    mockListIdeas.mockResolvedValue([
+      { issueNumber: 1, id: 'idea-1' },
+      { issueNumber: 2, id: 'idea-2' },
+      { issueNumber: 99, id: 'idea-x' },
+    ])
+    mockGetIdea.mockImplementation(async (issueNumber: number) => {
+      const lookup = new Map([
+        [1, { issueNumber: 1, id: 'idea-1' }],
+        [2, { issueNumber: 2, id: 'idea-2' }],
+        [99, { issueNumber: 99, id: 'idea-x' }],
+      ])
+      return lookup.get(issueNumber) ?? null
+    })
     await fs.mkdir(tmpDir, { recursive: true })
   })
 
@@ -244,17 +261,17 @@ describe('postStore', () => {
       })
 
       expect(mockMarkPublished).toHaveBeenCalledTimes(2)
-      expect(mockMarkPublished).toHaveBeenNthCalledWith(1, 'idea-1', expect.objectContaining({
+      expect(mockMarkPublished).toHaveBeenNthCalledWith(1, 1, expect.objectContaining({
         clipType: 'short',
         platform: 'youtube',
         queueItemId: 'approve-ideas',
-        publishedUrl: 'https://youtube.com/watch?v=ideas',
+        lateUrl: 'https://youtube.com/watch?v=ideas',
       }))
-      expect(mockMarkPublished).toHaveBeenNthCalledWith(2, 'idea-2', expect.objectContaining({
+      expect(mockMarkPublished).toHaveBeenNthCalledWith(2, 2, expect.objectContaining({
         clipType: 'short',
         platform: 'youtube',
         queueItemId: 'approve-ideas',
-        publishedUrl: 'https://youtube.com/watch?v=ideas',
+        lateUrl: 'https://youtube.com/watch?v=ideas',
       }))
 
       const publishedMeta = JSON.parse(
@@ -276,7 +293,7 @@ describe('postStore', () => {
       })
 
       expect(mockMarkPublished).toHaveBeenCalledTimes(1)
-      expect(mockMarkPublished).toHaveBeenCalledWith('idea-x', expect.objectContaining({
+      expect(mockMarkPublished).toHaveBeenCalledWith(99, expect.objectContaining({
         platform: 'x',
         queueItemId: 'approve-twitter',
       }))

@@ -88,15 +88,15 @@ test('CLI.REQ-001: second test for same req');
     expect(parseTestSpecRefs(content)).toEqual([]);
   });
 
-  test('handles camelCase spec names like ideaStore', () => {
+  test('handles camelCase spec names like ideaService', () => {
     const content = `
-test('ideaStore.REQ-008 - throws when publishBy is invalid', () => {});
-test('ideaStore.REQ-009 - validates persisted publishBy', () => {});
+test('ideaService.REQ-008 - throws when publishBy is invalid', () => {});
+test('ideaService.REQ-009 - validates persisted publishBy', () => {});
 `;
     const refs = parseTestSpecRefs(content);
     expect(refs).toHaveLength(2);
-    expect(refs[0]).toEqual({ specName: 'ideaStore', reqId: 'REQ-008', fullId: 'ideaStore.REQ-008' });
-    expect(refs[1]).toEqual({ specName: 'ideaStore', reqId: 'REQ-009', fullId: 'ideaStore.REQ-009' });
+    expect(refs[0]).toEqual({ specName: 'ideaService', reqId: 'REQ-008', fullId: 'ideaService.REQ-008' });
+    expect(refs[1]).toEqual({ specName: 'ideaService', reqId: 'REQ-009', fullId: 'ideaService.REQ-009' });
   });
 });
 

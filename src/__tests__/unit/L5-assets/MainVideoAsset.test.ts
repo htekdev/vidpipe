@@ -772,6 +772,9 @@ describe('MainVideoAsset', () => {
       const asset = await MainVideoAsset.load('/recordings/test')
       asset.setIdeas([
         {
+          issueNumber: 1,
+          issueUrl: 'https://github.com/htekdev/content-management/issues/1',
+          repoFullName: 'htekdev/content-management',
           id: 'idea-1',
           topic: 'Topic 1',
           hook: 'Hook 1',
@@ -795,7 +798,7 @@ describe('MainVideoAsset', () => {
         [],
         [],
         '/recordings/test/test-captioned.mp4',
-        ['idea-1'],
+        ['1'],
       )
     })
   })

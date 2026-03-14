@@ -1,14 +1,27 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { mkdtemp, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { Platform, type Idea } from '../../../L0-pure/types/index.js'
-import { readIdeaBank, writeIdea } from '../../../L1-infra/ideaStore/ideaStore.js'
-import { getIdeasByIds, markRecorded } from '../../../L3-services/ideation/ideaService.js'
+
+const mockListIdeas = vi.hoisted(() => vi.fn())
+const mockGetIdea = vi.hoisted(() => vi.fn())
+const mockMarkRecorded = vi.hoisted(() => vi.fn())
+
+vi.mock('../../../L3-services/ideaService/ideaService.js', () => ({
+  listIdeas: mockListIdeas,
+  getIdea: mockGetIdea,
+  getReadyIdeas: vi.fn(),
+  markRecorded: mockMarkRecorded,
+  markPublished: vi.fn(),
+}))
+
+import { getIdeasByIds, markRecorded as markIdeaRecorded } from '../../../L3-services/ideation/ideaService.js'
 
 function createIdea(overrides: Partial<Idea> = {}): Idea {
+  const issueNumber = overrides.issueNumber ?? 1
   return {
-    id: overrides.id ?? 'idea-1',
+    issueNumber,
+    issueUrl: overrides.issueUrl ?? `https://github.com/htekdev/content-management/issues/${issueNumber}`,
+    repoFullName: overrides.repoFullName ?? 'htekdev/content-management',
+    id: overrides.id ?? `idea-${issueNumber}`,
     topic: overrides.topic ?? 'First idea',
     hook: overrides.hook ?? 'Open with the useful outcome',
     audience: overrides.audience ?? 'Developers learning from build videos',
@@ -26,46 +39,42 @@ function createIdea(overrides: Partial<Idea> = {}): Idea {
   }
 }
 
-describe('ideaService', () => {
-  let tempDir: string
-
-  beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), 'vidpipe-idea-service-'))
+describe('ideaService compatibility wrapper', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
   })
 
-  afterEach(async () => {
-    await rm(tempDir, { recursive: true, force: true })
-  })
-
-  it('returns ideas in the requested order', async () => {
+  it('returns ideas in the requested order and supports numeric identifiers', async () => {
     const ideas: Idea[] = [
-      createIdea({ id: 'idea-1', topic: 'First idea', status: 'draft' }),
-      createIdea({ id: 'idea-2', topic: 'Second idea', status: 'ready' }),
+      createIdea({ issueNumber: 101, id: 'idea-101', topic: 'First idea', status: 'draft' }),
+      createIdea({ issueNumber: 202, id: 'idea-202', topic: 'Second idea', status: 'ready' }),
     ]
-    await Promise.all(ideas.map(async (idea) => writeIdea(idea, tempDir)))
+    mockListIdeas.mockResolvedValue(ideas)
 
-    await expect(getIdeasByIds(['idea-2', 'idea-1'], tempDir)).resolves.toEqual([ideas[1], ideas[0]])
+    await expect(getIdeasByIds(['202', 'idea-101'])).resolves.toEqual([ideas[1], ideas[0]])
   })
 
   it('throws when any requested idea id is missing', async () => {
-    await writeIdea(createIdea({ id: 'idea-1', topic: 'First idea', status: 'draft' }), tempDir)
+    mockListIdeas.mockResolvedValue([createIdea({ issueNumber: 101, id: 'idea-101' })])
 
-    await expect(getIdeasByIds(['idea-1', 'idea-9'], tempDir)).rejects.toThrow('Idea not found: idea-9')
+    await expect(getIdeasByIds(['idea-101', 'idea-999'])).rejects.toThrow('Idea not found: idea-999')
   })
 
-  it('marks ideas as recorded and stores the video slug on the idea', async () => {
-    const idea = createIdea({ id: 'idea-1', topic: 'First idea', status: 'ready' })
-    await writeIdea(idea, tempDir)
+  it('marks ideas as recorded using their GitHub issue number', async () => {
+    const idea = createIdea({ issueNumber: 42, id: 'idea-legacy-42', topic: 'First idea', status: 'ready' })
+    mockListIdeas.mockResolvedValue([idea])
 
-    await markRecorded('idea-1', 'session-42', tempDir)
+    await markIdeaRecorded('idea-legacy-42', 'session-42')
 
-    const [recordedIdea] = await readIdeaBank(tempDir)
-    expect(recordedIdea).toMatchObject({
-      id: 'idea-1',
-      topic: 'First idea',
-      status: 'recorded',
-      sourceVideoSlug: 'session-42',
-    })
-    expect(recordedIdea.updatedAt).not.toBe(idea.updatedAt)
+    expect(mockMarkRecorded).toHaveBeenCalledWith(42, 'session-42')
+  })
+
+  it('supports direct numeric issue identifiers when marking recorded ideas', async () => {
+    mockGetIdea.mockResolvedValue(createIdea({ issueNumber: 77, id: 'idea-77' }))
+
+    await markIdeaRecorded('77', 'session-77')
+
+    expect(mockGetIdea).toHaveBeenCalledWith(77)
+    expect(mockMarkRecorded).toHaveBeenCalledWith(77, 'session-77')
   })
 })

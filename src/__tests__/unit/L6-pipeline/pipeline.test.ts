@@ -441,6 +441,9 @@ describe('processVideo', () => {
 
   it('sets ideas on the asset when provided', async () => {
     const ideas: Idea[] = [{
+      issueNumber: 1,
+      issueUrl: 'https://github.com/htekdev/content-management/issues/1',
+      repoFullName: 'htekdev/content-management',
       id: 'idea-1',
       topic: 'Hook-first clip',
       hook: 'Lead with the strongest payoff',

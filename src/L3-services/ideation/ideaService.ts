@@ -1,7 +1,13 @@
 import type { Idea, IdeaPublishRecord, Transcript } from '../../L0-pure/types/index.js'
 import { getModelForAgent } from '../../L1-infra/config/modelConfig.js'
-import { readIdeaBank, writeIdea, readIdea, listIdeaIds } from '../../L1-infra/ideaStore/ideaStore.js'
 import logger from '../../L1-infra/logger/configLogger.js'
+import {
+  getIdea as getGitHubIdea,
+  getReadyIdeas as getGitHubReadyIdeas,
+  listIdeas as listGitHubIdeas,
+  markPublished as markGitHubIdeaPublished,
+  markRecorded as markGitHubIdeaRecorded,
+} from '../ideaService/ideaService.js'
 import { getProvider } from '../llm/providerFactory.js'
 
 const IDEA_MATCH_AGENT_NAME = 'IdeaService'
@@ -16,58 +22,86 @@ interface IdeaSummary {
   keyTakeaway: string
 }
 
+function normalizeIdeaIdentifier(id: string): string {
+  return id.trim()
+}
+
+function buildIdeaLookup(ideas: readonly Idea[]): Map<string, Idea> {
+  const lookup = new Map<string, Idea>()
+  for (const idea of ideas) {
+    lookup.set(idea.id, idea)
+    lookup.set(String(idea.issueNumber), idea)
+  }
+  return lookup
+}
+
+async function resolveIdeaByIdentifier(id: string, ideas?: readonly Idea[]): Promise<Idea | null> {
+  const normalizedId = normalizeIdeaIdentifier(id)
+  if (!normalizedId) {
+    return null
+  }
+
+  const issueNumber = Number.parseInt(normalizedId, 10)
+  if (Number.isInteger(issueNumber)) {
+    const idea = await getGitHubIdea(issueNumber)
+    if (idea) {
+      return idea
+    }
+  }
+
+  const availableIdeas = ideas ?? await listGitHubIdeas()
+  return buildIdeaLookup(availableIdeas).get(normalizedId) ?? null
+}
+
 /**
  * Resolve idea IDs to full Idea objects.
  * Throws if any ID is not found.
  */
-export async function getIdeasByIds(ids: string[], dir?: string): Promise<Idea[]> {
-  return Promise.all(
-    ids.map(async (id) => {
-      const idea = await readIdea(id, dir)
-      if (!idea) {
-        throw new Error(`Idea not found: ${id}`)
-      }
-      return idea
-    }),
-  )
+export async function getIdeasByIds(ids: string[], _dir?: string): Promise<Idea[]> {
+  const ideas = await listGitHubIdeas()
+  const lookup = buildIdeaLookup(ideas)
+
+  return ids.map((id) => {
+    const normalizedId = normalizeIdeaIdentifier(id)
+    const idea = lookup.get(normalizedId)
+    if (!idea) {
+      throw new Error(`Idea not found: ${id}`)
+    }
+    return idea
+  })
 }
 
 /**
  * Return all ideas with status 'ready'.
  */
-export async function getReadyIdeas(dir?: string): Promise<Idea[]> {
-  const ideas = await readIdeaBank(dir)
-  return ideas.filter((idea) => idea.status === 'ready')
+export async function getReadyIdeas(_dir?: string): Promise<Idea[]> {
+  return getGitHubReadyIdeas()
 }
 
 /**
  * Update idea status to 'recorded' and link to video slug.
  * Sets sourceVideoSlug and updates status.
  */
-export async function markRecorded(id: string, videoSlug: string, dir?: string): Promise<void> {
-  const idea = await readIdea(id, dir)
+export async function markRecorded(id: string, videoSlug: string, _dir?: string): Promise<void> {
+  const idea = await resolveIdeaByIdentifier(id)
   if (!idea) {
     throw new Error(`Idea not found: ${id}`)
   }
 
-  idea.status = 'recorded'
-  idea.sourceVideoSlug = videoSlug
-  await writeIdea(idea, dir)
+  await markGitHubIdeaRecorded(idea.issueNumber, videoSlug)
 }
 
 /**
  * Append a publish record to the idea and transition status to 'published'.
  * The idea transitions to 'published' on first publish record.
  */
-export async function markPublished(id: string, record: IdeaPublishRecord, dir?: string): Promise<void> {
-  const idea = await readIdea(id, dir)
+export async function markPublished(id: string, record: IdeaPublishRecord, _dir?: string): Promise<void> {
+  const idea = await resolveIdeaByIdentifier(id)
   if (!idea) {
     throw new Error(`Idea not found: ${id}`)
   }
 
-  idea.publishedContent = [...(idea.publishedContent ?? []), record]
-  idea.status = 'published'
-  await writeIdea(idea, dir)
+  await markGitHubIdeaPublished(idea.issueNumber, record)
 }
 
 /**
@@ -79,10 +113,10 @@ export async function markPublished(id: string, record: IdeaPublishRecord, dir?:
 export async function matchIdeasToTranscript(
   transcript: Transcript,
   ideas?: Idea[],
-  dir?: string,
+  _dir?: string,
 ): Promise<Idea[]> {
   try {
-    const readyIdeas = (ideas ?? await readIdeaBank(dir)).filter((idea) => idea.status === 'ready')
+    const readyIdeas = (ideas ?? await getGitHubReadyIdeas()).filter((idea) => idea.status === 'ready')
     if (readyIdeas.length === 0) {
       return []
     }
@@ -102,9 +136,7 @@ export async function matchIdeasToTranscript(
       hook: idea.hook,
       keyTakeaway: idea.keyTakeaway,
     }))
-    const knownIdeaIds = new Set(
-      ideas ? readyIdeaIds : await listIdeaIds(dir),
-    )
+    const knownIdeaIds = readyIdeaIds
 
     const session = await provider.createSession({
       systemPrompt: MATCH_IDEAS_SYSTEM_PROMPT,
@@ -130,7 +162,7 @@ export async function matchIdeasToTranscript(
         })
       }
 
-      return await getIdeasByIds(matchedIds, dir)
+      return await getIdeasByIds(matchedIds)
     } finally {
       await session.close().catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error)

@@ -221,10 +221,10 @@ const defaultCmd = program
       // Mark ideas as recorded
       if (ideas && ideas.length > 0) {
         try {
-          const { markRecorded } = await import('../L3-services/ideation/ideaService.js')
+          const { markRecorded } = await import('../L3-services/ideaService/ideaService.js')
           const slug = resolvedPath.replace(/\\/g, '/').split('/').pop()?.replace(/\.(mp4|mov|webm|avi|mkv)$/i, '') || ''
           for (const idea of ideas) {
-            await markRecorded(idea.id, slug)
+            await markRecorded(idea.issueNumber, slug)
           }
           logger.info(`Marked ${ideas.length} idea(s) as recorded`)
         } catch (err: unknown) {

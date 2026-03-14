@@ -3,7 +3,7 @@ import type { Idea } from '../L0-pure/types/index.js'
 
 export interface IdeaServiceModule {
   getIdeasByIds(ids: string[]): Promise<Idea[]>
-  markRecorded(ideaId: string, slug: string): Promise<void>
+  markRecorded(issueNumber: number, slug: string): Promise<void>
 }
 
 type IdeaServiceLoader = () => Promise<IdeaServiceModule>
@@ -36,12 +36,20 @@ export async function markIdeasRecorded(
 
   const { markRecorded } = await loadIdeaServiceImpl()
   for (const idea of ideas) {
-    await markRecorded(idea.id, slug)
+    await markRecorded(idea.issueNumber, slug)
   }
 
   logger.info(`Marked ${ideas.length} idea(s) as recorded`)
 }
 
 async function loadIdeaService(): Promise<IdeaServiceModule> {
-  return await import('../L3-services/ideation/ideaService.js') as IdeaServiceModule
+  const [lookupModule, ideaServiceModule] = await Promise.all([
+    import('../L3-services/ideation/ideaService.js'),
+    import('../L3-services/ideaService/ideaService.js'),
+  ])
+
+  return {
+    getIdeasByIds: lookupModule.getIdeasByIds,
+    markRecorded: ideaServiceModule.markRecorded,
+  }
 }
