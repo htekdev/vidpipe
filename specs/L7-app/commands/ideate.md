@@ -2,7 +2,7 @@
 
 ## Overview
 
-`vidpipe ideate` generates and lists saved content ideas for future recordings.
+`vidpipe ideate` generates, lists, and manually creates saved content ideas for future recordings.
 It provides an L7 command surface over the L6 → L5 → L4 ideation chain and persists ideas through the GitHub Issues-backed idea service.
 
 **Source:** `src/L7-app/commands/ideate.ts`
@@ -40,6 +40,26 @@ It provides an L7 command surface over the L6 → L5 → L4 ideation chain and p
 |----|-------------|----------|
 | REQ-020 | `runIdeate()` must initialize runtime config before ideation work begins and forward an explicit `brand` override when provided | P0 |
 
+### Manual idea creation (`--add`)
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| REQ-040 | `--add` flag triggers idea creation mode | P0 |
+| REQ-041 | `--topic` is required when `--add` is used; error if missing | P0 |
+| REQ-042 | Prints `Created idea #N: "topic"` on success (default output) | P0 |
+| REQ-043 | `--format json` prints full Idea object as JSON to stdout | P0 |
+| REQ-044 | `--hook` defaults to topic, `--audience` defaults to "developers", `--platforms` defaults to "youtube" | P1 |
+| REQ-045 | `--key-takeaway` defaults to hook, `--talking-points` and `--tags` default to `[]`, `--publish-by` defaults to 14 days from now | P1 |
+| REQ-046 | Invalid platform names throw descriptive error | P1 |
+| REQ-047 | Comma-separated `--platforms`, `--talking-points`, `--tags` are parsed into arrays | P1 |
+| REQ-048 | Custom `--publish-by` date is forwarded to createIdea | P1 |
+
+### AI-backed creation (`--add` with AI, default)
+
+| ID | Requirement | Priority |
+|----|-------------|----------|
+| REQ-049 | When `--add` is used without `--no-ai`, the full IdeationAgent runs with MCP research tools (Exa, YouTube, Perplexity) to create a single research-backed idea | P0 |
+
 ---
 
 ## Architectural Constraints
@@ -48,9 +68,13 @@ It provides an L7 command surface over the L6 → L5 → L4 ideation chain and p
 |----|------------|----------|
 | ARCH-001 | The L7 ideate command may import only L0, L1, L3, and L6 modules | P0 |
 | ARCH-002 | Idea generation must flow through the L6 wrapper instead of importing L4 agents directly in L7 | P0 |
+| ARCH-003 | `--add` with AI reuses `generateIdeas()` with `singleTopic: true` and `count: 1` — the agent creates the idea internally | P0 |
 
 ---
 
 ## Notes
 
 - Idea statuses follow the lightweight editorial-direction model used elsewhere in the pipeline.
+- `--add` with AI uses the full IdeationAgent with MCP research tools — same quality as batch generation.
+- `--add --no-ai` skips the agent entirely and creates directly from CLI flags + defaults.
+- The `--add` feature supports VidRecord integration via `--format json` output.

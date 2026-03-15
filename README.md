@@ -96,6 +96,9 @@ vidpipe --watch-dir ~/Videos/Recordings
 # Generate a saved idea bank for future recordings
 vidpipe ideate --topics "GitHub Copilot, Azure, TypeScript" --count 4
 
+# Add a single idea with AI enrichment
+vidpipe ideate --add --topic "Building CI/CD with GitHub Actions"
+
 # Full example with options
 vidpipe \
   --watch-dir ~/Videos/Recordings \
@@ -163,6 +166,17 @@ vidpipe doctor            # Check all prerequisites
 | `--format <format>` | Output format: `table` (default) or `json` |
 | `--output <dir>` | Ideas directory (default: `./ideas`) |
 | `--brand <path>` | Brand config path (default: `./brand.json`) |
+| `--add` | Create a single idea (AI-enriched by default) |
+| `--topic <topic>` | Topic for the idea (required with `--add`) |
+| `--hook <hook>` | Opening hook (AI-generated if omitted) |
+| `--audience <audience>` | Target audience (default: `"developers"`) |
+| `--platforms <list>` | Comma-separated platforms: `youtube,tiktok,instagram,linkedin,x` |
+| `--key-takeaway <msg>` | Core message (AI-generated if omitted) |
+| `--talking-points <list>` | Comma-separated talking points |
+| `--tags <list>` | Comma-separated categorization tags |
+| `--publish-by <date>` | Publish-by date (default: 14 days from now) |
+| `--trend-context <text>` | Trend research context |
+| `--no-ai` | Skip AI research agent, use CLI values + defaults |
 
 ---
 
@@ -232,6 +246,21 @@ vidpipe ideate --list --format json
 
 # Link ideas to a recording
 vidpipe process video.mp4 --ideas 12,15
+```
+
+### Manual Idea Creation
+
+Add a single idea with AI enrichment or direct CLI values:
+
+```bash
+# AI-researched — full IdeationAgent with MCP research tools
+vidpipe ideate --add --topic "Building CI/CD with GitHub Actions"
+
+# Direct — skip AI, use CLI flags + defaults
+vidpipe ideate --add --topic "Quick Demo" --no-ai --hook "Ship it live" --audience "developers"
+
+# JSON output for programmatic consumers (e.g., VidRecord Electron app)
+vidpipe ideate --add --topic "My Topic" --format json
 ```
 
 ### How It Works
