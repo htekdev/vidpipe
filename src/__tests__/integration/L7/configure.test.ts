@@ -36,8 +36,8 @@ vi.mock('../../../L1-infra/config/globalConfig.js', () => ({
   maskSecret: mockMaskSecret,
 }))
 
-vi.mock('node:readline/promises', () => ({
-  createInterface: mockCreateInterface,
+vi.mock('../../../L1-infra/readline/readlinePromises.js', () => ({
+  createPromptInterface: mockCreateInterface,
 }))
 
 import { runConfigure } from '../../../L7-app/commands/configure.js'
@@ -133,9 +133,7 @@ describe('L7 Integration: configure command', () => {
 
     await runConfigure('reset')
 
-    expect(mockCreateInterface).toHaveBeenCalledWith(
-      expect.objectContaining({ input: process.stdin, output: process.stdout }),
-    )
+    expect(mockCreateInterface).toHaveBeenCalledOnce()
     expect(mockGetConfigPath).toHaveBeenCalledTimes(1)
     expect(mockQuestion).toHaveBeenCalledWith('Delete the global config file? [y/N]: ')
     expect(mockResetGlobalConfig).toHaveBeenCalledTimes(1)

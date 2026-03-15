@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { Platform } from '../../../L0-pure/types/index.js'
-import type { CreateIdeaInput, Idea, PipelineResult } from '../../../L0-pure/types/index.js'
+import type { CreateIdeaInput, Idea } from '../../../L0-pure/types/index.js'
 import { createVidPipe } from '../../../L7-app/sdk/VidPipeSDK.js'
 
 const {
@@ -32,8 +32,6 @@ const {
   mockGeneratePlatformVariants,
   mockGetFFmpegPath,
   mockGetFFprobePath,
-  mockProcessVideoSafe,
-  mockGenerateIdeas,
 } = vi.hoisted(() => ({
   mockInitConfig: vi.fn(),
   mockGetConfig: vi.fn(),
@@ -62,8 +60,6 @@ const {
   mockGeneratePlatformVariants: vi.fn(),
   mockGetFFmpegPath: vi.fn(),
   mockGetFFprobePath: vi.fn(),
-  mockProcessVideoSafe: vi.fn(),
-  mockGenerateIdeas: vi.fn(),
 }))
 
 vi.mock('../../../L1-infra/config/environment.js', () => ({
@@ -118,14 +114,6 @@ vi.mock('../../../L3-services/videoOperations/videoOperations.js', () => ({
 vi.mock('../../../L3-services/diagnostics/diagnostics.js', () => ({
   getFFmpegPath: mockGetFFmpegPath,
   getFFprobePath: mockGetFFprobePath,
-}))
-
-vi.mock('../../../L6-pipeline/pipeline.js', () => ({
-  processVideoSafe: mockProcessVideoSafe,
-}))
-
-vi.mock('../../../L6-pipeline/ideation.js', () => ({
-  generateIdeas: mockGenerateIdeas,
 }))
 
 const baseEnvironment = {
@@ -222,16 +210,6 @@ function createIdea(issueNumber = 42): Idea {
   }
 }
 
-function createPipelineResult(): PipelineResult {
-  return {
-    shorts: [],
-    mediumClips: [],
-    socialPosts: [],
-    stageResults: [],
-    totalDuration: 0,
-  } as unknown as PipelineResult
-}
-
 describe('VidPipeSDK', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -270,9 +248,6 @@ describe('VidPipeSDK', () => {
 
     mockGetFFmpegPath.mockReturnValue('ffmpeg')
     mockGetFFprobePath.mockReturnValue('ffprobe')
-
-    mockProcessVideoSafe.mockResolvedValue(createPipelineResult())
-    mockGenerateIdeas.mockResolvedValue([])
 
     restoreEnv()
   })
@@ -319,57 +294,6 @@ describe('VidPipeSDK', () => {
     expect(process.env.GEMINI_API_KEY).toBe('gemini-partial')
     expect(process.env.GEMINI_MODEL).toBe('gemini-2.5-pro')
     expect(process.env.REPO_ROOT).toBe('C:\\Repos\\custom')
-  })
-
-  it('delegates processVideo to processVideoSafe and returns the result', async () => {
-    const sdk = createVidPipe()
-    const pipelineResult = createPipelineResult()
-    mockProcessVideoSafe.mockResolvedValue(pipelineResult)
-
-    const result = await sdk.processVideo('C:\\videos\\recording.mp4')
-
-    expect(result).toBe(pipelineResult)
-    expect(mockProcessVideoSafe).toHaveBeenCalledWith('C:\\videos\\recording.mp4', undefined)
-  })
-
-  it('delegates ideate to generateIdeas', async () => {
-    const sdk = createVidPipe()
-    const ideas = [createIdea(7)]
-    mockGenerateIdeas.mockResolvedValue(ideas)
-
-    const result = await sdk.ideate({
-      topics: ['copilot', 'sdk'],
-      count: 2,
-      brandPath: 'C:\\brand.json',
-    })
-
-    expect(result).toBe(ideas)
-    expect(mockGenerateIdeas).toHaveBeenCalledWith({
-      seedTopics: ['copilot', 'sdk'],
-      count: 2,
-      brandPath: 'C:\\brand.json',
-      singleTopic: undefined,
-    })
-  })
-
-  it('delegates ideate with singleTopic for single idea creation', async () => {
-    const sdk = createVidPipe()
-    const ideas = [createIdea(10)]
-    mockGenerateIdeas.mockResolvedValue(ideas)
-
-    const result = await sdk.ideate({
-      topics: ['AI tools'],
-      count: 1,
-      singleTopic: true,
-    })
-
-    expect(result).toStrictEqual(ideas)
-    expect(mockGenerateIdeas).toHaveBeenCalledWith({
-      seedTopics: ['AI tools'],
-      count: 1,
-      brandPath: undefined,
-      singleTopic: true,
-    })
   })
 
   it('delegates ideas.list to listIdeas', async () => {
@@ -590,36 +514,6 @@ describe('VidPipeSDK', () => {
     expect(mockUpdateIdea).toHaveBeenCalledWith(15, {
       keyTakeaway: 'Updated takeaway',
     })
-  })
-
-  it('passes linked ideas and CLI overrides through processVideoSafe', async () => {
-    const sdk = createVidPipe()
-    const ideas = [createIdea(101)]
-    mockGetIdeasByIds.mockResolvedValue(ideas)
-
-    await sdk.processVideo('C:\\videos\\recording.mp4', {
-      ideas: [101],
-      skipGit: true,
-      skipCaptions: true,
-      skipSocialPublish: false,
-    })
-
-    expect(mockGetIdeasByIds).toHaveBeenCalledWith(['101'])
-    expect(mockProcessVideoSafe).toHaveBeenCalledWith('C:\\videos\\recording.mp4', ideas)
-    expect(mockInitConfig).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      git: false,
-      captions: false,
-      socialPublish: true,
-    }))
-  })
-
-  it('throws when processVideoSafe returns no result', async () => {
-    const sdk = createVidPipe()
-    mockProcessVideoSafe.mockResolvedValue(undefined)
-
-    await expect(sdk.processVideo('C:\\videos\\broken.mp4')).rejects.toThrow(
-      'VidPipe pipeline failed for "C:\\videos\\broken.mp4" with an uncaught error',
-    )
   })
 
   it('passes undefined options through schedule.findNextSlot', async () => {

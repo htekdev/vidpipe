@@ -2,14 +2,37 @@ import { join } from 'node:path'
 
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest'
 
-const mockLoadGlobalConfig = vi.hoisted(() => vi.fn())
+const mockExistsSync = vi.hoisted(() => vi.fn())
+const mockReadFileSync = vi.hoisted(() => vi.fn())
 
-vi.mock('../../../L1-infra/config/globalConfig.js', () => ({
-  loadGlobalConfig: mockLoadGlobalConfig,
-}))
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>()
+  return {
+    ...actual,
+    existsSync: mockExistsSync,
+    readFileSync: mockReadFileSync,
+  }
+})
 
 import type { GlobalConfig } from '../../../L1-infra/config/globalConfig.js'
 import { resolveConfig } from '../../../L1-infra/config/configResolver.js'
+
+const FAKE_CONFIG_DIR = 'C:\\fake-vidpipe-config'
+const FAKE_CONFIG_PATH = join(FAKE_CONFIG_DIR, 'config.json')
+
+function stubGlobalConfig(config: GlobalConfig): void {
+  mockExistsSync.mockImplementation((filePath: string) => filePath === FAKE_CONFIG_PATH)
+  mockReadFileSync.mockImplementation((filePath: string) => {
+    if (filePath === FAKE_CONFIG_PATH) {
+      return JSON.stringify(config)
+    }
+    throw new Error(`Unexpected readFileSync call: ${filePath}`)
+  })
+}
+
+function stubNoGlobalConfig(): void {
+  mockExistsSync.mockReturnValue(false)
+}
 
 const trackedEnvKeys = [
   'REPO_ROOT',
@@ -94,8 +117,9 @@ function createGlobalConfig(overrides?: {
 
 describe('resolveConfig', () => {
   beforeEach(() => {
-    mockLoadGlobalConfig.mockReset()
-    mockLoadGlobalConfig.mockReturnValue(createGlobalConfig())
+    vi.clearAllMocks()
+    vi.stubEnv('VIDPIPE_CONFIG_DIR', FAKE_CONFIG_DIR)
+    stubGlobalConfig(createGlobalConfig())
     clearTrackedEnv()
     vi.stubEnv('REPO_ROOT', 'C:\\repo-root')
   })
@@ -105,10 +129,10 @@ describe('resolveConfig', () => {
     restoreTrackedEnv()
   })
 
-  it('calls loadGlobalConfig and uses global values when CLI and env are absent', () => {
+  it('reads global config file and uses global values when CLI and env are absent', () => {
     const config = resolveConfig()
 
-    expect(mockLoadGlobalConfig).toHaveBeenCalledTimes(1)
+    expect(mockReadFileSync).toHaveBeenCalledWith(FAKE_CONFIG_PATH, 'utf8')
     expect(config.OPENAI_API_KEY).toBe('global-openai')
     expect(config.LATE_PROFILE_ID).toBe('global-profile')
     expect(config.LLM_PROVIDER).toBe('global-provider')
@@ -128,14 +152,12 @@ describe('resolveConfig', () => {
   })
 
   it('prefers env vars over global config and defaults for strings', () => {
-    mockLoadGlobalConfig.mockReturnValue(
-      createGlobalConfig({
-        defaults: {
-          llmProvider: 'global-provider',
-          outputDir: 'C:\\global\\recordings',
-        },
-      }),
-    )
+    stubGlobalConfig(createGlobalConfig({
+      defaults: {
+        llmProvider: 'global-provider',
+        outputDir: 'C:\\global\\recordings',
+      },
+    }))
     vi.stubEnv('LLM_PROVIDER', 'env-provider')
     vi.stubEnv('OUTPUT_DIR', 'C:\\env\\recordings')
 
@@ -146,14 +168,12 @@ describe('resolveConfig', () => {
   })
 
   it('prefers global config values over hard-coded defaults for strings', () => {
-    mockLoadGlobalConfig.mockReturnValue(
-      createGlobalConfig({
-        defaults: {
-          llmProvider: 'global-provider',
-          outputDir: 'C:\\global\\custom-recordings',
-        },
-      }),
-    )
+    stubGlobalConfig(createGlobalConfig({
+      defaults: {
+        llmProvider: 'global-provider',
+        outputDir: 'C:\\global\\custom-recordings',
+      },
+    }))
 
     const config = resolveConfig()
 
@@ -162,17 +182,15 @@ describe('resolveConfig', () => {
   })
 
   it('resolves representative string keys from each source independently', () => {
-    mockLoadGlobalConfig.mockReturnValue(
-      createGlobalConfig({
-        credentials: {
-          openaiApiKey: undefined,
-        },
-        defaults: {
-          outputDir: undefined,
-          llmProvider: 'global-provider-only',
-        },
-      }),
-    )
+    stubGlobalConfig(createGlobalConfig({
+      credentials: {
+        openaiApiKey: undefined,
+      },
+      defaults: {
+        outputDir: undefined,
+        llmProvider: 'global-provider-only',
+      },
+    }))
     vi.stubEnv('OUTPUT_DIR', 'C:\\env-only\\recordings')
 
     const config = resolveConfig({ openaiKey: 'cli-only-openai' })
@@ -183,10 +201,7 @@ describe('resolveConfig', () => {
   })
 
   it('falls back through missing string sources to defaults or empty strings', () => {
-    mockLoadGlobalConfig.mockReturnValue({
-      credentials: {},
-      defaults: {},
-    })
+    stubGlobalConfig({ credentials: {}, defaults: {} })
 
     const config = resolveConfig()
 

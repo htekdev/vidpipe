@@ -1,4 +1,4 @@
-import { createInterface, type Interface } from 'node:readline/promises'
+import { createPromptInterface, type ReadlineInterface } from '../../L1-infra/readline/readlinePromises.js'
 
 import {
   getConfigPath,
@@ -138,7 +138,7 @@ function printTable(rows: ReadonlyArray<{ readonly key: string; readonly value: 
   }
 }
 
-function createAsk(rl: Interface): (question: string, defaultValue?: string) => Promise<string> {
+function createAsk(rl: ReadlineInterface): (question: string, defaultValue?: string) => Promise<string> {
   return async function ask(question: string, defaultValue?: string): Promise<string> {
     const answer = (await rl.question(question)).trim()
     if (answer.length > 0) {
@@ -185,7 +185,7 @@ async function promptForConfigValue(
 }
 
 async function runInteractiveWizard(): Promise<void> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  const rl = createPromptInterface()
   const ask = createAsk(rl)
   const config = loadGlobalConfig()
 
@@ -310,7 +310,7 @@ function listConfig(): void {
 }
 
 async function confirmReset(): Promise<boolean> {
-  const rl = createInterface({ input: process.stdin, output: process.stdout })
+  const rl = createPromptInterface()
   const ask = createAsk(rl)
 
   try {

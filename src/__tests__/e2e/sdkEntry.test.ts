@@ -36,8 +36,32 @@ describe('E2E: SDK entry point', () => {
 
   test('ideate accepts singleTopic option', () => {
     const sdk = createVidPipe()
-    // Verify the method signature accepts singleTopic without type errors
-    // (actual call would require LLM services — just verify it's callable)
     expect(typeof sdk.ideate).toBe('function')
+  })
+
+  test('SDK configure namespace provides config management methods', () => {
+    const sdk = createVidPipe()
+    expect(typeof sdk.config.get).toBe('function')
+    expect(typeof sdk.config.getAll).toBe('function')
+    expect(typeof sdk.config.getGlobal).toBe('function')
+    expect(typeof sdk.config.set).toBe('function')
+    expect(typeof sdk.config.save).toBe('function')
+    expect(typeof sdk.config.path).toBe('function')
+  })
+
+  test('L1 readlinePromises wrapper exports createPromptInterface', async () => {
+    const { createPromptInterface } = await import('../../L1-infra/readline/readlinePromises.js')
+    expect(typeof createPromptInterface).toBe('function')
+
+    // Exercise the function with a custom readable/writable to avoid blocking on stdin
+    const { Readable, Writable } = await import('node:stream')
+    const input = new Readable({ read() { this.push(null) } })
+    const output = new Writable({ write(_chunk, _enc, cb) { cb() } })
+
+    const rl = createPromptInterface({ input, output })
+    expect(rl).toBeDefined()
+    expect(typeof rl.question).toBe('function')
+    expect(typeof rl.close).toBe('function')
+    rl.close()
   })
 })
