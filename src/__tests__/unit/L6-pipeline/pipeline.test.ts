@@ -17,6 +17,7 @@ const {
   mockMarkProcessing,
   mockMarkCompleted,
   mockMarkFailed,
+  mockProgressEmitter,
   // MainVideoAsset method mocks
   mockGetTranscript,
   mockGetEditedVideo,
@@ -49,6 +50,7 @@ const {
   mockMarkProcessing: vi.fn().mockResolvedValue(undefined),
   mockMarkCompleted: vi.fn().mockResolvedValue(undefined),
   mockMarkFailed: vi.fn().mockResolvedValue(undefined),
+  mockProgressEmitter: { emit: vi.fn(), enable: vi.fn(), disable: vi.fn(), isEnabled: vi.fn().mockReturnValue(false) },
   // MainVideoAsset method mocks
   mockGetTranscript: vi.fn(),
   mockGetEditedVideo: vi.fn(),
@@ -75,6 +77,7 @@ const {
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({ default: mockLogger, pushPipe: vi.fn(), popPipe: vi.fn() }))
 vi.mock('../../../L1-infra/config/environment.js', () => ({ getConfig: mockGetConfig }))
 vi.mock('../../../L1-infra/config/modelConfig.js', () => ({ getModelForAgent: mockGetModelForAgent }))
+vi.mock('../../../L1-infra/progress/progressEmitter.js', () => ({ progressEmitter: mockProgressEmitter }))
 vi.mock('../../../L1-infra/paths/paths.js', () => ({
   join: (...args: string[]) => args.join('/'),
   dirname: (p: string) => p.split('/').slice(0, -1).join('/'),
@@ -698,5 +701,244 @@ describe('processVideoSafe', () => {
 
     expect(result).toBeNull()
     expect(mockLogger.error).toHaveBeenCalledWith(expect.stringContaining('config explosion'))
+  })
+})
+
+// ============================================================================
+// Progress event tests
+// ============================================================================
+
+describe('progress events', () => {
+  const video = makeVideoFile()
+  const transcript = makeTranscript()
+
+  function makeAssetMockForProgress(overrides: Record<string, unknown> = {}) {
+    return {
+      toVideoFile: vi.fn().mockResolvedValue(video),
+      getEditorialDirection: mockGetEditorialDirection,
+      getMetadata: mockGetMetadata,
+      videoPath: video.repoPath,
+      slug: video.slug,
+      videoDir: video.videoDir,
+      editedVideoPath: `${video.videoDir}/${video.slug}-edited.mp4`,
+      getTranscript: mockGetTranscript,
+      getEditedVideo: mockGetEditedVideo,
+      getEnhancedVideo: mockGetEnhancedVideo,
+      getCaptions: mockGetCaptions,
+      getCaptionedVideo: mockGetCaptionedVideo,
+      getShorts: mockGetShorts,
+      getMediumClips: mockGetMediumClips,
+      getChapters: mockGetChapters,
+      getSummary: mockGetSummary,
+      getSocialPosts: mockGetSocialPosts,
+      generateShortPostsData: mockGenerateShortPostsData,
+      generateMediumClipPostsData: mockGenerateMediumClipPostsData,
+      getBlog: mockGetBlog,
+      buildQueue: mockBuildQueue,
+      commitAndPushChanges: mockCommitAndPushChanges,
+      setIdeas: mockSetIdeas,
+      ...overrides,
+    } as any
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetConfig.mockReturnValue(defaultConfig())
+    mockGetTranscript.mockResolvedValue(transcript)
+    mockGetEditedVideo.mockResolvedValue('/edited.mp4')
+    mockGetEnhancedVideo.mockResolvedValue('/enhanced.mp4')
+    mockGetCaptions.mockResolvedValue({ srt: 'srt', vtt: 'vtt', ass: 'ass' })
+    mockGetCaptionedVideo.mockResolvedValue('/captioned.mp4')
+    mockGetShorts.mockResolvedValue([])
+    mockGetMediumClips.mockResolvedValue([])
+    mockGetChapters.mockResolvedValue([])
+    mockGetSummary.mockResolvedValue({ title: 'Test' })
+    mockGetSocialPosts.mockResolvedValue([])
+    mockGetBlog.mockResolvedValue('blog content')
+    mockCommitAndPushChanges.mockResolvedValue(undefined)
+    mockMainVideoAssetIngest.mockResolvedValue(makeAssetMockForProgress())
+  })
+
+  describe('progressEvents.REQ-004: pipeline:start emitted', () => {
+    it('progressEvents.REQ-004 - emits pipeline:start before first stage', async () => {
+      await processVideo('/videos/test.mp4')
+
+      const startCalls = mockProgressEmitter.emit.mock.calls.filter(
+        (c: unknown[]) => (c[0] as { event: string }).event === 'pipeline:start'
+      )
+      expect(startCalls).toHaveLength(1)
+      expect(startCalls[0][0]).toMatchObject({
+        event: 'pipeline:start',
+        videoPath: '/videos/test.mp4',
+        totalStages: 16,
+      })
+    })
+  })
+
+  describe('progressEvents.REQ-005: stage:start emitted', () => {
+    it('progressEvents.REQ-005 - emits stage:start for each executed stage', async () => {
+      await processVideo('/videos/test.mp4')
+
+      const startEvents = mockProgressEmitter.emit.mock.calls
+        .map((c: unknown[]) => c[0] as { event: string })
+        .filter((e: { event: string }) => e.event === 'stage:start')
+
+      // At minimum, ingestion and transcription should have start events
+      expect(startEvents.length).toBeGreaterThanOrEqual(2)
+    })
+  })
+
+  describe('progressEvents.REQ-006: stage:complete emitted', () => {
+    it('progressEvents.REQ-006 - emits stage:complete with duration for successful stages', async () => {
+      await processVideo('/videos/test.mp4')
+
+      const completeEvents = mockProgressEmitter.emit.mock.calls
+        .map((c: unknown[]) => c[0] as { event: string; duration?: number; success?: boolean })
+        .filter((e) => e.event === 'stage:complete')
+
+      expect(completeEvents.length).toBeGreaterThan(0)
+      for (const event of completeEvents) {
+        expect(event.duration).toBeGreaterThanOrEqual(0)
+        expect(event.success).toBe(true)
+      }
+    })
+  })
+
+  describe('progressEvents.REQ-007: stage:error emitted on failure', () => {
+    it('progressEvents.REQ-007 - emits stage:error when a stage fails', async () => {
+      mockGetTranscript.mockRejectedValue(new Error('Whisper timeout'))
+      await processVideo('/videos/test.mp4')
+
+      const errorEvents = mockProgressEmitter.emit.mock.calls
+        .map((c: unknown[]) => c[0] as { event: string; error?: string; stage?: string })
+        .filter((e) => e.event === 'stage:error')
+
+      expect(errorEvents).toHaveLength(1)
+      expect(errorEvents[0].error).toBe('Whisper timeout')
+      expect(errorEvents[0].stage).toBe(PipelineStage.Transcription)
+    })
+  })
+
+  describe('progressEvents.REQ-008: stage:skip emitted', () => {
+    it('progressEvents.REQ-008 - emits stage:skip when config disables a stage', async () => {
+      mockGetConfig.mockReturnValue(defaultConfig({
+        SKIP_SHORTS: true,
+        SKIP_SILENCE_REMOVAL: true,
+      }))
+      await processVideo('/videos/test.mp4')
+
+      const skipEvents = mockProgressEmitter.emit.mock.calls
+        .map((c: unknown[]) => c[0] as { event: string; stage?: string; reason?: string })
+        .filter((e) => e.event === 'stage:skip')
+
+      const skipStages = skipEvents.map(e => e.stage)
+      expect(skipStages).toContain(PipelineStage.SilenceRemoval)
+      expect(skipStages).toContain(PipelineStage.Shorts)
+
+      const silenceSkip = skipEvents.find(e => e.stage === PipelineStage.SilenceRemoval)
+      expect(silenceSkip?.reason).toBe('SKIP_SILENCE_REMOVAL')
+    })
+  })
+
+  describe('progressEvents.REQ-009: pipeline:complete emitted', () => {
+    it('progressEvents.REQ-009 - emits pipeline:complete with summary counts', async () => {
+      await processVideo('/videos/test.mp4')
+
+      const completeCalls = mockProgressEmitter.emit.mock.calls.filter(
+        (c: unknown[]) => (c[0] as { event: string }).event === 'pipeline:complete'
+      )
+      expect(completeCalls).toHaveLength(1)
+
+      const event = completeCalls[0][0] as {
+        event: string;
+        totalDuration: number;
+        stagesCompleted: number;
+        stagesFailed: number;
+        stagesSkipped: number;
+      }
+      expect(event.totalDuration).toBeGreaterThanOrEqual(0)
+      expect(event.stagesCompleted).toBeGreaterThan(0)
+      expect(event.stagesFailed).toBe(0)
+      // Visual enhancement is skipped by default (SKIP_VISUAL_ENHANCEMENT: true)
+      expect(event.stagesSkipped).toBe(1)
+    })
+
+    it('progressEvents.REQ-009 - counts failed and skipped stages', async () => {
+      mockGetConfig.mockReturnValue(defaultConfig({ SKIP_SHORTS: true }))
+      mockGetTranscript.mockRejectedValue(new Error('fail'))
+      await processVideo('/videos/test.mp4')
+
+      const event = mockProgressEmitter.emit.mock.calls
+        .map((c: unknown[]) => c[0] as { event: string; stagesFailed?: number; stagesSkipped?: number })
+        .find(e => e.event === 'pipeline:complete')
+
+      expect(event?.stagesFailed).toBeGreaterThanOrEqual(1)
+      expect(event?.stagesSkipped).toBeGreaterThanOrEqual(1)
+    })
+  })
+
+  describe('progressEvents.REQ-010: timestamps present', () => {
+    it('progressEvents.REQ-010 - all events include ISO timestamp', async () => {
+      await processVideo('/videos/test.mp4')
+
+      for (const call of mockProgressEmitter.emit.mock.calls) {
+        const event = call[0] as { timestamp: string }
+        expect(event.timestamp).toBeDefined()
+        expect(new Date(event.timestamp).toISOString()).toBe(event.timestamp)
+      }
+    })
+  })
+
+  describe('progressEvents.REQ-011: stage metadata in events', () => {
+    it('progressEvents.REQ-011 - stage events include stageNumber, totalStages, name', async () => {
+      await processVideo('/videos/test.mp4')
+
+      const stageEvents = mockProgressEmitter.emit.mock.calls
+        .map((c: unknown[]) => c[0] as { event: string; stageNumber?: number; totalStages?: number; name?: string })
+        .filter((e) => e.event.startsWith('stage:'))
+
+      for (const event of stageEvents) {
+        expect(event.stageNumber).toBeGreaterThan(0)
+        expect(event.totalStages).toBe(16)
+        expect(event.name).toBeTruthy()
+      }
+    })
+  })
+})
+
+describe('runStage progress events', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('progressEvents.REQ-005 - emits stage:start before execution', async () => {
+    const stageResults: StageResult[] = []
+    await runStage(PipelineStage.Ingestion, async () => 'ok', stageResults)
+
+    const firstEmitCall = mockProgressEmitter.emit.mock.calls[0]?.[0] as { event: string; stage?: string }
+    expect(firstEmitCall.event).toBe('stage:start')
+    expect(firstEmitCall.stage).toBe(PipelineStage.Ingestion)
+  })
+
+  it('progressEvents.REQ-006 - emits stage:complete on success', async () => {
+    const stageResults: StageResult[] = []
+    await runStage(PipelineStage.Ingestion, async () => 'ok', stageResults)
+
+    const completeCall = mockProgressEmitter.emit.mock.calls.find(
+      (c: unknown[]) => (c[0] as { event: string }).event === 'stage:complete'
+    )
+    expect(completeCall).toBeDefined()
+    expect((completeCall![0] as { success: boolean }).success).toBe(true)
+  })
+
+  it('progressEvents.REQ-007 - emits stage:error on failure', async () => {
+    const stageResults: StageResult[] = []
+    await runStage(PipelineStage.Transcription, async () => { throw new Error('boom') }, stageResults)
+
+    const errorCall = mockProgressEmitter.emit.mock.calls.find(
+      (c: unknown[]) => (c[0] as { event: string }).event === 'stage:error'
+    )
+    expect(errorCall).toBeDefined()
+    expect((errorCall![0] as { error: string }).error).toBe('boom')
   })
 })

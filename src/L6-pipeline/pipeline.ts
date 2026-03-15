@@ -2,6 +2,7 @@ import { join, basename } from '../L1-infra/paths/paths.js'
 import { writeTextFile } from '../L1-infra/fileSystem/fileSystem.js'
 import logger, { pushPipe, popPipe } from '../L1-infra/logger/configLogger'
 import { getConfig } from '../L1-infra/config/environment'
+import { progressEmitter } from '../L1-infra/progress/progressEmitter.js'
 import { MainVideoAsset } from '../L5-assets/MainVideoAsset.js'
 import { costTracker, markPending, markProcessing, markCompleted, markFailed } from '../L5-assets/pipelineServices.js'
 import type { CostReport } from '../L5-assets/pipelineServices.js'
@@ -17,7 +18,7 @@ import type {
   Chapter,
   Idea,
 } from '../L0-pure/types/index'
-import { PipelineStage as Stage } from '../L0-pure/types/index'
+import { PipelineStage as Stage, getStageInfo, TOTAL_STAGES } from '../L0-pure/types/index'
 import type { ShortVideoAsset } from '../L5-assets/ShortVideoAsset.js'
 import type { MediumClipAsset } from '../L5-assets/MediumClipAsset.js'
 import type { CaptionFiles } from '../L5-assets/VideoAsset.js'
@@ -46,18 +47,53 @@ export async function runStage<T>(
   fn: () => Promise<T>,
   stageResults: StageResult[],
 ): Promise<T | undefined> {
+  const info = getStageInfo(stageName)
   const start = Date.now()
+
+  progressEmitter.emit({
+    event: 'stage:start',
+    stage: stageName,
+    stageNumber: info.stageNumber,
+    totalStages: TOTAL_STAGES,
+    name: info.name,
+    timestamp: new Date().toISOString(),
+  })
+
   try {
     const result = await fn()
     const duration = Date.now() - start
     stageResults.push({ stage: stageName, success: true, duration })
     logger.info(`Stage ${stageName} completed in ${duration}ms`)
+
+    progressEmitter.emit({
+      event: 'stage:complete',
+      stage: stageName,
+      stageNumber: info.stageNumber,
+      totalStages: TOTAL_STAGES,
+      name: info.name,
+      duration,
+      success: true,
+      timestamp: new Date().toISOString(),
+    })
+
     return result
   } catch (err: unknown) {
     const duration = Date.now() - start
     const message = err instanceof Error ? err.message : String(err)
     stageResults.push({ stage: stageName, success: false, error: message, duration })
     logger.error(`Stage ${stageName} failed after ${duration}ms: ${message}`)
+
+    progressEmitter.emit({
+      event: 'stage:error',
+      stage: stageName,
+      stageNumber: info.stageNumber,
+      totalStages: TOTAL_STAGES,
+      name: info.name,
+      duration,
+      error: message,
+      timestamp: new Date().toISOString(),
+    })
+
     return undefined
   }
 }
@@ -133,6 +169,7 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
   const pipelineStart = Date.now()
   const stageResults: StageResult[] = []
   const cfg = getConfig()
+  let stagesSkipped = 0
 
   costTracker.reset()
 
@@ -141,6 +178,28 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
     costTracker.setStage(stage)
     return runStage(stage, fn, stageResults)
   }
+
+  // Helper: emit a skip event when a stage is disabled via config flag
+  function skipStage(stage: PipelineStage, reason: string): void {
+    stagesSkipped++
+    const info = getStageInfo(stage)
+    progressEmitter.emit({
+      event: 'stage:skip',
+      stage,
+      stageNumber: info.stageNumber,
+      totalStages: TOTAL_STAGES,
+      name: info.name,
+      reason,
+      timestamp: new Date().toISOString(),
+    })
+  }
+
+  progressEmitter.emit({
+    event: 'pipeline:start',
+    videoPath,
+    totalStages: TOTAL_STAGES,
+    timestamp: new Date().toISOString(),
+  })
 
   logger.info(`Pipeline starting for: ${videoPath}`)
 
@@ -182,24 +241,32 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
     let editedVideoPath: string | undefined
     if (!cfg.SKIP_SILENCE_REMOVAL) {
       editedVideoPath = await trackStage<string>(Stage.SilenceRemoval, () => asset.getEditedVideo())
+    } else {
+      skipStage(Stage.SilenceRemoval, 'SKIP_SILENCE_REMOVAL')
     }
 
     // 3.5. Visual Enhancement — asset handles overlay generation + compositing
     let enhancedVideoPath: string | undefined
     if (!cfg.SKIP_VISUAL_ENHANCEMENT) {
       enhancedVideoPath = await trackStage<string>(Stage.VisualEnhancement, () => asset.getEnhancedVideo())
+    } else {
+      skipStage(Stage.VisualEnhancement, 'SKIP_VISUAL_ENHANCEMENT')
     }
 
     // 4. Captions — asset handles transcript → SRT/VTT/ASS generation
     let captions: CaptionFiles | undefined
     if (!cfg.SKIP_CAPTIONS) {
       captions = await trackStage<CaptionFiles>(Stage.Captions, () => asset.getCaptions())
+    } else {
+      skipStage(Stage.Captions, 'SKIP_CAPTIONS')
     }
 
     // 5. Caption Burn — asset handles burning captions into video
     let captionedVideoPath: string | undefined
     if (!cfg.SKIP_CAPTIONS) {
       captionedVideoPath = await trackStage<string>(Stage.CaptionBurn, () => asset.getCaptionedVideo())
+    } else {
+      skipStage(Stage.CaptionBurn, 'SKIP_CAPTIONS')
     }
 
     // 6. Shorts — asset handles clip planning, extraction, caption burning
@@ -207,6 +274,8 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
     if (!cfg.SKIP_SHORTS) {
       const shortAssets = await trackStage<ShortVideoAsset[]>(Stage.Shorts, () => asset.getShorts()) ?? []
       shorts = shortAssets.map(s => s.clip)
+    } else {
+      skipStage(Stage.Shorts, 'SKIP_SHORTS')
     }
 
     // 7. Medium Clips — asset handles clip planning, extraction, transitions
@@ -214,6 +283,8 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
     if (!cfg.SKIP_MEDIUM_CLIPS) {
       const mediumAssets = await trackStage<MediumClipAsset[]>(Stage.MediumClips, () => asset.getMediumClips()) ?? []
       mediumClips = mediumAssets.map(m => m.clip)
+    } else {
+      skipStage(Stage.MediumClips, 'SKIP_MEDIUM_CLIPS')
     }
 
     // 8. Chapters — asset handles topic boundary detection
@@ -247,11 +318,17 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
           }
         })
       }
+    } else {
+      skipStage(Stage.SocialMedia, 'SKIP_SOCIAL')
+      skipStage(Stage.ShortPosts, 'SKIP_SOCIAL')
+      skipStage(Stage.MediumClipPosts, 'SKIP_SOCIAL')
     }
 
     // 13. Queue Build — asset handles publish-queue/ population
     if (!cfg.SKIP_SOCIAL_PUBLISH && socialPosts.length > 0) {
       await trackStage<void>(Stage.QueueBuild, () => asset.buildQueue(shorts, mediumClips, socialPosts, captionedVideoPath))
+    } else if (cfg.SKIP_SOCIAL_PUBLISH) {
+      skipStage(Stage.QueueBuild, 'SKIP_SOCIAL_PUBLISH')
     }
 
     // 14. Blog — asset handles blog post generation
@@ -260,6 +337,8 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
     // 15. Git — asset handles commit and push
     if (!cfg.SKIP_GIT) {
       await trackStage<void>(Stage.GitPush, () => asset.commitAndPushChanges())
+    } else {
+      skipStage(Stage.GitPush, 'SKIP_GIT')
     }
 
     const totalDuration = Date.now() - pipelineStart
@@ -273,6 +352,18 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
       await writeTextFile(costPath, costMd)
       logger.info(`Cost report saved: ${costPath}`)
     }
+
+    const stagesCompleted = stageResults.filter(r => r.success).length
+    const stagesFailed = stageResults.filter(r => !r.success).length
+
+    progressEmitter.emit({
+      event: 'pipeline:complete',
+      totalDuration,
+      stagesCompleted,
+      stagesFailed,
+      stagesSkipped,
+      timestamp: new Date().toISOString(),
+    })
 
     logger.info(`Pipeline completed in ${totalDuration}ms`)
 

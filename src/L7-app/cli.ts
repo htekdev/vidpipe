@@ -4,6 +4,7 @@ import type { CLIOptions } from '../L1-infra/config/environment'
 import { FileWatcher } from './fileWatcher'
 import { processVideoSafe } from '../L6-pipeline/pipeline'
 import logger, { setVerbose } from '../L1-infra/logger/configLogger'
+import { progressEmitter } from '../L1-infra/progress/progressEmitter.js'
 import { runDoctor } from './commands/doctor'
 import { runInit } from './commands/init'
 import { runSchedule } from './commands/schedule'
@@ -156,6 +157,7 @@ const defaultCmd = program
   .option('--late-profile-id <id>', 'Late profile ID (default: env LATE_PROFILE_ID)')
   .option('--ideas <ids>', 'Comma-separated idea IDs to link to this video')
   .option('-v, --verbose', 'Verbose logging')
+  .option('--progress', 'Emit structured JSON progress events to stderr')
   .option('--doctor', 'Check all prerequisites and exit')
   .action(async (videoPath: string | undefined) => {
     const opts = defaultCmd.opts()
@@ -192,6 +194,7 @@ const defaultCmd = program
     logger.info(BANNER)
     initConfig(cliOptions)
     if (opts.verbose) setVerbose()
+    if (opts.progress) progressEmitter.enable()
     validateRequiredKeys()
 
     const config = getConfig()
