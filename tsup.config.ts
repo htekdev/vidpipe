@@ -13,6 +13,10 @@ const shared = {
     // All dependencies are external (installed by npm)
     /^[^./]/,
   ],
+  // Bundle CJS packages that lack proper ESM subpath exports.
+  // vscode-jsonrpc is CJS-only with no "exports" map — @github/copilot-sdk
+  // imports "vscode-jsonrpc/node" which fails in ESM without subpath exports.
+  noExternal: ['vscode-jsonrpc'],
 }
 
 export default defineConfig([
