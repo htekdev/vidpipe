@@ -47,17 +47,19 @@ export async function runStage<T>(
   fn: () => Promise<T>,
   stageResults: StageResult[],
 ): Promise<T | undefined> {
-  const info = getStageInfo(stageName)
   const start = Date.now()
 
-  progressEmitter.emit({
-    event: 'stage:start',
-    stage: stageName,
-    stageNumber: info.stageNumber,
-    totalStages: TOTAL_STAGES,
-    name: info.name,
-    timestamp: new Date().toISOString(),
-  })
+  if (progressEmitter.isEnabled()) {
+    const info = getStageInfo(stageName)
+    progressEmitter.emit({
+      event: 'stage:start',
+      stage: stageName,
+      stageNumber: info.stageNumber,
+      totalStages: TOTAL_STAGES,
+      name: info.name,
+      timestamp: new Date().toISOString(),
+    })
+  }
 
   try {
     const result = await fn()
@@ -65,16 +67,19 @@ export async function runStage<T>(
     stageResults.push({ stage: stageName, success: true, duration })
     logger.info(`Stage ${stageName} completed in ${duration}ms`)
 
-    progressEmitter.emit({
-      event: 'stage:complete',
-      stage: stageName,
-      stageNumber: info.stageNumber,
-      totalStages: TOTAL_STAGES,
-      name: info.name,
-      duration,
-      success: true,
-      timestamp: new Date().toISOString(),
-    })
+    if (progressEmitter.isEnabled()) {
+      const info = getStageInfo(stageName)
+      progressEmitter.emit({
+        event: 'stage:complete',
+        stage: stageName,
+        stageNumber: info.stageNumber,
+        totalStages: TOTAL_STAGES,
+        name: info.name,
+        duration,
+        success: true,
+        timestamp: new Date().toISOString(),
+      })
+    }
 
     return result
   } catch (err: unknown) {
@@ -83,16 +88,19 @@ export async function runStage<T>(
     stageResults.push({ stage: stageName, success: false, error: message, duration })
     logger.error(`Stage ${stageName} failed after ${duration}ms: ${message}`)
 
-    progressEmitter.emit({
-      event: 'stage:error',
-      stage: stageName,
-      stageNumber: info.stageNumber,
-      totalStages: TOTAL_STAGES,
-      name: info.name,
-      duration,
-      error: message,
-      timestamp: new Date().toISOString(),
-    })
+    if (progressEmitter.isEnabled()) {
+      const info = getStageInfo(stageName)
+      progressEmitter.emit({
+        event: 'stage:error',
+        stage: stageName,
+        stageNumber: info.stageNumber,
+        totalStages: TOTAL_STAGES,
+        name: info.name,
+        duration,
+        error: message,
+        timestamp: new Date().toISOString(),
+      })
+    }
 
     return undefined
   }
@@ -179,27 +187,31 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
     return runStage(stage, fn, stageResults)
   }
 
-  // Helper: emit a skip event when a stage is disabled via config flag
+  // Helper: emit a skip event when a stage is disabled via config or has no data
   function skipStage(stage: PipelineStage, reason: string): void {
     stagesSkipped++
-    const info = getStageInfo(stage)
+    if (progressEmitter.isEnabled()) {
+      const info = getStageInfo(stage)
+      progressEmitter.emit({
+        event: 'stage:skip',
+        stage,
+        stageNumber: info.stageNumber,
+        totalStages: TOTAL_STAGES,
+        name: info.name,
+        reason,
+        timestamp: new Date().toISOString(),
+      })
+    }
+  }
+
+  if (progressEmitter.isEnabled()) {
     progressEmitter.emit({
-      event: 'stage:skip',
-      stage,
-      stageNumber: info.stageNumber,
+      event: 'pipeline:start',
+      videoPath,
       totalStages: TOTAL_STAGES,
-      name: info.name,
-      reason,
       timestamp: new Date().toISOString(),
     })
   }
-
-  progressEmitter.emit({
-    event: 'pipeline:start',
-    videoPath,
-    totalStages: TOTAL_STAGES,
-    timestamp: new Date().toISOString(),
-  })
 
   logger.info(`Pipeline starting for: ${videoPath}`)
 
@@ -208,6 +220,18 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
   if (!asset) {
     const totalDuration = Date.now() - pipelineStart
     logger.error('Ingestion failed — cannot proceed without video metadata')
+
+    if (progressEmitter.isEnabled()) {
+      progressEmitter.emit({
+        event: 'pipeline:complete',
+        totalDuration,
+        stagesCompleted: 0,
+        stagesFailed: 1,
+        stagesSkipped: 0,
+        timestamp: new Date().toISOString(),
+      })
+    }
+
     return {
       video: { originalPath: videoPath, repoPath: '', videoDir: '', slug: '', filename: '', duration: 0, size: 0, createdAt: new Date() },
       transcript: undefined,
@@ -307,6 +331,8 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
             socialPosts.push(...posts)
           }
         })
+      } else {
+        skipStage(Stage.ShortPosts, 'NO_SHORTS')
       }
 
       // 12. Medium Clip Posts — generate social posts for each medium clip
@@ -317,6 +343,8 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
             socialPosts.push(...posts)
           }
         })
+      } else {
+        skipStage(Stage.MediumClipPosts, 'NO_MEDIUM_CLIPS')
       }
     } else {
       skipStage(Stage.SocialMedia, 'SKIP_SOCIAL')
@@ -329,6 +357,8 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
       await trackStage<void>(Stage.QueueBuild, () => asset.buildQueue(shorts, mediumClips, socialPosts, captionedVideoPath))
     } else if (cfg.SKIP_SOCIAL_PUBLISH) {
       skipStage(Stage.QueueBuild, 'SKIP_SOCIAL_PUBLISH')
+    } else {
+      skipStage(Stage.QueueBuild, 'NO_SOCIAL_POSTS')
     }
 
     // 14. Blog — asset handles blog post generation
@@ -356,14 +386,16 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
     const stagesCompleted = stageResults.filter(r => r.success).length
     const stagesFailed = stageResults.filter(r => !r.success).length
 
-    progressEmitter.emit({
-      event: 'pipeline:complete',
-      totalDuration,
-      stagesCompleted,
-      stagesFailed,
-      stagesSkipped,
-      timestamp: new Date().toISOString(),
-    })
+    if (progressEmitter.isEnabled()) {
+      progressEmitter.emit({
+        event: 'pipeline:complete',
+        totalDuration,
+        stagesCompleted,
+        stagesFailed,
+        stagesSkipped,
+        timestamp: new Date().toISOString(),
+      })
+    }
 
     logger.info(`Pipeline completed in ${totalDuration}ms`)
 

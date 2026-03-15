@@ -23,8 +23,8 @@ parsing human-readable log output.
 | REQ-005 | `stage:start` event emitted before each stage executes | P0 |
 | REQ-006 | `stage:complete` event emitted when a stage succeeds, with duration | P0 |
 | REQ-007 | `stage:error` event emitted when a stage fails, with error message and duration | P0 |
-| REQ-008 | `stage:skip` event emitted when a config flag skips a stage, with reason | P0 |
-| REQ-009 | `pipeline:complete` event emitted after all stages, with summary counts | P0 |
+| REQ-008 | `stage:skip` event emitted when a stage is skipped (config flag or empty data), with reason | P0 |
+| REQ-009 | `pipeline:complete` event emitted after all stages (including early abort), with summary counts | P0 |
 | REQ-010 | All events include an ISO 8601 `timestamp` field | P0 |
 | REQ-011 | Stage events include `stageNumber`, `totalStages`, and human-readable `name` | P0 |
 | REQ-012 | `totalStages` is derived from `PIPELINE_STAGES` constant, not hardcoded | P1 |
@@ -40,7 +40,7 @@ parsing human-readable log output.
 | ARCH-001 | Progress event types live in L0-pure (no I/O dependencies) | P0 |
 | ARCH-002 | `PIPELINE_STAGES` constant and `getStageInfo()` live in L0-pure | P0 |
 | ARCH-003 | `ProgressEmitter` singleton lives in L1-infra (stderr I/O) | P0 |
-| ARCH-004 | L6 pipeline imports emitter from L1 (foundation layer) | P0 |
+| ARCH-004 | L6 pipeline imports emitter from L1; all emit calls guarded by `isEnabled()` for zero overhead | P0 |
 | ARCH-005 | L7 CLI enables emitter — pipeline code does not read CLI flags | P0 |
 
 ## Event Schema

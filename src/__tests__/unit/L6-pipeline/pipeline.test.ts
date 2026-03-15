@@ -744,6 +744,7 @@ describe('progress events', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetConfig.mockReturnValue(defaultConfig())
+    mockProgressEmitter.isEnabled.mockReturnValue(true)
     mockGetTranscript.mockResolvedValue(transcript)
     mockGetEditedVideo.mockResolvedValue('/edited.mp4')
     mockGetEnhancedVideo.mockResolvedValue('/enhanced.mp4')
@@ -859,8 +860,8 @@ describe('progress events', () => {
       expect(event.totalDuration).toBeGreaterThanOrEqual(0)
       expect(event.stagesCompleted).toBeGreaterThan(0)
       expect(event.stagesFailed).toBe(0)
-      // Visual enhancement is skipped by default (SKIP_VISUAL_ENHANCEMENT: true)
-      expect(event.stagesSkipped).toBe(1)
+      // Visual enhancement (config), ShortPosts (NO_SHORTS), MediumClipPosts (NO_MEDIUM_CLIPS), QueueBuild (NO_SOCIAL_POSTS)
+      expect(event.stagesSkipped).toBe(4)
     })
 
     it('progressEvents.REQ-009 - counts failed and skipped stages', async () => {
@@ -909,6 +910,7 @@ describe('progress events', () => {
 describe('runStage progress events', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockProgressEmitter.isEnabled.mockReturnValue(true)
   })
 
   it('progressEvents.REQ-005 - emits stage:start before execution', async () => {
@@ -940,5 +942,200 @@ describe('runStage progress events', () => {
     )
     expect(errorCall).toBeDefined()
     expect((errorCall![0] as { error: string }).error).toBe('boom')
+  })
+})
+
+describe('progress zero-overhead guard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockProgressEmitter.isEnabled.mockReturnValue(false)
+  })
+
+  it('progressEvents.ARCH-004 - runStage emits nothing when progress is disabled', async () => {
+    const stageResults: StageResult[] = []
+    await runStage(PipelineStage.Ingestion, async () => 'ok', stageResults)
+
+    expect(mockProgressEmitter.emit).not.toHaveBeenCalled()
+    expect(stageResults).toHaveLength(1)
+    expect(stageResults[0].success).toBe(true)
+  })
+
+  it('progressEvents.ARCH-004 - processVideo emits nothing when progress is disabled', async () => {
+    const video = makeVideoFile()
+    const transcript = makeTranscript()
+    mockGetConfig.mockReturnValue(defaultConfig())
+    mockGetTranscript.mockResolvedValue(transcript)
+    mockGetEditedVideo.mockResolvedValue('/edited.mp4')
+    mockGetEnhancedVideo.mockResolvedValue('/enhanced.mp4')
+    mockGetCaptions.mockResolvedValue({ srt: 'srt', vtt: 'vtt', ass: 'ass' })
+    mockGetCaptionedVideo.mockResolvedValue('/captioned.mp4')
+    mockGetShorts.mockResolvedValue([])
+    mockGetMediumClips.mockResolvedValue([])
+    mockGetChapters.mockResolvedValue([])
+    mockGetSummary.mockResolvedValue({ title: 'Test' })
+    mockGetSocialPosts.mockResolvedValue([])
+    mockGetBlog.mockResolvedValue('blog')
+    mockCommitAndPushChanges.mockResolvedValue(undefined)
+    mockMainVideoAssetIngest.mockResolvedValue({
+      toVideoFile: vi.fn().mockResolvedValue(video),
+      getEditorialDirection: mockGetEditorialDirection,
+      getMetadata: mockGetMetadata,
+      videoPath: video.repoPath,
+      slug: video.slug,
+      videoDir: video.videoDir,
+      editedVideoPath: `${video.videoDir}/${video.slug}-edited.mp4`,
+      getTranscript: mockGetTranscript,
+      getEditedVideo: mockGetEditedVideo,
+      getEnhancedVideo: mockGetEnhancedVideo,
+      getCaptions: mockGetCaptions,
+      getCaptionedVideo: mockGetCaptionedVideo,
+      getShorts: mockGetShorts,
+      getMediumClips: mockGetMediumClips,
+      getChapters: mockGetChapters,
+      getSummary: mockGetSummary,
+      getSocialPosts: mockGetSocialPosts,
+      generateShortPostsData: mockGenerateShortPostsData,
+      generateMediumClipPostsData: mockGenerateMediumClipPostsData,
+      getBlog: mockGetBlog,
+      buildQueue: mockBuildQueue,
+      commitAndPushChanges: mockCommitAndPushChanges,
+      setIdeas: mockSetIdeas,
+    } as any)
+
+    await processVideo('/videos/test.mp4')
+    expect(mockProgressEmitter.emit).not.toHaveBeenCalled()
+  })
+})
+
+describe('data-dependent stage skips', () => {
+  const video = makeVideoFile()
+  const transcript = makeTranscript()
+
+  function makeAssetMockForSkips(overrides: Record<string, unknown> = {}) {
+    return {
+      toVideoFile: vi.fn().mockResolvedValue(video),
+      getEditorialDirection: mockGetEditorialDirection,
+      getMetadata: mockGetMetadata,
+      videoPath: video.repoPath,
+      slug: video.slug,
+      videoDir: video.videoDir,
+      editedVideoPath: `${video.videoDir}/${video.slug}-edited.mp4`,
+      getTranscript: mockGetTranscript,
+      getEditedVideo: mockGetEditedVideo,
+      getEnhancedVideo: mockGetEnhancedVideo,
+      getCaptions: mockGetCaptions,
+      getCaptionedVideo: mockGetCaptionedVideo,
+      getShorts: mockGetShorts,
+      getMediumClips: mockGetMediumClips,
+      getChapters: mockGetChapters,
+      getSummary: mockGetSummary,
+      getSocialPosts: mockGetSocialPosts,
+      generateShortPostsData: mockGenerateShortPostsData,
+      generateMediumClipPostsData: mockGenerateMediumClipPostsData,
+      getBlog: mockGetBlog,
+      buildQueue: mockBuildQueue,
+      commitAndPushChanges: mockCommitAndPushChanges,
+      setIdeas: mockSetIdeas,
+      ...overrides,
+    } as any
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetConfig.mockReturnValue(defaultConfig())
+    mockProgressEmitter.isEnabled.mockReturnValue(true)
+    mockGetTranscript.mockResolvedValue(transcript)
+    mockGetEditedVideo.mockResolvedValue('/edited.mp4')
+    mockGetEnhancedVideo.mockResolvedValue('/enhanced.mp4')
+    mockGetCaptions.mockResolvedValue({ srt: 'srt', vtt: 'vtt', ass: 'ass' })
+    mockGetCaptionedVideo.mockResolvedValue('/captioned.mp4')
+    mockGetShorts.mockResolvedValue([])
+    mockGetMediumClips.mockResolvedValue([])
+    mockGetChapters.mockResolvedValue([])
+    mockGetSummary.mockResolvedValue({ title: 'Test' })
+    mockGetSocialPosts.mockResolvedValue([])
+    mockGetBlog.mockResolvedValue('blog')
+    mockCommitAndPushChanges.mockResolvedValue(undefined)
+    mockMainVideoAssetIngest.mockResolvedValue(makeAssetMockForSkips())
+  })
+
+  it('progressEvents.REQ-008 - emits stage:skip for ShortPosts when no shorts', async () => {
+    mockGetShorts.mockResolvedValue([])
+    await processVideo('/videos/test.mp4')
+
+    const skipEvents = mockProgressEmitter.emit.mock.calls
+      .map((c: unknown[]) => c[0] as { event: string; stage?: string; reason?: string })
+      .filter((e) => e.event === 'stage:skip')
+
+    const shortPostsSkip = skipEvents.find(e => e.stage === PipelineStage.ShortPosts)
+    expect(shortPostsSkip).toBeDefined()
+    expect(shortPostsSkip?.reason).toBe('NO_SHORTS')
+  })
+
+  it('progressEvents.REQ-008 - emits stage:skip for MediumClipPosts when no medium clips', async () => {
+    mockGetMediumClips.mockResolvedValue([])
+    await processVideo('/videos/test.mp4')
+
+    const skipEvents = mockProgressEmitter.emit.mock.calls
+      .map((c: unknown[]) => c[0] as { event: string; stage?: string; reason?: string })
+      .filter((e) => e.event === 'stage:skip')
+
+    const mediumSkip = skipEvents.find(e => e.stage === PipelineStage.MediumClipPosts)
+    expect(mediumSkip).toBeDefined()
+    expect(mediumSkip?.reason).toBe('NO_MEDIUM_CLIPS')
+  })
+
+  it('progressEvents.REQ-008 - emits stage:skip for QueueBuild when no social posts', async () => {
+    mockGetSocialPosts.mockResolvedValue([])
+    await processVideo('/videos/test.mp4')
+
+    const skipEvents = mockProgressEmitter.emit.mock.calls
+      .map((c: unknown[]) => c[0] as { event: string; stage?: string; reason?: string })
+      .filter((e) => e.event === 'stage:skip')
+
+    const queueSkip = skipEvents.find(e => e.stage === PipelineStage.QueueBuild)
+    expect(queueSkip).toBeDefined()
+    expect(queueSkip?.reason).toBe('NO_SOCIAL_POSTS')
+  })
+
+  it('progressEvents.REQ-009 - data-dependent skips are counted in stagesSkipped', async () => {
+    await processVideo('/videos/test.mp4')
+
+    const completeEvent = mockProgressEmitter.emit.mock.calls
+      .map((c: unknown[]) => c[0] as { event: string; stagesSkipped?: number })
+      .find(e => e.event === 'pipeline:complete')
+
+    // 1 config (visual enhancement) + 3 data-dependent (short posts, medium clip posts, queue build)
+    expect(completeEvent?.stagesSkipped).toBe(4)
+  })
+})
+
+describe('pipeline:complete on ingestion failure', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetConfig.mockReturnValue(defaultConfig())
+    mockProgressEmitter.isEnabled.mockReturnValue(true)
+  })
+
+  it('progressEvents.REQ-009 - emits pipeline:complete when ingestion fails', async () => {
+    mockMainVideoAssetIngest.mockResolvedValue(undefined as unknown as MainVideoAsset)
+    await processVideo('/videos/test.mp4')
+
+    const completeCalls = mockProgressEmitter.emit.mock.calls.filter(
+      (c: unknown[]) => (c[0] as { event: string }).event === 'pipeline:complete'
+    )
+    expect(completeCalls).toHaveLength(1)
+
+    const event = completeCalls[0][0] as {
+      event: string;
+      totalDuration: number;
+      stagesCompleted: number;
+      stagesFailed: number;
+      stagesSkipped: number;
+    }
+    expect(event.stagesCompleted).toBe(0)
+    expect(event.stagesFailed).toBe(1)
+    expect(event.stagesSkipped).toBe(0)
+    expect(event.totalDuration).toBeGreaterThanOrEqual(0)
   })
 })
