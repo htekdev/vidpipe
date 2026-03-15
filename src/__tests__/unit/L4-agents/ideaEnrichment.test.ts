@@ -237,4 +237,44 @@ describe('ideaEnrichment', () => {
     const { enrichIdeaInput } = await import('../../../L4-agents/ideaEnrichment.js')
     await expect(enrichIdeaInput('Test')).rejects.toThrow('Failed to parse AI enrichment response')
   })
+
+  it('REQ-052 extracts JSON when LLM includes preamble text before the object', async () => {
+    const preambleResponse =
+      'Now I have comprehensive information about GitHub Copilot CLI extensions. Let me generate the content idea:\n\n' +
+      JSON.stringify({
+        hook: 'Your terminal just got superpowers with Copilot CLI extensions',
+        audience: 'developers who use GitHub Copilot',
+        keyTakeaway: 'Copilot CLI extensions unlock agentic workflows',
+        talkingPoints: ['Extension scaffolding', 'Hook lifecycle', 'Tool registration'],
+        platforms: ['youtube', 'tiktok'],
+        tags: ['copilot', 'cli', 'extensions'],
+        publishBy: '2026-03-20',
+        trendContext: 'GitHub Copilot CLI just shipped extension support',
+      })
+
+    mockSendAndWait.mockResolvedValue({ content: preambleResponse })
+
+    const { enrichIdeaInput } = await import('../../../L4-agents/ideaEnrichment.js')
+    const result = await enrichIdeaInput('GitHub Copilot CLI Extensions')
+
+    expect(result.hook).toBe('Your terminal just got superpowers with Copilot CLI extensions')
+    expect(result.audience).toBe('developers who use GitHub Copilot')
+    expect(result.platforms).toEqual([Platform.YouTube, Platform.TikTok])
+    expect(result.talkingPoints).toHaveLength(3)
+  })
+
+  it('REQ-052 extracts JSON when LLM includes preamble and trailing text', async () => {
+    const wrappedResponse =
+      'Sure! Here is the idea:\n' +
+      '{"hook":"h","audience":"a","keyTakeaway":"k","talkingPoints":[],"platforms":["youtube"],"tags":[],"publishBy":"2026-04-01"}\n' +
+      'Let me know if you want changes!'
+
+    mockSendAndWait.mockResolvedValue({ content: wrappedResponse })
+
+    const { enrichIdeaInput } = await import('../../../L4-agents/ideaEnrichment.js')
+    const result = await enrichIdeaInput('Test')
+
+    expect(result.hook).toBe('h')
+    expect(result.audience).toBe('a')
+  })
 })

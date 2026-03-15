@@ -61,6 +61,7 @@ It provides an L7 command surface over the L6 → L5 → L4 ideation chain and p
 | REQ-049 | When `--add` is used without `--no-ai`, AI enrichment fills missing fields via LLM | P0 |
 | REQ-050 | `--prompt` provides additional guidance to the AI enrichment | P1 |
 | REQ-051 | CLI-provided overrides take precedence over AI suggestions | P0 |
+| REQ-052 | AI enrichment parser must extract JSON from responses that include preamble text before the JSON object | P0 |
 
 ---
 

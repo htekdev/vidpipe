@@ -63,10 +63,17 @@ function buildEnrichmentPrompt(
 }
 
 function parseEnrichmentResponse(content: string): Omit<CreateIdeaInput, 'topic'> {
-  const cleaned = content
+  let cleaned = content
     .replace(/^```(?:json)?\s*/m, '')
     .replace(/```\s*$/m, '')
     .trim()
+
+  // LLMs often include preamble text before the JSON — extract the JSON object
+  const firstBrace = cleaned.indexOf('{')
+  const lastBrace = cleaned.lastIndexOf('}')
+  if (firstBrace >= 0 && lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1)
+  }
 
   let parsed: Record<string, unknown>
   try {
