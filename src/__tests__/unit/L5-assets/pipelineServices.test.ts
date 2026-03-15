@@ -17,6 +17,7 @@ const mockMarkFailed = vi.hoisted(() => vi.fn())
 const mockBuildPublishQueue = vi.hoisted(() => vi.fn())
 const mockCommitAndPush = vi.hoisted(() => vi.fn())
 const mockGenerateIdeas = vi.hoisted(() => vi.fn())
+const mockEnrichIdeaInput = vi.hoisted(() => vi.fn())
 const mockScheduleAgent = vi.hoisted(() => vi.fn().mockImplementation(function(this: Record<string, unknown>) {
   this.run = vi.fn()
 }))
@@ -42,13 +43,17 @@ vi.mock('../../../L4-agents/IdeationAgent.js', () => ({
   generateIdeas: mockGenerateIdeas,
 }))
 
+vi.mock('../../../L4-agents/ideaEnrichment.js', () => ({
+  enrichIdeaInput: mockEnrichIdeaInput,
+}))
+
 vi.mock('../../../L4-agents/ScheduleAgent.js', () => ({
   ScheduleAgent: mockScheduleAgent,
 }))
 
 import {
   costTracker, markPending, markProcessing, markCompleted, markFailed,
-  buildPublishQueue, commitAndPush, generateIdeas, createScheduleAgent,
+  buildPublishQueue, commitAndPush, generateIdeas, createScheduleAgent, enrichIdeaInput,
 } from '../../../L5-assets/pipelineServices.js'
 
 describe('L5 Unit: pipelineServices wrappers', () => {
@@ -113,5 +118,13 @@ describe('L5 Unit: pipelineServices wrappers', () => {
     const agent = createScheduleAgent()
     expect(mockScheduleAgent).toHaveBeenCalledOnce()
     expect(agent).toBeDefined()
+  })
+
+  it('enrichIdeaInput delegates to L4 ideaEnrichment module', async () => {
+    const enriched = { topic: 'Test', hook: 'Hook', audience: 'devs', keyTakeaway: 'Key', talkingPoints: [], platforms: ['youtube'], tags: [], publishBy: '2026-04-01' }
+    mockEnrichIdeaInput.mockResolvedValue(enriched)
+
+    await expect(enrichIdeaInput('Test')).resolves.toEqual(enriched)
+    expect(mockEnrichIdeaInput).toHaveBeenCalledWith('Test')
   })
 })

@@ -3,6 +3,9 @@ import { Platform } from '../../../L0-pure/types/index.js'
 
 const mockInitConfig = vi.hoisted(() => vi.fn())
 const mockListIdeas = vi.hoisted(() => vi.fn())
+const mockCreateIdea = vi.hoisted(() => vi.fn())
+const mockEnrichIdeaInput = vi.hoisted(() => vi.fn())
+const mockGenerateIdeas = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../L1-infra/config/environment.js', () => ({
   initConfig: mockInitConfig,
@@ -10,6 +13,12 @@ vi.mock('../../../L1-infra/config/environment.js', () => ({
 
 vi.mock('../../../L3-services/ideaService/ideaService.js', () => ({
   listIdeas: mockListIdeas,
+  createIdea: mockCreateIdea,
+}))
+
+vi.mock('../../../L6-pipeline/ideation.js', () => ({
+  generateIdeas: mockGenerateIdeas,
+  enrichIdeaInput: mockEnrichIdeaInput,
 }))
 
 describe('ideate command', () => {
@@ -67,8 +76,7 @@ describe('ideate command', () => {
   })
 
   it('prints follow-up guidance after generating ideas', async () => {
-    const ideationModule = await import('../../../L6-pipeline/ideation.js')
-    vi.spyOn(ideationModule, 'generateIdeas').mockResolvedValue([
+    mockGenerateIdeas.mockResolvedValue([
       {
         id: 'idea-1',
         issueNumber: 42,
@@ -157,5 +165,78 @@ describe('ideate command', () => {
     const parsed = JSON.parse(getOutput())
     expect(parsed).toHaveLength(1)
     expect(parsed[0].id).toBe('ready-idea')
+  })
+
+  describe('--add mode integration', () => {
+    const mockIdea = {
+      issueNumber: 99,
+      issueUrl: 'https://github.com/htekdev/content-management/issues/99',
+      repoFullName: 'htekdev/content-management',
+      id: 'idea-99',
+      topic: 'Integration test idea',
+      hook: 'Test hook',
+      audience: 'developers',
+      keyTakeaway: 'Test takeaway',
+      talkingPoints: ['Point 1'],
+      platforms: [Platform.YouTube],
+      status: 'draft' as const,
+      tags: ['test'],
+      createdAt: '2026-03-15T00:00:00Z',
+      updatedAt: '2026-03-15T00:00:00Z',
+      publishBy: '2026-03-29',
+    }
+
+    it('creates idea with --add --no-ai and outputs confirmation', async () => {
+      mockCreateIdea.mockResolvedValue(mockIdea)
+
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await runIdeate({ add: true, topic: 'Integration test idea', ai: false })
+
+      expect(mockCreateIdea).toHaveBeenCalledWith(
+        expect.objectContaining({
+          topic: 'Integration test idea',
+          audience: 'developers',
+          platforms: [Platform.YouTube],
+        }),
+      )
+      expect(getOutput()).toContain('Created idea #99: "Integration test idea"')
+    })
+
+    it('creates idea with --add --format json and outputs full Idea', async () => {
+      mockCreateIdea.mockResolvedValue(mockIdea)
+
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await runIdeate({ add: true, topic: 'Integration test idea', format: 'json', ai: false })
+
+      const parsed = JSON.parse(getOutput())
+      expect(parsed.issueNumber).toBe(99)
+      expect(parsed.topic).toBe('Integration test idea')
+      expect(parsed.status).toBe('draft')
+    })
+
+    it('creates idea with AI enrichment and merges CLI overrides', async () => {
+      mockEnrichIdeaInput.mockResolvedValue({
+        topic: 'AI test',
+        hook: 'AI-generated hook',
+        audience: 'AI engineers',
+        keyTakeaway: 'AI takeaway',
+        talkingPoints: ['AI point'],
+        platforms: [Platform.YouTube],
+        tags: ['ai'],
+        publishBy: '2026-04-01',
+      })
+      mockCreateIdea.mockResolvedValue(mockIdea)
+
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await runIdeate({ add: true, topic: 'AI test', audience: 'devops engineers' })
+
+      expect(mockCreateIdea).toHaveBeenCalledWith(
+        expect.objectContaining({
+          topic: 'AI test',
+          hook: 'AI-generated hook',
+          audience: 'devops engineers', // CLI override
+        }),
+      )
+    })
   })
 })

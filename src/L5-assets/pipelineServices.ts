@@ -14,6 +14,7 @@ import {
 } from '../L4-agents/pipelineServiceBridge.js'
 import { ScheduleAgent as _ScheduleAgent } from '../L4-agents/ScheduleAgent.js'
 import { generateIdeas as _generateIdeas } from '../L4-agents/IdeationAgent.js'
+import { enrichIdeaInput as _enrichIdeaInput } from '../L4-agents/ideaEnrichment.js'
 
 // Re-export types (exempt from layer rules)
 export type { CostReport, QueueBuildResult } from '../L4-agents/pipelineServiceBridge.js'
@@ -57,6 +58,11 @@ export function commitAndPush(...args: Parameters<typeof _commitAndPush>): Retur
 // Ideation
 export function generateIdeas(...args: Parameters<typeof _generateIdeas>): ReturnType<typeof _generateIdeas> {
   return _generateIdeas(...args)
+}
+
+// Idea enrichment (single LLM call for manual idea creation)
+export function enrichIdeaInput(...args: Parameters<typeof _enrichIdeaInput>): ReturnType<typeof _enrichIdeaInput> {
+  return _enrichIdeaInput(...args)
 }
 
 // Schedule agent factory
