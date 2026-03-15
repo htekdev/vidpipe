@@ -152,6 +152,7 @@ vidpipe doctor            # Check all prerequisites
 | `--no-git` | Skip git commit/push |
 | `--late-api-key <key>` | Override Late API key |
 | `-v, --verbose` | Debug-level logging |
+| `--progress` | Emit structured JSON progress events to stderr |
 | `--doctor` | Check that all prerequisites are installed |
 
 ### Ideate Options
@@ -356,6 +357,28 @@ graph LR
 | 15 | **Git Push** | Auto-commits and pushes to `origin main` |
 
 Each stage can be independently skipped with `--no-*` flags. A stage failure does not abort the pipeline — subsequent stages proceed with whatever data is available.
+
+### Progress Events
+
+Pass `--progress` to emit structured JSONL progress events to stderr while normal logs continue on stdout:
+
+```bash
+vidpipe process video.mp4 --progress 2>progress.jsonl
+```
+
+Each line is a self-contained JSON object:
+
+```jsonl
+{"event":"pipeline:start","videoPath":"video.mp4","totalStages":16,"timestamp":"..."}
+{"event":"stage:start","stage":"ingestion","stageNumber":1,"totalStages":16,"name":"Ingestion","timestamp":"..."}
+{"event":"stage:complete","stage":"ingestion","stageNumber":1,"totalStages":16,"name":"Ingestion","duration":423,"success":true,"timestamp":"..."}
+{"event":"stage:skip","stage":"shorts","stageNumber":7,"totalStages":16,"name":"Shorts","reason":"SKIP_SHORTS","timestamp":"..."}
+{"event":"pipeline:complete","totalDuration":45000,"stagesCompleted":14,"stagesFailed":0,"stagesSkipped":2,"timestamp":"..."}
+```
+
+Event types: `pipeline:start`, `stage:start`, `stage:complete`, `stage:error`, `stage:skip`, `pipeline:complete`.
+
+Integrating tools can read stderr line-by-line to display a live progress UI (e.g., "Stage 3/16: Silence Removal").
 
 ---
 

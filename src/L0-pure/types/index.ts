@@ -461,6 +461,124 @@ export interface PipelineResult {
 }
 
 // ============================================================================
+// PIPELINE PROGRESS EVENTS
+// ============================================================================
+
+/**
+ * Metadata for a pipeline stage — human-readable name and ordinal position.
+ * Used by progress events and UI integrations to display stage info.
+ */
+export interface StageInfo {
+  stage: PipelineStage;
+  name: string;
+  stageNumber: number;
+}
+
+/**
+ * Canonical ordered list of all pipeline stages with human-readable names.
+ * Order matches the execution order in `processVideo()`.
+ */
+export const PIPELINE_STAGES: readonly StageInfo[] = [
+  { stage: PipelineStage.Ingestion, name: 'Ingestion', stageNumber: 1 },
+  { stage: PipelineStage.Transcription, name: 'Transcription', stageNumber: 2 },
+  { stage: PipelineStage.SilenceRemoval, name: 'Silence Removal', stageNumber: 3 },
+  { stage: PipelineStage.VisualEnhancement, name: 'Visual Enhancement', stageNumber: 4 },
+  { stage: PipelineStage.Captions, name: 'Captions', stageNumber: 5 },
+  { stage: PipelineStage.CaptionBurn, name: 'Caption Burn', stageNumber: 6 },
+  { stage: PipelineStage.Shorts, name: 'Shorts', stageNumber: 7 },
+  { stage: PipelineStage.MediumClips, name: 'Medium Clips', stageNumber: 8 },
+  { stage: PipelineStage.Chapters, name: 'Chapters', stageNumber: 9 },
+  { stage: PipelineStage.Summary, name: 'Summary', stageNumber: 10 },
+  { stage: PipelineStage.SocialMedia, name: 'Social Media', stageNumber: 11 },
+  { stage: PipelineStage.ShortPosts, name: 'Short Posts', stageNumber: 12 },
+  { stage: PipelineStage.MediumClipPosts, name: 'Medium Clip Posts', stageNumber: 13 },
+  { stage: PipelineStage.QueueBuild, name: 'Queue Build', stageNumber: 14 },
+  { stage: PipelineStage.Blog, name: 'Blog', stageNumber: 15 },
+  { stage: PipelineStage.GitPush, name: 'Git Push', stageNumber: 16 },
+] as const
+
+/** Total number of pipeline stages. Derived from PIPELINE_STAGES, not hardcoded. */
+export const TOTAL_STAGES: number = PIPELINE_STAGES.length
+
+/** Lookup a stage's metadata by its PipelineStage enum value. */
+export function getStageInfo(stage: PipelineStage): StageInfo {
+  const info = PIPELINE_STAGES.find(s => s.stage === stage)
+  if (!info) throw new Error(`Unknown pipeline stage: ${stage}`)
+  return info
+}
+
+/**
+ * Structured progress events emitted during pipeline execution.
+ *
+ * Discriminated union on the `event` field. Consumers parse JSONL from stderr
+ * when `--progress` is passed to `vidpipe process`.
+ */
+export type ProgressEvent =
+  | PipelineStartEvent
+  | StageStartEvent
+  | StageCompleteEvent
+  | StageErrorEvent
+  | StageSkipEvent
+  | PipelineCompleteEvent
+
+export interface PipelineStartEvent {
+  event: 'pipeline:start';
+  videoPath: string;
+  totalStages: number;
+  timestamp: string;
+}
+
+export interface StageStartEvent {
+  event: 'stage:start';
+  stage: PipelineStage;
+  stageNumber: number;
+  totalStages: number;
+  name: string;
+  timestamp: string;
+}
+
+export interface StageCompleteEvent {
+  event: 'stage:complete';
+  stage: PipelineStage;
+  stageNumber: number;
+  totalStages: number;
+  name: string;
+  duration: number;
+  success: true;
+  timestamp: string;
+}
+
+export interface StageErrorEvent {
+  event: 'stage:error';
+  stage: PipelineStage;
+  stageNumber: number;
+  totalStages: number;
+  name: string;
+  duration: number;
+  error: string;
+  timestamp: string;
+}
+
+export interface StageSkipEvent {
+  event: 'stage:skip';
+  stage: PipelineStage;
+  stageNumber: number;
+  totalStages: number;
+  name: string;
+  reason: string;
+  timestamp: string;
+}
+
+export interface PipelineCompleteEvent {
+  event: 'pipeline:complete';
+  totalDuration: number;
+  stagesCompleted: number;
+  stagesFailed: number;
+  stagesSkipped: number;
+  timestamp: string;
+}
+
+// ============================================================================
 // SILENCE REMOVAL
 // ============================================================================
 
