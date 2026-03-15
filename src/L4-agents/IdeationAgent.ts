@@ -91,6 +91,8 @@ interface GenerateIdeasOptions {
   count?: number
   ideasDir?: string
   brandPath?: string
+  /** When true, allows count=1 (bypasses MIN_IDEA_COUNT). Used by --add. */
+  singleTopic?: boolean
 }
 
 interface IdeationAgentContext {
@@ -118,13 +120,14 @@ function hasField(source: Record<string, unknown>, field: string): boolean {
   return Object.prototype.hasOwnProperty.call(source, field)
 }
 
-function normalizeCount(count?: number): number {
+function normalizeCount(count?: number, allowSingle?: boolean): number {
+  const min = allowSingle ? 1 : MIN_IDEA_COUNT
   if (typeof count !== 'number' || Number.isNaN(count)) {
-    return MIN_IDEA_COUNT
+    return min
   }
 
   const rounded = Math.round(count)
-  return Math.min(MAX_IDEA_COUNT, Math.max(MIN_IDEA_COUNT, rounded))
+  return Math.min(MAX_IDEA_COUNT, Math.max(min, rounded))
 }
 
 function normalizeSeedTopics(seedTopics?: string[]): string[] {
@@ -890,7 +893,7 @@ class IdeationAgent extends BaseAgent {
 
 export async function generateIdeas(options: GenerateIdeasOptions = {}): Promise<Idea[]> {
   const seedTopics = normalizeSeedTopics(options.seedTopics)
-  const count = normalizeCount(options.count)
+  const count = normalizeCount(options.count, options.singleTopic)
   const config = getConfig()
   const previousBrandPath = config.BRAND_PATH
 

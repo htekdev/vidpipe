@@ -3,6 +3,7 @@ import { Platform } from '../../../L0-pure/types/index.js'
 
 const mockInitConfig = vi.hoisted(() => vi.fn())
 const mockListIdeas = vi.hoisted(() => vi.fn())
+const mockCreateIdea = vi.hoisted(() => vi.fn())
 const mockGenerateIdeas = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../L1-infra/config/environment.js', () => ({
@@ -11,6 +12,7 @@ vi.mock('../../../L1-infra/config/environment.js', () => ({
 
 vi.mock('../../../L3-services/ideaService/ideaService.js', () => ({
   listIdeas: mockListIdeas,
+  createIdea: mockCreateIdea,
 }))
 
 vi.mock('../../../L6-pipeline/ideation.js', () => ({
@@ -200,5 +202,175 @@ describe('ideate command', () => {
 
     const parsed = JSON.parse(getOutput())
     expect(parsed).toEqual([])
+  })
+
+  describe('--add mode', () => {
+    const mockIdea = {
+      issueNumber: 42,
+      issueUrl: 'https://github.com/htekdev/content-management/issues/42',
+      repoFullName: 'htekdev/content-management',
+      id: 'idea-42',
+      topic: 'AI agents for CI/CD',
+      hook: 'AI is rewriting your pipeline',
+      audience: 'devops engineers',
+      keyTakeaway: 'CI/CD agents save hours per week',
+      talkingPoints: ['Point 1', 'Point 2'],
+      platforms: [Platform.YouTube, Platform.TikTok],
+      status: 'draft' as const,
+      tags: ['ai', 'devops'],
+      createdAt: '2026-03-15T00:00:00Z',
+      updatedAt: '2026-03-15T00:00:00Z',
+      publishBy: '2026-03-29',
+    }
+
+    it('ideate.REQ-040 --add flag triggers idea creation mode', async () => {
+      mockGenerateIdeas.mockResolvedValue([mockIdea])
+
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await runIdeate({ add: true, topic: 'AI agents for CI/CD' })
+
+      expect(mockGenerateIdeas).toHaveBeenCalledWith(
+        expect.objectContaining({ count: 1, singleTopic: true, seedTopics: ['AI agents for CI/CD'] }),
+      )
+      expect(mockListIdeas).not.toHaveBeenCalled()
+    })
+
+    it('ideate.REQ-041 --topic is required when --add is used', async () => {
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await expect(runIdeate({ add: true })).rejects.toThrow('--topic is required when using --add')
+    })
+
+    it('ideate.REQ-042 prints issue number on success', async () => {
+      mockGenerateIdeas.mockResolvedValue([mockIdea])
+
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await runIdeate({ add: true, topic: 'AI agents for CI/CD' })
+
+      expect(getOutput()).toContain('Created idea #42: "AI agents for CI/CD"')
+    })
+
+    it('ideate.REQ-043 --format json prints full Idea object', async () => {
+      mockGenerateIdeas.mockResolvedValue([mockIdea])
+
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await runIdeate({ add: true, topic: 'AI agents for CI/CD', format: 'json' })
+
+      const parsed = JSON.parse(getOutput())
+      expect(parsed.issueNumber).toBe(42)
+      expect(parsed.topic).toBe('AI agents for CI/CD')
+      expect(parsed.hook).toBe('AI is rewriting your pipeline')
+    })
+
+    it('ideate.REQ-044 defaults: hook=topic, audience=developers, platforms=youtube', async () => {
+      mockCreateIdea.mockResolvedValue(mockIdea)
+
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await runIdeate({ add: true, topic: 'My Topic', ai: false })
+
+      expect(mockCreateIdea).toHaveBeenCalledWith(
+        expect.objectContaining({
+          topic: 'My Topic',
+          hook: 'My Topic',
+          audience: 'developers',
+          platforms: [Platform.YouTube],
+        }),
+      )
+    })
+
+    it('ideate.REQ-045 defaults: keyTakeaway=hook, talkingPoints=[], tags=[], publishBy=14 days', async () => {
+      mockCreateIdea.mockResolvedValue(mockIdea)
+
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await runIdeate({ add: true, topic: 'My Topic', ai: false })
+
+      const call = mockCreateIdea.mock.calls[0][0]
+      expect(call.keyTakeaway).toBe('My Topic')
+      expect(call.talkingPoints).toEqual([])
+      expect(call.tags).toEqual([])
+      // publishBy should be ~14 days from now
+      const publishDate = new Date(call.publishBy)
+      const now = new Date()
+      const diffDays = (publishDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+      expect(diffDays).toBeGreaterThan(12)
+      expect(diffDays).toBeLessThan(16)
+    })
+
+    it('ideate.REQ-046 rejects invalid platform names', async () => {
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await expect(
+        runIdeate({ add: true, topic: 'Test', platforms: 'youtube,fakebook', ai: false }),
+      ).rejects.toThrow('Invalid platform "fakebook"')
+    })
+
+    it('ideate.REQ-047 parses comma-separated platforms, talking points, and tags', async () => {
+      mockCreateIdea.mockResolvedValue(mockIdea)
+
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await runIdeate({
+        add: true,
+        topic: 'Test',
+        platforms: 'tiktok, youtube',
+        talkingPoints: 'Point A, Point B, Point C',
+        tags: 'ai, devtools',
+        ai: false,
+      })
+
+      const call = mockCreateIdea.mock.calls[0][0]
+      expect(call.platforms).toEqual([Platform.TikTok, Platform.YouTube])
+      expect(call.talkingPoints).toEqual(['Point A', 'Point B', 'Point C'])
+      expect(call.tags).toEqual(['ai', 'devtools'])
+    })
+
+    it('ideate.REQ-048 custom --publish-by date is forwarded', async () => {
+      mockCreateIdea.mockResolvedValue(mockIdea)
+
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await runIdeate({ add: true, topic: 'Test', publishBy: '2026-06-01', ai: false })
+
+      expect(mockCreateIdea).toHaveBeenCalledWith(
+        expect.objectContaining({ publishBy: '2026-06-01' }),
+      )
+    })
+
+    it('ideate.REQ-049 AI mode uses full IdeationAgent with research', async () => {
+      mockGenerateIdeas.mockResolvedValue([mockIdea])
+
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await runIdeate({ add: true, topic: 'AI agents' })
+
+      expect(mockGenerateIdeas).toHaveBeenCalledWith(
+        expect.objectContaining({
+          seedTopics: ['AI agents'],
+          count: 1,
+          singleTopic: true,
+        }),
+      )
+      // Agent creates idea internally — no separate createIdea call
+      expect(mockCreateIdea).not.toHaveBeenCalled()
+    })
+
+    it('ideate.REQ-049 throws when agent returns no ideas', async () => {
+      mockGenerateIdeas.mockResolvedValue([])
+
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await expect(runIdeate({ add: true, topic: 'AI agents' })).rejects.toThrow('IdeationAgent did not create an idea')
+    })
+
+    it('ideate.REQ-049 --no-ai skips agent and uses direct creation with defaults', async () => {
+      mockCreateIdea.mockResolvedValue(mockIdea)
+
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await runIdeate({ add: true, topic: 'Manual idea', ai: false })
+
+      expect(mockGenerateIdeas).not.toHaveBeenCalled()
+      expect(mockCreateIdea).toHaveBeenCalledWith(
+        expect.objectContaining({
+          topic: 'Manual idea',
+          hook: 'Manual idea',
+          audience: 'developers',
+          platforms: [Platform.YouTube],
+        }),
+      )
+    })
   })
 })

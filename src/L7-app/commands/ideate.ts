@@ -1,6 +1,10 @@
 import { initConfig } from '../../L1-infra/config/environment.js'
-import { listIdeas } from '../../L3-services/ideaService/ideaService.js'
+import { createIdea, listIdeas } from '../../L3-services/ideaService/ideaService.js'
 import { generateIdeas } from '../../L6-pipeline/ideation.js'
+import { Platform } from '../../L0-pure/types/index.js'
+import type { CreateIdeaInput } from '../../L0-pure/types/index.js'
+
+const VALID_PLATFORMS = new Set(Object.values(Platform))
 
 export interface IdeateCommandOptions {
   topics?: string
@@ -10,10 +14,26 @@ export interface IdeateCommandOptions {
   list?: boolean
   status?: string
   format?: 'table' | 'json'
+  add?: boolean
+  topic?: string
+  hook?: string
+  audience?: string
+  platforms?: string
+  keyTakeaway?: string
+  talkingPoints?: string
+  tags?: string
+  publishBy?: string
+  trendContext?: string
+  ai?: boolean
 }
 
 export async function runIdeate(options: IdeateCommandOptions = {}): Promise<void> {
   initConfig()
+
+  if (options.add) {
+    await handleAdd(options)
+    return
+  }
 
   if (options.list) {
     const ideas = await listIdeas()
@@ -110,4 +130,82 @@ export async function runIdeate(options: IdeateCommandOptions = {}): Promise<voi
   console.log('Ideas saved to the GitHub-backed idea service.')
   console.log('Use `vidpipe ideate --list` to view all ideas.')
   console.log('Use `vidpipe process video.mp4 --ideas <issueNumber1>,<issueNumber2>` to link ideas to a recording.')
+}
+
+function parseCommaSeparated(value: string | undefined): string[] {
+  if (!value) return []
+  return value.split(',').map((s) => s.trim()).filter(Boolean)
+}
+
+function parsePlatforms(value: string | undefined): Platform[] {
+  if (!value) return [Platform.YouTube]
+  const names = parseCommaSeparated(value)
+  const platforms: Platform[] = []
+  for (const name of names) {
+    const lower = name.toLowerCase()
+    if (!VALID_PLATFORMS.has(lower as Platform)) {
+      throw new Error(`Invalid platform "${name}". Valid platforms: ${[...VALID_PLATFORMS].join(', ')}`)
+    }
+    platforms.push(lower as Platform)
+  }
+  return platforms.length > 0 ? platforms : [Platform.YouTube]
+}
+
+function defaultPublishBy(): string {
+  const date = new Date()
+  date.setDate(date.getDate() + 14)
+  return date.toISOString().split('T')[0]
+}
+
+function buildDirectInput(options: IdeateCommandOptions): CreateIdeaInput {
+  const topic = options.topic!
+  const hook = options.hook ?? topic
+  const audience = options.audience ?? 'developers'
+  const platforms = parsePlatforms(options.platforms)
+  const keyTakeaway = options.keyTakeaway ?? hook
+  const talkingPoints = parseCommaSeparated(options.talkingPoints)
+  const tags = parseCommaSeparated(options.tags)
+  const publishBy = options.publishBy ?? defaultPublishBy()
+  const trendContext = options.trendContext
+
+  return { topic, hook, audience, keyTakeaway, talkingPoints, platforms, tags, publishBy, trendContext }
+}
+
+async function handleAdd(options: IdeateCommandOptions): Promise<void> {
+  if (!options.topic) {
+    throw new Error('--topic is required when using --add')
+  }
+
+  // Commander's --no-ai flag sets options.ai to false
+  const useAI = options.ai !== false
+
+  if (useAI) {
+    // Full agent with MCP research — generates and creates the idea internally
+    const ideas = await generateIdeas({
+      seedTopics: [options.topic],
+      count: 1,
+      singleTopic: true,
+      brandPath: options.brand,
+    })
+
+    const idea = ideas[0]
+    if (!idea) {
+      throw new Error('IdeationAgent did not create an idea')
+    }
+
+    if (options.format === 'json') {
+      console.log(JSON.stringify(idea, null, 2))
+    } else {
+      console.log(`Created idea #${idea.issueNumber}: "${idea.topic}"`)
+    }
+  } else {
+    const input = buildDirectInput(options)
+    const idea = await createIdea(input)
+
+    if (options.format === 'json') {
+      console.log(JSON.stringify(idea, null, 2))
+    } else {
+      console.log(`Created idea #${idea.issueNumber}: "${idea.topic}"`)
+    }
+  }
 }
