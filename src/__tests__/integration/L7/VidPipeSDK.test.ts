@@ -348,6 +348,27 @@ describe('VidPipeSDK', () => {
       seedTopics: ['copilot', 'sdk'],
       count: 2,
       brandPath: 'C:\\brand.json',
+      singleTopic: undefined,
+    })
+  })
+
+  it('delegates ideate with singleTopic for single idea creation', async () => {
+    const sdk = createVidPipe()
+    const ideas = [createIdea(10)]
+    mockGenerateIdeas.mockResolvedValue(ideas)
+
+    const result = await sdk.ideate({
+      topics: ['AI tools'],
+      count: 1,
+      singleTopic: true,
+    })
+
+    expect(result).toStrictEqual(ideas)
+    expect(mockGenerateIdeas).toHaveBeenCalledWith({
+      seedTopics: ['AI tools'],
+      count: 1,
+      brandPath: undefined,
+      singleTopic: true,
     })
   })
 

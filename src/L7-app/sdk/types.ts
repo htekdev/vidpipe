@@ -82,6 +82,8 @@ export interface IdeateOptions {
   count?: number
   /** Path to brand.json config */
   brandPath?: string
+  /** When true, allows count=1 (bypasses minimum idea count). Used for single-topic idea creation. */
+  singleTopic?: boolean
 }
 
 /**

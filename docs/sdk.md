@@ -294,6 +294,16 @@ console.log(ideas.map((idea) => ({
 })))
 ```
 
+Generate a single AI-enriched idea (equivalent to `vidpipe ideate --add --topic "..."`):
+
+```ts
+const [idea] = await vidpipe.ideate({
+  topics: ['AI-powered video editing'],
+  count: 1,
+  singleTopic: true,
+})
+```
+
 ---
 
 ## `ideas` namespace

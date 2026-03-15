@@ -771,6 +771,7 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
         seedTopics: options?.topics,
         count: options?.count,
         brandPath: options?.brandPath,
+        singleTopic: options?.singleTopic,
       })
     },
 
