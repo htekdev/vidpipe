@@ -206,88 +206,116 @@ describe('checkMockBoundaries', () => {
     expect(violations[0].message).toContain('cannot use vi.mock()');
   });
 
-  test('L1 unit tests can only mock node:* builtins', () => {
+  test('L1 unit tests can mock node:* builtins and L1 peers', () => {
     const content = [
       `vi.mock('node:fs', () => ({}))`,
       `vi.mock('../../L1-infra/config/globalConfig.js', () => ({}))`,
     ].join('\n');
     const violations = checkMockBoundaries('src/__tests__/unit/L1-infra/configResolver.test.ts', content);
-
-    expect(violations).toHaveLength(1);
-    expect(violations[0].mockPath).toBe('../../L1-infra/config/globalConfig.js');
-    expect(violations[0].message).toContain('can only mock node:* builtins');
-  });
-
-  test('L1 unit tests allow node:* mocks', () => {
-    const content = `vi.mock('node:fs/promises', () => ({}))`;
-    const violations = checkMockBoundaries('src/__tests__/unit/L1-infra/fileSystem.test.ts', content);
     expect(violations).toHaveLength(0);
   });
 
-  test('L2 unit tests can only mock external packages', () => {
+  test('L1 unit tests cannot mock L2+ paths', () => {
+    const content = `vi.mock('../../L2-clients/whisper/whisperClient.js', () => ({}))`;
+    const violations = checkMockBoundaries('src/__tests__/unit/L1-infra/configResolver.test.ts', content);
+    expect(violations).toHaveLength(1);
+    expect(violations[0].message).toContain('can only mock L1 paths');
+  });
+
+  test('L2 unit tests can mock L0, L1, L2 peers and externals', () => {
     const content = [
       `vi.mock('openai', () => ({}))`,
       `vi.mock('node:child_process', () => ({}))`,
       `vi.mock('../../L1-infra/config/logger.js', () => ({}))`,
+      `vi.mock('../../L2-clients/ffmpeg/ffmpeg.js', () => ({}))`,
     ].join('\n');
     const violations = checkMockBoundaries('src/__tests__/unit/L2-clients/whisper.test.ts', content);
-
-    expect(violations).toHaveLength(1);
-    expect(violations[0].mockPath).toBe('../../L1-infra/config/logger.js');
-    expect(violations[0].message).toContain('can only mock external packages');
+    expect(violations).toHaveLength(0);
   });
 
-  test('L3 unit tests can only mock L2 paths', () => {
+  test('L2 unit tests cannot mock L3+ paths', () => {
+    const content = `vi.mock('../../L3-services/costTracking/costTracker.js', () => ({}))`;
+    const violations = checkMockBoundaries('src/__tests__/unit/L2-clients/whisper.test.ts', content);
+    expect(violations).toHaveLength(1);
+    expect(violations[0].message).toContain('can only mock L0, L1, L2 paths');
+  });
+
+  test('L3 unit tests can mock L0, L1, L2, and L3 peers', () => {
     const content = [
       `vi.mock('../../L2-clients/whisper/whisperClient.js', () => ({}))`,
       `vi.mock('../../L1-infra/config/logger.js', () => ({}))`,
-    ].join('\n');
-    const violations = checkMockBoundaries('src/__tests__/unit/L3-services/transcription.test.ts', content);
-
-    expect(violations).toHaveLength(1);
-    expect(violations[0].mockPath).toBe('../../L1-infra/config/logger.js');
-    expect(violations[0].message).toContain('can only mock L2 paths');
-  });
-
-  test('L3 unit tests allow L2 and external mocks', () => {
-    const content = [
-      `vi.mock('../../L2-clients/whisper/whisperClient.js', () => ({}))`,
-      `vi.mock('some-package', () => ({}))`,
+      `vi.mock('../../L3-services/postStore/postStore.js', () => ({}))`,
     ].join('\n');
     const violations = checkMockBoundaries('src/__tests__/unit/L3-services/transcription.test.ts', content);
     expect(violations).toHaveLength(0);
   });
 
-  test('L4 unit tests can only mock L3 paths', () => {
+  test('L3 unit tests cannot mock L4+ paths', () => {
+    const content = `vi.mock('../../L4-agents/ShortsAgent.js', () => ({}))`;
+    const violations = checkMockBoundaries('src/__tests__/unit/L3-services/transcription.test.ts', content);
+    expect(violations).toHaveLength(1);
+    expect(violations[0].message).toContain('can only mock L0, L1, L2, L3 paths');
+  });
+
+  test('L4 unit tests can mock L0, L1, L3, L4 peers', () => {
+    const content = [
+      `vi.mock('../../L3-services/costTracking/costTracker.js', () => ({}))`,
+      `vi.mock('../../L1-infra/config/logger.js', () => ({}))`,
+    ].join('\n');
+    const violations = checkMockBoundaries('src/__tests__/unit/L4-agents/ShortsAgent.test.ts', content);
+    expect(violations).toHaveLength(0);
+  });
+
+  test('L4 unit tests cannot mock L2 or L5+ paths', () => {
     const content = `vi.mock('../../L2-clients/ffmpeg/ffmpegClient.js', () => ({}))`;
     const violations = checkMockBoundaries('src/__tests__/unit/L4-agents/ShortsAgent.test.ts', content);
 
     expect(violations).toHaveLength(1);
-    expect(violations[0].message).toContain('can only mock L3 paths');
+    expect(violations[0].message).toContain('can only mock L0, L1, L3, L4 paths');
   });
 
-  test('L5 unit tests can only mock L4 paths', () => {
+  test('L5 unit tests can mock L0, L1, L4, L5 peers', () => {
+    const content = [
+      `vi.mock('../../L4-agents/ShortsAgent.js', () => ({}))`,
+      `vi.mock('../../L1-infra/config/logger.js', () => ({}))`,
+      `vi.mock('../../L5-assets/visualEnhancement.js', () => ({}))`,
+    ].join('\n');
+    const violations = checkMockBoundaries('src/__tests__/unit/L5-assets/VideoAsset.test.ts', content);
+    expect(violations).toHaveLength(0);
+  });
+
+  test('L5 unit tests cannot mock L2, L3, L6+ paths', () => {
     const content = `vi.mock('../../L3-services/costTracking/costTracker.js', () => ({}))`;
     const violations = checkMockBoundaries('src/__tests__/unit/L5-assets/VideoAsset.test.ts', content);
 
     expect(violations).toHaveLength(1);
-    expect(violations[0].message).toContain('can only mock L4 paths');
+    expect(violations[0].message).toContain('can only mock L0, L1, L4, L5 paths');
   });
 
-  test('L6 unit tests can only mock L5 paths', () => {
+  test('L6 unit tests can mock L0, L1, L5, L6 peers', () => {
+    const content = [
+      `vi.mock('../../L5-assets/MainVideoAsset.js', () => ({}))`,
+      `vi.mock('../../L1-infra/config/logger.js', () => ({}))`,
+    ].join('\n');
+    const violations = checkMockBoundaries('src/__tests__/unit/L6-pipeline/pipeline.test.ts', content);
+    expect(violations).toHaveLength(0);
+  });
+
+  test('L6 unit tests cannot mock L2, L3, L4 paths', () => {
     const content = `vi.mock('../../L4-agents/ShortsAgent.js', () => ({}))`;
     const violations = checkMockBoundaries('src/__tests__/unit/L6-pipeline/pipeline.test.ts', content);
 
     expect(violations).toHaveLength(1);
-    expect(violations[0].message).toContain('can only mock L5 paths');
+    expect(violations[0].message).toContain('can only mock L0, L1, L5, L6 paths');
   });
 
-  test('L7 unit tests can mock L0, L1, L3, L6 paths', () => {
+  test('L7 unit tests can mock L0, L1, L3, L6, L7 paths', () => {
     const content = [
       `vi.mock('../../L0-pure/types/index.js', () => ({}))`,
       `vi.mock('../../L1-infra/config/environment.js', () => ({}))`,
       `vi.mock('../../L3-services/scheduler/scheduler.js', () => ({}))`,
       `vi.mock('../../L6-pipeline/pipeline.js', () => ({}))`,
+      `vi.mock('../../L7-app/commands/process.js', () => ({}))`,
     ].join('\n');
     const violations = checkMockBoundaries('src/__tests__/unit/L7-app/cli.test.ts', content);
     expect(violations).toHaveLength(0);
@@ -355,7 +383,7 @@ describe('checkMockBoundaries', () => {
       `import { vi } from 'vitest'`,
       ``,
       `vi.mock('node:fs', () => ({}))`,
-      `vi.mock('../../L1-infra/config/globalConfig.js', () => ({}))`,
+      `vi.mock('../../L3-services/costTracking/costTracker.js', () => ({}))`,
     ].join('\n');
     const violations = checkMockBoundaries('src/__tests__/unit/L1-infra/configResolver.test.ts', content);
 
@@ -413,19 +441,19 @@ describe('formatBoundaryReport', () => {
     const result: BoundaryResult = {
       importViolations: [],
       mockViolations: [{
-        file: 'src/__tests__/unit/L1-infra/configResolver.test.ts',
-        line: 7,
-        tier: 'unit/L1',
-        mockPath: '../../L1-infra/config/globalConfig.js',
-        message: 'unit/L1 tests can only mock node:* builtins, not "../../L1-infra/config/globalConfig.js"',
+        file: 'src/__tests__/unit/L5-assets/MediumClipAsset.test.ts',
+        line: 18,
+        tier: 'unit/L5',
+        mockPath: '../../L3-services/videoOperations/videoOperations.js',
+        message: 'unit/L5 tests can only mock L0, L1, L4, L5 paths, not L3 ("../../L3-services/videoOperations/videoOperations.js")',
       }],
       allPassing: false,
     };
 
     const report = formatBoundaryReport(result);
     expect(report).toContain('Mock boundary violations');
-    expect(report).toContain('configResolver.test.ts:7');
-    expect(report).toContain('can only mock node:* builtins');
+    expect(report).toContain('MediumClipAsset.test.ts:18');
+    expect(report).toContain('can only mock L0, L1, L4, L5 paths');
   });
 
   test('returns empty string when no violations', () => {

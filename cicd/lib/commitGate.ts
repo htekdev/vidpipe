@@ -3,6 +3,7 @@
  */
 
 import { execSync } from 'child_process';
+import { globSync } from 'node:fs';
 import { analyzeStagedChanges } from './diffAnalyzer.js';
 import { validateTestTiers, formatMissingTiers } from './layerTestMapper.js';
 import { runTestsWithCoverage, cleanupCoverage } from './testRunner.js';
@@ -102,12 +103,11 @@ export async function runCommitGate(options: CommitGateOptions): Promise<boolean
 
   console.log('🔒 Step 3: Validating layer boundaries\n');
 
-  const allChangedFiles = [
-    ...analysis.codeChanges.map(c => c.file),
-    ...analysis.testChanges.map(t => t.file),
-  ];
+  const allSourceAndTestFiles = globSync('src/**/*.ts', { cwd: process.cwd() })
+    .map(f => f.replace(/\\/g, '/'))
+    .filter(f => !f.includes('/node_modules/'));
 
-  const boundaryResult = validateBoundaries(allChangedFiles);
+  const boundaryResult = validateBoundaries(allSourceAndTestFiles);
 
   if (!boundaryResult.allPassing) {
     console.log('❌ Commit blocked: Layer boundary violations detected.\n');
@@ -116,7 +116,7 @@ export async function runCommitGate(options: CommitGateOptions): Promise<boolean
     return false;
   }
 
-  console.log(`  ✅ ${allChangedFiles.length} file(s) checked -- no boundary violations\n`);
+  console.log(`  ✅ ${allSourceAndTestFiles.length} file(s) checked -- no boundary violations\n`);
 
   // ── Step 4: Validate spec-test traceability ─────────────────────────────────
 
