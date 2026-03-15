@@ -64,6 +64,16 @@ describe('ideate command', () => {
     expect(getOutput()).not.toContain('First idea')
   })
 
+  it('ideate.REQ-003 shows empty state with guidance when no ideas exist', async () => {
+    mockListIdeas.mockResolvedValue([])
+
+    const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+    await runIdeate({ list: true })
+
+    expect(getOutput()).toContain('No ideas found.')
+    expect(getOutput()).toContain('Run `vidpipe ideate` to generate new ideas.')
+  })
+
   it('ideate.REQ-010 parses topics and count before delegating to L6 ideation', async () => {
     mockGenerateIdeas.mockResolvedValue([
       { id: 'idea-1', topic: 'Ship ideate', hook: 'Use AI before you record.', audience: 'Builders', status: 'draft', platforms: ['youtube'] },

@@ -280,30 +280,11 @@ function checkSingleMock(
   }
 }
 
-// ── Known violations allowlist (pre-existing tech debt) ──────────────────────
-// Each entry is "normalized-file-path:line". Remove entries as violations are fixed.
-
-const KNOWN_VIOLATIONS = new Set([
-  // L5 unit tests mocking L3 (should mock L4 bridge instead)
-  'src/__tests__/unit/L5-assets/MediumClipAsset.test.ts',
-  'src/__tests__/unit/L5-assets/ShortVideoAsset.test.ts',
-  // Integration L7 mocking L6 (should run L6 real)
-  'src/__tests__/integration/L7/ideate.test.ts',
-  // Integration L3 same-layer and wrong-layer mocks
-  'src/__tests__/integration/L3/postStorePlatformNormalization.test.ts',
-  'src/__tests__/integration/L3/queueBuilder.test.ts',
-]);
-
-function isAllowlisted(file: string): boolean {
-  const normalized = file.replace(/\\/g, '/');
-  return KNOWN_VIOLATIONS.has(normalized);
-}
-
 // ── Batch validation ─────────────────────────────────────────────────────────
 
 /**
  * Validate import and mock boundaries for a set of files.
- * Reads file content from disk. Skips files in the known violations allowlist.
+ * Reads file content from disk.
  */
 export function validateBoundaries(files: readonly string[]): BoundaryResult {
   const importViolations: ImportViolation[] = [];
@@ -320,8 +301,6 @@ export function validateBoundaries(files: readonly string[]): BoundaryResult {
     }
 
     const normalizedPath = file.replace(/\\/g, '/');
-
-    if (isAllowlisted(normalizedPath)) continue;
 
     if (normalizedPath.includes('__tests__/')) {
       mockViolations.push(...checkMockBoundaries(normalizedPath, content));
