@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { Platform } from '../../../../src/L0-pure/types/index.js'
-import type { CreateIdeaInput, Idea, PipelineResult } from '../../../../src/L0-pure/types/index.js'
-import { createVidPipe } from '../../../../src/L7-app/sdk/VidPipeSDK.js'
+import { Platform } from '../../../L0-pure/types/index.js'
+import type { CreateIdeaInput, Idea, PipelineResult } from '../../../L0-pure/types/index.js'
+import { createVidPipe } from '../../../L7-app/sdk/VidPipeSDK.js'
 
 const {
   mockInitConfig,
@@ -66,12 +66,12 @@ const {
   mockGenerateIdeas: vi.fn(),
 }))
 
-vi.mock('../../../../src/L1-infra/config/environment.js', () => ({
+vi.mock('../../../L1-infra/config/environment.js', () => ({
   initConfig: mockInitConfig,
   getConfig: mockGetConfig,
 }))
 
-vi.mock('../../../../src/L1-infra/config/globalConfig.js', () => ({
+vi.mock('../../../L1-infra/config/globalConfig.js', () => ({
   getConfigDir: mockGetConfigDir,
   getConfigPath: mockGetConfigPath,
   loadGlobalConfig: mockLoadGlobalConfig,
@@ -82,32 +82,32 @@ vi.mock('../../../../src/L1-infra/config/globalConfig.js', () => ({
   maskSecret: mockMaskSecret,
 }))
 
-vi.mock('../../../../src/L3-services/ideaService/ideaService.js', () => ({
+vi.mock('../../../L3-services/ideaService/ideaService.js', () => ({
   listIdeas: mockListIdeas,
   getIdea: mockGetIdea,
   createIdea: mockCreateIdea,
   updateIdea: mockUpdateIdea,
 }))
 
-vi.mock('../../../../src/L3-services/ideation/ideaService.js', () => ({
+vi.mock('../../../L3-services/ideation/ideaService.js', () => ({
   getIdeasByIds: mockGetIdeasByIds,
 }))
 
-vi.mock('../../../../src/L3-services/scheduler/scheduler.js', () => ({
+vi.mock('../../../L3-services/scheduler/scheduler.js', () => ({
   findNextSlot: mockFindNextSlot,
   getScheduleCalendar: mockGetScheduleCalendar,
 }))
 
-vi.mock('../../../../src/L3-services/scheduler/scheduleConfig.js', () => ({
+vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
   loadScheduleConfig: mockLoadScheduleConfig,
 }))
 
-vi.mock('../../../../src/L3-services/scheduler/realign.js', () => ({
+vi.mock('../../../L3-services/scheduler/realign.js', () => ({
   buildRealignPlan: mockBuildRealignPlan,
   executeRealignPlan: mockExecuteRealignPlan,
 }))
 
-vi.mock('../../../../src/L3-services/videoOperations/videoOperations.js', () => ({
+vi.mock('../../../L3-services/videoOperations/videoOperations.js', () => ({
   extractClip: mockExtractClip,
   burnCaptions: mockBurnCaptions,
   detectSilence: mockDetectSilence,
@@ -115,16 +115,16 @@ vi.mock('../../../../src/L3-services/videoOperations/videoOperations.js', () => 
   generatePlatformVariants: mockGeneratePlatformVariants,
 }))
 
-vi.mock('../../../../src/L3-services/diagnostics/diagnostics.js', () => ({
+vi.mock('../../../L3-services/diagnostics/diagnostics.js', () => ({
   getFFmpegPath: mockGetFFmpegPath,
   getFFprobePath: mockGetFFprobePath,
 }))
 
-vi.mock('../../../../src/L6-pipeline/pipeline.js', () => ({
+vi.mock('../../../L6-pipeline/pipeline.js', () => ({
   processVideoSafe: mockProcessVideoSafe,
 }))
 
-vi.mock('../../../../src/L6-pipeline/ideation.js', () => ({
+vi.mock('../../../L6-pipeline/ideation.js', () => ({
   generateIdeas: mockGenerateIdeas,
 }))
 
@@ -288,6 +288,7 @@ describe('VidPipeSDK', () => {
     expect(typeof sdk.processVideo).toBe('function')
     expect(typeof sdk.ideate).toBe('function')
     expect(typeof sdk.config.path).toBe('function')
+    expect(typeof sdk.config.getGlobal).toBe('function')
     expect(mockInitConfig).toHaveBeenCalledOnce()
   })
 
@@ -440,6 +441,53 @@ describe('VidPipeSDK', () => {
 
     expect(result).toBe('C:\\resolved-output')
     expect(mockGetGlobalConfigValue).not.toHaveBeenCalled()
+    expect(mockLoadGlobalConfig).not.toHaveBeenCalled()
+  })
+
+  it('reads mapped config.get keys from the resolved runtime config', () => {
+    const sdk = createVidPipe()
+    mockGetConfig.mockReturnValue({
+      ...baseEnvironment,
+      OUTPUT_DIR: 'C:\\resolved-output',
+    })
+    mockLoadGlobalConfig.mockReturnValue({
+      credentials: { ...baseGlobalConfig.credentials },
+      defaults: { ...baseGlobalConfig.defaults, outputDir: 'C:\\global-output' },
+    })
+
+    const result = sdk.config.get('output-dir')
+
+    expect(result).toBe('C:\\resolved-output')
+    expect(mockLoadGlobalConfig).not.toHaveBeenCalled()
+    expect(mockGetGlobalConfigValue).not.toHaveBeenCalled()
+  })
+
+  it('returns resolved config from config.getAll', () => {
+    const sdk = createVidPipe()
+    const resolvedConfig = {
+      ...baseEnvironment,
+      OUTPUT_DIR: 'C:\\resolved-output',
+    }
+    mockGetConfig.mockReturnValue(resolvedConfig)
+
+    const result = sdk.config.getAll()
+
+    expect(result).toBe(resolvedConfig)
+    expect(mockLoadGlobalConfig).not.toHaveBeenCalled()
+  })
+
+  it('returns raw global file values from config.getGlobal', () => {
+    const sdk = createVidPipe()
+    const globalConfig = {
+      credentials: { openaiApiKey: 'sk-global' },
+      defaults: { outputDir: 'C:\\global-output' },
+    }
+    mockLoadGlobalConfig.mockReturnValue(globalConfig)
+
+    const result = sdk.config.getGlobal()
+
+    expect(result).toBe(globalConfig)
+    expect(mockLoadGlobalConfig).toHaveBeenCalledOnce()
   })
 
   it('returns config.path from getConfigPath', () => {
@@ -465,5 +513,147 @@ describe('VidPipeSDK', () => {
     expect(mockSetGlobalConfigValue).toHaveBeenCalledWith('defaults', 'outputDir', 'C:\\updated-output')
     expect(mockSaveGlobalConfig).toHaveBeenCalledWith(globalConfig)
     expect(mockInitConfig).toHaveBeenCalledTimes(3)
+  })
+
+  it('returns config.path and config.getGlobal from global config helpers', () => {
+    const sdk = createVidPipe()
+    const globalConfig = {
+      credentials: { openaiApiKey: 'sk-listed' },
+      defaults: { outputDir: 'C:\\listed-output' },
+    }
+    mockLoadGlobalConfig.mockReturnValue(globalConfig)
+
+    expect(sdk.config.path()).toBe('C:\\Users\\test\\AppData\\Roaming\\vidpipe\\config.json')
+    expect(sdk.config.getGlobal()).toBe(globalConfig)
+    expect(mockGetConfigPath).toHaveBeenCalledOnce()
+    expect(mockLoadGlobalConfig).toHaveBeenCalledOnce()
+  })
+
+  it('supports shorthand and dot-notation config keys', () => {
+    const sdk = createVidPipe()
+
+    sdk.config.set('output-dir', 'C:\\normalized-output')
+    sdk.config.set('defaults.watchFolder', 'C:\\watch-next')
+
+    expect(mockSetGlobalConfigValue).toHaveBeenNthCalledWith(1, 'defaults', 'outputDir', 'C:\\normalized-output')
+    expect(mockSetGlobalConfigValue).toHaveBeenNthCalledWith(2, 'defaults', 'watchFolder', 'C:\\watch-next')
+    expect(mockInitConfig).toHaveBeenCalledTimes(3)
+  })
+
+  it('applies runtime-only config overrides without persisting them', () => {
+    const sdk = createVidPipe()
+
+    sdk.config.set('VERBOSE', true)
+    sdk.config.set('REPO_ROOT', 'C:\\Repos\\runtime')
+
+    expect(mockSetGlobalConfigValue).not.toHaveBeenCalled()
+    expect(mockInitConfig).toHaveBeenCalledTimes(3)
+    expect(process.env.REPO_ROOT).toBe('C:\\Repos\\runtime')
+  })
+
+  it('throws for unknown config keys', () => {
+    const sdk = createVidPipe()
+
+    expect(() => sdk.config.set('unknown-key', 'value')).toThrow('Unknown config key: unknown-key')
+    expect(mockSetGlobalConfigValue).not.toHaveBeenCalled()
+  })
+
+  it('delegates ideas.update to updateIdea', async () => {
+    const sdk = createVidPipe()
+    const idea = createIdea(15)
+    mockUpdateIdea.mockResolvedValue(idea)
+
+    const result = await sdk.ideas.update(15, { keyTakeaway: 'Updated takeaway' })
+
+    expect(result).toBe(idea)
+    expect(mockUpdateIdea).toHaveBeenCalledWith(15, {
+      keyTakeaway: 'Updated takeaway',
+    })
+  })
+
+  it('passes linked ideas and CLI overrides through processVideoSafe', async () => {
+    const sdk = createVidPipe()
+    const ideas = [createIdea(101)]
+    mockGetIdeasByIds.mockResolvedValue(ideas)
+
+    await sdk.processVideo('C:\\videos\\recording.mp4', {
+      ideas: [101],
+      skipGit: true,
+      skipCaptions: true,
+      skipSocialPublish: false,
+    })
+
+    expect(mockGetIdeasByIds).toHaveBeenCalledWith(['101'])
+    expect(mockProcessVideoSafe).toHaveBeenCalledWith('C:\\videos\\recording.mp4', ideas)
+    expect(mockInitConfig).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      git: false,
+      captions: false,
+      socialPublish: true,
+    }))
+  })
+
+  it('throws when processVideoSafe returns no result', async () => {
+    const sdk = createVidPipe()
+    mockProcessVideoSafe.mockResolvedValue(undefined)
+
+    await expect(sdk.processVideo('C:\\videos\\broken.mp4')).rejects.toThrow(
+      'VidPipe pipeline failed for "C:\\videos\\broken.mp4" with an uncaught error',
+    )
+  })
+
+  it('passes undefined options through schedule.findNextSlot', async () => {
+    const sdk = createVidPipe()
+
+    const result = await sdk.schedule.findNextSlot('youtube')
+
+    expect(result).toBe('2026-02-20T15:00:00.000Z')
+    expect(mockFindNextSlot).toHaveBeenCalledWith('youtube', undefined, {
+      ideaIds: undefined,
+      publishBy: undefined,
+    })
+  })
+
+  it('delegates schedule calendar and realign helpers', async () => {
+    const sdk = createVidPipe()
+    const calendar = [{ id: 'calendar-entry' }]
+    const plan = { posts: [{ id: 'post-1' }], toCancel: [{ id: 'post-2' }], skipped: 3 }
+    const execution = { updated: 2, cancelled: 1, failed: 4 }
+    const startDate = new Date('2026-02-20T00:00:00.000Z')
+    const endDate = new Date('2026-02-27T00:00:00.000Z')
+    mockGetScheduleCalendar.mockResolvedValue(calendar)
+    mockBuildRealignPlan.mockResolvedValue(plan)
+    mockExecuteRealignPlan.mockResolvedValue(execution)
+
+    expect(await sdk.schedule.getCalendar(startDate, endDate)).toBe(calendar)
+    expect(await sdk.schedule.realign({ platform: 'youtube', dryRun: true })).toStrictEqual({
+      moved: 2,
+      skipped: 3,
+    })
+    expect(await sdk.schedule.realign({ platform: 'youtube' })).toStrictEqual({
+      moved: 3,
+      skipped: 7,
+    })
+    expect(mockGetScheduleCalendar).toHaveBeenCalledWith(startDate, endDate)
+    expect(mockBuildRealignPlan).toHaveBeenNthCalledWith(1, { platform: 'youtube' })
+    expect(mockBuildRealignPlan).toHaveBeenNthCalledWith(2, { platform: 'youtube' })
+    expect(mockExecuteRealignPlan).toHaveBeenCalledWith(plan)
+  })
+
+  it('delegates remaining video helpers', async () => {
+    const sdk = createVidPipe()
+    const silenceRegions = [{ start: 1, end: 2 }]
+    const variants = [{ platform: 'youtube', path: 'C:\\output\\variant.mp4' }]
+    mockDetectSilence.mockResolvedValue(silenceRegions)
+    mockGeneratePlatformVariants.mockResolvedValue(variants)
+
+    expect(await sdk.video.burnCaptions('C:\\videos\\recording.mp4', 'C:\\captions\\track.ass', 'C:\\output\\captioned.mp4')).toBe('C:\\output\\captioned.mp4')
+    expect(await sdk.video.detectSilence('C:\\videos\\recording.mp4', { threshold: '-25dB', minDuration: 1.5 })).toStrictEqual(silenceRegions)
+    expect(await sdk.video.captureFrame('C:\\videos\\recording.mp4', 12, 'C:\\output\\frame.png')).toBe('C:\\output\\frame.png')
+    expect(await sdk.video.generateVariants('C:\\videos\\recording.mp4', [Platform.YouTube], 'C:\\output')).toStrictEqual(variants)
+
+    expect(mockBurnCaptions).toHaveBeenCalledWith('C:\\videos\\recording.mp4', 'C:\\captions\\track.ass', 'C:\\output\\captioned.mp4')
+    expect(mockDetectSilence).toHaveBeenCalledWith('C:\\videos\\recording.mp4', 1.5, '-25dB')
+    expect(mockCaptureFrame).toHaveBeenCalledWith('C:\\videos\\recording.mp4', 12, 'C:\\output\\frame.png')
+    expect(mockGeneratePlatformVariants).toHaveBeenCalledWith('C:\\videos\\recording.mp4', 'C:\\output', 'recording', ['youtube'])
   })
 })

@@ -137,7 +137,7 @@ program
   .argument('[args...]', 'Arguments for the subcommand (e.g., key and value for set)')
   .action(async (subcommand: string | undefined, args: string[]) => {
     await runConfigure(subcommand, args)
-    process.exit(0)
+    process.exit(process.exitCode ?? 0)
   })
 
 // --- Default command (process video or watch) ---

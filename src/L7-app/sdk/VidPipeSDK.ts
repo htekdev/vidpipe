@@ -5,10 +5,8 @@ import {
 import type { SocialPost } from '../../L0-pure/types/index.js'
 import { getConfig, initConfig } from '../../L1-infra/config/environment.js'
 import type { AppEnvironment, CLIOptions } from '../../L1-infra/config/environment.js'
-import { resolveConfig } from '../../L1-infra/config/configResolver.js'
 import {
   getConfigPath,
-  getGlobalConfigValue,
   loadGlobalConfig,
   saveGlobalConfig,
   setGlobalConfigValue,
@@ -111,6 +109,25 @@ const providerDefaults = {
   openai: 'gpt-4o',
   claude: 'claude-opus-4.6',
 } as const
+
+const runtimeConfigKeyMap = {
+  'credentials.openaiApiKey': 'OPENAI_API_KEY',
+  'credentials.anthropicApiKey': 'ANTHROPIC_API_KEY',
+  'credentials.exaApiKey': 'EXA_API_KEY',
+  'credentials.youtubeApiKey': 'YOUTUBE_API_KEY',
+  'credentials.perplexityApiKey': 'PERPLEXITY_API_KEY',
+  'credentials.lateApiKey': 'LATE_API_KEY',
+  'credentials.githubToken': 'GITHUB_TOKEN',
+  'credentials.geminiApiKey': 'GEMINI_API_KEY',
+  'defaults.llmProvider': 'LLM_PROVIDER',
+  'defaults.llmModel': 'LLM_MODEL',
+  'defaults.outputDir': 'OUTPUT_DIR',
+  'defaults.watchFolder': 'WATCH_FOLDER',
+  'defaults.brandPath': 'BRAND_PATH',
+  'defaults.ideasRepo': 'IDEAS_REPO',
+  'defaults.lateProfileId': 'LATE_PROFILE_ID',
+  'defaults.geminiModel': 'GEMINI_MODEL',
+} as const satisfies Record<string, keyof AppEnvironment>
 
 const platformVariantMap: Readonly<Record<string, VariantPlatform>> = {
   instagram: 'instagram-reels',
@@ -448,6 +465,32 @@ function buildDiagnosticStatus(
 
 function getConfigRecord(config: AppEnvironment): Record<string, string | boolean | undefined> {
   return config as unknown as Record<string, string | boolean | undefined>
+}
+
+function getRuntimeConfigKey(target: ConfigKeyTarget): keyof AppEnvironment {
+  return runtimeConfigKeyMap[`${target.section}.${target.key}` as keyof typeof runtimeConfigKeyMap]
+}
+
+function getResolvedConfigValue(key: string): string | boolean | undefined {
+  const normalizedKey = key.trim()
+  const configRecord = getConfigRecord(getConfig())
+  const target = resolveConfigTarget(normalizedKey)
+
+  if (target) {
+    return configRecord[getRuntimeConfigKey(target)]
+  }
+
+  const directValue = configRecord[normalizedKey]
+  if (typeof directValue === 'string' || typeof directValue === 'boolean') {
+    return directValue
+  }
+
+  const uppercaseValue = configRecord[normalizedKey.toUpperCase()]
+  if (typeof uppercaseValue === 'string' || typeof uppercaseValue === 'boolean') {
+    return uppercaseValue
+  }
+
+  return undefined
 }
 
 // No L3/L6 wrapper exists for free-form social post generation from title/description/tags,
@@ -815,29 +858,13 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
 
     config: {
       get(key: string) {
-        const target = resolveConfigTarget(key)
-        if (target) {
-          return getGlobalConfigValue(target.section, target.key)
-        }
-
-        const configRecord = getConfigRecord(getConfig())
-        const directValue = configRecord[key]
-        if (typeof directValue === 'string' || typeof directValue === 'boolean') {
-          return directValue
-        }
-
-        const uppercaseValue = configRecord[key.toUpperCase()]
-        if (typeof uppercaseValue === 'string' || typeof uppercaseValue === 'boolean') {
-          return uppercaseValue
-        }
-
-        return undefined
+        return getResolvedConfigValue(key)
       },
       getAll() {
-        return {
-          global: loadGlobalConfig(),
-          resolved: resolveConfig(currentCliOptions),
-        }
+        return getConfig()
+      },
+      getGlobal() {
+        return loadGlobalConfig()
       },
       set(key: string, value: string | boolean) {
         const target = resolveConfigTarget(key)

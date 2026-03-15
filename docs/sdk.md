@@ -190,6 +190,7 @@ const vidpipe = createVidPipe()
 console.log(vidpipe.config.path())
 console.log(vidpipe.config.get('openai-key'))
 console.log(vidpipe.config.getAll())
+console.log(vidpipe.config.getGlobal())
 
 vidpipe.config.set('output-dir', './recordings')
 vidpipe.config.set('verbose', true)
@@ -519,12 +520,22 @@ const openAiKey = vidpipe.config.get('credentials.openaiApiKey')
 
 ### `config.getAll()`
 
-Returns both the raw global config and the resolved runtime config.
+Returns the fully resolved runtime config after constructor options, environment variables, global config file values, and defaults have been applied.
 
 ```ts
-const snapshot = vidpipe.config.getAll()
-console.log(snapshot.global)
-console.log(snapshot.resolved)
+const runtimeConfig = vidpipe.config.getAll()
+console.log(runtimeConfig.OUTPUT_DIR)
+console.log(runtimeConfig.OPENAI_API_KEY)
+```
+
+### `config.getGlobal()`
+
+Returns the raw persisted global config file values only.
+
+```ts
+const globalConfig = vidpipe.config.getGlobal()
+console.log(globalConfig.credentials)
+console.log(globalConfig.defaults)
 ```
 
 ### `config.set(key, value)`

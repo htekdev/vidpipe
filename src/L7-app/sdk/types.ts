@@ -9,6 +9,8 @@ import type {
   ShortClip,
   SocialPost,
 } from '../../L0-pure/types/index.js'
+import type { AppEnvironment } from '../../L1-infra/config/environment.js'
+import type { GlobalConfig } from '../../L1-infra/config/globalConfig.js'
 import type { ScheduleConfig } from '../../L3-services/scheduler/scheduleConfig.js'
 
 /**
@@ -171,7 +173,8 @@ export interface VidPipeSDK {
   /** Configuration access */
   config: {
     get(key: string): string | boolean | undefined
-    getAll(): Record<string, unknown>
+    getAll(): AppEnvironment
+    getGlobal(): GlobalConfig
     set(key: string, value: string | boolean): void
     save(): Promise<void>
     path(): string
