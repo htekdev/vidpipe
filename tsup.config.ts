@@ -1,6 +1,11 @@
 import { defineConfig } from 'tsup'
 import { copyFileSync, mkdirSync, readdirSync, statSync } from 'fs'
 
+// vscode-jsonrpc is CJS and uses require() for Node builtins (util, path, etc.).
+// When bundled into ESM, esbuild's CJS shim checks `typeof require !== "undefined"`
+// before throwing. This banner provides a real require() so the shim succeeds.
+const CJS_SHIM = 'import{createRequire as __cjsRequire}from"module";const require=__cjsRequire(import.meta.url);'
+
 const shared = {
   format: ['esm'] as const,
   target: 'node20' as const,
@@ -10,20 +15,21 @@ const shared = {
   sourcemap: true,
   dts: true,
   external: [
-    // All dependencies are external (installed by npm)
+    // Dependencies are external (installed by npm) unless listed in noExternal.
     /^[^./]/,
   ],
-  // Bundle CJS packages that lack proper ESM subpath exports.
-  // vscode-jsonrpc is CJS-only with no "exports" map — @github/copilot-sdk
-  // imports "vscode-jsonrpc/node" which fails in ESM without subpath exports.
-  noExternal: ['vscode-jsonrpc'],
+  // @github/copilot-sdk imports "vscode-jsonrpc/node" (no .js extension), but
+  // vscode-jsonrpc is CJS-only with no "exports" map, so Node's ESM resolver
+  // cannot find the subpath at runtime (ERR_MODULE_NOT_FOUND). Bundling both
+  // packages lets esbuild resolve the import at build time and convert CJS→ESM.
+  noExternal: ['@github/copilot-sdk', 'vscode-jsonrpc'],
 }
 
 export default defineConfig([
   {
     ...shared,
     entry: { cli: 'src/L7-app/cli.ts' },
-    banner: { js: '#!/usr/bin/env node' },
+    banner: { js: `#!/usr/bin/env node\n${CJS_SHIM}` },
     clean: true,
     onSuccess: async () => {
       // Copy static assets for review server
@@ -43,6 +49,7 @@ export default defineConfig([
   {
     ...shared,
     entry: { index: 'src/index.ts' },
+    banner: { js: CJS_SHIM },
     clean: false,
   },
 ])
