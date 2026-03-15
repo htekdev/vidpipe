@@ -54,14 +54,11 @@ It provides an L7 command surface over the L6 → L5 → L4 ideation chain and p
 | REQ-047 | Comma-separated `--platforms`, `--talking-points`, `--tags` are parsed into arrays | P1 |
 | REQ-048 | Custom `--publish-by` date is forwarded to createIdea | P1 |
 
-### AI enrichment (`--add` with AI, default)
+### AI-backed creation (`--add` with AI, default)
 
 | ID | Requirement | Priority |
 |----|-------------|----------|
-| REQ-049 | When `--add` is used without `--no-ai`, AI enrichment fills missing fields via LLM | P0 |
-| REQ-050 | `--prompt` provides additional guidance to the AI enrichment | P1 |
-| REQ-051 | CLI-provided overrides take precedence over AI suggestions | P0 |
-| REQ-052 | AI enrichment parser must extract JSON from responses that include preamble text before the JSON object | P0 |
+| REQ-049 | When `--add` is used without `--no-ai`, the full IdeationAgent runs with MCP research tools (Exa, YouTube, Perplexity) to create a single research-backed idea | P0 |
 
 ---
 
@@ -71,12 +68,13 @@ It provides an L7 command surface over the L6 → L5 → L4 ideation chain and p
 |----|------------|----------|
 | ARCH-001 | The L7 ideate command may import only L0, L1, L3, and L6 modules | P0 |
 | ARCH-002 | Idea generation must flow through the L6 wrapper instead of importing L4 agents directly in L7 | P0 |
-| ARCH-003 | AI enrichment must flow through L6 → L5 → L4, not call L4 directly from L7 | P0 |
+| ARCH-003 | `--add` with AI reuses `generateIdeas()` with `singleTopic: true` and `count: 1` — the agent creates the idea internally | P0 |
 
 ---
 
 ## Notes
 
 - Idea statuses follow the lightweight editorial-direction model used elsewhere in the pipeline.
-- AI enrichment uses a lightweight single-LLM-call function, not the full IdeationAgent agentic loop.
+- `--add` with AI uses the full IdeationAgent with MCP research tools — same quality as batch generation.
+- `--add --no-ai` skips the agent entirely and creates directly from CLI flags + defaults.
 - The `--add` feature supports VidRecord integration via `--format json` output.

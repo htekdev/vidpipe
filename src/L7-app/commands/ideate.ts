@@ -1,6 +1,6 @@
 import { initConfig } from '../../L1-infra/config/environment.js'
 import { createIdea, listIdeas } from '../../L3-services/ideaService/ideaService.js'
-import { enrichIdeaInput, generateIdeas } from '../../L6-pipeline/ideation.js'
+import { generateIdeas } from '../../L6-pipeline/ideation.js'
 import { Platform } from '../../L0-pure/types/index.js'
 import type { CreateIdeaInput } from '../../L0-pure/types/index.js'
 
@@ -24,7 +24,6 @@ export interface IdeateCommandOptions {
   tags?: string
   publishBy?: string
   trendContext?: string
-  prompt?: string
   ai?: boolean
 }
 
@@ -172,42 +171,41 @@ function buildDirectInput(options: IdeateCommandOptions): CreateIdeaInput {
   return { topic, hook, audience, keyTakeaway, talkingPoints, platforms, tags, publishBy, trendContext }
 }
 
-function mergeOverrides(aiInput: CreateIdeaInput, options: IdeateCommandOptions): CreateIdeaInput {
-  return {
-    ...aiInput,
-    ...(options.hook !== undefined && { hook: options.hook }),
-    ...(options.audience !== undefined && { audience: options.audience }),
-    ...(options.platforms !== undefined && { platforms: parsePlatforms(options.platforms) }),
-    ...(options.keyTakeaway !== undefined && { keyTakeaway: options.keyTakeaway }),
-    ...(options.talkingPoints !== undefined && { talkingPoints: parseCommaSeparated(options.talkingPoints) }),
-    ...(options.tags !== undefined && { tags: parseCommaSeparated(options.tags) }),
-    ...(options.publishBy !== undefined && { publishBy: options.publishBy }),
-    ...(options.trendContext !== undefined && { trendContext: options.trendContext }),
-  }
-}
-
 async function handleAdd(options: IdeateCommandOptions): Promise<void> {
   if (!options.topic) {
     throw new Error('--topic is required when using --add')
   }
 
-  let input: CreateIdeaInput
-
   // Commander's --no-ai flag sets options.ai to false
   const useAI = options.ai !== false
 
   if (useAI) {
-    const aiInput = await enrichIdeaInput(options.topic, options.prompt)
-    input = mergeOverrides(aiInput, options)
-  } else {
-    input = buildDirectInput(options)
-  }
+    // Full agent with MCP research — generates and creates the idea internally
+    const ideas = await generateIdeas({
+      seedTopics: [options.topic],
+      count: 1,
+      singleTopic: true,
+      brandPath: options.brand,
+    })
 
-  const idea = await createIdea(input)
+    const idea = ideas[0]
+    if (!idea) {
+      throw new Error('IdeationAgent did not create an idea')
+    }
 
-  if (options.format === 'json') {
-    console.log(JSON.stringify(idea, null, 2))
+    if (options.format === 'json') {
+      console.log(JSON.stringify(idea, null, 2))
+    } else {
+      console.log(`Created idea #${idea.issueNumber}: "${idea.topic}"`)
+    }
   } else {
-    console.log(`Created idea #${idea.issueNumber}: "${idea.topic}"`)
+    const input = buildDirectInput(options)
+    const idea = await createIdea(input)
+
+    if (options.format === 'json') {
+      console.log(JSON.stringify(idea, null, 2))
+    } else {
+      console.log(`Created idea #${idea.issueNumber}: "${idea.topic}"`)
+    }
   }
 }

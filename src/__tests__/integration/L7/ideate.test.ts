@@ -4,7 +4,6 @@ import { Platform } from '../../../L0-pure/types/index.js'
 const mockInitConfig = vi.hoisted(() => vi.fn())
 const mockListIdeas = vi.hoisted(() => vi.fn())
 const mockCreateIdea = vi.hoisted(() => vi.fn())
-const mockEnrichIdeaInput = vi.hoisted(() => vi.fn())
 const mockGenerateIdeas = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../L1-infra/config/environment.js', () => ({
@@ -18,7 +17,6 @@ vi.mock('../../../L3-services/ideaService/ideaService.js', () => ({
 
 vi.mock('../../../L6-pipeline/ideation.js', () => ({
   generateIdeas: mockGenerateIdeas,
-  enrichIdeaInput: mockEnrichIdeaInput,
 }))
 
 describe('ideate command', () => {
@@ -214,29 +212,22 @@ describe('ideate command', () => {
       expect(parsed.status).toBe('draft')
     })
 
-    it('creates idea with AI enrichment and merges CLI overrides', async () => {
-      mockEnrichIdeaInput.mockResolvedValue({
-        topic: 'AI test',
-        hook: 'AI-generated hook',
-        audience: 'AI engineers',
-        keyTakeaway: 'AI takeaway',
-        talkingPoints: ['AI point'],
-        platforms: [Platform.YouTube],
-        tags: ['ai'],
-        publishBy: '2026-04-01',
-      })
-      mockCreateIdea.mockResolvedValue(mockIdea)
+    it('creates idea with AI using full IdeationAgent', async () => {
+      mockGenerateIdeas.mockResolvedValue([mockIdea])
 
       const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
-      await runIdeate({ add: true, topic: 'AI test', audience: 'devops engineers' })
+      await runIdeate({ add: true, topic: 'AI test' })
 
-      expect(mockCreateIdea).toHaveBeenCalledWith(
+      expect(mockGenerateIdeas).toHaveBeenCalledWith(
         expect.objectContaining({
-          topic: 'AI test',
-          hook: 'AI-generated hook',
-          audience: 'devops engineers', // CLI override
+          seedTopics: ['AI test'],
+          count: 1,
+          singleTopic: true,
         }),
       )
+      // Agent creates idea internally — no separate createIdea call
+      expect(mockCreateIdea).not.toHaveBeenCalled()
+      expect(getOutput()).toContain('Created idea #99')
     })
   })
 })

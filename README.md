@@ -175,8 +175,7 @@ vidpipe doctor            # Check all prerequisites
 | `--tags <list>` | Comma-separated categorization tags |
 | `--publish-by <date>` | Publish-by date (default: 14 days from now) |
 | `--trend-context <text>` | Trend research context |
-| `--prompt <text>` | Extra guidance for AI enrichment |
-| `--no-ai` | Skip AI enrichment, use CLI values + defaults |
+| `--no-ai` | Skip AI research agent, use CLI values + defaults |
 
 ---
 
@@ -253,14 +252,8 @@ vidpipe process video.mp4 --ideas 12,15
 Add a single idea with AI enrichment or direct CLI values:
 
 ```bash
-# AI-enriched — AI fills in hook, audience, talking points, etc.
+# AI-researched — full IdeationAgent with MCP research tools
 vidpipe ideate --add --topic "Building CI/CD with GitHub Actions"
-
-# AI-enriched with guidance — steer the AI via --prompt
-vidpipe ideate --add --topic "AI agents" --prompt "Focus on GitHub Actions integration"
-
-# AI-enriched with overrides — CLI values take precedence over AI
-vidpipe ideate --add --topic "AI agents" --audience "devops engineers" --platforms tiktok,youtube
 
 # Direct — skip AI, use CLI flags + defaults
 vidpipe ideate --add --topic "Quick Demo" --no-ai --hook "Ship it live" --audience "developers"

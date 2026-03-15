@@ -26,7 +26,6 @@ describe('E2E: ideate --add command', () => {
       tags: 'ai,devtools',
       publishBy: '2026-06-01',
       trendContext: 'Timely because...',
-      prompt: 'Focus on GitHub',
       ai: false,
       format: 'json',
     }
@@ -41,7 +40,6 @@ describe('E2E: ideate --add command', () => {
     expect(options.tags).toBe('ai,devtools')
     expect(options.publishBy).toBe('2026-06-01')
     expect(options.trendContext).toBe('Timely because...')
-    expect(options.prompt).toBe('Focus on GitHub')
     expect(options.ai).toBe(false)
     expect(options.format).toBe('json')
   })
@@ -58,12 +56,11 @@ describe('E2E: ideate --add command', () => {
     expect(options.audience).toBeUndefined()
     expect(options.platforms).toBeUndefined()
     expect(options.ai).toBeUndefined()
-    expect(options.prompt).toBeUndefined()
   })
 
-  test('enrichIdeaInput is exported from L6 ideation bridge', async () => {
+  test('generateIdeas is exported from L6 ideation bridge', async () => {
     const mod = await import('../../L6-pipeline/ideation.js')
-    expect(mod.enrichIdeaInput).toBeDefined()
-    expect(typeof mod.enrichIdeaInput).toBe('function')
+    expect(mod.generateIdeas).toBeDefined()
+    expect(typeof mod.generateIdeas).toBe('function')
   })
 })

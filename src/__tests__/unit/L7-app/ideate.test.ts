@@ -5,7 +5,6 @@ const mockInitConfig = vi.hoisted(() => vi.fn())
 const mockListIdeas = vi.hoisted(() => vi.fn())
 const mockCreateIdea = vi.hoisted(() => vi.fn())
 const mockGenerateIdeas = vi.hoisted(() => vi.fn())
-const mockEnrichIdeaInput = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../L1-infra/config/environment.js', () => ({
   initConfig: mockInitConfig,
@@ -18,7 +17,6 @@ vi.mock('../../../L3-services/ideaService/ideaService.js', () => ({
 
 vi.mock('../../../L6-pipeline/ideation.js', () => ({
   generateIdeas: mockGenerateIdeas,
-  enrichIdeaInput: mockEnrichIdeaInput,
 }))
 
 describe('ideate command', () => {
@@ -226,23 +224,14 @@ describe('ideate command', () => {
     }
 
     it('ideate.REQ-040 --add flag triggers idea creation mode', async () => {
-      mockCreateIdea.mockResolvedValue(mockIdea)
-      mockEnrichIdeaInput.mockResolvedValue({
-        topic: 'AI agents for CI/CD',
-        hook: 'AI is rewriting your pipeline',
-        audience: 'devops engineers',
-        keyTakeaway: 'CI/CD agents save hours',
-        talkingPoints: ['Point 1'],
-        platforms: [Platform.YouTube],
-        tags: ['ai'],
-        publishBy: '2026-03-29',
-      })
+      mockGenerateIdeas.mockResolvedValue([mockIdea])
 
       const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
       await runIdeate({ add: true, topic: 'AI agents for CI/CD' })
 
-      expect(mockCreateIdea).toHaveBeenCalledOnce()
-      expect(mockGenerateIdeas).not.toHaveBeenCalled()
+      expect(mockGenerateIdeas).toHaveBeenCalledWith(
+        expect.objectContaining({ count: 1, singleTopic: true, seedTopics: ['AI agents for CI/CD'] }),
+      )
       expect(mockListIdeas).not.toHaveBeenCalled()
     })
 
@@ -252,17 +241,7 @@ describe('ideate command', () => {
     })
 
     it('ideate.REQ-042 prints issue number on success', async () => {
-      mockCreateIdea.mockResolvedValue(mockIdea)
-      mockEnrichIdeaInput.mockResolvedValue({
-        topic: 'AI agents for CI/CD',
-        hook: 'AI hook',
-        audience: 'developers',
-        keyTakeaway: 'Key',
-        talkingPoints: [],
-        platforms: [Platform.YouTube],
-        tags: [],
-        publishBy: '2026-03-29',
-      })
+      mockGenerateIdeas.mockResolvedValue([mockIdea])
 
       const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
       await runIdeate({ add: true, topic: 'AI agents for CI/CD' })
@@ -271,17 +250,7 @@ describe('ideate command', () => {
     })
 
     it('ideate.REQ-043 --format json prints full Idea object', async () => {
-      mockCreateIdea.mockResolvedValue(mockIdea)
-      mockEnrichIdeaInput.mockResolvedValue({
-        topic: 'AI agents for CI/CD',
-        hook: 'AI hook',
-        audience: 'developers',
-        keyTakeaway: 'Key',
-        talkingPoints: [],
-        platforms: [Platform.YouTube],
-        tags: [],
-        publishBy: '2026-03-29',
-      })
+      mockGenerateIdeas.mockResolvedValue([mockIdea])
 
       const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
       await runIdeate({ add: true, topic: 'AI agents for CI/CD', format: 'json' })
@@ -363,85 +332,37 @@ describe('ideate command', () => {
       )
     })
 
-    it('ideate.REQ-049 AI enrichment fills missing fields by default', async () => {
-      const enrichedInput = {
-        topic: 'AI agents',
-        hook: 'AI-generated hook',
-        audience: 'AI engineers',
-        keyTakeaway: 'AI key takeaway',
-        talkingPoints: ['AI point 1', 'AI point 2'],
-        platforms: [Platform.YouTube, Platform.TikTok],
-        tags: ['ai', 'agents'],
-        publishBy: '2026-04-01',
-        trendContext: 'AI agents are trending',
-      }
-      mockEnrichIdeaInput.mockResolvedValue(enrichedInput)
-      mockCreateIdea.mockResolvedValue(mockIdea)
+    it('ideate.REQ-049 AI mode uses full IdeationAgent with research', async () => {
+      mockGenerateIdeas.mockResolvedValue([mockIdea])
 
       const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
       await runIdeate({ add: true, topic: 'AI agents' })
 
-      expect(mockEnrichIdeaInput).toHaveBeenCalledWith('AI agents', undefined)
-      expect(mockCreateIdea).toHaveBeenCalledWith(enrichedInput)
-    })
-
-    it('ideate.REQ-050 --prompt is passed to AI enrichment', async () => {
-      mockEnrichIdeaInput.mockResolvedValue({
-        topic: 'AI agents',
-        hook: 'hook',
-        audience: 'devs',
-        keyTakeaway: 'key',
-        talkingPoints: [],
-        platforms: [Platform.YouTube],
-        tags: [],
-        publishBy: '2026-04-01',
-      })
-      mockCreateIdea.mockResolvedValue(mockIdea)
-
-      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
-      await runIdeate({ add: true, topic: 'AI agents', prompt: 'Focus on GitHub Actions' })
-
-      expect(mockEnrichIdeaInput).toHaveBeenCalledWith('AI agents', 'Focus on GitHub Actions')
-    })
-
-    it('ideate.REQ-051 CLI overrides take precedence over AI suggestions', async () => {
-      mockEnrichIdeaInput.mockResolvedValue({
-        topic: 'AI agents',
-        hook: 'AI-generated hook',
-        audience: 'AI engineers',
-        keyTakeaway: 'AI takeaway',
-        talkingPoints: ['AI point'],
-        platforms: [Platform.YouTube],
-        tags: ['ai'],
-        publishBy: '2026-04-01',
-      })
-      mockCreateIdea.mockResolvedValue(mockIdea)
-
-      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
-      await runIdeate({
-        add: true,
-        topic: 'AI agents',
-        audience: 'devops engineers',
-        platforms: 'tiktok,linkedin',
-      })
-
-      expect(mockCreateIdea).toHaveBeenCalledWith(
+      expect(mockGenerateIdeas).toHaveBeenCalledWith(
         expect.objectContaining({
-          topic: 'AI agents',
-          hook: 'AI-generated hook', // AI value kept
-          audience: 'devops engineers', // CLI override
-          platforms: [Platform.TikTok, Platform.LinkedIn], // CLI override
+          seedTopics: ['AI agents'],
+          count: 1,
+          singleTopic: true,
         }),
       )
+      // Agent creates idea internally — no separate createIdea call
+      expect(mockCreateIdea).not.toHaveBeenCalled()
     })
 
-    it('ideate.REQ-049 --no-ai skips AI enrichment and uses defaults', async () => {
+    it('ideate.REQ-049 throws when agent returns no ideas', async () => {
+      mockGenerateIdeas.mockResolvedValue([])
+
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await expect(runIdeate({ add: true, topic: 'AI agents' })).rejects.toThrow('IdeationAgent did not create an idea')
+    })
+
+    it('ideate.REQ-049 --no-ai skips agent and uses direct creation with defaults', async () => {
       mockCreateIdea.mockResolvedValue(mockIdea)
 
       const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
       await runIdeate({ add: true, topic: 'Manual idea', ai: false })
 
-      expect(mockEnrichIdeaInput).not.toHaveBeenCalled()
+      expect(mockGenerateIdeas).not.toHaveBeenCalled()
       expect(mockCreateIdea).toHaveBeenCalledWith(
         expect.objectContaining({
           topic: 'Manual idea',
