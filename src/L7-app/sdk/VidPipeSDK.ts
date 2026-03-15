@@ -20,7 +20,7 @@ import {
   fileExistsSync,
   writeTextFile,
 } from '../../L1-infra/fileSystem/fileSystem.js'
-import { join, parse } from '../../L1-infra/paths/paths.js'
+import { join } from '../../L1-infra/paths/paths.js'
 import { spawnCommand } from '../../L1-infra/process/process.js'
 import { getFFmpegPath, getFFprobePath } from '../../L3-services/diagnostics/diagnostics.js'
 import {
@@ -449,7 +449,9 @@ function mapVariantPlatforms(platforms: readonly string[]): VariantPlatform[] {
 }
 
 function getVariantSlug(videoPath: string): string {
-  return parse(videoPath).name
+  // Handle both Windows and POSIX separators regardless of platform
+  const basename = videoPath.split(/[\\/]/).pop() ?? videoPath
+  return basename.replace(/\.[^.]+$/, '')
 }
 
 function buildDiagnosticStatus(
