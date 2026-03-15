@@ -21,6 +21,8 @@ export async function runInit(): Promise<void> {
   })
 
   console.log('\n🎬 Welcome to vidpipe setup!\n')
+  console.log('💡 Tip: Use "vidpipe configure" to save credentials globally\n'
+    + '   (shared across all projects). This wizard writes a local .env file.\n')
 
   const envPath = join(process.cwd(), '.env')
   const envVars: Record<string, string> = {}

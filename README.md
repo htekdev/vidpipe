@@ -483,3 +483,36 @@ Run `vidpipe doctor` to verify your setup.
 
 ISC © [htekdev](https://github.com/htekdev)
 
+---
+
+## 🧩 SDK Usage
+
+VidPipe also ships as a Node.js ESM SDK for programmatic use:
+
+```ts
+import { createVidPipe } from 'vidpipe'
+
+const vidpipe = createVidPipe({
+  openaiApiKey: process.env.OPENAI_API_KEY,
+  outputDir: './recordings',
+})
+
+const result = await vidpipe.processVideo('./videos/demo.mp4', {
+  skipGit: true,
+})
+
+console.log(result.video.videoDir)
+console.log(result.shorts.length)
+```
+
+SDK features include:
+
+- `processVideo()` for the full pipeline
+- `ideate()` plus `ideas.*` CRUD helpers
+- `schedule.*` helpers for slots, calendar, and realignment
+- `video.*` helpers for clips, captions, silence detection, variants, and frames
+- `social.generatePosts()` for quick platform-specific drafts
+- `doctor()` and `config.*` for diagnostics and configuration access
+
+See [docs/sdk.md](./docs/sdk.md) for the full SDK guide.
+

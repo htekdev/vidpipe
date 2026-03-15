@@ -10,6 +10,7 @@ import { runSchedule } from './commands/schedule'
 import { runRealign } from './commands/realign'
 import { runChat } from './commands/chat'
 import { runIdeate } from './commands/ideate'
+import { runConfigure } from './commands/configure'
 import { startReviewServer } from './review/server'
 import { openUrl } from '../L1-infra/cli/cli.js'
 import { readTextFileSync, listDirectorySync } from '../L1-infra/fileSystem/fileSystem.js'
@@ -127,6 +128,15 @@ program
   .action(async (opts) => {
     initConfig()
     await runIdeate(opts)
+    process.exit(0)
+  })
+
+program
+  .command('configure [subcommand]')
+  .description('Manage global configuration — API keys, defaults, and preferences')
+  .argument('[args...]', 'Arguments for the subcommand (e.g., key and value for set)')
+  .action(async (subcommand: string | undefined, args: string[]) => {
+    await runConfigure(subcommand, args)
     process.exit(0)
   })
 

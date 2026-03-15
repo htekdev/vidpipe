@@ -1,6 +1,7 @@
 import { join } from '../paths/paths.js'
 import { fileExistsSync } from '../fileSystem/fileSystem.js'
 import { loadEnvFile } from '../env/env.js'
+import { resolveConfig } from './configResolver.js'
 
 // Load .env file from repo root
 const envPath = join(process.cwd(), '.env')
@@ -69,46 +70,13 @@ let config: AppEnvironment | null = null
 
 export function validateRequiredKeys(): void {
   if (!config?.OPENAI_API_KEY && !process.env.OPENAI_API_KEY) {
-    throw new Error('Missing required: OPENAI_API_KEY (set via --openai-key or env var)')
+    throw new Error('Missing required: OPENAI_API_KEY (set via --openai-key, env var, or vidpipe configure)')
   }
 }
 
-/** Merge CLI options → env vars → defaults. Call before getConfig(). */
+/** Merge CLI options → env vars → global config → defaults. Call before getConfig(). */
 export function initConfig(cli: CLIOptions = {}): AppEnvironment {
-  const repoRoot = process.env.REPO_ROOT || process.cwd()
-
-  config = {
-    OPENAI_API_KEY: cli.openaiKey || process.env.OPENAI_API_KEY || '',
-    WATCH_FOLDER: cli.watchDir || process.env.WATCH_FOLDER || join(repoRoot, 'watch'),
-    REPO_ROOT: repoRoot,
-    FFMPEG_PATH: process.env.FFMPEG_PATH || 'ffmpeg',   // legacy; prefer ffmpegResolver
-    FFPROBE_PATH: process.env.FFPROBE_PATH || 'ffprobe', // legacy; prefer ffmpegResolver
-    EXA_API_KEY: cli.exaKey || process.env.EXA_API_KEY || '',
-    EXA_MCP_URL: process.env.EXA_MCP_URL || 'https://mcp.exa.ai/mcp',
-    YOUTUBE_API_KEY: cli.youtubeKey || process.env.YOUTUBE_API_KEY || '',
-    PERPLEXITY_API_KEY: cli.perplexityKey || process.env.PERPLEXITY_API_KEY || '',
-    LLM_PROVIDER: process.env.LLM_PROVIDER || 'copilot',
-    LLM_MODEL: process.env.LLM_MODEL || '',
-    ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY || '',
-    OUTPUT_DIR:cli.outputDir || process.env.OUTPUT_DIR || join(repoRoot, 'recordings'),
-    BRAND_PATH: cli.brand || process.env.BRAND_PATH || join(repoRoot, 'brand.json'),
-    VERBOSE: cli.verbose ?? false,
-    SKIP_GIT: cli.git === false,
-    SKIP_SILENCE_REMOVAL: cli.silenceRemoval === false,
-    SKIP_SHORTS: cli.shorts === false,
-    SKIP_MEDIUM_CLIPS: cli.mediumClips === false,
-    SKIP_SOCIAL: cli.social === false,
-    SKIP_CAPTIONS: cli.captions === false,
-    SKIP_VISUAL_ENHANCEMENT: cli.visualEnhancement === false,
-    LATE_API_KEY:cli.lateApiKey || process.env.LATE_API_KEY || '',
-    LATE_PROFILE_ID: cli.lateProfileId || process.env.LATE_PROFILE_ID || '',
-    SKIP_SOCIAL_PUBLISH: cli.socialPublish === false,
-    GEMINI_API_KEY: process.env.GEMINI_API_KEY || '',
-    GEMINI_MODEL: process.env.GEMINI_MODEL || 'gemini-2.5-pro',
-    IDEAS_REPO: cli.ideasRepo || process.env.IDEAS_REPO || 'htekdev/content-management',
-    GITHUB_TOKEN: cli.githubToken || process.env.GITHUB_TOKEN || '',
-  }
-
+  config = resolveConfig(cli)
   return config
 }
 
@@ -117,6 +85,6 @@ export function getConfig(): AppEnvironment {
     return config
   }
 
-  // Fallback: init with no CLI options (pure env-var mode)
+  // Fallback: init with no CLI options (resolve from env + global config)
   return initConfig()
 }
