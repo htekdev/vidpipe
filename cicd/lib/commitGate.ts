@@ -3,11 +3,13 @@
  */
 
 import { execSync } from 'child_process';
+import { globSync } from 'node:fs';
 import { analyzeStagedChanges } from './diffAnalyzer.js';
 import { validateTestTiers, formatMissingTiers } from './layerTestMapper.js';
 import { runTestsWithCoverage, cleanupCoverage } from './testRunner.js';
 import { checkChangedLineCoverage, formatCoverageReport } from './coverageChecker.js';
 import { analyzeSpecTestTraceability, formatTraceabilityReport } from './specAnalyzer.js';
+import { validateBoundaries, formatBoundaryReport } from './boundaryValidator.js';
 
 export interface CommitGateOptions {
   threshold: number;
@@ -97,10 +99,29 @@ export async function runCommitGate(options: CommitGateOptions): Promise<boolean
     return executeCommit(commitArgs, dryRun);
   }
 
-  // ── Step 3: Validate spec-test traceability ─────────────────────────────────
+  // ── Step 3: Validate layer boundaries ────────────────────────────────────
+
+  console.log('🔒 Step 3: Validating layer boundaries\n');
+
+  const allSourceAndTestFiles = globSync('src/**/*.ts', { cwd: process.cwd() })
+    .map(f => f.replace(/\\/g, '/'))
+    .filter(f => !f.includes('/node_modules/'));
+
+  const boundaryResult = validateBoundaries(allSourceAndTestFiles);
+
+  if (!boundaryResult.allPassing) {
+    console.log('❌ Commit blocked: Layer boundary violations detected.\n');
+    console.log(formatBoundaryReport(boundaryResult));
+    console.log('\nFix the violations above before committing.');
+    return false;
+  }
+
+  console.log(`  ✅ ${allSourceAndTestFiles.length} file(s) checked -- no boundary violations\n`);
+
+  // ── Step 4: Validate spec-test traceability ─────────────────────────────────
 
   if (analysis.specChanges.length > 0) {
-    console.log('📝 Step 3: Validating spec-test traceability\n');
+    console.log('📝 Step 4: Validating spec-test traceability\n');
 
     // ALL test files can reference specs (unit, integration, e2e)
     const allTestFiles = analysis.testChanges.map(t => t.file);
@@ -123,9 +144,9 @@ export async function runCommitGate(options: CommitGateOptions): Promise<boolean
     }
   }
 
-  // ── Step 4: Validate test tiers ────────────────────────────────────────────
+  // ── Step 5: Validate test tiers ────────────────────────────────────────────
 
-  console.log('📊 Step 4: Validating test tier coverage\n');
+  console.log('📊 Step 5: Validating test tier coverage\n');
 
   const requirements = validateTestTiers(analysis.codeChanges, analysis.testChanges);
   const allTiersSatisfied = requirements.every(r => r.allSatisfied);
@@ -145,9 +166,9 @@ export async function runCommitGate(options: CommitGateOptions): Promise<boolean
     return false;
   }
 
-  // ── Step 5: Run tests ──────────────────────────────────────────────────────
+  // ── Step 6: Run tests ──────────────────────────────────────────────────────
 
-  console.log('🧪 Step 5: Running changed tests with coverage\n');
+  console.log('🧪 Step 6: Running changed tests with coverage\n');
 
   const testResult = runTestsWithCoverage(analysis.testChanges);
 
@@ -163,9 +184,9 @@ export async function runCommitGate(options: CommitGateOptions): Promise<boolean
       return executeCommit(commitArgs, dryRun);
     }
 
-    // ── Step 6: Verify changed-line coverage ─────────────────────────────────
+    // ── Step 7: Verify changed-line coverage ─────────────────────────────────
 
-    console.log('\n📈 Step 6: Checking changed-line coverage\n');
+    console.log('\n📈 Step 7: Checking changed-line coverage\n');
 
     // Derive active coverage scopes from the test tiers that ran
     const activeScopes = [...new Set(analysis.testChanges.map(t => t.tier))];

@@ -2,8 +2,18 @@
   "name": "vidpipe",
   "version": "1.3.0",
   "description": "AI-powered pipeline that watches for video recordings and generates transcripts, summaries, short clips, and social media posts",
-  "main": "dist/cli.js",
-  "types": "dist/cli.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./cli": {
+      "import": "./dist/cli.js",
+      "types": "./dist/cli.d.ts"
+    }
+  },
   "bin": {
     "vidpipe": "./dist/cli.js"
   },

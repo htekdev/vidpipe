@@ -15,7 +15,7 @@ vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   readTextFile: vi.fn().mockResolvedValue(''),
 }))
 
-vi.mock('../../../L3-services/videoOperations/videoOperations.js', () => ({
+vi.mock('../../../L4-agents/videoServiceBridge.js', () => ({
   extractCompositeClip: (...args: unknown[]) => mockExtractCompositeClip(...args),
 }))
 
