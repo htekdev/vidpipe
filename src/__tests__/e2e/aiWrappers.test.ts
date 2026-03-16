@@ -46,4 +46,15 @@ describe('E2E: ai.ts wrapper functions', () => {
     await import('../../L2-clients/llm/CopilotProvider.js')
     expect(process.env.NODE_OPTIONS).toBe(originalNodeOptions)
   })
+
+  test('resolveCopilotCliPath returns string or undefined', async () => {
+    const { resolveCopilotCliPath } = await import('../../L1-infra/ai/copilot.js')
+    const result = resolveCopilotCliPath()
+    // On CI/dev machines with @github/copilot installed, this returns the native binary
+    // Otherwise it returns undefined (graceful fallback)
+    expect(result === undefined || typeof result === 'string').toBe(true)
+    if (result) {
+      expect(result).toMatch(/copilot(\.exe)?$/)
+    }
+  })
 })

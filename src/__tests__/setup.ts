@@ -17,6 +17,7 @@ vi.mock('@github/copilot-sdk', () => ({
   CopilotClient: vi.fn(function (this: Record<string, unknown>) {
     this.createSession = vi.fn().mockResolvedValue({
       sendMessage: vi.fn(),
+      sendAndWait: vi.fn().mockResolvedValue({ data: { content: '' } }),
       destroy: vi.fn(),
       on: vi.fn(),
     })

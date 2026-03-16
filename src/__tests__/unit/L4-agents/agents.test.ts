@@ -229,6 +229,26 @@ describe('BaseAgent construction', () => {
     await expect(agent.destroy()).resolves.toBeUndefined();
   });
 
+  it('retries on "CLI server exited" errors', async () => {
+    const agent = new MinimalAgent();
+    let callCount = 0;
+    mockState.mockSession.sendAndWait = vi.fn(async () => {
+      callCount++;
+      if (callCount === 1) {
+        throw new Error('CLI server exited unexpectedly with code 0');
+      }
+      return { data: { content: 'ok' } };
+    });
+
+    const result = await agent.run('test');
+    expect(result).toBe('ok');
+    expect(callCount).toBe(2); // first call failed, second succeeded
+
+    // Restore default mock
+    mockState.mockSession.sendAndWait = async () => ({ data: { content: '' } });
+    await agent.destroy();
+  });
+
   it('run() logs session creation start and completion', async () => {
     const { default: logger } = await import('../../../L1-infra/logger/configLogger.js')
     const agent = new MinimalAgent();

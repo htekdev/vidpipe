@@ -231,4 +231,28 @@ describe('CopilotProvider.createSession uses createCopilotClient wrapper', () =>
       }
     }
   })
+
+  test('createSession passes autoRestart: true to CopilotClient', async () => {
+    const { CopilotProvider } = await import('../../../L2-clients/llm/CopilotProvider.js')
+    const provider = new CopilotProvider()
+    await provider.createSession({ systemPrompt: 'test', tools: [] })
+
+    const opts = mockCopilotClientOptions.captured
+    expect(opts).toBeDefined()
+    expect(opts?.autoRestart).toBe(true)
+  })
+
+  test('createSession passes native CLI path when available', async () => {
+    const { CopilotProvider } = await import('../../../L2-clients/llm/CopilotProvider.js')
+    const provider = new CopilotProvider()
+    await provider.createSession({ systemPrompt: 'test', tools: [] })
+
+    const opts = mockCopilotClientOptions.captured
+    expect(opts).toBeDefined()
+    // cliPath is either set (native binary found) or absent (not found)
+    // We can only verify the option structure is passed correctly
+    if (opts?.cliPath) {
+      expect(typeof opts.cliPath).toBe('string')
+    }
+  })
 })

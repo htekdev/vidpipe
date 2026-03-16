@@ -13,7 +13,7 @@
 import { createCopilotClient } from './ai.js'
 import type { SessionEvent } from './ai.js'
 import type { CopilotClient, CopilotSession } from '../../L1-infra/ai/copilot.js'
-import { approveAll } from '../../L1-infra/ai/copilot.js'
+import { approveAll, resolveCopilotCliPath } from '../../L1-infra/ai/copilot.js'
 import logger from '../../L1-infra/logger/configLogger.js'
 import type {
   LLMProvider,
@@ -48,10 +48,16 @@ export class CopilotProvider implements LLMProvider {
 
   async createSession(config: SessionConfig): Promise<LLMSession> {
     if (!this.client) {
+      const cliPath = resolveCopilotCliPath()
+      if (cliPath) {
+        logger.info(`[CopilotProvider] Using native CLI binary: ${cliPath}`)
+      }
       this.client = createCopilotClient({
         autoStart: true,
+        autoRestart: true,
         logLevel: 'error',
         env: buildChildEnv(),
+        ...(cliPath ? { cliPath } : {}),
       })
     }
 

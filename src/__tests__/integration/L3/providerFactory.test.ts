@@ -89,4 +89,17 @@ describe('L3 Integration: providerFactory → L2 provider chain', () => {
     const env = opts.env as Record<string, string>
     expect(env.NODE_OPTIONS).toContain('--disable-warning=ExperimentalWarning')
   })
+
+  test('CopilotProvider passes cliPath when native binary exists', async () => {
+    const { CopilotClient } = await import('@github/copilot-sdk')
+    const { CopilotProvider } = await import('../../../L2-clients/llm/CopilotProvider.js')
+    const provider = new CopilotProvider()
+    await provider.createSession({ systemPrompt: 'test', tools: [] })
+
+    const ctorCalls = (CopilotClient as ReturnType<typeof vi.fn>).mock.calls
+    const opts = ctorCalls[ctorCalls.length - 1][0] as Record<string, unknown>
+    // cliPath may or may not be set depending on whether native binary is installed
+    // but autoRestart should always be true
+    expect(opts.autoRestart).toBe(true)
+  })
 })

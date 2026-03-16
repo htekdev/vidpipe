@@ -160,24 +160,13 @@ export abstract class BaseAgent {
 
   /** Check if an error message indicates a transient/retryable failure. */
   private static isRetryableError(message: string): boolean {
-    const retryablePatterns = [
-      'missing finish_reason',
-      'ECONNRESET',
-      'ETIMEDOUT',
-      'ECONNREFUSED',
-      'socket hang up',
-      'network error',
-      'rate limit',
-      '429',
-      '500',
-      '502',
-      '503',
-      '504',
-      'stream ended',
-      'aborted',
-    ]
     const lower = message.toLowerCase()
-    return retryablePatterns.some(p => lower.includes(p.toLowerCase()))
+    return [
+      'missing finish_reason', 'econnreset', 'etimedout', 'econnrefused',
+      'socket hang up', 'network error', 'rate limit',
+      '429', '500', '502', '503', '504',
+      'stream ended', 'aborted', 'cli server exited',
+    ].some(p => lower.includes(p))
   }
 
   /** Wire up session event listeners for logging. Override for custom display. */

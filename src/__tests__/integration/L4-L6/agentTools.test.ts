@@ -158,5 +158,16 @@ describe('L4-L6 Integration: agentTools (mocked L2 FFmpeg)', () => {
       )
       await agent.destroy()
     })
+
+    it('treats "CLI server exited" as a retryable error', async () => {
+      const { BaseAgent } = await import('../../../L4-agents/BaseAgent.js')
+
+      // Access private static method to verify retry patterns
+      const isRetryable = (BaseAgent as any)['isRetryableError']('CLI server exited unexpectedly with code 0')
+      expect(isRetryable).toBe(true)
+
+      const notRetryable = (BaseAgent as any)['isRetryableError']('Invalid API key')
+      expect(notRetryable).toBe(false)
+    })
   })
 })
