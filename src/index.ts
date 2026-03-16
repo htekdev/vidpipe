@@ -76,6 +76,15 @@ export type {
   StageResult,
   PipelineResult,
 
+  // Progress events
+  ProgressEvent,
+  PipelineStartEvent,
+  StageStartEvent,
+  StageCompleteEvent,
+  StageErrorEvent,
+  StageSkipEvent,
+  PipelineCompleteEvent,
+
   // Silence removal
   SilenceRemovalResult,
 
@@ -104,6 +113,9 @@ export {
   fromLatePlatform,
   normalizePlatformString,
 } from './L0-pure/types/index.js'
+
+// === Progress listener type ===
+export type { ProgressListener } from './L1-infra/progress/progressEmitter.js'
 
 // === Caption style type ===
 export type { CaptionStyle } from './L0-pure/types/index.js'

@@ -15,7 +15,7 @@ describe('getConfig environment consolidation', () => {
   })
 
   it('getConfig returns default values when no env vars set', () => {
-    initConfig()
+    initConfig({ openaiKey: '' })
     const cfg = getConfig()
 
     expect(cfg.LLM_PROVIDER).toBe('copilot')
@@ -106,8 +106,7 @@ describe('getConfig environment consolidation', () => {
   })
 
   it('validateRequiredKeys throws when OPENAI_API_KEY is missing', () => {
-    vi.stubEnv('OPENAI_API_KEY', '')
-    initConfig()
+    initConfig({ openaiKey: '' })
     expect(() => validateRequiredKeys()).toThrow('Missing required: OPENAI_API_KEY')
   })
 

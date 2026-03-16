@@ -1,13 +1,14 @@
-import { describe, test, expect, vi } from 'vitest'
+import { describe, test, expect, vi, beforeEach } from 'vitest'
+import { initConfig } from '../../../L1-infra/config/environment.js'
 
 const mockCreateFn = vi.hoisted(() => vi.fn())
+const MockOpenAI = vi.hoisted(() => vi.fn(function (this: Record<string, unknown>, opts?: Record<string, unknown>) {
+  this.apiKey = opts?.apiKey ?? 'default'
+  this.chat = { completions: { create: mockCreateFn } }
+  this.audio = { transcriptions: { create: mockCreateFn } }
+}))
 
 vi.mock('openai', () => {
-  const MockOpenAI = vi.fn(function (this: Record<string, unknown>, opts?: Record<string, unknown>) {
-    this.apiKey = opts?.apiKey ?? 'default'
-    this.chat = { completions: { create: mockCreateFn } }
-    this.audio = { transcriptions: { create: mockCreateFn } }
-  })
   return { default: MockOpenAI }
 })
 vi.mock('@anthropic-ai/sdk', () => {
@@ -66,6 +67,10 @@ describe('L2 ai.ts wrapper functions', () => {
 // ── Provider createSession exercises the wrappers ─────────────────────
 
 describe('OpenAIProvider.createSession uses createOpenAI wrapper', () => {
+  beforeEach(() => {
+    MockOpenAI.mockClear()
+  })
+
   test('createSession creates client via wrapper and returns session', async () => {
     const { OpenAIProvider } = await import('../../../L2-clients/llm/OpenAIProvider.js')
     const provider = new OpenAIProvider()
@@ -74,6 +79,19 @@ describe('OpenAIProvider.createSession uses createOpenAI wrapper', () => {
       tools: [],
     })
     expect(session).toBeDefined()
+  })
+
+  test('createSession passes API key from config to OpenAI constructor', async () => {
+    initConfig({ openaiKey: 'sk-test-from-config-42' })
+    const { OpenAIProvider } = await import('../../../L2-clients/llm/OpenAIProvider.js')
+    const provider = new OpenAIProvider()
+    await provider.createSession({
+      systemPrompt: 'test',
+      tools: [],
+    })
+    expect(MockOpenAI).toHaveBeenCalledWith(
+      expect.objectContaining({ apiKey: 'sk-test-from-config-42' }),
+    )
   })
 })
 

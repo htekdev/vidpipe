@@ -3,8 +3,17 @@ import { join } from 'node:path'
 import { loadGlobalConfig } from './globalConfig.js'
 import type { AppEnvironment, CLIOptions } from './environment.js'
 
-function resolveString(...sources: Array<string | undefined>): string {
-  for (const source of sources) {
+/**
+ * Resolve a config value from a prioritized list of sources.
+ *
+ * The first arg is the CLI option — treated as explicit even when empty string
+ * (the user passed it deliberately). Remaining args are env/config fallbacks
+ * where empty strings are skipped (they indicate "not configured").
+ */
+function resolveString(cliValue: string | undefined, ...fallbacks: Array<string | undefined>): string {
+  if (cliValue !== undefined) return cliValue
+
+  for (const source of fallbacks) {
     if (source !== undefined && source !== '') {
       return source
     }
@@ -31,7 +40,11 @@ function resolveBoolean(
 
 export function resolveConfig(cliOptions: Partial<CLIOptions> = {}): AppEnvironment {
   const globalConfig = loadGlobalConfig()
-  const repoRoot = process.env.REPO_ROOT || process.cwd()
+  const repoRoot = resolveString(
+    cliOptions.repoRoot,
+    process.env.REPO_ROOT,
+    process.cwd(),
+  )
 
   return {
     OPENAI_API_KEY: resolveString(
@@ -46,14 +59,22 @@ export function resolveConfig(cliOptions: Partial<CLIOptions> = {}): AppEnvironm
       join(repoRoot, 'watch'),
     ),
     REPO_ROOT: repoRoot,
-    FFMPEG_PATH: resolveString(process.env.FFMPEG_PATH, 'ffmpeg'),
-    FFPROBE_PATH: resolveString(process.env.FFPROBE_PATH, 'ffprobe'),
+    FFMPEG_PATH: resolveString(
+      cliOptions.ffmpegPath,
+      process.env.FFMPEG_PATH,
+      'ffmpeg',
+    ),
+    FFPROBE_PATH: resolveString(
+      cliOptions.ffprobePath,
+      process.env.FFPROBE_PATH,
+      'ffprobe',
+    ),
     EXA_API_KEY: resolveString(
       cliOptions.exaKey,
       process.env.EXA_API_KEY,
       globalConfig.credentials.exaApiKey,
     ),
-    EXA_MCP_URL: resolveString(process.env.EXA_MCP_URL, 'https://mcp.exa.ai/mcp'),
+    EXA_MCP_URL: resolveString(undefined, process.env.EXA_MCP_URL, 'https://mcp.exa.ai/mcp'),
     YOUTUBE_API_KEY: resolveString(
       cliOptions.youtubeKey,
       process.env.YOUTUBE_API_KEY,
@@ -65,12 +86,18 @@ export function resolveConfig(cliOptions: Partial<CLIOptions> = {}): AppEnvironm
       globalConfig.credentials.perplexityApiKey,
     ),
     LLM_PROVIDER: resolveString(
+      cliOptions.llmProvider,
       process.env.LLM_PROVIDER,
       globalConfig.defaults.llmProvider,
       'copilot',
     ),
-    LLM_MODEL: resolveString(process.env.LLM_MODEL, globalConfig.defaults.llmModel),
+    LLM_MODEL: resolveString(
+      cliOptions.llmModel,
+      process.env.LLM_MODEL,
+      globalConfig.defaults.llmModel,
+    ),
     ANTHROPIC_API_KEY: resolveString(
+      cliOptions.anthropicKey,
       process.env.ANTHROPIC_API_KEY,
       globalConfig.credentials.anthropicApiKey,
     ),
@@ -134,10 +161,12 @@ export function resolveConfig(cliOptions: Partial<CLIOptions> = {}): AppEnvironm
       false,
     ),
     GEMINI_API_KEY: resolveString(
+      cliOptions.geminiKey,
       process.env.GEMINI_API_KEY,
       globalConfig.credentials.geminiApiKey,
     ),
     GEMINI_MODEL: resolveString(
+      cliOptions.geminiModel,
       process.env.GEMINI_MODEL,
       globalConfig.defaults.geminiModel,
       'gemini-2.5-pro',
@@ -153,5 +182,17 @@ export function resolveConfig(cliOptions: Partial<CLIOptions> = {}): AppEnvironm
       process.env.GITHUB_TOKEN,
       globalConfig.credentials.githubToken,
     ),
+    MODEL_OVERRIDES: resolveModelOverrides(),
   }
+}
+
+/** Scan process.env for MODEL_* vars and return as a lookup map. */
+function resolveModelOverrides(): Readonly<Record<string, string>> {
+  const overrides: Record<string, string> = {}
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith('MODEL_') && value) {
+      overrides[key] = value
+    }
+  }
+  return overrides
 }

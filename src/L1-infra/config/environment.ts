@@ -41,6 +41,8 @@ export interface AppEnvironment {
   IDEAS_REPO: string
   /** GitHub Personal Access Token with repo + project scopes */
   GITHUB_TOKEN: string
+  /** Per-agent model overrides from MODEL_* env vars (e.g. MODEL_SHORTS_AGENT=gpt-4o) */
+  MODEL_OVERRIDES: Readonly<Record<string, string>>
 }
 
 export interface CLIOptions {
@@ -64,12 +66,20 @@ export interface CLIOptions {
   lateProfileId?: string
   ideasRepo?: string
   githubToken?: string
+  anthropicKey?: string
+  geminiKey?: string
+  llmProvider?: string
+  llmModel?: string
+  geminiModel?: string
+  repoRoot?: string
+  ffmpegPath?: string
+  ffprobePath?: string
 }
 
 let config: AppEnvironment | null = null
 
 export function validateRequiredKeys(): void {
-  if (!config?.OPENAI_API_KEY && !process.env.OPENAI_API_KEY) {
+  if (!config?.OPENAI_API_KEY) {
     throw new Error('Missing required: OPENAI_API_KEY (set via --openai-key, env var, or vidpipe configure)')
   }
 }

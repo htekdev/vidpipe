@@ -5,6 +5,7 @@ import type {
   MediumClip,
   PipelineResult,
   Platform,
+  ProgressEvent,
   ScheduleSlot,
   ShortClip,
   SocialPost,
@@ -70,6 +71,8 @@ export interface ProcessOptions {
   skipVisualEnhancement?: boolean
   /** Skip publishing generated social content */
   skipSocialPublish?: boolean
+  /** Callback for real-time pipeline progress events (stage starts, completions, errors) */
+  onProgress?: (event: ProgressEvent) => void
 }
 
 /**

@@ -146,6 +146,7 @@ const baseEnvironment = {
   GEMINI_MODEL: 'gemini-2.5-flash',
   IDEAS_REPO: 'owner/repo',
   GITHUB_TOKEN: 'github-test',
+  MODEL_OVERRIDES: {},
 }
 
 const baseGlobalConfig = {
@@ -286,14 +287,14 @@ describe('VidPipeSDK', () => {
       openaiKey: 'sk-partial',
       outputDir: 'C:\\custom-output',
       watchDir: 'C:\\watch-custom',
+      llmProvider: 'claude',
+      llmModel: 'claude-opus-4.6',
+      anthropicKey: 'anthropic-partial',
+      geminiKey: 'gemini-partial',
+      geminiModel: 'gemini-2.5-pro',
+      repoRoot: 'C:\\Repos\\custom',
       verbose: true,
     }))
-    expect(process.env.LLM_PROVIDER).toBe('claude')
-    expect(process.env.LLM_MODEL).toBe('claude-opus-4.6')
-    expect(process.env.ANTHROPIC_API_KEY).toBe('anthropic-partial')
-    expect(process.env.GEMINI_API_KEY).toBe('gemini-partial')
-    expect(process.env.GEMINI_MODEL).toBe('gemini-2.5-pro')
-    expect(process.env.REPO_ROOT).toBe('C:\\Repos\\custom')
   })
 
   it('delegates ideas.list to listIdeas', async () => {
@@ -492,8 +493,11 @@ describe('VidPipeSDK', () => {
     sdk.config.set('REPO_ROOT', 'C:\\Repos\\runtime')
 
     expect(mockSetGlobalConfigValue).not.toHaveBeenCalled()
+    // initConfig called once for createVidPipe + once per config.set = 3 total
     expect(mockInitConfig).toHaveBeenCalledTimes(3)
-    expect(process.env.REPO_ROOT).toBe('C:\\Repos\\runtime')
+    // The last initConfig call should include the runtime overrides
+    const lastCallArgs = mockInitConfig.mock.calls[2][0]
+    expect(lastCallArgs.repoRoot).toBe('C:\\Repos\\runtime')
   })
 
   it('throws for unknown config keys', () => {

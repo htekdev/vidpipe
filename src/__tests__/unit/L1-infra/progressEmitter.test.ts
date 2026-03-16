@@ -193,4 +193,119 @@ describe('ProgressEmitter', () => {
       expect(stderrWriteSpy).toHaveBeenCalledOnce()
     })
   })
+  describe('listener support', () => {
+    afterEach(() => {
+      // Remove any listeners added during tests (no removeAll, so we track manually)
+    })
+
+    test('addListener receives emitted events', () => {
+      const received: ProgressEvent[] = []
+      const listener = (event: ProgressEvent) => received.push(event)
+      progressEmitter.addListener(listener)
+
+      const event: ProgressEvent = {
+        event: 'pipeline:start',
+        videoPath: '/test.mp4',
+        totalStages: TOTAL_STAGES,
+        timestamp: '2026-01-01T00:00:00.000Z',
+      }
+      progressEmitter.emit(event)
+
+      expect(received).toHaveLength(1)
+      expect(received[0].event).toBe('pipeline:start')
+
+      progressEmitter.removeListener(listener)
+    })
+
+    test('isEnabled returns true when listeners are registered even without enable()', () => {
+      const listener = () => {}
+      progressEmitter.addListener(listener)
+
+      expect(progressEmitter.isEnabled()).toBe(true)
+
+      progressEmitter.removeListener(listener)
+      expect(progressEmitter.isEnabled()).toBe(false)
+    })
+
+    test('removeListener stops delivery', () => {
+      const received: ProgressEvent[] = []
+      const listener = (event: ProgressEvent) => received.push(event)
+      progressEmitter.addListener(listener)
+      progressEmitter.removeListener(listener)
+
+      const event: ProgressEvent = {
+        event: 'pipeline:start',
+        videoPath: '/test.mp4',
+        totalStages: TOTAL_STAGES,
+        timestamp: '2026-01-01T00:00:00.000Z',
+      }
+      progressEmitter.emit(event)
+
+      expect(received).toHaveLength(0)
+    })
+
+    test('listener receives events without stderr output when not enabled', () => {
+      const received: ProgressEvent[] = []
+      const listener = (event: ProgressEvent) => received.push(event)
+      progressEmitter.addListener(listener)
+
+      const event: ProgressEvent = {
+        event: 'stage:start',
+        stage: PipelineStage.Ingestion,
+        stageNumber: 1,
+        totalStages: TOTAL_STAGES,
+        name: 'Ingestion',
+        timestamp: '2026-01-01T00:00:00.000Z',
+      }
+      progressEmitter.emit(event)
+
+      expect(received).toHaveLength(1)
+      expect(stderrWriteSpy).not.toHaveBeenCalled()
+
+      progressEmitter.removeListener(listener)
+    })
+
+    test('both stderr and listener fire when enabled with listener', () => {
+      progressEmitter.enable()
+      const received: ProgressEvent[] = []
+      const listener = (event: ProgressEvent) => received.push(event)
+      progressEmitter.addListener(listener)
+
+      const event: ProgressEvent = {
+        event: 'pipeline:start',
+        videoPath: '/test.mp4',
+        totalStages: TOTAL_STAGES,
+        timestamp: '2026-01-01T00:00:00.000Z',
+      }
+      progressEmitter.emit(event)
+
+      expect(received).toHaveLength(1)
+      expect(stderrWriteSpy).toHaveBeenCalledOnce()
+
+      progressEmitter.removeListener(listener)
+    })
+
+    test('multiple listeners all receive events', () => {
+      const received1: ProgressEvent[] = []
+      const received2: ProgressEvent[] = []
+      const listener1 = (event: ProgressEvent) => received1.push(event)
+      const listener2 = (event: ProgressEvent) => received2.push(event)
+      progressEmitter.addListener(listener1)
+      progressEmitter.addListener(listener2)
+
+      const event: ProgressEvent = {
+        event: 'pipeline:start',
+        videoPath: '/test.mp4',
+        totalStages: TOTAL_STAGES,
+        timestamp: '2026-01-01T00:00:00.000Z',
+      }
+      progressEmitter.emit(event)
+
+      expect(received1).toHaveLength(1)
+      expect(received2).toHaveLength(1)
+
+      progressEmitter.removeListener(listener1)
+      progressEmitter.removeListener(listener2)
+    })
+  })
 })

@@ -60,6 +60,7 @@ vi.mock('../../../L1-infra/config/environment.js', () => ({
     LLM_MODEL: '',
     EXA_API_KEY: '',
     EXA_MCP_URL: 'https://mcp.exa.ai/mcp',
+    MODEL_OVERRIDES: {},
   }),
 }));
 

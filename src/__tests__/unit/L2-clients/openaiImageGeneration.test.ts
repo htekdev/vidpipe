@@ -38,15 +38,8 @@ describe('L2 openai imageGeneration', () => {
   })
 
   it('throws when OPENAI_API_KEY is missing', async () => {
-    const orig = process.env.OPENAI_API_KEY
-    process.env.OPENAI_API_KEY = ''
-    initConfig() // picks up empty env var
-    try {
-      await expect(generateImage('test', '/out/img.png')).rejects.toThrow('OPENAI_API_KEY')
-    } finally {
-      process.env.OPENAI_API_KEY = orig ?? ''
-      initConfig() // restore
-    }
+    initConfig({ openaiKey: '' })
+    await expect(generateImage('test', '/out/img.png')).rejects.toThrow('OPENAI_API_KEY')
   })
 
   it('calls fetch with correct parameters on success', async () => {
