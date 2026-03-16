@@ -13,6 +13,7 @@
 import { createCopilotClient } from './ai.js'
 import type { SessionEvent } from './ai.js'
 import type { CopilotClient, CopilotSession } from '../../L1-infra/ai/copilot.js'
+import { approveAll } from '../../L1-infra/ai/copilot.js'
 import logger from '../../L1-infra/logger/configLogger.js'
 import type {
   LLMProvider,
@@ -30,6 +31,7 @@ import type {
 
 const DEFAULT_MODEL = 'claude-opus-4.5'
 const DEFAULT_TIMEOUT_MS = 300_000 // 5 minutes
+const SESSION_CREATE_TIMEOUT_MS = 30_000 // 30 seconds — createSession can hang when Copilot SDK can't connect
 
 export class CopilotProvider implements LLMProvider {
   readonly name = 'copilot' as const
@@ -49,21 +51,45 @@ export class CopilotProvider implements LLMProvider {
       this.client = createCopilotClient({ autoStart: true, logLevel: 'error' })
     }
 
-    const copilotSession = await this.client.createSession({
-      model: config.model,
-      mcpServers: config.mcpServers,
-      systemMessage: { mode: 'replace', content: config.systemPrompt },
-      tools: config.tools.map((t) => ({
-        name: t.name,
-        description: t.description,
-        parameters: t.parameters,
-        handler: t.handler,
-      })),
-      streaming: config.streaming ?? true,
-      onUserInputRequest: config.onUserInputRequest
-        ? (request: UserInputRequest) => config.onUserInputRequest!(request)
-        : undefined,
-    })
+    logger.info('[CopilotProvider] Creating session…')
+
+    let copilotSession: CopilotSession
+    try {
+      copilotSession = await new Promise<CopilotSession>((resolve, reject) => {
+        const timeoutId = setTimeout(
+          () => reject(new Error(
+            `[CopilotProvider] createSession timed out after ${SESSION_CREATE_TIMEOUT_MS / 1000}s — ` +
+            'the Copilot SDK language server may not be reachable. ' +
+            'Check GitHub authentication and network connectivity.'
+          )),
+          SESSION_CREATE_TIMEOUT_MS,
+        )
+        this.client!.createSession({
+          model: config.model,
+          mcpServers: config.mcpServers,
+          systemMessage: { mode: 'replace', content: config.systemPrompt },
+          tools: config.tools.map((t) => ({
+            name: t.name,
+            description: t.description,
+            parameters: t.parameters,
+            handler: t.handler,
+          })),
+          streaming: config.streaming ?? true,
+          onPermissionRequest: approveAll,
+          onUserInputRequest: config.onUserInputRequest
+            ? (request: UserInputRequest) => config.onUserInputRequest!(request)
+            : undefined,
+        }).then(
+          (session) => { clearTimeout(timeoutId); resolve(session) },
+          (err) => { clearTimeout(timeoutId); reject(err) },
+        )
+      })
+    } catch (err) {
+      this.client = null
+      throw err
+    }
+
+    logger.info('[CopilotProvider] Session created successfully')
 
     return new CopilotSessionWrapper(
       copilotSession,

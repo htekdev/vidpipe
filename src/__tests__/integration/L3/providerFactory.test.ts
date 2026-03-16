@@ -69,4 +69,10 @@ describe('L3 Integration: providerFactory → L2 provider chain', () => {
     })
     expect(session).toBeDefined()
   })
+
+  test('CopilotProvider exposes approveAll from L1 copilot wrapper', async () => {
+    const { approveAll } = await import('../../../L1-infra/ai/copilot.js')
+    expect(approveAll).toBeDefined()
+    expect(typeof approveAll).toBe('function')
+  })
 })

@@ -32,4 +32,10 @@ describe('E2E: ai.ts wrapper functions', () => {
     expect(client.models).toBeDefined()
     expect(client.audio).toBeDefined()
   })
+
+  test('L1 copilot wrapper re-exports approveAll for permission handling', async () => {
+    const { approveAll } = await import('../../L1-infra/ai/copilot.js')
+    expect(approveAll).toBeDefined()
+    expect(typeof approveAll).toBe('function')
+  })
 })

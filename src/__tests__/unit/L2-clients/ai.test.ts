@@ -129,4 +129,59 @@ describe('CopilotProvider.createSession uses createCopilotClient wrapper', () =>
     })
     expect(session).toBeDefined()
   })
+
+  test('createSession times out and throws when SDK hangs', async () => {
+    // Make the mock createSession hang forever
+    mockCopilotCreateSession.mockImplementationOnce(
+      () => new Promise(() => { /* never resolves */ }),
+    )
+
+    const { CopilotProvider } = await import('../../../L2-clients/llm/CopilotProvider.js')
+    const provider = new CopilotProvider()
+
+    vi.useFakeTimers()
+    const sessionPromise = provider.createSession({
+      systemPrompt: 'test',
+      tools: [],
+    })
+
+    // Attach rejection handler BEFORE advancing timers to prevent unhandled rejection
+    const assertion = expect(sessionPromise).rejects.toThrow('createSession timed out')
+    await vi.advanceTimersByTimeAsync(31_000)
+    await assertion
+
+    vi.useRealTimers()
+  })
+
+  test('createSession resets client after timeout so next attempt starts fresh', async () => {
+    // First call hangs
+    mockCopilotCreateSession.mockImplementationOnce(
+      () => new Promise(() => { /* never resolves */ }),
+    )
+
+    const { CopilotProvider } = await import('../../../L2-clients/llm/CopilotProvider.js')
+    const provider = new CopilotProvider()
+
+    vi.useFakeTimers()
+    const sessionPromise = provider.createSession({
+      systemPrompt: 'test',
+      tools: [],
+    })
+    const assertion = expect(sessionPromise).rejects.toThrow('createSession timed out')
+    await vi.advanceTimersByTimeAsync(31_000)
+    await assertion
+    vi.useRealTimers()
+
+    // Second call should succeed (mock returns normally)
+    mockCopilotCreateSession.mockResolvedValueOnce({
+      sendMessage: vi.fn(),
+      destroy: vi.fn(),
+      on: vi.fn(),
+    })
+    const session = await provider.createSession({
+      systemPrompt: 'test',
+      tools: [],
+    })
+    expect(session).toBeDefined()
+  })
 })

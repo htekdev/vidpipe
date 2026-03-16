@@ -99,6 +99,7 @@ export abstract class BaseAgent {
     for (let attempt = 1; attempt <= BaseAgent.MAX_RETRIES; attempt++) {
       try {
         if (!this.session) {
+          logger.info(`[${this.agentName}] Creating LLM session (provider=${this.provider.name})…`)
           this.session = await this.provider.createSession({
             systemPrompt: this.systemPrompt,
             tools: this.getTools(),
@@ -109,6 +110,7 @@ export abstract class BaseAgent {
             onUserInputRequest: this.getUserInputHandler(),
           })
           this.setupEventHandlers(this.session)
+          logger.info(`[${this.agentName}] LLM session ready`)
         }
 
         logger.info(`[${this.agentName}] Sending message (attempt ${attempt}/${BaseAgent.MAX_RETRIES}): ${userMessage.substring(0, 80)}…`)

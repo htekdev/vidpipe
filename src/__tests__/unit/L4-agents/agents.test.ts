@@ -31,6 +31,7 @@ vi.mock('@github/copilot-sdk', () => ({
     };
   },
   CopilotSession: function CopilotSessionMock() {},
+  approveAll: vi.fn().mockReturnValue({ result: 'allow' }),
 }));
 
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
@@ -226,6 +227,19 @@ describe('BaseAgent construction', () => {
   it('destroy is safe to call on uninitialised agent', async () => {
     const agent = new MinimalAgent();
     await expect(agent.destroy()).resolves.toBeUndefined();
+  });
+
+  it('run() logs session creation start and completion', async () => {
+    const { default: logger } = await import('../../../L1-infra/logger/configLogger.js')
+    const agent = new MinimalAgent();
+    await agent.run('test prompt');
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining('Creating LLM session'),
+    )
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining('LLM session ready'),
+    )
+    await agent.destroy()
   });
 });
 
