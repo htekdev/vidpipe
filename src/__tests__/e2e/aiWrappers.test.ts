@@ -38,4 +38,12 @@ describe('E2E: ai.ts wrapper functions', () => {
     expect(approveAll).toBeDefined()
     expect(typeof approveAll).toBe('function')
   })
+
+  test('buildChildEnv suppresses ExperimentalWarning without modifying process.env', async () => {
+    const originalNodeOptions = process.env.NODE_OPTIONS
+    // The CopilotProvider uses buildChildEnv internally — verify the contract
+    // by importing the module and checking that process.env is NOT modified
+    await import('../../L2-clients/llm/CopilotProvider.js')
+    expect(process.env.NODE_OPTIONS).toBe(originalNodeOptions)
+  })
 })

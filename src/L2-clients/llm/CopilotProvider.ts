@@ -48,7 +48,11 @@ export class CopilotProvider implements LLMProvider {
 
   async createSession(config: SessionConfig): Promise<LLMSession> {
     if (!this.client) {
-      this.client = createCopilotClient({ autoStart: true, logLevel: 'error' })
+      this.client = createCopilotClient({
+        autoStart: true,
+        logLevel: 'error',
+        env: buildChildEnv(),
+      })
     }
 
     logger.info('[CopilotProvider] Creating session…')
@@ -261,4 +265,22 @@ class CopilotSessionWrapper implements LLMSession {
       }
     }
   }
+}
+
+/**
+ * Build a child-process env that suppresses Node.js ExperimentalWarning on stderr.
+ *
+ * The @github/copilot-sdk treats ANY stderr output as a fatal error when the CLI
+ * subprocess exits, even with code 0. Node.js 24+ emits an ExperimentalWarning
+ * for SQLite to stderr, which causes `CLI server exited with code 0\nstderr: ...`.
+ * See: https://github.com/htekdev/vidpipe/issues/54
+ */
+function buildChildEnv(): Record<string, string | undefined> {
+  const env = { ...process.env }
+  const flag = '--disable-warning=ExperimentalWarning'
+  const current = env.NODE_OPTIONS ?? ''
+  if (!current.includes(flag)) {
+    env.NODE_OPTIONS = current ? `${current} ${flag}` : flag
+  }
+  return env
 }

@@ -24,14 +24,17 @@ const mockCopilotCreateSession = vi.hoisted(() => vi.fn().mockResolvedValue({
   destroy: vi.fn(),
   on: vi.fn(),
 }))
+const mockCopilotClientOptions = vi.hoisted(() => ({ captured: null as Record<string, unknown> | null }))
 vi.mock('@github/copilot-sdk', () => ({
-  CopilotClient: vi.fn(function (this: Record<string, unknown>) {
+  CopilotClient: vi.fn(function (this: Record<string, unknown>, opts?: Record<string, unknown>) {
+    mockCopilotClientOptions.captured = opts ?? null
     this.name = 'copilot-client'
     this.createSession = mockCopilotCreateSession
   }),
   CopilotSession: vi.fn(function (this: Record<string, unknown>) {
     this.name = 'copilot-session'
   }),
+  approveAll: vi.fn().mockReturnValue({ result: 'allow' }),
 }))
 
 import {
@@ -183,5 +186,49 @@ describe('CopilotProvider.createSession uses createCopilotClient wrapper', () =>
       tools: [],
     })
     expect(session).toBeDefined()
+  })
+
+  test('createSession passes env with --disable-warning=ExperimentalWarning to suppress Node.js 24 stderr warnings', async () => {
+    const { CopilotProvider } = await import('../../../L2-clients/llm/CopilotProvider.js')
+    const provider = new CopilotProvider()
+    await provider.createSession({
+      systemPrompt: 'test',
+      tools: [],
+    })
+
+    // The CopilotClient constructor should receive an env option
+    const opts = mockCopilotClientOptions.captured
+    expect(opts).toBeDefined()
+    expect(opts?.env).toBeDefined()
+
+    const env = opts?.env as Record<string, string>
+    expect(env.NODE_OPTIONS).toContain('--disable-warning=ExperimentalWarning')
+  })
+
+  test('env preserves existing NODE_OPTIONS when adding warning suppression', async () => {
+    const originalNodeOptions = process.env.NODE_OPTIONS
+    process.env.NODE_OPTIONS = '--max-old-space-size=4096'
+
+    try {
+      const { CopilotProvider } = await import('../../../L2-clients/llm/CopilotProvider.js')
+      // Force new client creation by using a fresh provider
+      const provider = new CopilotProvider()
+      await provider.close() // clear any cached client
+      await provider.createSession({
+        systemPrompt: 'test',
+        tools: [],
+      })
+
+      const opts = mockCopilotClientOptions.captured
+      const env = opts?.env as Record<string, string>
+      expect(env.NODE_OPTIONS).toContain('--max-old-space-size=4096')
+      expect(env.NODE_OPTIONS).toContain('--disable-warning=ExperimentalWarning')
+    } finally {
+      if (originalNodeOptions === undefined) {
+        delete process.env.NODE_OPTIONS
+      } else {
+        process.env.NODE_OPTIONS = originalNodeOptions
+      }
+    }
   })
 })
