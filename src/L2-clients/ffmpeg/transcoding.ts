@@ -28,6 +28,7 @@ export function transcodeToMp4(inputPath: string, outputPath: string): Promise<s
       createFFmpeg(inputPath)
         .outputOptions([
           '-c:v', 'libx264',
+          '-pix_fmt', 'yuv420p',
           '-preset', 'ultrafast',
           '-crf', '23',
           '-threads', '4',

@@ -26,4 +26,9 @@ describe('L3 Integration: videoOperations → L2 FFmpeg chain', () => {
   test('transcodeToMp4 is exported from L3 videoOperations', () => {
     expect(typeof transcodeToMp4).toBe('function')
   })
+
+  test('transcodeToMp4 rejects for non-existent input file', async () => {
+    await expect(transcodeToMp4('/nonexistent/video.webm', '/tmp/out.mp4'))
+      .rejects.toThrow()
+  })
 })

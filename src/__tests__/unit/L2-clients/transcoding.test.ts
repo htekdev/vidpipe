@@ -87,6 +87,7 @@ describe('transcodeToMp4', () => {
 
     expect(mockFfmpegInstance.outputOptions).toHaveBeenCalledWith([
       '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
       '-preset', 'ultrafast',
       '-crf', '23',
       '-threads', '4',

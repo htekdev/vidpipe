@@ -87,4 +87,18 @@ describe.skipIf(!ffmpegOk || !webmVideoEncoder || !webmAudioEncoder)('WebM Trans
     expect(duration).toBeGreaterThanOrEqual(2.5);
     expect(duration).toBeLessThanOrEqual(4.0);
   }, 30_000);
+
+  it('transcoded MP4 uses yuv420p pixel format for player compatibility', async () => {
+    const mp4Path = path.join(tmpDir, 'output.mp4');
+    const { exists } = await fileExistsWithSize(mp4Path);
+
+    if (!exists) {
+      await transcodeToMp4(webmPath, mp4Path);
+    }
+
+    // ffmpeg -i prints stream info to stderr (exits with code 1 when no output specified)
+    const { stderr } = await execFileAsync(ffmpegPath, ['-hide_banner', '-i', mp4Path], { timeout: 10_000 })
+      .catch((e: any) => ({ stdout: '', stderr: e.stderr ?? '' }));
+    expect(stderr).toContain('yuv420p');
+  }, 30_000);
 });
