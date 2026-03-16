@@ -138,4 +138,36 @@ describe('L4-L6 Integration: agentTools (mocked L2 FFmpeg)', () => {
         .rejects.toThrow(/Failed to get video info/)
     })
   })
+
+  // ── BaseAgent session logging ────────────────────────────────────
+
+  describe('BaseAgent session creation logging', () => {
+    it('logs provider name when creating LLM session', async () => {
+      const { BaseAgent } = await import('../../../L4-agents/BaseAgent.js')
+      const { default: logger } = await import('../../../L1-infra/logger/configLogger.js')
+
+      class TestAgent extends BaseAgent {
+        constructor() { super('TestAgent', 'test prompt') }
+        protected async handleToolCall() { return {} }
+      }
+
+      const agent = new TestAgent()
+      await agent.run('hello')
+      expect(logger.info).toHaveBeenCalledWith(
+        expect.stringContaining('[TestAgent] Creating LLM session'),
+      )
+      await agent.destroy()
+    })
+
+    it('treats "CLI server exited" as a retryable error', async () => {
+      const { BaseAgent } = await import('../../../L4-agents/BaseAgent.js')
+
+      // Access private static method to verify retry patterns
+      const isRetryable = (BaseAgent as any)['isRetryableError']('CLI server exited unexpectedly with code 0')
+      expect(isRetryable).toBe(true)
+
+      const notRetryable = (BaseAgent as any)['isRetryableError']('Invalid API key')
+      expect(notRetryable).toBe(false)
+    })
+  })
 })

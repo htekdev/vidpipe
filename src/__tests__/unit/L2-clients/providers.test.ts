@@ -362,8 +362,7 @@ describe('providers/index', () => {
 
   it('getProvider falls back to copilot when provider is not available', async () => {
     // OpenAI without OPENAI_API_KEY → isAvailable() returns false → fallback to copilot
-    delete process.env.OPENAI_API_KEY;
-    initConfig();
+    initConfig({ openaiKey: '' });
     await resetProvider();
     const provider = getProvider('openai');
     expect(provider).toBeInstanceOf(CopilotProvider);

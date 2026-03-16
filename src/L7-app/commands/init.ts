@@ -1,6 +1,7 @@
 import { createReadlineInterface } from '../../L1-infra/cli/cli.js'
 import { writeTextFile, readTextFile, fileExists } from '../../L1-infra/fileSystem/fileSystem.js'
 import { join } from '../../L1-infra/paths/paths.js'
+import { getConfig } from '../../L1-infra/config/environment.js'
 import { getFFmpegPath, getFFprobePath } from '../../L3-services/diagnostics/diagnostics.js'
 import { createLateApiClient } from '../../L3-services/lateApi/lateApiService.js'
 import { getDefaultScheduleConfig } from '../../L3-services/scheduler/scheduleConfig'
@@ -59,7 +60,7 @@ export async function runInit(): Promise<void> {
 
   // Step 2: OpenAI
   console.log('\nStep 2/5: OpenAI (Required for transcription)')
-  const currentOpenAI = existingVars.OPENAI_API_KEY || process.env.OPENAI_API_KEY
+  const currentOpenAI = existingVars.OPENAI_API_KEY || getConfig().OPENAI_API_KEY
   const hint = currentOpenAI ? ` (current: ${currentOpenAI.slice(0, 8)}...)` : ''
   const openaiKey = await ask(`  ? OpenAI API key${hint}: `)
   if (openaiKey.trim()) {

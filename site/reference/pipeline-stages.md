@@ -24,7 +24,6 @@ VidPipe executes a 15-stage pipeline for each video. Each stage is wrapped in `r
 | 12 | [Medium Clip Posts](#_12-medium-clip-posts) | Generates per-medium-clip social media posts for all 5 platforms |
 | 13 | [Queue Build](#_13-queue-build) | Copies posts and video variants into `publish-queue/` for review |
 | 14 | [Blog](#_14-blog) | AI writes a dev.to-style blog post with web-sourced links |
-| 15 | [Git Push](#_15-git-push) | Auto-commits and pushes all generated assets |
 
 ## Data Flow
 
@@ -208,17 +207,6 @@ An AI agent writes a dev.to-style blog post (800–1500 words) with YAML frontma
 | **Agent** | `BlogAgent` — tools: `search_web`, `write_blog` |
 | **Skip flag** | — |
 | **Enum** | `PipelineStage.Blog` |
-
-### 15. Git Push
-
-Runs `git add -A`, `git commit`, and `git push` for all generated assets in the recording folder.
-
-| | |
-|---|---|
-| **Input** | `slug` (recording folder name) |
-| **Output** | Git commit on `origin main` |
-| **Skip flag** | `--no-git` |
-| **Enum** | `PipelineStage.GitPush` |
 
 ## Error Handling
 

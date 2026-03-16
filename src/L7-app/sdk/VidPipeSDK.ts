@@ -21,6 +21,7 @@ import {
   writeTextFile,
 } from '../../L1-infra/fileSystem/fileSystem.js'
 import { join } from '../../L1-infra/paths/paths.js'
+import { progressEmitter } from '../../L1-infra/progress/progressEmitter.js'
 import { spawnCommand } from '../../L1-infra/process/process.js'
 import { getFFmpegPath, getFFprobePath } from '../../L3-services/diagnostics/diagnostics.js'
 import {
@@ -141,22 +142,11 @@ const platformVariantMap: Readonly<Record<string, VariantPlatform>> = {
   'youtube-shorts': 'youtube-shorts',
 }
 
-function applySdkEnvironment(sdkConfig?: VidPipeConfig): void {
-  if (!sdkConfig) {
-    return
-  }
-
-  if (sdkConfig.anthropicApiKey) process.env.ANTHROPIC_API_KEY = sdkConfig.anthropicApiKey
-  if (sdkConfig.geminiApiKey) process.env.GEMINI_API_KEY = sdkConfig.geminiApiKey
-  if (sdkConfig.llmProvider) process.env.LLM_PROVIDER = sdkConfig.llmProvider
-  if (sdkConfig.llmModel) process.env.LLM_MODEL = sdkConfig.llmModel
-  if (sdkConfig.geminiModel) process.env.GEMINI_MODEL = sdkConfig.geminiModel
-  if (sdkConfig.repoRoot) process.env.REPO_ROOT = sdkConfig.repoRoot
-}
-
 function mapSdkConfigToCliOptions(sdkConfig?: VidPipeConfig): CLIOptions {
   return {
     openaiKey: sdkConfig?.openaiApiKey,
+    anthropicKey: sdkConfig?.anthropicApiKey,
+    geminiKey: sdkConfig?.geminiApiKey,
     exaKey: sdkConfig?.exaApiKey,
     youtubeKey: sdkConfig?.youtubeApiKey,
     perplexityKey: sdkConfig?.perplexityApiKey,
@@ -168,13 +158,16 @@ function mapSdkConfigToCliOptions(sdkConfig?: VidPipeConfig): CLIOptions {
     lateProfileId: sdkConfig?.lateProfileId,
     ideasRepo: sdkConfig?.ideasRepo,
     githubToken: sdkConfig?.githubToken,
+    llmProvider: sdkConfig?.llmProvider,
+    llmModel: sdkConfig?.llmModel,
+    geminiModel: sdkConfig?.geminiModel,
+    repoRoot: sdkConfig?.repoRoot,
   }
 }
 
 function mapProcessOptionsToCliOverrides(options?: ProcessOptions): Partial<CLIOptions> {
   const overrides: Partial<CLIOptions> = {}
 
-  if (options?.skipGit !== undefined) overrides.git = !options.skipGit
   if (options?.skipSilenceRemoval !== undefined) overrides.silenceRemoval = !options.skipSilenceRemoval
   if (options?.skipShorts !== undefined) overrides.shorts = !options.skipShorts
   if (options?.skipMediumClips !== undefined) overrides.mediumClips = !options.skipMediumClips
@@ -254,10 +247,10 @@ function applyPersistedConfigToRuntime(
       currentCliOptions.githubToken = value
       break
     case 'credentials.anthropicApiKey':
-      process.env.ANTHROPIC_API_KEY = value
+      currentCliOptions.anthropicKey = value
       break
     case 'credentials.geminiApiKey':
-      process.env.GEMINI_API_KEY = value
+      currentCliOptions.geminiKey = value
       break
     case 'defaults.outputDir':
       currentCliOptions.outputDir = value
@@ -275,13 +268,13 @@ function applyPersistedConfigToRuntime(
       currentCliOptions.lateProfileId = value
       break
     case 'defaults.llmProvider':
-      process.env.LLM_PROVIDER = value
+      currentCliOptions.llmProvider = value
       break
     case 'defaults.llmModel':
-      process.env.LLM_MODEL = value
+      currentCliOptions.llmModel = value
       break
     case 'defaults.geminiModel':
-      process.env.GEMINI_MODEL = value
+      currentCliOptions.geminiModel = value
       break
     default:
       break
@@ -299,10 +292,6 @@ function applyRuntimeOnlyOverride(
     case 'verbose':
     case 'VERBOSE':
       currentCliOptions.verbose = Boolean(value)
-      return true
-    case 'skipGit':
-    case 'SKIP_GIT':
-      currentCliOptions.git = !Boolean(value)
       return true
     case 'skipSilenceRemoval':
     case 'SKIP_SILENCE_REMOVAL':
@@ -334,15 +323,15 @@ function applyRuntimeOnlyOverride(
       return true
     case 'repoRoot':
     case 'REPO_ROOT':
-      process.env.REPO_ROOT = String(value)
+      currentCliOptions.repoRoot = String(value)
       return true
     case 'ffmpegPath':
     case 'FFMPEG_PATH':
-      process.env.FFMPEG_PATH = String(value)
+      currentCliOptions.ffmpegPath = String(value)
       return true
     case 'ffprobePath':
     case 'FFPROBE_PATH':
-      process.env.FFPROBE_PATH = String(value)
+      currentCliOptions.ffprobePath = String(value)
       return true
     default:
       return false
@@ -533,8 +522,6 @@ async function buildSocialPosts(
 }
 
 export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
-  applySdkEnvironment(sdkConfig)
-
   let currentCliOptions = mapSdkConfigToCliOptions(sdkConfig)
   initConfig(currentCliOptions)
 
@@ -628,25 +615,6 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
         ? 'EXA_API_KEY is configured'
         : 'EXA_API_KEY is not configured (optional)',
     })
-
-    try {
-      const gitResult = spawnCommand('git', ['--version'], { timeout: 10_000 })
-      const passed = gitResult.status === 0 && typeof gitResult.stdout === 'string' && gitResult.stdout.length > 0
-      checks.push({
-        name: 'git',
-        status: buildDiagnosticStatus(false, passed),
-        message: passed
-          ? `Git ${parseVersionFromOutput(gitResult.stdout)} detected`
-          : 'Git is not available (optional for git-push stage)',
-      })
-    } catch (error: unknown) {
-      checks.push({
-        name: 'git',
-        status: 'warn',
-        message: 'Git is not available (optional for git-push stage)',
-        details: error instanceof Error ? error.message : String(error),
-      })
-    }
 
     const watchFolder = config.WATCH_FOLDER || join(process.cwd(), 'watch')
     checks.push({
@@ -757,13 +725,19 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
         ? await getIdeasByIds(ideaIds)
         : undefined
 
-      return await withTemporaryCliOverrides(cliOverrides, async () => {
-        const result = await processVideoSafe(videoPath, ideas)
-        if (!result) {
-          throw new Error(`VidPipe pipeline failed for "${videoPath}" with an uncaught error`)
-        }
-        return result
-      })
+      const listener = options?.onProgress
+      if (listener) progressEmitter.addListener(listener)
+      try {
+        return await withTemporaryCliOverrides(cliOverrides, async () => {
+          const result = await processVideoSafe(videoPath, ideas)
+          if (!result) {
+            throw new Error(`VidPipe pipeline failed for "${videoPath}" with an uncaught error`)
+          }
+          return result
+        })
+      } finally {
+        if (listener) progressEmitter.removeListener(listener)
+      }
     },
 
     async ideate(options?: IdeateOptions) {

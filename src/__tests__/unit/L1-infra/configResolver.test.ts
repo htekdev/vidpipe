@@ -42,7 +42,6 @@ const trackedEnvKeys = [
   'BRAND_PATH',
   'LLM_PROVIDER',
   'LLM_MODEL',
-  'SKIP_GIT',
   'SKIP_SHORTS',
   'EXA_API_KEY',
   'YOUTUBE_API_KEY',
@@ -216,48 +215,9 @@ describe('resolveConfig', () => {
     expect(config.FFPROBE_PATH).toBe('ffprobe')
   })
 
-  it('inverts cli.git=false into SKIP_GIT=true', () => {
-    vi.stubEnv('SKIP_GIT', 'false')
-
-    const config = resolveConfig({ git: false })
-
-    expect(config.SKIP_GIT).toBe(true)
-  })
-
-  it('inverts cli.git=true into SKIP_GIT=false', () => {
-    vi.stubEnv('SKIP_GIT', 'true')
-
-    const config = resolveConfig({ git: true })
-
-    expect(config.SKIP_GIT).toBe(false)
-  })
-
-  it('uses env boolean values when CLI booleans are undefined', () => {
-    vi.stubEnv('SKIP_GIT', 'true')
-
-    const config = resolveConfig()
-
-    expect(config.SKIP_GIT).toBe(true)
-  })
-
-  it.each([
-    ['true', true],
-    ['1', true],
-    ['false', false],
-    ['0', false],
-    ['unexpected', false],
-  ])('parses SKIP_GIT=%s as %s', (envValue, expected) => {
-    vi.stubEnv('SKIP_GIT', envValue)
-
-    const config = resolveConfig()
-
-    expect(config.SKIP_GIT).toBe(expected)
-  })
-
   it('uses default false for booleans when CLI and env values are absent', () => {
     const config = resolveConfig()
 
-    expect(config.SKIP_GIT).toBe(false)
     expect(config.SKIP_SHORTS).toBe(false)
     expect(config.SKIP_SOCIAL_PUBLISH).toBe(false)
   })

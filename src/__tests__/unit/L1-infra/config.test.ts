@@ -32,7 +32,6 @@ describe('initConfig', () => {
     expect(cfg.FFMPEG_PATH).toBe('ffmpeg')
     expect(cfg.FFPROBE_PATH).toBe('ffprobe')
     expect(cfg.VERBOSE).toBe(false)
-    expect(cfg.SKIP_GIT).toBe(false)
     expect(cfg.SKIP_SILENCE_REMOVAL).toBe(false)
     expect(cfg.SKIP_SHORTS).toBe(false)
   })
@@ -45,12 +44,14 @@ describe('initConfig', () => {
     expect(cfg.OPENAI_API_KEY).toBe('from-env')
   })
 
-  it('OUTPUT_DIR defaults to recordings under repo root', () => {
+  it('OUTPUT_DIR defaults to a valid path when not provided', () => {
     vi.stubEnv('OUTPUT_DIR', '')
 
     const cfg = initConfig({})
 
-    expect(cfg.OUTPUT_DIR).toContain('recordings')
+    // OUTPUT_DIR should be set to some default path (global config or recordings/)
+    expect(cfg.OUTPUT_DIR).toBeTruthy()
+    expect(typeof cfg.OUTPUT_DIR).toBe('string')
   })
 
   it('SKIP_* flags honor CLI --no-* params', () => {
@@ -59,7 +60,6 @@ describe('initConfig', () => {
       shorts: false,
       social: false,
       captions: false,
-      git: false,
       mediumClips: false,
     })
 
@@ -67,7 +67,6 @@ describe('initConfig', () => {
     expect(cfg.SKIP_SHORTS).toBe(true)
     expect(cfg.SKIP_SOCIAL).toBe(true)
     expect(cfg.SKIP_CAPTIONS).toBe(true)
-    expect(cfg.SKIP_GIT).toBe(true)
     expect(cfg.SKIP_MEDIUM_CLIPS).toBe(true)
   })
 

@@ -15,7 +15,6 @@ const mockMarkProcessing = vi.hoisted(() => vi.fn())
 const mockMarkCompleted = vi.hoisted(() => vi.fn())
 const mockMarkFailed = vi.hoisted(() => vi.fn())
 const mockBuildPublishQueue = vi.hoisted(() => vi.fn())
-const mockCommitAndPush = vi.hoisted(() => vi.fn())
 const mockGenerateIdeas = vi.hoisted(() => vi.fn())
 const mockScheduleAgent = vi.hoisted(() => vi.fn().mockImplementation(function(this: Record<string, unknown>) {
   this.run = vi.fn()
@@ -35,7 +34,6 @@ vi.mock('../../../L4-agents/pipelineServiceBridge.js', () => ({
   markCompleted: mockMarkCompleted,
   markFailed: mockMarkFailed,
   buildPublishQueue: mockBuildPublishQueue,
-  commitAndPush: mockCommitAndPush,
 }))
 
 vi.mock('../../../L4-agents/IdeationAgent.js', () => ({
@@ -48,7 +46,7 @@ vi.mock('../../../L4-agents/ScheduleAgent.js', () => ({
 
 import {
   costTracker, markPending, markProcessing, markCompleted, markFailed,
-  buildPublishQueue, commitAndPush, generateIdeas, createScheduleAgent,
+  buildPublishQueue, generateIdeas, createScheduleAgent,
 } from '../../../L5-assets/pipelineServices.js'
 
 describe('L5 Unit: pipelineServices wrappers', () => {
@@ -93,12 +91,6 @@ describe('L5 Unit: pipelineServices wrappers', () => {
     const mockVideo = { slug: 'test' } as never
     const result = await buildPublishQueue(mockVideo, [], [], [], undefined)
     expect(result).toEqual({ items: [] })
-  })
-
-  it('commitAndPush delegates to L4', async () => {
-    mockCommitAndPush.mockResolvedValue(undefined)
-    await commitAndPush('/dir', 'msg')
-    expect(mockCommitAndPush).toHaveBeenCalledWith('/dir', 'msg')
   })
 
   it('generateIdeas delegates to L4 IdeationAgent module', async () => {

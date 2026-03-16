@@ -5,6 +5,7 @@ import type {
   MediumClip,
   PipelineResult,
   Platform,
+  ProgressEvent,
   ScheduleSlot,
   ShortClip,
   SocialPost,
@@ -54,8 +55,6 @@ export interface VidPipeConfig {
 export interface ProcessOptions {
   /** Comma-separated idea issue numbers to link to this video */
   ideas?: number[]
-  /** Skip specific pipeline stages */
-  skipGit?: boolean
   /** Skip the silence removal stage */
   skipSilenceRemoval?: boolean
   /** Skip short clip generation */
@@ -70,6 +69,8 @@ export interface ProcessOptions {
   skipVisualEnhancement?: boolean
   /** Skip publishing generated social content */
   skipSocialPublish?: boolean
+  /** Callback for real-time pipeline progress events (stage starts, completions, errors) */
+  onProgress?: (event: ProgressEvent) => void
 }
 
 /**

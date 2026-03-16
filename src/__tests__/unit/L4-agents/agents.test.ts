@@ -31,6 +31,7 @@ vi.mock('@github/copilot-sdk', () => ({
     };
   },
   CopilotSession: function CopilotSessionMock() {},
+  approveAll: vi.fn().mockReturnValue({ result: 'allow' }),
 }));
 
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
@@ -60,6 +61,7 @@ vi.mock('../../../L1-infra/config/environment.js', () => ({
     LLM_MODEL: '',
     EXA_API_KEY: '',
     EXA_MCP_URL: 'https://mcp.exa.ai/mcp',
+    MODEL_OVERRIDES: {},
   }),
 }));
 
@@ -225,6 +227,39 @@ describe('BaseAgent construction', () => {
   it('destroy is safe to call on uninitialised agent', async () => {
     const agent = new MinimalAgent();
     await expect(agent.destroy()).resolves.toBeUndefined();
+  });
+
+  it('retries on "CLI server exited" errors', async () => {
+    const agent = new MinimalAgent();
+    let callCount = 0;
+    mockState.mockSession.sendAndWait = vi.fn(async () => {
+      callCount++;
+      if (callCount === 1) {
+        throw new Error('CLI server exited unexpectedly with code 0');
+      }
+      return { data: { content: 'ok' } };
+    });
+
+    const result = await agent.run('test');
+    expect(result).toBe('ok');
+    expect(callCount).toBe(2); // first call failed, second succeeded
+
+    // Restore default mock
+    mockState.mockSession.sendAndWait = async () => ({ data: { content: '' } });
+    await agent.destroy();
+  });
+
+  it('run() logs session creation start and completion', async () => {
+    const { default: logger } = await import('../../../L1-infra/logger/configLogger.js')
+    const agent = new MinimalAgent();
+    await agent.run('test prompt');
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining('Creating LLM session'),
+    )
+    expect(logger.info).toHaveBeenCalledWith(
+      expect.stringContaining('LLM session ready'),
+    )
+    await agent.destroy()
   });
 });
 

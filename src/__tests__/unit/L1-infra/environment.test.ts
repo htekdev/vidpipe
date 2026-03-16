@@ -15,7 +15,7 @@ describe('getConfig environment consolidation', () => {
   })
 
   it('getConfig returns default values when no env vars set', () => {
-    initConfig()
+    initConfig({ openaiKey: '' })
     const cfg = getConfig()
 
     expect(cfg.LLM_PROVIDER).toBe('copilot')
@@ -42,16 +42,6 @@ describe('getConfig environment consolidation', () => {
     initConfig()
 
     expect(getConfig().EXA_MCP_URL).toBe('https://custom.mcp.url')
-  })
-
-  it('SKIP_GIT is true when cli.git is false', () => {
-    initConfig({ git: false })
-    expect(getConfig().SKIP_GIT).toBe(true)
-  })
-
-  it('SKIP_GIT is false by default', () => {
-    initConfig()
-    expect(getConfig().SKIP_GIT).toBe(false)
   })
 
   it('SKIP_SILENCE_REMOVAL is true when cli.silenceRemoval is false', () => {
@@ -106,8 +96,7 @@ describe('getConfig environment consolidation', () => {
   })
 
   it('validateRequiredKeys throws when OPENAI_API_KEY is missing', () => {
-    vi.stubEnv('OPENAI_API_KEY', '')
-    initConfig()
+    initConfig({ openaiKey: '' })
     expect(() => validateRequiredKeys()).toThrow('Missing required: OPENAI_API_KEY')
   })
 

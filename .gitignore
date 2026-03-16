@@ -4,6 +4,7 @@ dist/
 *.log
 cache/
 coverage/
+coverage-out.tmp
 
 # Social publishing queue (transient — reviewed via vidpipe review)
 publish-queue/

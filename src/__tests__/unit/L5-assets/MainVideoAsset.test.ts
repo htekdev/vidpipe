@@ -116,7 +116,6 @@ vi.mock('../../../L4-agents/BlogAgent.js', () => ({
 
 vi.mock('../../../L4-agents/pipelineServiceBridge.js', () => ({
   buildPublishQueue: vi.fn().mockResolvedValue({ itemsCreated: 0, itemsSkipped: 0, errors: [] }),
-  commitAndPush: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('../../../L5-assets/visualEnhancement.js', () => ({

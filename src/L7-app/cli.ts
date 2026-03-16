@@ -166,7 +166,6 @@ const defaultCmd = program
   .option('--perplexity-key <key>', 'Perplexity API key (default: env PERPLEXITY_API_KEY)')
   .option('--once', 'Process a single video and exit (no watching)')
   .option('--brand <path>', 'Path to brand.json config (default: ./brand.json)')
-  .option('--no-git', 'Skip git commit/push stage')
   .option('--no-silence-removal', 'Skip silence removal stage')
   .option('--no-shorts', 'Skip shorts generation')
   .option('--no-medium-clips', 'Skip medium clip generation')
@@ -200,7 +199,6 @@ const defaultCmd = program
       perplexityKey: opts.perplexityKey,
       brand: opts.brand,
       verbose: opts.verbose,
-      git: opts.git,
       silenceRemoval: opts.silenceRemoval,
       shorts: opts.shorts,
       mediumClips: opts.mediumClips,

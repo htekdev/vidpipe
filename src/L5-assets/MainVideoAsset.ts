@@ -42,7 +42,7 @@ import { ProducerAgent } from '../L4-agents/ProducerAgent.js'
 import { generateSummary } from '../L4-agents/SummaryAgent.js'
 import { generateSocialPosts, generateShortPosts } from '../L4-agents/SocialMediaAgent.js'
 import { generateBlogPost } from '../L4-agents/BlogAgent.js'
-import { buildPublishQueue, commitAndPush } from '../L4-agents/pipelineServiceBridge.js'
+import { buildPublishQueue } from '../L4-agents/pipelineServiceBridge.js'
 import { enhanceVideo } from './visualEnhancement.js'
 import { getConfig } from '../L1-infra/config/environment.js'
 import logger from '../L1-infra/logger/configLogger.js'
@@ -1190,10 +1190,4 @@ export class MainVideoAsset extends VideoAsset {
     await this.buildPublishQueueData(shorts, mediumClips, socialPosts, captionedVideoPath)
   }
 
-  /**
-   * Commit and push all generated assets via git.
-   */
-  async commitAndPushChanges(message?: string): Promise<void> {
-    return commitAndPush(this.slug, message)
-  }
 }

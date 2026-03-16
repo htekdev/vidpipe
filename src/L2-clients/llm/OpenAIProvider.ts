@@ -238,7 +238,8 @@ export class OpenAIProvider implements LLMProvider {
   }
 
   async createSession(config: SessionConfig): Promise<LLMSession> {
-    const client = createOpenAI(); // reads OPENAI_API_KEY from env
+    const appConfig = getConfig();
+    const client = createOpenAI({ apiKey: appConfig.OPENAI_API_KEY });
     const model = config.model ?? this.getDefaultModel();
     logger.info(`OpenAI session created (model=${model}, tools=${config.tools.length})`);
     return new OpenAISession(client, config, model);
