@@ -170,8 +170,7 @@ export function adjustTranscript(
  *
  * ### Why failures don't abort
  * Each stage runs through {@link runStage} which catches errors. This means a
- * transcription failure still lets git-push run (committing whatever was produced),
- * and a shorts failure doesn't block summary generation.
+ * shorts failure doesn't block summary generation.
  */
 export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<PipelineResult> {
   const pipelineStart = Date.now()
@@ -363,13 +362,6 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
 
     // 14. Blog — asset handles blog post generation
     const blogPost = await trackStage<string>(Stage.Blog, () => asset.getBlog())
-
-    // 15. Git — asset handles commit and push
-    if (!cfg.SKIP_GIT) {
-      await trackStage<void>(Stage.GitPush, () => asset.commitAndPushChanges())
-    } else {
-      skipStage(Stage.GitPush, 'SKIP_GIT')
-    }
 
     const totalDuration = Date.now() - pipelineStart
 

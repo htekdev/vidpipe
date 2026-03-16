@@ -25,7 +25,6 @@ export interface AppEnvironment {
   OUTPUT_DIR: string
   BRAND_PATH: string
   VERBOSE: boolean
-  SKIP_GIT: boolean
   SKIP_SILENCE_REMOVAL: boolean
   SKIP_SHORTS: boolean
   SKIP_MEDIUM_CLIPS: boolean
@@ -54,7 +53,6 @@ export interface CLIOptions {
   perplexityKey?: string
   brand?: string
   verbose?: boolean
-  git?: boolean
   silenceRemoval?: boolean
   shorts?: boolean
   mediumClips?: boolean

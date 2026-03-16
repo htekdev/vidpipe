@@ -168,7 +168,6 @@ function mapSdkConfigToCliOptions(sdkConfig?: VidPipeConfig): CLIOptions {
 function mapProcessOptionsToCliOverrides(options?: ProcessOptions): Partial<CLIOptions> {
   const overrides: Partial<CLIOptions> = {}
 
-  if (options?.skipGit !== undefined) overrides.git = !options.skipGit
   if (options?.skipSilenceRemoval !== undefined) overrides.silenceRemoval = !options.skipSilenceRemoval
   if (options?.skipShorts !== undefined) overrides.shorts = !options.skipShorts
   if (options?.skipMediumClips !== undefined) overrides.mediumClips = !options.skipMediumClips
@@ -293,10 +292,6 @@ function applyRuntimeOnlyOverride(
     case 'verbose':
     case 'VERBOSE':
       currentCliOptions.verbose = Boolean(value)
-      return true
-    case 'skipGit':
-    case 'SKIP_GIT':
-      currentCliOptions.git = !Boolean(value)
       return true
     case 'skipSilenceRemoval':
     case 'SKIP_SILENCE_REMOVAL':
@@ -620,25 +615,6 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
         ? 'EXA_API_KEY is configured'
         : 'EXA_API_KEY is not configured (optional)',
     })
-
-    try {
-      const gitResult = spawnCommand('git', ['--version'], { timeout: 10_000 })
-      const passed = gitResult.status === 0 && typeof gitResult.stdout === 'string' && gitResult.stdout.length > 0
-      checks.push({
-        name: 'git',
-        status: buildDiagnosticStatus(false, passed),
-        message: passed
-          ? `Git ${parseVersionFromOutput(gitResult.stdout)} detected`
-          : 'Git is not available (optional for git-push stage)',
-      })
-    } catch (error: unknown) {
-      checks.push({
-        name: 'git',
-        status: 'warn',
-        message: 'Git is not available (optional for git-push stage)',
-        details: error instanceof Error ? error.message : String(error),
-      })
-    }
 
     const watchFolder = config.WATCH_FOLDER || join(process.cwd(), 'watch')
     checks.push({

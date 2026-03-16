@@ -27,7 +27,6 @@ vi.mock('../../../L1-infra/config/environment.js', () => ({
     OUTPUT_DIR: '/tmp/output',
     BRAND_PATH: '/tmp/brand.json',
     VERBOSE: false,
-    SKIP_GIT: false,
     SKIP_SILENCE_REMOVAL: false,
     SKIP_SHORTS: false,
     SKIP_MEDIUM_CLIPS: false,
@@ -286,115 +285,6 @@ describe('captionGeneration', () => {
     expect(generateSRT).toHaveBeenCalledWith(transcript)
     expect(generateVTT).toHaveBeenCalledWith(transcript)
     expect(generateStyledASS).toHaveBeenCalledWith(transcript)
-  })
-})
-
-// ============================================================================
-// 4. gitOperations.ts
-// ============================================================================
-
-vi.mock('../../../L1-infra/process/process.js', () => ({
-  execCommandSync: vi.fn().mockReturnValue('main'),
-}))
-
-describe('gitOperations', () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it('commitAndPush runs git add, commit, and push', async () => {
-    const coreProcess = await import('../../../L1-infra/process/process.js')
-    const { commitAndPush } = await import('../../../L3-services/gitOperations/gitOperations.js')
-
-    await commitAndPush('my-video')
-
-    expect(coreProcess.execCommandSync).toHaveBeenCalledWith('git add -A', expect.objectContaining({ cwd: '/tmp/repo' }))
-    expect(coreProcess.execCommandSync).toHaveBeenCalledWith(
-      expect.stringContaining('git commit -m'),
-      expect.objectContaining({ cwd: '/tmp/repo' }),
-    )
-    expect(coreProcess.execCommandSync).toHaveBeenCalledWith(
-      expect.stringContaining('git push origin'),
-      expect.objectContaining({ cwd: '/tmp/repo' }),
-    )
-  })
-
-  it('commitAndPush uses default commit message', async () => {
-    const coreProcess = await import('../../../L1-infra/process/process.js')
-    const { commitAndPush } = await import('../../../L3-services/gitOperations/gitOperations.js')
-
-    await commitAndPush('test-slug')
-
-    expect(coreProcess.execCommandSync).toHaveBeenCalledWith(
-      expect.stringContaining('Auto-processed video: test-slug'),
-      expect.any(Object),
-    )
-  })
-
-  it('commitAndPush uses custom commit message', async () => {
-    const coreProcess = await import('../../../L1-infra/process/process.js')
-    const { commitAndPush } = await import('../../../L3-services/gitOperations/gitOperations.js')
-
-    await commitAndPush('test-slug', 'Custom message here')
-
-    expect(coreProcess.execCommandSync).toHaveBeenCalledWith(
-      expect.stringContaining('Custom message here'),
-      expect.any(Object),
-    )
-  })
-
-  it('commitAndPush handles nothing-to-commit gracefully', async () => {
-    const coreProcess = await import('../../../L1-infra/process/process.js')
-    vi.mocked(coreProcess.execCommandSync)
-      .mockReturnValueOnce('') // git add
-      .mockImplementationOnce(() => {
-        throw new Error('nothing to commit, working tree clean')
-      })
-
-    const { commitAndPush } = await import('../../../L3-services/gitOperations/gitOperations.js')
-
-    // Should NOT throw
-    await expect(commitAndPush('test-slug')).resolves.toBeUndefined()
-  })
-
-  it('commitAndPush throws on real git errors', async () => {
-    const coreProcess = await import('../../../L1-infra/process/process.js')
-    vi.mocked(coreProcess.execCommandSync)
-      .mockReturnValueOnce('') // git add
-      .mockImplementationOnce(() => {
-        throw new Error('fatal: not a git repository')
-      })
-
-    const { commitAndPush } = await import('../../../L3-services/gitOperations/gitOperations.js')
-
-    await expect(commitAndPush('test-slug')).rejects.toThrow('fatal: not a git repository')
-  })
-
-  it('stageFiles calls git add for each pattern', async () => {
-    const coreProcess = await import('../../../L1-infra/process/process.js')
-    const { stageFiles } = await import('../../../L3-services/gitOperations/gitOperations.js')
-
-    await stageFiles(['*.md', 'recordings/**'])
-
-    expect(coreProcess.execCommandSync).toHaveBeenCalledWith(
-      'git add *.md',
-      expect.objectContaining({ cwd: '/tmp/repo' }),
-    )
-    expect(coreProcess.execCommandSync).toHaveBeenCalledWith(
-      'git add recordings/**',
-      expect.objectContaining({ cwd: '/tmp/repo' }),
-    )
-  })
-
-  it('stageFiles throws on git add failure', async () => {
-    const coreProcess = await import('../../../L1-infra/process/process.js')
-    vi.mocked(coreProcess.execCommandSync).mockImplementationOnce(() => {
-      throw new Error('pathspec did not match')
-    })
-
-    const { stageFiles } = await import('../../../L3-services/gitOperations/gitOperations.js')
-
-    await expect(stageFiles(['nonexistent/**'])).rejects.toThrow('pathspec did not match')
   })
 })
 

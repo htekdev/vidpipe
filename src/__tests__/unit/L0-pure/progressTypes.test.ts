@@ -31,8 +31,8 @@ describe('PIPELINE_STAGES', () => {
       expect(TOTAL_STAGES).toBe(PIPELINE_STAGES.length)
     })
 
-    test('progressEvents.REQ-012 - TOTAL_STAGES is 16', () => {
-      expect(TOTAL_STAGES).toBe(16)
+    test('progressEvents.REQ-012 - TOTAL_STAGES is 15', () => {
+      expect(TOTAL_STAGES).toBe(15)
     })
   })
 
@@ -47,8 +47,8 @@ describe('PIPELINE_STAGES', () => {
       expect(PIPELINE_STAGES[0].stage).toBe(PipelineStage.Ingestion)
     })
 
-    test('progressEvents.REQ-014 - last stage is GitPush', () => {
-      expect(PIPELINE_STAGES[PIPELINE_STAGES.length - 1].stage).toBe(PipelineStage.GitPush)
+    test('progressEvents.REQ-014 - last stage is Blog', () => {
+      expect(PIPELINE_STAGES[PIPELINE_STAGES.length - 1].stage).toBe(PipelineStage.Blog)
     })
   })
 
@@ -79,12 +79,12 @@ describe('getStageInfo', () => {
     })
   })
 
-  test('returns correct info for GitPush', () => {
-    const info = getStageInfo(PipelineStage.GitPush)
+  test('returns correct info for Blog', () => {
+    const info = getStageInfo(PipelineStage.Blog)
     expect(info).toEqual<StageInfo>({
-      stage: PipelineStage.GitPush,
-      name: 'Git Push',
-      stageNumber: 16,
+      stage: PipelineStage.Blog,
+      name: 'Blog',
+      stageNumber: 15,
     })
   })
 
@@ -105,7 +105,7 @@ describe('ProgressEvent type discrimination', () => {
     const event: ProgressEvent = {
       event: 'pipeline:start',
       videoPath: '/test/video.mp4',
-      totalStages: 16,
+      totalStages: 15,
       timestamp: '2026-01-01T00:00:00.000Z',
     }
     expect(event.event).toBe('pipeline:start')
@@ -116,7 +116,7 @@ describe('ProgressEvent type discrimination', () => {
       event: 'stage:complete',
       stage: PipelineStage.Ingestion,
       stageNumber: 1,
-      totalStages: 16,
+      totalStages: 15,
       name: 'Ingestion',
       duration: 100,
       success: true,
@@ -131,7 +131,7 @@ describe('ProgressEvent type discrimination', () => {
       event: 'stage:error',
       stage: PipelineStage.Transcription,
       stageNumber: 2,
-      totalStages: 16,
+      totalStages: 15,
       name: 'Transcription',
       duration: 500,
       error: 'Whisper timeout',
@@ -146,7 +146,7 @@ describe('ProgressEvent type discrimination', () => {
       event: 'stage:skip',
       stage: PipelineStage.Shorts,
       stageNumber: 7,
-      totalStages: 16,
+      totalStages: 15,
       name: 'Shorts',
       reason: 'SKIP_SHORTS',
       timestamp: '2026-01-01T00:00:00.000Z',
@@ -159,12 +159,12 @@ describe('ProgressEvent type discrimination', () => {
     const event: ProgressEvent = {
       event: 'pipeline:complete',
       totalDuration: 45000,
-      stagesCompleted: 14,
+      stagesCompleted: 13,
       stagesFailed: 1,
       stagesSkipped: 1,
       timestamp: '2026-01-01T00:00:00.000Z',
     }
     expect(event.event).toBe('pipeline:complete')
-    expect(event.stagesCompleted + event.stagesFailed + event.stagesSkipped).toBe(16)
+    expect(event.stagesCompleted + event.stagesFailed + event.stagesSkipped).toBe(15)
   })
 })

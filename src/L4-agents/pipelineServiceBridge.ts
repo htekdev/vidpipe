@@ -7,7 +7,6 @@
 
 import { costTracker as _costTracker } from '../L3-services/costTracking/costTracker.js'
 import { markPending as _markPending, markProcessing as _markProcessing, markCompleted as _markCompleted, markFailed as _markFailed } from '../L3-services/processingState/processingState.js'
-import { commitAndPush as _commitAndPush } from '../L3-services/gitOperations/gitOperations.js'
 import { buildPublishQueue as _buildPublishQueue } from '../L3-services/queueBuilder/queueBuilder.js'
 
 // Re-export types (exempt from layer rules)
@@ -38,11 +37,6 @@ export function markCompleted(...args: Parameters<typeof _markCompleted>): Retur
 
 export function markFailed(...args: Parameters<typeof _markFailed>): ReturnType<typeof _markFailed> {
   return _markFailed(...args)
-}
-
-// Git operations
-export function commitAndPush(...args: Parameters<typeof _commitAndPush>): ReturnType<typeof _commitAndPush> {
-  return _commitAndPush(...args)
 }
 
 // Queue builder

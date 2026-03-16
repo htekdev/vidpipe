@@ -33,7 +33,6 @@ const {
   mockGenerateMediumClipPostsData,
   mockGetBlog,
   mockBuildQueue,
-  mockCommitAndPushChanges,
   mockSetIdeas,
   mockGetEditorialDirection,
   mockGetMetadata,
@@ -66,7 +65,6 @@ const {
   mockGenerateMediumClipPostsData: vi.fn(),
   mockGetBlog: vi.fn(),
   mockBuildQueue: vi.fn(),
-  mockCommitAndPushChanges: vi.fn(),
   mockSetIdeas: vi.fn(),
   mockGetEditorialDirection: vi.fn().mockResolvedValue('editorial direction text'),
   mockGetMetadata: vi.fn().mockResolvedValue({ width: 1920, height: 1080, duration: 120 }),
@@ -165,7 +163,6 @@ function defaultConfig(overrides: Record<string, unknown> = {}) {
     SKIP_MEDIUM_CLIPS: false,
     SKIP_SOCIAL: false,
     SKIP_CAPTIONS: false,
-    SKIP_GIT: false,
     SKIP_SOCIAL_PUBLISH: false,
     SKIP_VISUAL_ENHANCEMENT: true,
     GEMINI_API_KEY: '',
@@ -406,7 +403,6 @@ describe('processVideo', () => {
       generateMediumClipPostsData: mockGenerateMediumClipPostsData,
       getBlog: mockGetBlog,
       buildQueue: mockBuildQueue,
-      commitAndPushChanges: mockCommitAndPushChanges,
       setIdeas: mockSetIdeas,
       ...overrides,
     } as any
@@ -429,7 +425,6 @@ describe('processVideo', () => {
     mockGenerateShortPostsData.mockResolvedValue([])
     mockGenerateMediumClipPostsData.mockResolvedValue([])
     mockGetBlog.mockResolvedValue('# Blog')
-    mockCommitAndPushChanges.mockResolvedValue(undefined)
     mockBuildQueue.mockResolvedValue(undefined)
   })
 
@@ -478,7 +473,6 @@ describe('processVideo', () => {
     mockGetChapters.mockImplementation(async () => { callOrder.push('chapters'); return [] })
     mockGetSummary.mockImplementation(async () => { callOrder.push('summary'); return { title: '', overview: '', keyTopics: [], snapshots: [], markdownPath: '' } })
     mockGetBlog.mockImplementation(async () => { callOrder.push('blog'); return '# Blog' })
-    mockCommitAndPushChanges.mockImplementation(async () => { callOrder.push('git') })
 
     await processVideo('/videos/test.mp4')
 
@@ -488,7 +482,6 @@ describe('processVideo', () => {
     expect(callOrder.indexOf('captions')).toBeLessThan(callOrder.indexOf('shorts'))
     expect(callOrder.indexOf('shorts')).toBeLessThan(callOrder.indexOf('summary'))
     expect(callOrder.indexOf('summary')).toBeLessThan(callOrder.indexOf('blog'))
-    expect(callOrder.indexOf('blog')).toBeLessThan(callOrder.indexOf('git'))
   })
 
   it('aborts early when ingestion fails', async () => {
@@ -582,14 +575,6 @@ describe('processVideo', () => {
     expect(mockGenerateShortPostsData).not.toHaveBeenCalled()
   })
 
-  it('skips git when SKIP_GIT is true', async () => {
-    mockGetConfig.mockReturnValue(defaultConfig({ SKIP_GIT: true }))
-
-    await processVideo('/videos/test.mp4')
-
-    expect(mockCommitAndPushChanges).not.toHaveBeenCalled()
-  })
-
   // ---- Transcription failure behavior ----
 
   it('continues pipeline when transcription fails (stages are independent)', async () => {
@@ -602,7 +587,6 @@ describe('processVideo', () => {
     // Other stages still get called because trackStage catches errors and continues
     // The get* methods on the asset handle their own error scenarios
     expect(mockGetBlog).toHaveBeenCalled()
-    expect(mockCommitAndPushChanges).toHaveBeenCalled()
   })
 
   // ---- Summary failure behavior ----
@@ -682,7 +666,6 @@ describe('processVideoSafe', () => {
       generateMediumClipPostsData: vi.fn().mockResolvedValue([]),
       getBlog: vi.fn().mockResolvedValue(''),
       buildQueue: vi.fn().mockResolvedValue(undefined),
-      commitAndPushChanges: vi.fn().mockResolvedValue(undefined),
       setIdeas: vi.fn(),
     } as any)
   })
@@ -735,7 +718,6 @@ describe('progress events', () => {
       generateMediumClipPostsData: mockGenerateMediumClipPostsData,
       getBlog: mockGetBlog,
       buildQueue: mockBuildQueue,
-      commitAndPushChanges: mockCommitAndPushChanges,
       setIdeas: mockSetIdeas,
       ...overrides,
     } as any
@@ -756,7 +738,6 @@ describe('progress events', () => {
     mockGetSummary.mockResolvedValue({ title: 'Test' })
     mockGetSocialPosts.mockResolvedValue([])
     mockGetBlog.mockResolvedValue('blog content')
-    mockCommitAndPushChanges.mockResolvedValue(undefined)
     mockMainVideoAssetIngest.mockResolvedValue(makeAssetMockForProgress())
   })
 
@@ -771,7 +752,7 @@ describe('progress events', () => {
       expect(startCalls[0][0]).toMatchObject({
         event: 'pipeline:start',
         videoPath: '/videos/test.mp4',
-        totalStages: 16,
+        totalStages: 15,
       })
     })
   })
@@ -900,7 +881,7 @@ describe('progress events', () => {
 
       for (const event of stageEvents) {
         expect(event.stageNumber).toBeGreaterThan(0)
-        expect(event.totalStages).toBe(16)
+        expect(event.totalStages).toBe(15)
         expect(event.name).toBeTruthy()
       }
     })
@@ -975,7 +956,6 @@ describe('progress zero-overhead guard', () => {
     mockGetSummary.mockResolvedValue({ title: 'Test' })
     mockGetSocialPosts.mockResolvedValue([])
     mockGetBlog.mockResolvedValue('blog')
-    mockCommitAndPushChanges.mockResolvedValue(undefined)
     mockMainVideoAssetIngest.mockResolvedValue({
       toVideoFile: vi.fn().mockResolvedValue(video),
       getEditorialDirection: mockGetEditorialDirection,
@@ -998,7 +978,6 @@ describe('progress zero-overhead guard', () => {
       generateMediumClipPostsData: mockGenerateMediumClipPostsData,
       getBlog: mockGetBlog,
       buildQueue: mockBuildQueue,
-      commitAndPushChanges: mockCommitAndPushChanges,
       setIdeas: mockSetIdeas,
     } as any)
 
@@ -1034,7 +1013,6 @@ describe('data-dependent stage skips', () => {
       generateMediumClipPostsData: mockGenerateMediumClipPostsData,
       getBlog: mockGetBlog,
       buildQueue: mockBuildQueue,
-      commitAndPushChanges: mockCommitAndPushChanges,
       setIdeas: mockSetIdeas,
       ...overrides,
     } as any
@@ -1055,7 +1033,6 @@ describe('data-dependent stage skips', () => {
     mockGetSummary.mockResolvedValue({ title: 'Test' })
     mockGetSocialPosts.mockResolvedValue([])
     mockGetBlog.mockResolvedValue('blog')
-    mockCommitAndPushChanges.mockResolvedValue(undefined)
     mockMainVideoAssetIngest.mockResolvedValue(makeAssetMockForSkips())
   })
 

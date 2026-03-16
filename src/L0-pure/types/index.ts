@@ -417,7 +417,6 @@ export enum PipelineStage {
   MediumClipPosts = 'medium-clip-posts',
   Blog = 'blog',
   QueueBuild = 'queue-build',
-  GitPush = 'git-push',
 }
 
 /**
@@ -494,7 +493,6 @@ export const PIPELINE_STAGES: readonly StageInfo[] = [
   { stage: PipelineStage.MediumClipPosts, name: 'Medium Clip Posts', stageNumber: 13 },
   { stage: PipelineStage.QueueBuild, name: 'Queue Build', stageNumber: 14 },
   { stage: PipelineStage.Blog, name: 'Blog', stageNumber: 15 },
-  { stage: PipelineStage.GitPush, name: 'Git Push', stageNumber: 16 },
 ] as const
 
 /** Total number of pipeline stages. Derived from PIPELINE_STAGES, not hardcoded. */

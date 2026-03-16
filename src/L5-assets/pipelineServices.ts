@@ -10,7 +10,6 @@ import {
   markCompleted as _markCompleted,
   markFailed as _markFailed,
   buildPublishQueue as _buildPublishQueue,
-  commitAndPush as _commitAndPush,
 } from '../L4-agents/pipelineServiceBridge.js'
 import { ScheduleAgent as _ScheduleAgent } from '../L4-agents/ScheduleAgent.js'
 import { generateIdeas as _generateIdeas } from '../L4-agents/IdeationAgent.js'
@@ -47,11 +46,6 @@ export function markFailed(...args: Parameters<typeof _markFailed>): ReturnType<
 // Queue builder
 export function buildPublishQueue(...args: Parameters<typeof _buildPublishQueue>): ReturnType<typeof _buildPublishQueue> {
   return _buildPublishQueue(...args)
-}
-
-// Git operations
-export function commitAndPush(...args: Parameters<typeof _commitAndPush>): ReturnType<typeof _commitAndPush> {
-  return _commitAndPush(...args)
 }
 
 // Ideation

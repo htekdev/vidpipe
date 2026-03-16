@@ -114,7 +114,6 @@ export function resolveConfig(cliOptions: Partial<CLIOptions> = {}): AppEnvironm
       join(repoRoot, 'brand.json'),
     ),
     VERBOSE: cliOptions.verbose ?? false,
-    SKIP_GIT: resolveBoolean(cliOptions.git === undefined ? undefined : !cliOptions.git, process.env.SKIP_GIT, false),
     SKIP_SILENCE_REMOVAL: resolveBoolean(
       cliOptions.silenceRemoval === undefined ? undefined : !cliOptions.silenceRemoval,
       process.env.SKIP_SILENCE_REMOVAL,

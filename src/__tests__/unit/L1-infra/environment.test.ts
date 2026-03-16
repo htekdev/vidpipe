@@ -44,16 +44,6 @@ describe('getConfig environment consolidation', () => {
     expect(getConfig().EXA_MCP_URL).toBe('https://custom.mcp.url')
   })
 
-  it('SKIP_GIT is true when cli.git is false', () => {
-    initConfig({ git: false })
-    expect(getConfig().SKIP_GIT).toBe(true)
-  })
-
-  it('SKIP_GIT is false by default', () => {
-    initConfig()
-    expect(getConfig().SKIP_GIT).toBe(false)
-  })
-
   it('SKIP_SILENCE_REMOVAL is true when cli.silenceRemoval is false', () => {
     initConfig({ silenceRemoval: false })
     expect(getConfig().SKIP_SILENCE_REMOVAL).toBe(true)

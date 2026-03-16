@@ -55,8 +55,6 @@ export interface VidPipeConfig {
 export interface ProcessOptions {
   /** Comma-separated idea issue numbers to link to this video */
   ideas?: number[]
-  /** Skip specific pipeline stages */
-  skipGit?: boolean
   /** Skip the silence removal stage */
   skipSilenceRemoval?: boolean
   /** Skip short clip generation */

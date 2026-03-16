@@ -11,7 +11,7 @@ import {
 } from '../../L4-agents/analysisServiceBridge.js'
 import {
   costTracker, markPending, markProcessing,
-  markCompleted, markFailed, commitAndPush, buildPublishQueue,
+  markCompleted, markFailed, buildPublishQueue,
 } from '../../L4-agents/pipelineServiceBridge.js'
 
 describe('E2E: L4 bridge wrappers', () => {
@@ -33,7 +33,6 @@ describe('E2E: L4 bridge wrappers', () => {
     expect(typeof markProcessing).toBe('function')
     expect(typeof markCompleted).toBe('function')
     expect(typeof markFailed).toBe('function')
-    expect(typeof commitAndPush).toBe('function')
     expect(typeof buildPublishQueue).toBe('function')
   })
 })

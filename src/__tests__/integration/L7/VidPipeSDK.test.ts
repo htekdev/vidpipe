@@ -132,7 +132,6 @@ const baseEnvironment = {
   OUTPUT_DIR: 'C:\\output',
   BRAND_PATH: 'C:\\brand.json',
   VERBOSE: false,
-  SKIP_GIT: false,
   SKIP_SILENCE_REMOVAL: false,
   SKIP_SHORTS: false,
   SKIP_MEDIUM_CLIPS: false,

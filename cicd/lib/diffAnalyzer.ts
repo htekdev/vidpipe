@@ -3,6 +3,7 @@
  */
 
 import { execSync } from 'child_process';
+import { existsSync } from 'fs';
 
 export interface ChangedLineRange {
   start: number;
@@ -144,6 +145,12 @@ export function analyzeStagedChanges(): DiffAnalysis {
 
   for (const file of stagedFiles) {
     const normalizedFile = file.replace(/\\/g, '/');
+
+    // Skip deleted files — they exist in the diff but not on disk
+    if (!existsSync(normalizedFile)) {
+      exempt.push(normalizedFile);
+      continue;
+    }
 
     // Spec files (specs/**/*.md)
     if (isSpecFile(normalizedFile)) {

@@ -1,7 +1,7 @@
 /**
  * L4 Unit Test — pipelineServiceBridge wrappers
  *
- * Mocks: L3 services only (costTracking, processingState, gitOperations, queueBuilder)
+ * Mocks: L3 services only (costTracking, processingState, queueBuilder)
  * Tests that the bridge module wraps L3 functions and delegates calls.
  */
 import { describe, it, expect, vi, afterEach } from 'vitest'
@@ -16,7 +16,6 @@ const mockMarkPending = vi.hoisted(() => vi.fn())
 const mockMarkProcessing = vi.hoisted(() => vi.fn())
 const mockMarkCompleted = vi.hoisted(() => vi.fn())
 const mockMarkFailed = vi.hoisted(() => vi.fn())
-const mockCommitAndPush = vi.hoisted(() => vi.fn())
 const mockBuildPublishQueue = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../L3-services/costTracking/costTracker.js', () => ({
@@ -37,10 +36,6 @@ vi.mock('../../../L3-services/processingState/processingState.js', () => ({
   markFailed: mockMarkFailed,
 }))
 
-vi.mock('../../../L3-services/gitOperations/gitOperations.js', () => ({
-  commitAndPush: mockCommitAndPush,
-}))
-
 vi.mock('../../../L3-services/queueBuilder/queueBuilder.js', () => ({
   buildPublishQueue: mockBuildPublishQueue,
 }))
@@ -48,7 +43,7 @@ vi.mock('../../../L3-services/queueBuilder/queueBuilder.js', () => ({
 import {
   costTracker,
   markPending, markProcessing, markCompleted, markFailed,
-  commitAndPush, buildPublishQueue,
+  buildPublishQueue,
 } from '../../../L4-agents/pipelineServiceBridge.js'
 
 describe('L4 Unit: pipelineServiceBridge wrappers', () => {
@@ -97,12 +92,6 @@ describe('L4 Unit: pipelineServiceBridge wrappers', () => {
     mockMarkFailed.mockResolvedValue(undefined)
     await markFailed('/dir', 'err')
     expect(mockMarkFailed).toHaveBeenCalledWith('/dir', 'err')
-  })
-
-  it('commitAndPush delegates to L3', async () => {
-    mockCommitAndPush.mockResolvedValue(undefined)
-    await commitAndPush('/dir', 'msg')
-    expect(mockCommitAndPush).toHaveBeenCalledWith('/dir', 'msg')
   })
 
   it('buildPublishQueue delegates to L3', async () => {
