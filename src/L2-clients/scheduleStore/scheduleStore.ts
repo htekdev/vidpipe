@@ -1,5 +1,6 @@
 import { readTextFile, writeFileRaw } from '../../L1-infra/fileSystem/fileSystem.js'
 import { join } from '../../L1-infra/paths/paths.js'
+import { getGlobalConfigValue } from '../../L1-infra/config/globalConfig.js'
 
 /**
  * Read the raw schedule config JSON from disk.
@@ -22,8 +23,12 @@ export async function writeScheduleFile(filePath: string, content: string): Prom
 }
 
 /**
- * Resolve the default schedule config file path.
+ * Resolve the schedule config file path.
+ * Priority: explicit configPath > global config defaults.scheduleConfig > cwd/schedule.json
  */
 export function resolveSchedulePath(configPath?: string): string {
-  return configPath ?? join(process.cwd(), 'schedule.json')
+  if (configPath) return configPath
+  const globalPath = getGlobalConfigValue('defaults', 'scheduleConfig')
+  if (globalPath) return globalPath
+  return join(process.cwd(), 'schedule.json')
 }

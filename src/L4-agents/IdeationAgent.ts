@@ -93,6 +93,8 @@ interface GenerateIdeasOptions {
   brandPath?: string
   /** When true, allows count=1 (bypasses MIN_IDEA_COUNT). Used by --add. */
   singleTopic?: boolean
+  /** Free-form prompt to guide the agent (e.g., "Cover this article: https://..."). */
+  prompt?: string
 }
 
 interface IdeationAgentContext {
@@ -281,7 +283,7 @@ function buildSystemPrompt(
   return promptSections.join('\n')
 }
 
-function buildUserMessage(count: number, seedTopics: readonly string[], hasMcpServers: boolean): string {
+function buildUserMessage(count: number, seedTopics: readonly string[], hasMcpServers: boolean, userPrompt?: string): string {
   const focusText = seedTopics.length > 0
     ? `Focus areas: ${seedTopics.join(', ')}`
     : 'Focus areas: choose the strongest timely opportunities from the creator context and current trends.'
@@ -310,13 +312,18 @@ function buildUserMessage(count: number, seedTopics: readonly string[], hasMcpSe
     )
   }
 
-  return [
+  const sections = [
     `Generate ${count} new content ideas.`,
     focusText,
-    '',
-    'Follow this exact workflow:',
-    ...steps,
-  ].join('\n')
+  ]
+
+  if (userPrompt) {
+    sections.push('', `## User Prompt`, userPrompt)
+  }
+
+  sections.push('', 'Follow this exact workflow:', ...steps)
+
+  return sections.join('\n')
 }
 
 async function loadBrandContext(brandPath?: string): Promise<BrandContext> {
@@ -913,7 +920,7 @@ export async function generateIdeas(options: GenerateIdeasOptions = {}): Promise
 
   try {
     const hasMcpServers = !!(config.EXA_API_KEY || config.YOUTUBE_API_KEY || config.PERPLEXITY_API_KEY)
-    const userMessage = buildUserMessage(count, seedTopics, hasMcpServers)
+    const userMessage = buildUserMessage(count, seedTopics, hasMcpServers, options.prompt)
     await agent.run(userMessage)
 
     const ideas = agent.getGeneratedIdeas()

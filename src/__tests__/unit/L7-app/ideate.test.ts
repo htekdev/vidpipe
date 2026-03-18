@@ -103,6 +103,35 @@ describe('ideate command', () => {
     )
   })
 
+  it('ideate.REQ-052 passes prompt to generateIdeas in generate mode', async () => {
+    mockGenerateIdeas.mockResolvedValue([])
+
+    const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+    await runIdeate({ prompt: 'Cover this article: https://example.com' })
+
+    expect(mockGenerateIdeas).toHaveBeenCalledWith(
+      expect.objectContaining({ prompt: 'Cover this article: https://example.com' }),
+    )
+  })
+
+  it('ideate.REQ-053 logs prompt in generate mode (non-json)', async () => {
+    mockGenerateIdeas.mockResolvedValue([])
+
+    const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+    await runIdeate({ prompt: 'Focus on MCP servers' })
+
+    expect(getOutput()).toContain('Prompt: Focus on MCP servers')
+  })
+
+  it('ideate.REQ-054 omits prompt log when prompt is not provided', async () => {
+    mockGenerateIdeas.mockResolvedValue([])
+
+    const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+    await runIdeate({})
+
+    expect(getOutput()).not.toContain('Prompt:')
+  })
+
   it('ideate.REQ-021 prints follow-up guidance after generating ideas', async () => {
     mockGenerateIdeas.mockResolvedValue([
       {
@@ -364,6 +393,28 @@ describe('ideate command', () => {
 
       const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
       await expect(runIdeate({ add: true, topic: 'AI agents' })).rejects.toThrow('IdeationAgent did not create an idea')
+    })
+
+    it('ideate.REQ-050 passes prompt option through to generateIdeas', async () => {
+      mockGenerateIdeas.mockResolvedValue([mockIdea])
+
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await runIdeate({ add: true, topic: 'AI agents', prompt: 'Cover this article: https://example.com' })
+
+      expect(mockGenerateIdeas).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: 'Cover this article: https://example.com',
+        }),
+      )
+    })
+
+    it('ideate.REQ-051 logs prompt when provided in non-json mode', async () => {
+      mockGenerateIdeas.mockResolvedValue([mockIdea])
+
+      const { runIdeate } = await import('../../../L7-app/commands/ideate.js')
+      await runIdeate({ prompt: 'Focus on AI safety' })
+
+      expect(getOutput()).toContain('Prompt: Focus on AI safety')
     })
 
     it('ideate.REQ-049 --no-ai skips agent and uses direct creation with defaults', async () => {

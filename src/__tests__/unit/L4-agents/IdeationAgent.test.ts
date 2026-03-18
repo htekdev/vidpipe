@@ -8,6 +8,7 @@ import { getConfig } from '../../../L1-infra/config/environment.js'
 
 const mockState = vi.hoisted(() => ({
   systemPrompt: '',
+  lastUserMessage: '',
   mcpServers: undefined as Record<string, unknown> | undefined,
   tools: [] as Array<{
     name: string
@@ -51,7 +52,8 @@ vi.mock('../../../L3-services/llm/providerFactory.js', async () => {
         return {
           on: () => {},
           close: async () => {},
-          sendAndWait: async () => {
+          sendAndWait: async (userMessage?: string) => {
+            if (userMessage) mockState.lastUserMessage = userMessage
             if (mockState.runScenario === 'ideas') {
               const getBrandContext = config.tools.find((tool) => tool.name === 'get_brand_context')
               const getPastIdeas = config.tools.find((tool) => tool.name === 'get_past_ideas')
@@ -172,6 +174,7 @@ describe('IdeationAgent', () => {
     config.YOUTUBE_API_KEY = ''
     config.PERPLEXITY_API_KEY = ''
     mockState.systemPrompt = ''
+    mockState.lastUserMessage = ''
     mockState.mcpServers = undefined
     mockState.tools = []
     mockState.runScenario = 'ideas'
@@ -570,5 +573,33 @@ describe('IdeationAgent', () => {
     await expect(organizeIdeasTool.handler({
       items: [{ issueNumber: 101, updates: 'invalid' }],
     })).rejects.toThrow('Invalid organize_ideas item at index 0: updates must be an object')
+  })
+
+  test('IdeationAgent.REQ-013 - buildUserMessage includes user prompt section when prompt option is provided', async () => {
+    const { generateIdeas } = await import('../../../L4-agents/IdeationAgent.js')
+
+    await generateIdeas({
+      seedTopics: ['Copilot CLI'],
+      count: 3,
+      brandPath,
+      ideasDir,
+      prompt: 'Cover this article: https://example.com/ai-safety',
+    })
+
+    expect(mockState.lastUserMessage).toContain('## User Prompt')
+    expect(mockState.lastUserMessage).toContain('Cover this article: https://example.com/ai-safety')
+  })
+
+  test('IdeationAgent.REQ-014 - buildUserMessage omits user prompt section when prompt is not provided', async () => {
+    const { generateIdeas } = await import('../../../L4-agents/IdeationAgent.js')
+
+    await generateIdeas({
+      seedTopics: ['Copilot CLI'],
+      count: 3,
+      brandPath,
+      ideasDir,
+    })
+
+    expect(mockState.lastUserMessage).not.toContain('## User Prompt')
   })
 })

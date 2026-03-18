@@ -24,8 +24,10 @@ import {
   findNextSlot,
   getScheduleCalendar,
   rescheduleIdeaPosts,
+  schedulePost,
   type SlotOptions,
   type RescheduleResult,
+  type ScheduleContext,
 } from '../../../L3-services/scheduler/scheduler.js'
 import { clearScheduleCache } from '../../../L3-services/scheduler/scheduleConfig.js'
 
@@ -120,6 +122,27 @@ describe('L3 Integration: scheduler calendar with no Late API', () => {
 
       expect(result.failed).toBe(1)
       expect(result.details[0].error).toBe('No schedule config')
+    })
+  })
+
+  describe('schedulePost export', () => {
+    it('schedulePost is exported and callable', () => {
+      expect(typeof schedulePost).toBe('function')
+    })
+
+    it('ScheduleContext type is properly exported', () => {
+      const ctx: ScheduleContext = {
+        timezone: 'America/Chicago',
+        bookedMap: new Map(),
+        ideaLinkedPostIds: new Set(),
+        lateClient: {} as never,
+        displacementEnabled: false,
+        dryRun: true,
+        depth: 0,
+      }
+
+      expect(ctx.timezone).toBe('America/Chicago')
+      expect(ctx.depth).toBe(0)
     })
   })
 

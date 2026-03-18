@@ -38,6 +38,7 @@ const defaultKeys = [
   'ideasRepo',
   'lateProfileId',
   'geminiModel',
+  'scheduleConfig',
 ] as const satisfies readonly DefaultKey[]
 
 const allowedProviders = ['copilot', 'openai', 'claude'] as const
@@ -59,6 +60,7 @@ export const KEY_MAP = {
   'ideas-repo': { section: 'defaults', key: 'ideasRepo' },
   'late-profile-id': { section: 'defaults', key: 'lateProfileId' },
   'gemini-model': { section: 'defaults', key: 'geminiModel' },
+  'schedule-config': { section: 'defaults', key: 'scheduleConfig' },
 } as const satisfies Record<string, ConfigKeyTarget>
 
 function isCredentialTarget(target: ConfigKeyTarget): target is Extract<ConfigKeyTarget, { section: 'credentials' }> {

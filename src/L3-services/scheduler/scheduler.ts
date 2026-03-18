@@ -22,13 +22,14 @@ const HOUR_MS = 60 * 60 * 1000
 
 // ── Types ──────────────────────────────────────────────────────────────
 
-interface BookedSlot {
+export interface BookedSlot {
   scheduledFor: string
   source: 'late' | 'local'
   postId?: string
   itemId?: string
   platform: string
   status?: string
+  ideaLinked: boolean
 }
 
 export interface SlotOptions {
@@ -53,6 +54,20 @@ interface Timeslot {
 interface IdeaRef {
   platform: string
   scheduledForMs: number
+}
+
+/**
+ * Shared context built once and passed through recursive calls.
+ * Avoids re-fetching data on every recursion.
+ */
+export interface ScheduleContext {
+  timezone: string
+  bookedMap: Map<number, BookedSlot>
+  ideaLinkedPostIds: Set<string>
+  lateClient: LateApiClient
+  displacementEnabled: boolean
+  dryRun: boolean
+  depth: number
 }
 
 // ── Utility functions ──────────────────────────────────────────────────
@@ -127,24 +142,37 @@ async function fetchScheduledPostsSafe(platform?: string): Promise<LatePost[]> {
   }
 }
 
-async function buildBookedSlots(platform?: string): Promise<BookedSlot[]> {
+/**
+ * Build the full booked slot map with idea-linked flags.
+ */
+export async function buildBookedMap(platform?: string): Promise<Map<number, BookedSlot>> {
   const [latePosts, publishedItems] = await Promise.all([
     fetchScheduledPostsSafe(platform),
     getPublishedItems(),
   ])
 
-  const slots: BookedSlot[] = []
+  // Build a set of Late post IDs that are idea-linked
+  const ideaLinkedPostIds = new Set<string>()
+  for (const item of publishedItems) {
+    if (item.metadata.latePostId && item.metadata.ideaIds?.length) {
+      ideaLinkedPostIds.add(item.metadata.latePostId)
+    }
+  }
+
+  const map = new Map<number, BookedSlot>()
 
   for (const post of latePosts) {
     if (!post.scheduledFor) continue
     for (const scheduledPlatform of post.platforms) {
       if (!platform || scheduledPlatform.platform === platform) {
-        slots.push({
+        const ms = normalizeDateTime(post.scheduledFor)
+        map.set(ms, {
           scheduledFor: post.scheduledFor,
           source: 'late',
           postId: post._id,
           platform: scheduledPlatform.platform,
           status: post.status,
+          ideaLinked: ideaLinkedPostIds.has(post._id),
         })
       }
     }
@@ -153,20 +181,24 @@ async function buildBookedSlots(platform?: string): Promise<BookedSlot[]> {
   for (const item of publishedItems) {
     if (platform && item.metadata.platform !== platform) continue
     if (!item.metadata.scheduledFor) continue
-    slots.push({
-      scheduledFor: item.metadata.scheduledFor,
-      source: 'local',
-      itemId: item.id,
-      platform: item.metadata.platform,
-    })
+    const ms = normalizeDateTime(item.metadata.scheduledFor)
+    // Don't overwrite Late entries (Late is source of truth for scheduling)
+    if (!map.has(ms)) {
+      map.set(ms, {
+        scheduledFor: item.metadata.scheduledFor,
+        source: 'local',
+        itemId: item.id,
+        platform: item.metadata.platform,
+        ideaLinked: Boolean(item.metadata.ideaIds?.length),
+      })
+    }
   }
 
-  return slots
+  return map
 }
 
 /**
  * Get the set of Late post IDs that are linked to ideas.
- * Any Late post NOT in this set is non-idea content and can be displaced.
  */
 async function getIdeaLinkedLatePostIds(): Promise<Set<string>> {
   const publishedItems = await getPublishedItems()
@@ -183,8 +215,6 @@ async function getIdeaLinkedLatePostIds(): Promise<Set<string>> {
 
 /**
  * Generate timeslots in chronological order for a platform schedule.
- * @param fromMs  - only yield slots after this timestamp
- * @param maxMs   - stop yielding slots after this timestamp
  */
 function* generateTimeslots(
   platformConfig: PlatformSchedule,
@@ -218,11 +248,6 @@ function* generateTimeslots(
 
 // ── Spacing ────────────────────────────────────────────────────────────
 
-/**
- * Check if a candidate timeslot respects idea spacing constraints.
- * Same idea, same platform → must be samePlatformMs apart.
- * Same idea, different platform → must be crossPlatformMs apart.
- */
 function passesIdeaSpacing(
   candidateMs: number,
   candidatePlatform: string,
@@ -238,18 +263,15 @@ function passesIdeaSpacing(
   return true
 }
 
-/**
- * Build spacing references from already-scheduled posts sharing the same idea IDs.
- */
 async function getIdeaReferences(
   ideaIds: string[],
-  allBookedSlots: readonly BookedSlot[],
+  bookedMap: ReadonlyMap<number, BookedSlot>,
 ): Promise<IdeaRef[]> {
   const sameIdeaPosts = await getScheduledItemsByIdeaIds(ideaIds)
 
   const lateSlotsByPostId = new Map<string, BookedSlot[]>()
   const localSlotsByItemId = new Map<string, BookedSlot[]>()
-  for (const slot of allBookedSlots) {
+  for (const slot of bookedMap.values()) {
     if (slot.postId) {
       const arr = lateSlotsByPostId.get(slot.postId) ?? []
       arr.push(slot)
@@ -287,18 +309,106 @@ async function getIdeaReferences(
   return refs
 }
 
-// ── Main API ───────────────────────────────────────────────────────────
+// ── Core recursive scheduler ───────────────────────────────────────────
+
+/**
+ * Schedule a post into the next available slot, recursively displacing
+ * lower-priority posts as needed.
+ *
+ * Algorithm for each candidate timeslot:
+ *   1. Empty → take it
+ *   2. Taken by non-idea post → schedulePost(displaced post, from this slot), take it
+ *   3. Taken by idea post → skip (idea posts don't displace each other yet)
+ *
+ * @param platformConfig  Schedule config for this platform/clipType
+ * @param fromMs          Start searching from this timestamp
+ * @param isIdeaPost      Whether the post being scheduled is idea-linked
+ * @param label           Human-readable label for logging (e.g., "tiktok/short")
+ * @param ctx             Shared scheduling context (bookedMap, lateClient, etc.)
+ * @returns The scheduled datetime string, or null if no slot found
+ */
+export async function schedulePost(
+  platformConfig: PlatformSchedule,
+  fromMs: number,
+  isIdeaPost: boolean,
+  label: string,
+  ctx: ScheduleContext,
+): Promise<string | null> {
+  const indent = '  '.repeat(ctx.depth)
+  let checked = 0
+  let skippedBooked = 0
+  let skippedSpacing = 0
+
+  logger.debug(`${indent}[schedulePost] Looking for slot for ${label} (idea=${isIdeaPost}) from ${new Date(fromMs).toISOString()}`)
+
+  for (const { datetime, ms } of generateTimeslots(platformConfig, ctx.timezone, fromMs)) {
+    checked++
+    const booked = ctx.bookedMap.get(ms)
+
+    // ── Case 1: Empty slot → take it ────────────────────────────────
+    if (!booked) {
+      logger.debug(`${indent}[schedulePost] ✅ Found empty slot: ${datetime} (checked ${checked} candidates, skipped ${skippedBooked} booked, ${skippedSpacing} spacing)`)
+      return datetime
+    }
+
+    // ── Case 2: Taken by non-idea Late post → displace it ──────────
+    if (isIdeaPost && ctx.displacementEnabled && !booked.ideaLinked && booked.source === 'late' && booked.postId) {
+      logger.info(`${indent}[schedulePost] 🔄 Slot ${datetime} taken by non-idea post ${booked.postId} — displacing`)
+
+      // Recursively find a new home for the displaced post
+      const newHome = await schedulePost(
+        platformConfig,
+        ms,
+        false,
+        `displaced:${booked.postId}`,
+        { ...ctx, depth: ctx.depth + 1 },
+      )
+
+      if (newHome) {
+        // Move the displaced post
+        if (!ctx.dryRun) {
+          await ctx.lateClient.schedulePost(booked.postId, newHome)
+        }
+        logger.info(`${indent}[schedulePost] 📦 Displaced ${booked.postId}: ${datetime} → ${newHome}`)
+
+        // Update the booked map
+        ctx.bookedMap.delete(ms)
+        const newMs = normalizeDateTime(newHome)
+        ctx.bookedMap.set(newMs, { ...booked, scheduledFor: newHome })
+
+        logger.debug(`${indent}[schedulePost] ✅ Taking slot: ${datetime} (checked ${checked} candidates)`)
+        return datetime
+      }
+
+      // Could not find a new home for displaced post — skip this slot
+      logger.warn(`${indent}[schedulePost] ⚠️ Could not displace ${booked.postId} — no empty slot found after ${datetime}`)
+    }
+
+    // ── Case 3: Taken by idea post → skip ──────────────────────────
+    if (booked.ideaLinked) {
+      skippedBooked++
+      if (skippedBooked <= 5 || skippedBooked % 50 === 0) {
+        logger.debug(`${indent}[schedulePost] ⏭️ Slot ${datetime} taken by idea post ${booked.postId ?? booked.itemId} — skipping`)
+      }
+      continue
+    }
+
+    // ── Non-idea post but displacement not available ────────────────
+    skippedBooked++
+    if (skippedBooked <= 5 || skippedBooked % 50 === 0) {
+      logger.debug(`${indent}[schedulePost] ⏭️ Slot ${datetime} taken (${booked.source}/${booked.postId ?? booked.itemId}) — skipping`)
+    }
+  }
+
+  logger.warn(`[schedulePost] ❌ No slot found for ${label} — checked ${checked} candidates, skipped ${skippedBooked} booked, ${skippedSpacing} spacing`)
+  return null
+}
+
+// ── Public API ─────────────────────────────────────────────────────────
 
 /**
  * Find the next available posting slot for a platform.
- *
- * Single walk-through algorithm:
- * 1. Generate timeslots chronologically (from now, or from publishBy deadline backwards)
- * 2. For each slot, check idea spacing — skip if too close to same-idea posts
- * 3. If empty → take it
- * 4. If taken by a non-idea Late post → call findNextSlot for that post to
- *    reschedule it, then take its slot
- * 5. If taken by an idea post or displacement disabled → skip
+ * Uses recursive displacement: idea posts bump non-idea posts to later slots.
  */
 export async function findNextSlot(
   platform: string,
@@ -316,120 +426,31 @@ export async function findNextSlot(
   const nowMs = Date.now()
   const ideaIds = options?.ideaIds?.filter(Boolean) ?? []
   const isIdeaAware = ideaIds.length > 0
-  const displacementEnabled = getDisplacementConfig().enabled
 
-  // Resolve publishBy as an upper bound on the search
-  let maxMs: number | undefined
-  if (options?.publishBy) {
-    const publishByMs = normalizeDateTime(options.publishBy)
-    if (Number.isNaN(publishByMs)) {
-      logger.warn(`Invalid publishBy "${sanitizeLogValue(options.publishBy)}"; ignoring`)
-    } else if (publishByMs <= nowMs) {
-      logger.warn(`publishBy "${sanitizeLogValue(options.publishBy)}" has already passed; scheduling normally`)
-    } else {
-      maxMs = publishByMs
-      const daysUntil = (publishByMs - nowMs) / DAY_MS
-      if (daysUntil < 3) {
-        logger.debug(`Urgent publishBy "${sanitizeLogValue(options.publishBy)}"`)
-      }
-    }
+  // Build shared context
+  const bookedMap = await buildBookedMap(platform)
+  const ideaLinkedPostIds = await getIdeaLinkedLatePostIds()
+  const label = `${platform}/${clipType ?? 'default'}`
+
+  logger.info(`[findNextSlot] Scheduling ${label} (idea=${isIdeaAware}, booked=${bookedMap.size} slots)`)
+
+  const ctx: ScheduleContext = {
+    timezone,
+    bookedMap,
+    ideaLinkedPostIds,
+    lateClient: new LateApiClient(),
+    displacementEnabled: getDisplacementConfig().enabled,
+    dryRun: false,
+    depth: 0,
   }
 
-  // Step 1: Get what's booked on this platform
-  const bookedSlots = await buildBookedSlots(platform)
-  const bookedMap = new Map<number, BookedSlot>()
-  for (const slot of bookedSlots) {
-    bookedMap.set(normalizeDateTime(slot.scheduledFor), slot)
-  }
-  const bookedMs = new Set(bookedMap.keys())
+  const result = await schedulePost(platformConfig, nowMs, isIdeaAware, label, ctx)
 
-  // Step 2: If idea-aware, get idea-linked post IDs and spacing references
-  let ideaLinkedPostIds = new Set<string>()
-  let ideaRefs: IdeaRef[] = []
-  let samePlatformMs = 0
-  let crossPlatformMs = 0
-
-  if (isIdeaAware) {
-    const allBookedSlots = await buildBookedSlots()
-    const [linkedIds, refs] = await Promise.all([
-      getIdeaLinkedLatePostIds(),
-      getIdeaReferences(ideaIds, allBookedSlots),
-    ])
-    ideaLinkedPostIds = linkedIds
-    ideaRefs = refs
-
-    const spacingConfig = getIdeaSpacingConfig()
-    samePlatformMs = spacingConfig.samePlatformHours * HOUR_MS
-    crossPlatformMs = spacingConfig.crossPlatformHours * HOUR_MS
+  if (!result) {
+    logger.warn(`[findNextSlot] No available slot for "${sanitizeLogValue(platform)}" within ${MAX_LOOKAHEAD_DAYS} days`)
   }
 
-  // Step 3: Walk through timeslots chronologically
-  const lateClient = new LateApiClient()
-
-  for (const { datetime, ms } of generateTimeslots(platformConfig, timezone, nowMs, maxMs)) {
-    // Check idea spacing — skip slots too close to same-idea posts
-    if (isIdeaAware && !passesIdeaSpacing(ms, platform, ideaRefs, samePlatformMs, crossPlatformMs)) {
-      continue
-    }
-
-    const booked = bookedMap.get(ms)
-
-    if (!booked) {
-      // Empty slot → take it
-      return datetime
-    }
-
-    // Slot is taken — try to displace if idea-aware
-    if (!isIdeaAware || !displacementEnabled) continue
-    if (booked.source !== 'late' || !booked.postId) continue
-    if (ideaLinkedPostIds.has(booked.postId)) continue
-
-    // Non-idea Late post — use the same scheduling logic to find it a new home
-    const newSlot = findNextEmptySlot(platformConfig, timezone, ms, bookedMs)
-    if (newSlot) {
-      await lateClient.schedulePost(booked.postId, newSlot)
-      logger.info(
-        `Displaced post ${sanitizeLogValue(booked.postId)} from ${sanitizeLogValue(datetime)} ` +
-        `to ${sanitizeLogValue(newSlot)} for idea-linked content`,
-      )
-      return datetime
-    }
-  }
-
-  logger.warn(`No available slot found for "${sanitizeLogValue(platform)}" within ${MAX_LOOKAHEAD_DAYS} days`)
-  return null
-}
-
-/**
- * Find the next empty timeslot after a given timestamp.
- * Uses the same timeslot generation as findNextSlot.
- */
-function findNextEmptySlot(
-  platformConfig: PlatformSchedule,
-  timezone: string,
-  afterMs: number,
-  bookedMs: ReadonlySet<number>,
-): string | null {
-  for (const { datetime, ms } of generateTimeslots(platformConfig, timezone, afterMs)) {
-    if (!bookedMs.has(ms)) return datetime
-  }
-  return null
-}
-
-/**
- * Find next empty slot excluding both booked AND already-assigned slots.
- */
-function findNextEmptySlotExcluding(
-  platformConfig: PlatformSchedule,
-  timezone: string,
-  afterMs: number,
-  bookedMs: ReadonlySet<number>,
-  assignedMs: ReadonlySet<number>,
-): Timeslot | null {
-  for (const slot of generateTimeslots(platformConfig, timezone, afterMs)) {
-    if (!bookedMs.has(slot.ms) && !assignedMs.has(slot.ms)) return slot
-  }
-  return null
+  return result
 }
 
 // ── Reschedule idea posts ──────────────────────────────────────────────
@@ -449,7 +470,7 @@ export interface RescheduleResult {
 }
 
 /**
- * Reschedule all idea-linked posts through the current scheduling logic.
+ * Reschedule all idea-linked posts through the recursive scheduling logic.
  * Idea posts get priority — non-idea posts in their way get displaced.
  * Existing Late posts are updated in-place (not re-uploaded).
  */
@@ -458,10 +479,7 @@ export async function rescheduleIdeaPosts(options?: { dryRun?: boolean }): Promi
   const { updatePublishedItemSchedule } = await import('../postStore/postStore.js')
   const config = await loadScheduleConfig()
   const { timezone } = config
-  const displacementEnabled = getDisplacementConfig().enabled
-  const nowMs = Date.now()
 
-  // Step 1: Get all published items with idea IDs
   const publishedItems = await getPublishedItems()
   const ideaPosts = publishedItems.filter(
     (item) => item.metadata.ideaIds?.length && item.metadata.latePostId,
@@ -474,39 +492,38 @@ export async function rescheduleIdeaPosts(options?: { dryRun?: boolean }): Promi
 
   logger.info(`Found ${ideaPosts.length} idea-linked posts to reschedule`)
 
-  // Step 2: Build booked slot map per platform, EXCLUDING idea-linked posts
+  // Build booked map EXCLUDING idea posts (they'll be reassigned)
   const ideaLatePostIds = new Set(ideaPosts.map((item) => item.metadata.latePostId!))
-  const allBookedSlots = await buildBookedSlots()
-  const nonIdeaSlotsByPlatform = new Map<string, Map<number, BookedSlot>>()
-  const nonIdeaBookedMsByPlatform = new Map<string, Set<number>>()
-
-  for (const slot of allBookedSlots) {
-    // Skip idea-linked posts — they'll be reassigned
-    if (slot.postId && ideaLatePostIds.has(slot.postId)) continue
-
-    if (!nonIdeaSlotsByPlatform.has(slot.platform)) {
-      nonIdeaSlotsByPlatform.set(slot.platform, new Map())
-      nonIdeaBookedMsByPlatform.set(slot.platform, new Set())
+  const fullBookedMap = await buildBookedMap()
+  // Remove idea posts from the map so their slots are free
+  for (const [ms, slot] of fullBookedMap) {
+    if (slot.postId && ideaLatePostIds.has(slot.postId)) {
+      fullBookedMap.delete(ms)
     }
-    const ms = normalizeDateTime(slot.scheduledFor)
-    nonIdeaSlotsByPlatform.get(slot.platform)!.set(ms, slot)
-    nonIdeaBookedMsByPlatform.get(slot.platform)!.add(ms)
   }
 
-  // Step 3: Sort idea posts — earliest-created ideas first
   ideaPosts.sort((a, b) => a.metadata.createdAt.localeCompare(b.metadata.createdAt))
 
-  // Step 4: Walk through and assign each idea post
   const lateClient = new LateApiClient()
   const result: RescheduleResult = { rescheduled: 0, unchanged: 0, failed: 0, details: [] }
-  // Track newly assigned slots to prevent double-booking between idea posts
-  const assignedSlots = new Map<string, Set<number>>() // platform → set of ms
+  const nowMs = Date.now()
+
+  const ctx: ScheduleContext = {
+    timezone,
+    bookedMap: fullBookedMap,
+    ideaLinkedPostIds: new Set<string>(), // empty — all idea posts removed from map
+    lateClient,
+    displacementEnabled: getDisplacementConfig().enabled,
+    dryRun,
+    depth: 0,
+  }
 
   for (const item of ideaPosts) {
     const platform = item.metadata.platform
     const clipType = item.metadata.clipType
     const latePostId = item.metadata.latePostId!
     const oldSlot = item.metadata.scheduledFor
+    const label = `${item.id} (${platform}/${clipType})`
 
     try {
       const platformConfig = getPlatformSchedule(platform, clipType)
@@ -516,43 +533,7 @@ export async function rescheduleIdeaPosts(options?: { dryRun?: boolean }): Promi
         continue
       }
 
-      const bookedMap = nonIdeaSlotsByPlatform.get(platform) ?? new Map<number, BookedSlot>()
-      const bookedMs = nonIdeaBookedMsByPlatform.get(platform) ?? new Set<number>()
-      const assigned = assignedSlots.get(platform) ?? new Set<number>()
-
-      let newSlotDatetime: string | null = null
-
-      for (const { datetime, ms } of generateTimeslots(platformConfig, timezone, nowMs)) {
-        // Skip slots already assigned to other idea posts in this batch
-        if (assigned.has(ms)) continue
-
-        const booked = bookedMap.get(ms)
-
-        if (!booked) {
-          // Empty slot — take it
-          newSlotDatetime = datetime
-          break
-        }
-
-        // Slot taken by non-idea post — displace it
-        if (displacementEnabled && booked.source === 'late' && booked.postId) {
-          const nextEmpty = findNextEmptySlotExcluding(platformConfig, timezone, ms, bookedMs, assigned)
-          if (nextEmpty) {
-            if (!dryRun) {
-              await lateClient.schedulePost(booked.postId, nextEmpty.datetime)
-            }
-            // Update booked maps
-            bookedMap.delete(ms)
-            bookedMs.delete(ms)
-            bookedMap.set(nextEmpty.ms, { ...booked, scheduledFor: nextEmpty.datetime })
-            bookedMs.add(nextEmpty.ms)
-            logger.info(`Displaced post ${booked.postId} from ${datetime} to ${nextEmpty.datetime}`)
-
-            newSlotDatetime = datetime
-            break
-          }
-        }
-      }
+      const newSlotDatetime = await schedulePost(platformConfig, nowMs, true, label, ctx)
 
       if (!newSlotDatetime) {
         result.details.push({ itemId: item.id, platform, latePostId, oldSlot, newSlot: null, error: 'No slot found' })
@@ -561,37 +542,41 @@ export async function rescheduleIdeaPosts(options?: { dryRun?: boolean }): Promi
       }
 
       const newSlotMs = normalizeDateTime(newSlotDatetime)
-      assigned.add(newSlotMs)
-      assignedSlots.set(platform, assigned)
 
       if (oldSlot && normalizeDateTime(oldSlot) === newSlotMs) {
         result.details.push({ itemId: item.id, platform, latePostId, oldSlot, newSlot: newSlotDatetime })
         result.unchanged++
+        // Mark this slot as taken in the map
+        ctx.bookedMap.set(newSlotMs, {
+          scheduledFor: newSlotDatetime, source: 'late', postId: latePostId,
+          platform, ideaLinked: true,
+        })
         continue
       }
 
-      // Reschedule existing Late post (update, not re-upload)
       if (!dryRun) {
         await lateClient.schedulePost(latePostId, newSlotDatetime)
         await updatePublishedItemSchedule(item.id, newSlotDatetime)
       }
-      logger.info(
-        `Rescheduled idea post ${item.id} (${platform}) from ${oldSlot ?? 'unscheduled'} to ${newSlotDatetime}`,
-      )
 
+      // Mark this slot as taken in the map
+      ctx.bookedMap.set(newSlotMs, {
+        scheduledFor: newSlotDatetime, source: 'late', postId: latePostId,
+        platform, ideaLinked: true,
+      })
+
+      logger.info(`Rescheduled ${label}: ${oldSlot ?? 'unscheduled'} → ${newSlotDatetime}`)
       result.details.push({ itemId: item.id, platform, latePostId, oldSlot, newSlot: newSlotDatetime })
       result.rescheduled++
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
-      logger.error(`Failed to reschedule ${item.id}: ${msg}`)
+      logger.error(`Failed to reschedule ${label}: ${msg}`)
       result.details.push({ itemId: item.id, platform, latePostId, oldSlot, newSlot: null, error: msg })
       result.failed++
     }
   }
 
-  logger.info(
-    `Reschedule complete: ${result.rescheduled} moved, ${result.unchanged} unchanged, ${result.failed} failed`,
-  )
+  logger.info(`Reschedule complete: ${result.rescheduled} moved, ${result.unchanged} unchanged, ${result.failed} failed`)
   return result
 }
 
@@ -610,9 +595,9 @@ export async function getScheduleCalendar(
   postId?: string
   itemId?: string
 }>> {
-  const slots = await buildBookedSlots()
+  const bookedMap = await buildBookedMap()
 
-  let filtered = slots
+  let filtered = [...bookedMap.values()]
     .filter((slot) => slot.source === 'local' || slot.status === 'scheduled')
     .map((slot) => ({
       platform: slot.platform,

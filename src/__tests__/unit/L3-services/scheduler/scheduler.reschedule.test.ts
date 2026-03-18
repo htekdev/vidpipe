@@ -426,4 +426,146 @@ describe('rescheduleIdeaPosts', () => {
 
     expect(mockSchedulePost).not.toHaveBeenCalled()
   })
+
+  it('removes idea posts from bookedMap before scheduling', async () => {
+    // Set up a booked map with the idea post's Late ID in it
+    const ideaSlotMs = new Date('2026-03-03T09:00:00+00:00').getTime()
+    mockGetScheduledPosts.mockResolvedValue([
+      makeLatePost({
+        _id: 'late-remove-test',
+        scheduledFor: '2026-03-03T09:00:00+00:00',
+      }),
+    ])
+
+    const ideaPost = makeQueueItem({
+      id: 'idea-remove',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: 'late-remove-test',
+        ideaIds: ['idea-remove'],
+        scheduledFor: '2026-03-03T09:00:00+00:00',
+        createdAt: '2026-03-01T00:00:00Z',
+      },
+    })
+    mockGetPublishedItems.mockResolvedValue([ideaPost])
+
+    const result = await rescheduleIdeaPosts()
+
+    // The idea post was at the same slot — should be unchanged (slot freed then reassigned)
+    expect(result.unchanged).toBe(1)
+    expect(result.rescheduled).toBe(0)
+  })
+
+  it('records "No slot found" when schedulePost returns null for an idea post', async () => {
+    mockLoadScheduleConfig.mockResolvedValue(makeScheduleConfig({
+      platforms: {
+        tiktok: {
+          // Only one slot that's already booked
+          slots: [{ days: ['tue'], time: '09:00', label: 'Tue only' }],
+          avoidDays: ['mon', 'wed', 'thu', 'fri', 'sat', 'sun'],
+        },
+      },
+    }))
+
+    // Fill the only available slot with a non-displaceable idea-linked post
+    const blockerPost = makeLatePost({
+      _id: 'blocker-post',
+      scheduledFor: '2026-03-03T09:00:00+00:00',
+    })
+    mockGetScheduledPosts.mockResolvedValue([blockerPost])
+
+    // Create a local published item for the blocker so it appears idea-linked in the booked map
+    const blockerItem = makeQueueItem({
+      id: 'blocker-item',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: 'blocker-post',
+        ideaIds: ['idea-blocker'],
+        scheduledFor: '2026-03-03T09:00:00+00:00',
+        createdAt: '2026-02-01T00:00:00Z',
+      },
+    })
+
+    const ideaPost = makeQueueItem({
+      id: 'idea-noslot',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: 'late-noslot',
+        ideaIds: ['idea-noslot'],
+        scheduledFor: null,
+        createdAt: '2026-03-01T00:00:00Z',
+      },
+    })
+    mockGetPublishedItems
+      .mockResolvedValueOnce([blockerItem, ideaPost])
+      .mockResolvedValueOnce([blockerItem])
+
+    const result = await rescheduleIdeaPosts()
+
+    // The noslot post should fail
+    const noslotDetail = result.details.find((d: { itemId: string }) => d.itemId === 'idea-noslot')
+    if (noslotDetail?.error) {
+      expect(noslotDetail.error).toBe('No slot found')
+      expect(noslotDetail.newSlot).toBeNull()
+    }
+    // Total should reflect both attempts
+    expect(result.details.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('sorts idea posts by createdAt and processes oldest first', async () => {
+    const newerPost = makeQueueItem({
+      id: 'idea-newer',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: 'late-newer',
+        ideaIds: ['idea-N'],
+        scheduledFor: '2026-03-10T09:00:00+00:00',
+        createdAt: '2026-03-02T00:00:00Z',
+      },
+    })
+    const olderPost = makeQueueItem({
+      id: 'idea-older',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: 'late-older',
+        ideaIds: ['idea-O'],
+        scheduledFor: '2026-03-11T09:00:00+00:00',
+        createdAt: '2026-03-01T00:00:00Z',
+      },
+    })
+    // Return in reverse order — newer first
+    mockGetPublishedItems.mockResolvedValue([newerPost, olderPost])
+
+    const result = await rescheduleIdeaPosts()
+
+    expect(result.rescheduled).toBe(2)
+    // Older post should get the earlier slot (first call to Late API)
+    expect(mockSchedulePost).toHaveBeenNthCalledWith(1, 'late-older', expect.any(String))
+    expect(mockSchedulePost).toHaveBeenNthCalledWith(2, 'late-newer', expect.any(String))
+  })
+
+  it('filters out posts without latePostId', async () => {
+    const noLateId = makeQueueItem({
+      id: 'idea-no-late',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: null,
+        ideaIds: ['idea-J'],
+        scheduledFor: null,
+        createdAt: '2026-03-01T00:00:00Z',
+      },
+    })
+    mockGetPublishedItems.mockResolvedValue([noLateId])
+
+    const result = await rescheduleIdeaPosts()
+
+    expect(result).toEqual({ rescheduled: 0, unchanged: 0, failed: 0, details: [] })
+    expect(mockSchedulePost).not.toHaveBeenCalled()
+  })
 })

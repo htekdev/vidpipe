@@ -28,6 +28,7 @@ describe('E2E: ideate --add command', () => {
       trendContext: 'Timely because...',
       ai: false,
       format: 'json',
+      prompt: 'Cover this article: https://example.com',
     }
 
     expect(options.add).toBe(true)
@@ -42,6 +43,7 @@ describe('E2E: ideate --add command', () => {
     expect(options.trendContext).toBe('Timely because...')
     expect(options.ai).toBe(false)
     expect(options.format).toBe('json')
+    expect(options.prompt).toBe('Cover this article: https://example.com')
   })
 
   test('IdeateCommandOptions --add fields default to undefined', () => {

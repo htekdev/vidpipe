@@ -557,6 +557,14 @@ describe('VidPipeSDK', () => {
     expect(mockExecuteRealignPlan).toHaveBeenCalledWith(plan)
   })
 
+  it('maps schedule-config shorthand to defaults.scheduleConfig', () => {
+    const sdk = createVidPipe()
+
+    sdk.config.set('schedule-config', 'C:\\shared\\schedule.json')
+
+    expect(mockSetGlobalConfigValue).toHaveBeenCalledWith('defaults', 'scheduleConfig', 'C:\\shared\\schedule.json')
+  })
+
   it('delegates remaining video helpers', async () => {
     const sdk = createVidPipe()
     const silenceRegions = [{ start: 1, end: 2 }]

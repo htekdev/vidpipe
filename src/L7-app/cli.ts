@@ -147,6 +147,7 @@ program
   .option('--publish-by <date>', 'Publish deadline (ISO 8601 date, default: 14 days from now, --no-ai only)')
   .option('--trend-context <context>', 'Why this topic is timely (--no-ai only)')
   .option('--no-ai', 'Skip AI research agent — create directly from CLI flags + defaults')
+  .option('-p, --prompt <prompt>', 'Free-form prompt to guide idea generation (e.g., "Cover this article: https://...")')
   .action(async (opts) => {
     initConfig()
     await runIdeate(opts)

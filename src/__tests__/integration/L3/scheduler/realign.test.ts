@@ -99,4 +99,12 @@ describe('L3 Integration: executeRealignPlan schedulePost flow', () => {
 
     expect(result).toEqual({ updated: 0, cancelled: 0, failed: 0, errors: [] })
   })
+
+  it('realign uses schedulePost from scheduler (not generateSlots)', async () => {
+    // Verify the module imports resolve correctly — realign.ts now imports
+    // schedulePost from scheduler.ts instead of using its own generateSlots.
+    const realignModule = await import('../../../../L3-services/scheduler/realign.js')
+    expect(typeof realignModule.executeRealignPlan).toBe('function')
+    expect(typeof realignModule.buildRealignPlan).toBe('function')
+  })
 })

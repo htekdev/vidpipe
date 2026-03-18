@@ -1,8 +1,16 @@
 import { LateApiClient } from '../../L2-clients/late/lateApi.js'
 import type { LatePost } from '../../L2-clients/late/lateApi.js'
-import { loadScheduleConfig, getPlatformSchedule, type DayOfWeek } from './scheduleConfig.js'
+import { loadScheduleConfig, getPlatformSchedule, getDisplacementConfig } from './scheduleConfig.js'
 import { getPublishedItems } from '../postStore/postStore.js'
 import logger from '../../L1-infra/logger/configLogger.js'
+import {
+  schedulePost,
+  buildBookedMap,
+  normalizeDateTime,
+  generateTimeslots,
+  type ScheduleContext,
+  type BookedSlot,
+} from './scheduler.js'
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -44,48 +52,6 @@ export interface PriorityRule {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────
-
-function getTimezoneOffset(timezone: string, date: Date): string {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    timeZoneName: 'longOffset',
-  })
-  const parts = formatter.formatToParts(date)
-  const tzPart = parts.find(p => p.type === 'timeZoneName')
-  const match = tzPart?.value?.match(/GMT([+-]\d{2}:\d{2})/)
-  if (match) return match[1]
-  if (tzPart?.value === 'GMT') return '+00:00'
-  return '+00:00'
-}
-
-function buildSlotDatetime(date: Date, time: string, timezone: string): string {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  })
-  const parts = formatter.formatToParts(date)
-  const year = parts.find(p => p.type === 'year')?.value ?? String(date.getFullYear())
-  const month = (parts.find(p => p.type === 'month')?.value ?? String(date.getMonth() + 1)).padStart(2, '0')
-  const day = (parts.find(p => p.type === 'day')?.value ?? String(date.getDate())).padStart(2, '0')
-  const offset = getTimezoneOffset(timezone, date)
-  return `${year}-${month}-${day}T${time}:00${offset}`
-}
-
-function getDayOfWeekInTimezone(date: Date, timezone: string): DayOfWeek {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    weekday: 'short',
-  })
-  const short = formatter.format(date).toLowerCase().slice(0, 3)
-  const map: Record<string, DayOfWeek> = {
-    sun: 'sun', mon: 'mon', tue: 'tue', wed: 'wed', thu: 'thu', fri: 'fri', sat: 'sat',
-  }
-  return map[short] ?? 'mon'
-}
-
-// ── Core ───────────────────────────────────────────────────────────────
 
 /**
  * Late API uses "twitter" but schedule.json uses "x".
@@ -150,83 +116,107 @@ async function fetchAllPosts(
   return allPosts
 }
 
+// ── Scheduling context ─────────────────────────────────────────────────
+
 /**
- * Check if an ISO datetime falls on a valid schedule slot (correct day-of-week and time).
+ * Get the set of Late post IDs that are linked to ideas.
+ * Returns empty set on failure (defensive for environments without published items).
  */
-function isOnValidSlot(
-  iso: string,
-  platform: string,
-  clipType: string,
-  timezone: string,
-): boolean {
-  const schedule = getPlatformSchedule(platform, clipType)
-  if (!schedule || schedule.slots.length === 0) return false
-
-  const date = new Date(iso)
-  const dayOfWeek = getDayOfWeekInTimezone(date, timezone)
-  if (schedule.avoidDays.includes(dayOfWeek)) return false
-
-  // Extract HH:MM in the schedule's timezone
-  const timeFormatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  })
-  const timeParts = timeFormatter.formatToParts(date)
-  const hour = timeParts.find(p => p.type === 'hour')?.value ?? '00'
-  const minute = timeParts.find(p => p.type === 'minute')?.value ?? '00'
-  const timeKey = `${hour}:${minute}`
-
-  return schedule.slots.some(slot => slot.time === timeKey && slot.days.includes(dayOfWeek))
+async function getIdeaLinkedPostIds(): Promise<Set<string>> {
+  try {
+    const published = await getPublishedItems()
+    const ids = new Set<string>()
+    for (const item of published) {
+      if (item.metadata.latePostId && item.metadata.ideaIds?.length) {
+        ids.add(item.metadata.latePostId)
+      }
+    }
+    return ids
+  } catch {
+    return new Set()
+  }
 }
 
 /**
- * Generate candidate slot datetimes for a platform+clipType, skipping booked slots.
+ * Build a ScheduleContext for realign planning.
+ * Uses the scheduler's buildBookedMap for the full picture of occupied slots,
+ * then removes posts being realigned so their slots are freed for reassignment.
  */
-function generateSlots(
-  platform: string,
-  clipType: string,
-  count: number,
-  bookedMs: Set<number>,
+async function buildRealignContext(
+  client: LateApiClient,
   timezone: string,
-): string[] {
-  const schedule = getPlatformSchedule(platform, clipType)
-  if (!schedule || schedule.slots.length === 0) {
-    logger.warn(`No schedule slots for ${platform}/${clipType}`)
-    return []
+  realignPostIds: Set<string>,
+  ideaLinkedPostIds: Set<string>,
+  platform?: string,
+): Promise<ScheduleContext> {
+  let bookedMap: Map<number, BookedSlot>
+  try {
+    bookedMap = await buildBookedMap(platform)
+  } catch {
+    bookedMap = new Map()
   }
 
-  const available: string[] = []
-  const now = new Date()
-  const nowMs = now.getTime()
-
-  for (let dayOffset = 0; dayOffset < 730 && available.length < count; dayOffset++) {
-    const day = new Date(now)
-    day.setDate(day.getDate() + dayOffset)
-
-    const dayOfWeek = getDayOfWeekInTimezone(day, timezone)
-    if (schedule.avoidDays.includes(dayOfWeek)) continue
-
-    for (const slot of schedule.slots) {
-      if (available.length >= count) break
-      if (!slot.days.includes(dayOfWeek)) continue
-
-      const iso = buildSlotDatetime(day, slot.time, timezone)
-      const ms = new Date(iso).getTime()
-      if (ms <= nowMs) continue // skip slots in the past
-      if (!bookedMs.has(ms)) {
-        available.push(iso)
-        bookedMs.add(ms)
-      }
+  // Remove posts being realigned from the booked map (they'll be reassigned)
+  for (const [ms, slot] of bookedMap) {
+    if (slot.postId && realignPostIds.has(slot.postId)) {
+      bookedMap.delete(ms)
     }
   }
 
-  return available
+  return {
+    timezone,
+    bookedMap,
+    ideaLinkedPostIds,
+    lateClient: client,
+    displacementEnabled: getDisplacementConfig().enabled,
+    dryRun: true,
+    depth: 0,
+  }
+}
+
+// ── Core ───────────────────────────────────────────────────────────────
+
+interface TaggedPost {
+  post: LatePost
+  platform: string
+  clipType: 'short' | 'medium-clip' | 'video'
 }
 
 /**
- * Build a realignment plan: determine new scheduledFor for each post.
+ * Tag each post with platform and clipType from the clipType maps.
+ */
+function tagPosts(
+  allPosts: readonly LatePost[],
+  byLatePostId: ReadonlyMap<string, 'short' | 'medium-clip' | 'video'>,
+  byContent: ReadonlyMap<string, 'short' | 'medium-clip' | 'video'>,
+): { tagged: TaggedPost[]; unmatched: number; contentMatched: number } {
+  const tagged: TaggedPost[] = []
+  let unmatched = 0
+  let contentMatched = 0
+
+  for (const post of allPosts) {
+    const platform = post.platforms[0]?.platform
+    if (!platform) continue
+
+    let clipType = byLatePostId.get(post._id) ?? null
+    if (!clipType && post.content) {
+      const contentKey = `${platform}::${normalizeContent(post.content)}`
+      clipType = byContent.get(contentKey) ?? null
+      if (clipType) contentMatched++
+    }
+    if (!clipType) {
+      clipType = 'short'
+      unmatched++
+    }
+    tagged.push({ post, platform, clipType })
+  }
+
+  return { tagged, unmatched, contentMatched }
+}
+
+/**
+ * Build a realignment plan using the scheduler's schedulePost for slot finding.
+ * Idea-linked posts are scheduled first and can displace non-idea posts.
  * @param options.clipTypeMaps - Injectable maps for testing (otherwise fetched from disk)
  */
 export async function buildRealignPlan(options: {
@@ -237,7 +227,6 @@ export async function buildRealignPlan(options: {
   const { timezone } = config
   const client = new LateApiClient()
 
-  // Fetch all posts that need realignment
   const statuses = ['scheduled', 'draft', 'cancelled', 'failed'] as const
   const allPosts = await fetchAllPosts(client, statuses, options.platform)
 
@@ -245,129 +234,87 @@ export async function buildRealignPlan(options: {
     return { posts: [], toCancel: [], skipped: 0, unmatched: 0, totalFetched: 0 }
   }
 
-  // Build clipType maps from local published metadata (or use injected)
   const { byLatePostId, byContent } = options.clipTypeMaps ?? await buildClipTypeMaps()
-
-  // Group posts by platform+clipType
-  const grouped = new Map<string, Array<{ post: LatePost; platform: string; clipType: 'short' | 'medium-clip' | 'video' }>>()
-  let unmatched = 0
-  let contentMatched = 0
-
-  for (const post of allPosts) {
-    const platform = post.platforms[0]?.platform
-    if (!platform) continue
-
-    // Primary: match by latePostId
-    let clipType = byLatePostId.get(post._id) ?? null
-
-    // Fallback: match by normalized content
-    if (!clipType && post.content) {
-      const contentKey = `${platform}::${normalizeContent(post.content)}`
-      clipType = byContent.get(contentKey) ?? null
-      if (clipType) contentMatched++
-    }
-
-    if (!clipType) {
-      clipType = 'short'
-      unmatched++
-    }
-
-    const key = `${platform}::${clipType}`
-    if (!grouped.has(key)) grouped.set(key, [])
-    grouped.get(key)!.push({ post, platform, clipType })
-  }
-
-  // Track globally booked slots across all platforms
-  const bookedMs = new Set<number>()
+  const { tagged, unmatched, contentMatched } = tagPosts(allPosts, byLatePostId, byContent)
 
   if (contentMatched > 0) {
     logger.info(`${contentMatched} post(s) matched by content fallback (no latePostId)`)
   }
 
-  // Assign ALL posts to slots from today, compacting the schedule to fill gaps.
-  // Posts whose new slot matches their current slot are skipped (no update needed).
+  // Build scheduling context
+  const realignPostIds = new Set(allPosts.map(p => p._id))
+  const ideaLinkedPostIds = await getIdeaLinkedPostIds()
+  const ctx = await buildRealignContext(client, timezone, realignPostIds, ideaLinkedPostIds, options.platform)
+  const nowMs = Date.now()
+
+  // Sort: idea-linked first (by scheduledFor urgency), then non-idea (by scheduledFor)
+  tagged.sort((a, b) => {
+    const aIdea = ideaLinkedPostIds.has(a.post._id)
+    const bIdea = ideaLinkedPostIds.has(b.post._id)
+    if (aIdea !== bIdea) return aIdea ? -1 : 1
+    const aTime = a.post.scheduledFor ? new Date(a.post.scheduledFor).getTime() : Infinity
+    const bTime = b.post.scheduledFor ? new Date(b.post.scheduledFor).getTime() : Infinity
+    return aTime - bTime
+  })
+
   const result: RealignPost[] = []
   const toCancel: CancelPost[] = []
   let skipped = 0
 
-  for (const [key, posts] of grouped) {
-    const [platform, clipType] = key.split('::')
+  for (const { post, platform, clipType } of tagged) {
     const schedulePlatform = normalizeSchedulePlatform(platform)
+    const platformConfig = getPlatformSchedule(schedulePlatform, clipType)
 
-    // Check if this platform+clipType has any schedule config
-    const schedule = getPlatformSchedule(schedulePlatform, clipType)
-    const hasSlots = schedule && schedule.slots.length > 0
-
-    if (!hasSlots) {
-      // No schedule slots — cancel these posts (unless already cancelled)
-      for (const { post, clipType: ct } of posts) {
-        if (post.status === 'cancelled') continue
-        toCancel.push({
-          post,
-          platform,
-          clipType: ct,
-          reason: `No schedule slots for ${schedulePlatform}/${clipType}`,
-        })
+    if (!platformConfig || platformConfig.slots.length === 0) {
+      if (post.status !== 'cancelled') {
+        toCancel.push({ post, platform, clipType, reason: `No schedule slots for ${schedulePlatform}/${clipType}` })
       }
       continue
     }
 
-    // Sort by original scheduledFor (earliest first), unscheduled at the end
-    posts.sort((a, b) => {
-      const aTime = a.post.scheduledFor ? new Date(a.post.scheduledFor).getTime() : Infinity
-      const bTime = b.post.scheduledFor ? new Date(b.post.scheduledFor).getTime() : Infinity
-      return aTime - bTime
+    const isIdeaLinked = ideaLinkedPostIds.has(post._id)
+    const label = `realign:${schedulePlatform}/${clipType}:${post._id}`
+    const newSlot = await schedulePost(platformConfig, nowMs, isIdeaLinked, label, ctx)
+
+    if (!newSlot) {
+      if (post.status !== 'cancelled') {
+        toCancel.push({ post, platform, clipType, reason: `No more available slots for ${schedulePlatform}/${clipType}` })
+      }
+      continue
+    }
+
+    // Mark slot in booked map for subsequent posts
+    const newMs = normalizeDateTime(newSlot)
+    ctx.bookedMap.set(newMs, {
+      scheduledFor: newSlot,
+      source: 'late',
+      postId: post._id,
+      platform: schedulePlatform,
+      ideaLinked: isIdeaLinked,
     })
 
-    const slots = generateSlots(schedulePlatform, clipType, posts.length, bookedMs, timezone)
-
-    for (let i = 0; i < posts.length; i++) {
-      const { post } = posts[i]
-      const newSlot = slots[i]
-      if (!newSlot) {
-        // Ran out of slots — cancel overflow posts (unless already cancelled)
-        if (post.status !== 'cancelled') {
-          toCancel.push({
-            post,
-            platform,
-            clipType: posts[i].clipType,
-            reason: `No more available slots for ${schedulePlatform}/${clipType}`,
-          })
-        }
-        continue
-      }
-
-      // Skip if already scheduled at this exact slot and status is fine
-      const currentMs = post.scheduledFor ? new Date(post.scheduledFor).getTime() : 0
-      const newMs = new Date(newSlot).getTime()
-      if (currentMs === newMs && post.status === 'scheduled') {
-        skipped++
-        continue
-      }
-
-      result.push({
-        post,
-        platform,
-        clipType: posts[i].clipType,
-        oldScheduledFor: post.scheduledFor ?? null,
-        newScheduledFor: newSlot,
-      })
+    // Skip if already at this slot
+    const currentMs = post.scheduledFor ? new Date(post.scheduledFor).getTime() : 0
+    if (currentMs === newMs && post.status === 'scheduled') {
+      skipped++
+      continue
     }
+
+    result.push({
+      post,
+      platform,
+      clipType,
+      oldScheduledFor: post.scheduledFor ?? null,
+      newScheduledFor: newSlot,
+    })
   }
 
-  // Sort final plan chronologically by new slot
   result.sort((a, b) => new Date(a.newScheduledFor).getTime() - new Date(b.newScheduledFor).getTime())
 
   return { posts: result, toCancel, skipped, unmatched, totalFetched: allPosts.length }
 }
 
 // ── Prioritized realign ────────────────────────────────────────────────
-
-interface TaggedPost {
-  post: LatePost
-  platform: string
-  clipType: 'short' | 'medium-clip' | 'video'
-}
 
 /**
  * Check if a slot date (YYYY-MM-DD in schedule timezone) falls within a rule's active range.
@@ -402,13 +349,10 @@ function matchesKeywords(content: string, keywords: readonly string[]): boolean 
 /**
  * Build a prioritized realignment plan.
  *
- * Works like `buildRealignPlan` but reorders posts per platform+clipType group
- * using priority rules before assigning to slots. For each slot, the rules are
- * checked in array order:
- *   1. If the slot date is in the rule's {from, to} range
- *   2. AND Math.random() < saturation
- *   → pull the next keyword-matched post from that rule's queue
- * If no rule fires, pull from the remaining (non-priority) pool sorted by scheduledFor.
+ * Uses the scheduler's generateTimeslots for slot iteration and the shared
+ * booked map for conflict detection. Priority rules control which posts get
+ * earlier slots via per-slot saturation dice rolls and date-range filtering.
+ *
  * @param options.clipTypeMaps - Injectable maps for testing (otherwise fetched from disk)
  */
 export async function buildPrioritizedRealignPlan(options: {
@@ -428,32 +372,26 @@ export async function buildPrioritizedRealignPlan(options: {
   }
 
   const { byLatePostId, byContent } = options.clipTypeMaps ?? await buildClipTypeMaps()
-
-  // Tag each post with platform + clipType
-  const tagged: TaggedPost[] = []
-  let unmatched = 0
-  let contentMatched = 0
-
-  for (const post of allPosts) {
-    const platform = post.platforms[0]?.platform
-    if (!platform) continue
-
-    let clipType = byLatePostId.get(post._id) ?? null
-    if (!clipType && post.content) {
-      const contentKey = `${platform}::${normalizeContent(post.content)}`
-      clipType = byContent.get(contentKey) ?? null
-      if (clipType) contentMatched++
-    }
-    if (!clipType) {
-      clipType = 'short'
-      unmatched++
-    }
-    tagged.push({ post, platform, clipType })
-  }
+  const { tagged, unmatched, contentMatched } = tagPosts(allPosts, byLatePostId, byContent)
 
   if (contentMatched > 0) {
     logger.info(`${contentMatched} post(s) matched by content fallback (no latePostId)`)
   }
+
+  // Build scheduling context — start with empty booked map since all fetched
+  // posts are being reassigned. Slots are tracked as posts get assigned.
+  const ideaLinkedPostIds = await getIdeaLinkedPostIds()
+  const bookedMap = new Map<number, BookedSlot>()
+  const ctx: ScheduleContext = {
+    timezone,
+    bookedMap,
+    ideaLinkedPostIds,
+    lateClient: client,
+    displacementEnabled: getDisplacementConfig().enabled,
+    dryRun: true,
+    depth: 0,
+  }
+  const nowMs = Date.now()
 
   // Group by platform+clipType
   const grouped = new Map<string, TaggedPost[]>()
@@ -463,7 +401,6 @@ export async function buildPrioritizedRealignPlan(options: {
     grouped.get(key)!.push(tp)
   }
 
-  const bookedMs = new Set<number>()
   const result: RealignPost[] = []
   const toCancel: CancelPost[] = []
   let skipped = 0
@@ -472,10 +409,8 @@ export async function buildPrioritizedRealignPlan(options: {
     const [platform, clipType] = key.split('::')
     const schedulePlatform = normalizeSchedulePlatform(platform)
 
-    const schedule = getPlatformSchedule(schedulePlatform, clipType)
-    const hasSlots = schedule && schedule.slots.length > 0
-
-    if (!hasSlots) {
+    const platformConfig = getPlatformSchedule(schedulePlatform, clipType)
+    if (!platformConfig || platformConfig.slots.length === 0) {
       for (const { post, clipType: ct } of posts) {
         if (post.status === 'cancelled') continue
         toCancel.push({ post, platform, clipType: ct, reason: `No schedule slots for ${schedulePlatform}/${clipType}` })
@@ -483,15 +418,12 @@ export async function buildPrioritizedRealignPlan(options: {
       continue
     }
 
-    const slots = generateSlots(schedulePlatform, clipType, posts.length, bookedMs, timezone)
-
     // Build per-rule queues: posts whose content matches the rule's keywords
     const usedPostIds = new Set<string>()
     const ruleQueues: TaggedPost[][] = options.priorities.map(rule => {
       const matched = posts.filter(tp =>
         tp.post.content && matchesKeywords(tp.post.content, rule.keywords),
       )
-      // Sort matched by scheduledFor (earliest first)
       matched.sort((a, b) => {
         const at = a.post.scheduledFor ? new Date(a.post.scheduledFor).getTime() : Infinity
         const bt = b.post.scheduledFor ? new Date(b.post.scheduledFor).getTime() : Infinity
@@ -521,9 +453,14 @@ export async function buildPrioritizedRealignPlan(options: {
       })
     let remainingIdx = 0
 
-    // Walk each slot and decide which post to assign
-    for (let i = 0; i < slots.length; i++) {
-      const slot = slots[i]
+    // Walk timeslots from the scheduler, skipping already-booked slots
+    let assignedCount = 0
+    for (const { datetime, ms } of generateTimeslots(platformConfig, timezone, nowMs)) {
+      if (assignedCount >= posts.length) break
+
+      // Skip slots booked by non-realign posts
+      if (ctx.bookedMap.has(ms)) continue
+
       let assigned: TaggedPost | undefined
 
       // Try each priority rule in array order
@@ -531,16 +468,10 @@ export async function buildPrioritizedRealignPlan(options: {
         const rule = options.priorities[r]
         const queue = ruleQueues[r]
 
-        // Skip exhausted queues
         if (queue.length === 0) continue
-
-        // Check if this slot's date is in the rule's active range
-        if (!isSlotInRange(slot, rule, timezone)) continue
-
-        // Saturation dice roll
+        if (!isSlotInRange(datetime, rule, timezone)) continue
         if (Math.random() >= rule.saturation) continue
 
-        // Find next unused post from this queue
         while (queue.length > 0) {
           const candidate = queue.shift()!
           if (!usedPostIds.has(candidate.post._id)) {
@@ -566,11 +497,21 @@ export async function buildPrioritizedRealignPlan(options: {
       }
 
       if (!assigned) continue
+      assignedCount++
+
+      // Mark slot in booked map
+      const isIdeaLinked = ideaLinkedPostIds.has(assigned.post._id)
+      ctx.bookedMap.set(ms, {
+        scheduledFor: datetime,
+        source: 'late',
+        postId: assigned.post._id,
+        platform: schedulePlatform,
+        ideaLinked: isIdeaLinked,
+      })
 
       // Skip if already at the correct slot
       const currentMs = assigned.post.scheduledFor ? new Date(assigned.post.scheduledFor).getTime() : 0
-      const newMs = new Date(slot).getTime()
-      if (currentMs === newMs && assigned.post.status === 'scheduled') {
+      if (currentMs === ms && assigned.post.status === 'scheduled') {
         skipped++
         continue
       }
@@ -580,7 +521,7 @@ export async function buildPrioritizedRealignPlan(options: {
         platform: assigned.platform,
         clipType: assigned.clipType,
         oldScheduledFor: assigned.post.scheduledFor ?? null,
-        newScheduledFor: slot,
+        newScheduledFor: datetime,
       })
     }
 
