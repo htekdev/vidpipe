@@ -27,8 +27,13 @@ vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
 // ── Mock L3 services ──────────────────────────────────────────────────
 
 const mockRescheduleIdeaPosts = vi.hoisted(() => vi.fn())
+const mockLoadScheduleConfig = vi.hoisted(() => vi.fn().mockResolvedValue({ timezone: 'America/Chicago', platforms: {} }))
 vi.mock('../../../L3-services/scheduler/scheduler.js', () => ({
   rescheduleIdeaPosts: mockRescheduleIdeaPosts,
+}))
+
+vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
+  loadScheduleConfig: mockLoadScheduleConfig,
 }))
 
 // ── Import after mocks ────────────────────────────────────────────────
@@ -236,5 +241,28 @@ describe('L7 Integration: reschedule command', () => {
     // When oldSlot is null and newSlot differs, it should show the move
     expect(output).toContain('unsched-item')
     expect(output).toContain('unscheduled')
+  })
+
+  it('uses schedule config timezone for date formatting', async () => {
+    mockLoadScheduleConfig.mockResolvedValue({ timezone: 'Europe/London', platforms: {} })
+    mockRescheduleIdeaPosts.mockResolvedValue(makeResult({
+      rescheduled: 1,
+      details: [
+        {
+          itemId: 'tz-test',
+          platform: 'linkedin',
+          latePostId: 'late-tz',
+          oldSlot: '2026-07-01T12:00:00Z',
+          newSlot: '2026-07-02T12:00:00Z',
+        },
+      ],
+    }))
+
+    await runReschedule()
+
+    expect(mockLoadScheduleConfig).toHaveBeenCalled()
+    const output = getOutput()
+    // Europe/London in July is BST (UTC+1), so 12:00 UTC → 1:00 PM BST
+    expect(output).toContain('1:00')
   })
 })

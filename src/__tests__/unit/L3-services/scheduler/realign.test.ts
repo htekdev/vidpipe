@@ -373,4 +373,170 @@ describe('buildRealignPlan', () => {
     // Verify the post's old slot was freed (bookedMap should have been modified)
     expect(bookedMap.has(currentMs)).toBe(false)
   })
+
+  it('does not export buildPrioritizedRealignPlan (removed)', async () => {
+    const realignModule = await import('../../../../L3-services/scheduler/realign.js')
+    expect('buildPrioritizedRealignPlan' in realignModule).toBe(false)
+  })
+
+  it('skips scheduled posts already on a valid slot (isOnValidSlot true)', async () => {
+    // 2026-03-03 is a Tuesday — matches MOCK_PLATFORM_CONFIG { days: ['tue'], time: '09:00' }
+    const post = makePost({
+      _id: 'p-valid-slot',
+      status: 'scheduled',
+      scheduledFor: '2026-03-03T09:00:00+00:00',
+    })
+    mockListPosts.mockImplementation(async ({ status }: { status: string }) =>
+      status === 'scheduled' ? [post] : [],
+    )
+
+    const clipTypeMaps: ClipTypeMaps = {
+      byLatePostId: new Map([['p-valid-slot', 'short']]),
+      byContent: new Map(),
+    }
+
+    const plan = await buildRealignPlan({ clipTypeMaps })
+
+    expect(plan.skipped).toBe(1)
+    expect(plan.posts).toHaveLength(0)
+    expect(plan.toCancel).toHaveLength(0)
+    // schedulePost should NOT be called — post was already on a valid slot
+    expect(mockSchedulerSchedulePost).not.toHaveBeenCalled()
+  })
+
+  it('reschedules posts not on a valid slot (wrong day of week)', async () => {
+    // 2026-03-02 is a Monday — not in MOCK_PLATFORM_CONFIG days: ['tue']
+    const post = makePost({
+      _id: 'p-wrong-day',
+      status: 'scheduled',
+      scheduledFor: '2026-03-02T09:00:00+00:00',
+    })
+    mockListPosts.mockImplementation(async ({ status }: { status: string }) =>
+      status === 'scheduled' ? [post] : [],
+    )
+    mockSchedulerSchedulePost.mockResolvedValue('2026-03-03T09:00:00+00:00')
+
+    const clipTypeMaps: ClipTypeMaps = {
+      byLatePostId: new Map([['p-wrong-day', 'short']]),
+      byContent: new Map(),
+    }
+
+    const plan = await buildRealignPlan({ clipTypeMaps })
+
+    expect(plan.posts).toHaveLength(1)
+    expect(plan.posts[0].oldScheduledFor).toBe('2026-03-02T09:00:00+00:00')
+    expect(plan.posts[0].newScheduledFor).toBe('2026-03-03T09:00:00+00:00')
+    expect(mockSchedulerSchedulePost).toHaveBeenCalledOnce()
+  })
+
+  it('reschedules posts not on a valid slot (wrong time)', async () => {
+    // Tuesday at 15:00 — right day but wrong time (config has 09:00)
+    const post = makePost({
+      _id: 'p-wrong-time',
+      status: 'scheduled',
+      scheduledFor: '2026-03-03T15:00:00+00:00',
+    })
+    mockListPosts.mockImplementation(async ({ status }: { status: string }) =>
+      status === 'scheduled' ? [post] : [],
+    )
+    mockSchedulerSchedulePost.mockResolvedValue('2026-03-10T09:00:00+00:00')
+
+    const clipTypeMaps: ClipTypeMaps = {
+      byLatePostId: new Map([['p-wrong-time', 'short']]),
+      byContent: new Map(),
+    }
+
+    const plan = await buildRealignPlan({ clipTypeMaps })
+
+    expect(plan.posts).toHaveLength(1)
+    expect(plan.posts[0].newScheduledFor).toBe('2026-03-10T09:00:00+00:00')
+  })
+
+  it('reschedules posts on avoidDays even if time matches', async () => {
+    // Tuesday at 09:00 — valid day/time BUT avoidDays includes 'tue'
+    const post = makePost({
+      _id: 'p-avoid',
+      status: 'scheduled',
+      scheduledFor: '2026-03-03T09:00:00+00:00',
+    })
+    mockListPosts.mockImplementation(async ({ status }: { status: string }) =>
+      status === 'scheduled' ? [post] : [],
+    )
+    mockGetPlatformSchedule.mockReturnValue({
+      slots: [{ days: ['tue'], time: '09:00', label: 'Tue' }],
+      avoidDays: ['tue'],
+    })
+    mockSchedulerSchedulePost.mockResolvedValue('2026-03-05T09:00:00+00:00')
+
+    const clipTypeMaps: ClipTypeMaps = {
+      byLatePostId: new Map([['p-avoid', 'short']]),
+      byContent: new Map(),
+    }
+
+    const plan = await buildRealignPlan({ clipTypeMaps })
+
+    // avoidDays rejects the slot → post is rescheduled
+    expect(plan.posts).toHaveLength(1)
+    expect(mockSchedulerSchedulePost).toHaveBeenCalledOnce()
+  })
+
+  it('skips scheduled post when schedulePost returns same slot (unchanged)', async () => {
+    // Post is on a Monday (invalid slot), gets rescheduled, but schedulePost
+    // returns the exact same datetime → detected as unchanged → skipped
+    const sameSlot = '2026-03-02T12:00:00+00:00'
+    const post = makePost({
+      _id: 'p-unchanged',
+      status: 'scheduled',
+      scheduledFor: sameSlot,
+    })
+    mockListPosts.mockImplementation(async ({ status }: { status: string }) =>
+      status === 'scheduled' ? [post] : [],
+    )
+    mockSchedulerSchedulePost.mockResolvedValue(sameSlot)
+
+    const clipTypeMaps: ClipTypeMaps = {
+      byLatePostId: new Map([['p-unchanged', 'short']]),
+      byContent: new Map(),
+    }
+
+    const plan = await buildRealignPlan({ clipTypeMaps })
+
+    expect(plan.skipped).toBe(1)
+    expect(plan.posts).toHaveLength(0)
+  })
+
+  it('skips already-cancelled posts when no platform config exists', async () => {
+    const post = makePost({ _id: 'p-already-cancelled', status: 'cancelled' })
+    mockListPosts.mockImplementation(async ({ status }: { status: string }) =>
+      status === 'cancelled' ? [post] : [],
+    )
+    mockGetPlatformSchedule.mockReturnValue(null)
+
+    const clipTypeMaps: ClipTypeMaps = {
+      byLatePostId: new Map([['p-already-cancelled', 'short']]),
+      byContent: new Map(),
+    }
+
+    const plan = await buildRealignPlan({ clipTypeMaps })
+
+    // Already cancelled → should NOT be added to toCancel again
+    expect(plan.toCancel).toHaveLength(0)
+  })
+
+  it('skips already-cancelled posts when schedulePost returns null', async () => {
+    const post = makePost({ _id: 'p-cancel-noslot', status: 'cancelled' })
+    mockListPosts.mockImplementation(async ({ status }: { status: string }) =>
+      status === 'cancelled' ? [post] : [],
+    )
+    mockSchedulerSchedulePost.mockResolvedValue(null)
+
+    const clipTypeMaps: ClipTypeMaps = {
+      byLatePostId: new Map([['p-cancel-noslot', 'short']]),
+      byContent: new Map(),
+    }
+
+    const plan = await buildRealignPlan({ clipTypeMaps })
+
+    expect(plan.toCancel).toHaveLength(0)
+  })
 })

@@ -231,4 +231,13 @@ describe('L4-L6 Integration: scheduler → Late API (mocked L2)', () => {
     expect(calendar).toHaveLength(1)
     expect(calendar[0].postId).toBe('scheduled-post')
   })
+
+  it('generateTimeslots early-exits past upper bound', async () => {
+    // With no bookings and a valid platform, findNextSlot should return
+    // a slot without hanging (early-exit prevents infinite iteration)
+    const slot = await findNextSlot('linkedin', 'medium-clip')
+    expect(slot).toBeTruthy()
+    // The slot is a valid ISO datetime
+    expect(slot).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+  })
 })

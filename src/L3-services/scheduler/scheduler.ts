@@ -80,7 +80,7 @@ function sanitizeLogValue(value: string): string {
   return value.replace(/[\r\n]/g, '')
 }
 
-function getTimezoneOffset(timezone: string, date: Date): string {
+export function getTimezoneOffset(timezone: string, date: Date): string {
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: timezone,
     timeZoneName: 'longOffset',
@@ -97,7 +97,7 @@ function getTimezoneOffset(timezone: string, date: Date): string {
   return '+00:00'
 }
 
-function buildSlotDatetime(date: Date, time: string, timezone: string): string {
+export function buildSlotDatetime(date: Date, time: string, timezone: string): string {
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: timezone,
     year: 'numeric',
@@ -116,7 +116,7 @@ function buildSlotDatetime(date: Date, time: string, timezone: string): string {
   return `${year}-${month}-${day}T${time}:00${offset}`
 }
 
-function getDayOfWeekInTimezone(date: Date, timezone: string): DayOfWeek {
+export function getDayOfWeekInTimezone(date: Date, timezone: string): DayOfWeek {
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: timezone,
     weekday: 'short',
@@ -243,6 +243,12 @@ function* generateTimeslots(
     }
     dayCandidates.sort((a, b) => a.ms - b.ms)
     for (const candidate of dayCandidates) yield candidate
+
+    // Early exit if we've gone past the upper bound
+    if (dayCandidates.length === 0) {
+      const dayStartMs = normalizeDateTime(buildSlotDatetime(day, '00:00', timezone))
+      if (dayStartMs > upperMs) break
+    }
   }
 }
 
@@ -367,7 +373,13 @@ export async function schedulePost(
       if (newHome) {
         // Move the displaced post
         if (!ctx.dryRun) {
-          await ctx.lateClient.schedulePost(booked.postId, newHome)
+          try {
+            await ctx.lateClient.schedulePost(booked.postId, newHome)
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err)
+            logger.warn(`${indent}[schedulePost] ⚠️ Failed to displace ${booked.postId} via Late API: ${msg} — skipping slot`)
+            continue
+          }
         }
         logger.info(`${indent}[schedulePost] 📦 Displaced ${booked.postId}: ${datetime} → ${newHome}`)
 

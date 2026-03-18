@@ -96,18 +96,27 @@ describe('schedulePost e2e', () => {
     ).rejects.toThrow('Invalid ID format')
   })
 
-  describe.skipIf(!hasLateApiKey)('rescheduleIdeaPosts with live API', () => {
-    test('rescheduleIdeaPosts dry run returns result without modifying posts', async () => {
-      const result = await rescheduleIdeaPosts({ dryRun: true })
+  test('rescheduleIdeaPosts dry run returns result without modifying posts', async () => {
+    const result = await rescheduleIdeaPosts({ dryRun: true })
 
-      expect(result).toHaveProperty('rescheduled')
-      expect(result).toHaveProperty('unchanged')
-      expect(result).toHaveProperty('failed')
-      expect(Array.isArray(result.details)).toBe(true)
-      // Dry run should not fail (may have 0 items)
-      expect(typeof result.rescheduled).toBe('number')
-      expect(typeof result.unchanged).toBe('number')
-      expect(typeof result.failed).toBe('number')
-    }, 30_000)
-  })
+    expect(result).toHaveProperty('rescheduled')
+    expect(result).toHaveProperty('unchanged')
+    expect(result).toHaveProperty('failed')
+    expect(Array.isArray(result.details)).toBe(true)
+    expect(typeof result.rescheduled).toBe('number')
+    expect(typeof result.unchanged).toBe('number')
+    expect(typeof result.failed).toBe('number')
+  }, 30_000)
+})
+
+// ── buildPrioritizedRealignPlan removed ─────────────────────────
+
+test('buildPrioritizedRealignPlan is no longer exported from realign', async () => {
+  const realignModule = await import('../../L3-services/scheduler/realign.js')
+  expect('buildPrioritizedRealignPlan' in realignModule).toBe(false)
+})
+
+test('buildRealignPlan is still exported from realign', async () => {
+  const { buildRealignPlan } = await import('../../L3-services/scheduler/realign.js')
+  expect(typeof buildRealignPlan).toBe('function')
 })

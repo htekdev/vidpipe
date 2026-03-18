@@ -15,7 +15,7 @@ export type {
   DisplacementConfig,
   ScheduleConfig,
 } from './scheduler/scheduleConfig.js'
-export { buildRealignPlan, buildPrioritizedRealignPlan, executeRealignPlan } from './scheduler/realign.js'
+export { buildRealignPlan, executeRealignPlan } from './scheduler/realign.js'
 export type {
   RealignPost,
   CancelPost,

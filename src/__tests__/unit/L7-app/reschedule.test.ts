@@ -4,6 +4,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const mockInitConfig = vi.hoisted(() => vi.fn())
 const mockRescheduleIdeaPosts = vi.hoisted(() => vi.fn())
+const mockLoadScheduleConfig = vi.hoisted(() => vi.fn().mockResolvedValue({ timezone: 'America/Chicago', platforms: {} }))
 
 vi.mock('../../../L1-infra/config/environment.js', () => ({
   initConfig: mockInitConfig,
@@ -15,6 +16,10 @@ vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
 
 vi.mock('../../../L3-services/scheduler/scheduler.js', () => ({
   rescheduleIdeaPosts: mockRescheduleIdeaPosts,
+}))
+
+vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
+  loadScheduleConfig: mockLoadScheduleConfig,
 }))
 
 // ── Import after mocks ────────────────────────────────────────────────
@@ -188,5 +193,29 @@ describe('reschedule command', () => {
     await runReschedule()
 
     expect(mockRescheduleIdeaPosts).toHaveBeenCalledWith({ dryRun: undefined })
+  })
+
+  it('formats dates using timezone from schedule config', async () => {
+    mockLoadScheduleConfig.mockResolvedValue({ timezone: 'Asia/Tokyo', platforms: {} })
+    mockRescheduleIdeaPosts.mockResolvedValue(makeResult({
+      rescheduled: 1,
+      details: [
+        {
+          itemId: 'tz-item',
+          platform: 'tiktok',
+          latePostId: 'late-tz',
+          oldSlot: '2026-03-01T10:00:00Z',
+          newSlot: '2026-03-02T10:00:00Z',
+        },
+      ],
+    }))
+
+    const { runReschedule } = await import('../../../L7-app/commands/reschedule.js')
+    await runReschedule()
+
+    expect(mockLoadScheduleConfig).toHaveBeenCalled()
+    const output = getOutput()
+    // Tokyo is UTC+9, so 10:00 UTC → 19:00 JST (7:00 PM)
+    expect(output).toContain('7:00')
   })
 })
