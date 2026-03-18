@@ -19,10 +19,14 @@ vi.mock('../../../../L2-clients/late/lateApi.js', () => ({
 
 const mockSchedulerSchedulePost = vi.hoisted(() => vi.fn())
 const mockBuildBookedMap = vi.hoisted(() => vi.fn())
-vi.mock('../../../../L3-services/scheduler/scheduler.js', () => ({
-  schedulePost: (...args: unknown[]) => mockSchedulerSchedulePost(...args),
-  buildBookedMap: (...args: unknown[]) => mockBuildBookedMap(...args),
-}))
+vi.mock('../../../../L3-services/scheduler/scheduler.js', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>
+  return {
+    ...actual,
+    schedulePost: (...args: unknown[]) => mockSchedulerSchedulePost(...args),
+    buildBookedMap: (...args: unknown[]) => mockBuildBookedMap(...args),
+  }
+})
 
 // ── Mock scheduleConfig.js ────────────────────────────────────────────
 
