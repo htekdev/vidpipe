@@ -355,9 +355,9 @@ export function getPlatformSchedule(platform: string, clipType?: string): Platfo
     }
   }
 
-  // Fallback: if clipType has no dedicated entry AND top-level slots are empty,
-  // aggregate all byClipType slots so text-only posts can use any available slot
-  if (clipType && schedule.slots.length === 0 && schedule.byClipType) {
+  // Fallback: if top-level slots are empty (no clipType match or no clipType at all),
+  // aggregate all byClipType slots so posts can use any available slot
+  if (schedule.slots.length === 0 && schedule.byClipType) {
     const allSlots: TimeSlot[] = []
     const allAvoidDays = new Set<DayOfWeek>()
     for (const sub of Object.values(schedule.byClipType)) {

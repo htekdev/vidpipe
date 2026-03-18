@@ -43,7 +43,6 @@ const mockState = vi.hoisted(() => ({
 const mockLoadScheduleConfig = vi.hoisted(() => vi.fn())
 const mockGetPublishedItems = vi.hoisted(() => vi.fn())
 const mockGetScheduledItemsByIdeaIds = vi.hoisted(() => vi.fn())
-const mockGetPublishedItemByLatePostId = vi.hoisted(() => vi.fn())
 const mockGetScheduledPosts = vi.hoisted(() => vi.fn())
 const mockSchedulePost = vi.hoisted(() => vi.fn())
 
@@ -86,7 +85,6 @@ vi.mock('../../../../L3-services/scheduler/scheduleConfig.js', () => ({
 vi.mock('../../../../L3-services/postStore/postStore.js', () => ({
   getPublishedItems: () => mockGetPublishedItems(),
   getScheduledItemsByIdeaIds: (...args: unknown[]) => mockGetScheduledItemsByIdeaIds(...args),
-  getPublishedItemByLatePostId: (...args: unknown[]) => mockGetPublishedItemByLatePostId(...args),
 }))
 
 vi.mock('../../../../L2-clients/late/lateApi.js', () => ({
@@ -199,7 +197,6 @@ describe('scheduler idea-aware slot resolution', () => {
     mockLoadScheduleConfig.mockResolvedValue(makeScheduleConfig())
     mockGetPublishedItems.mockResolvedValue([])
     mockGetScheduledItemsByIdeaIds.mockResolvedValue([])
-    mockGetPublishedItemByLatePostId.mockResolvedValue(null)
     mockGetScheduledPosts.mockResolvedValue([])
     mockSchedulePost.mockResolvedValue(makeLatePost())
   })
@@ -239,13 +236,6 @@ describe('scheduler idea-aware slot resolution', () => {
       makeLatePost({ _id: 'late-2', scheduledFor: '2026-03-04T09:00:00+00:00' }),
       makeLatePost({ _id: 'late-3', scheduledFor: '2026-03-05T09:00:00+00:00' }),
     ])
-    mockGetPublishedItemByLatePostId.mockImplementation((postId: string) =>
-      Promise.resolve(makeQueueItem({
-        id: `local-${postId}`,
-        metadata: { latePostId: postId, scheduledFor: '2026-03-03T09:00:00+00:00' },
-      })),
-    )
-
     const slot = await findNextSlot('tiktok', 'short', {
       ideaIds: ['idea-1'],
       publishBy: '2026-03-05T23:59:59+00:00',
@@ -258,26 +248,25 @@ describe('scheduler idea-aware slot resolution', () => {
     )
   })
 
-  it('does not displace orphaned Late posts with no local item', async () => {
+  it('displaces orphaned Late posts (not idea-linked)', async () => {
     mockGetScheduledPosts.mockResolvedValue([
       makeLatePost({ _id: 'orphan-1', scheduledFor: '2026-03-03T09:00:00+00:00' }),
     ])
-    mockGetPublishedItemByLatePostId.mockResolvedValue(null)
 
     const slot = await findNextSlot('tiktok', 'short', {
       ideaIds: ['idea-1'],
       publishBy: '2026-03-03T23:59:59+00:00',
     })
 
-    expect(slot).toBeNull()
-    expect(mockSchedulePost).not.toHaveBeenCalled()
+    expect(slot).toBe('2026-03-03T09:00:00+00:00')
+    expect(mockSchedulePost).toHaveBeenCalledWith('orphan-1', '2026-03-04T09:00:00+00:00')
   })
 
   it('does not displace idea-linked posts', async () => {
     mockGetScheduledPosts.mockResolvedValue([
       makeLatePost({ _id: 'late-idea', scheduledFor: '2026-03-03T09:00:00+00:00' }),
     ])
-    mockGetPublishedItemByLatePostId.mockResolvedValue(
+    mockGetPublishedItems.mockResolvedValue([
       makeQueueItem({
         id: 'published-idea',
         metadata: {
@@ -286,7 +275,7 @@ describe('scheduler idea-aware slot resolution', () => {
           scheduledFor: '2026-03-03T09:00:00+00:00',
         },
       }),
-    )
+    ])
 
     const slot = await findNextSlot('tiktok', 'short', {
       ideaIds: ['idea-1'],
@@ -312,12 +301,6 @@ describe('scheduler idea-aware slot resolution', () => {
         },
       }),
     ])
-    mockGetPublishedItemByLatePostId.mockImplementation((postId: string) =>
-      Promise.resolve(makeQueueItem({
-        id: `local-${postId}`,
-        metadata: { latePostId: postId, scheduledFor: '2026-03-03T09:00:00+00:00' },
-      })),
-    )
 
     const slot = await findNextSlot('tiktok', 'short', {
       ideaIds: ['idea-1'],
@@ -333,13 +316,6 @@ describe('scheduler idea-aware slot resolution', () => {
       makeLatePost({ _id: 'late-1', scheduledFor: '2026-03-03T09:00:00+00:00' }),
       makeLatePost({ _id: 'late-2', scheduledFor: '2026-03-04T09:00:00+00:00' }),
     ])
-    mockGetPublishedItemByLatePostId.mockImplementation((postId: string) =>
-      Promise.resolve(makeQueueItem({
-        id: `local-${postId}`,
-        metadata: { latePostId: postId, scheduledFor: '2026-03-03T09:00:00+00:00' },
-      })),
-    )
-
     const slot = await findNextSlot('tiktok', 'short', {
       ideaIds: ['idea-urgent'],
       publishBy: '2026-03-04T12:00:00+00:00',

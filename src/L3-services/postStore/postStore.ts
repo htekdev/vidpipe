@@ -537,6 +537,28 @@ export async function getPublishedItemByLatePostId(latePostId: string): Promise<
   return publishedItems.find(item => item.metadata.latePostId === latePostId) ?? null
 }
 
+/**
+ * Update the scheduledFor date of an already-published item on disk.
+ * Used when rescheduling existing Late posts without re-uploading.
+ */
+export async function updatePublishedItemSchedule(id: string, scheduledFor: string): Promise<void> {
+  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+    throw new Error(`Invalid ID format: ${id}`)
+  }
+  const publishedDir = getPublishedDir()
+  const folderPath = join(publishedDir, basename(id))
+  const metadataPath = join(folderPath, 'metadata.json')
+
+  if (!resolve(metadataPath).startsWith(resolve(publishedDir) + sep)) {
+    throw new Error('Write target outside published directory')
+  }
+
+  const raw = await readTextFile(metadataPath)
+  const metadata = JSON.parse(raw) as QueueItemMetadata
+  metadata.scheduledFor = String(scheduledFor)
+  await writeTextFile(metadataPath, JSON.stringify(metadata, null, 2))
+}
+
 export async function itemExists(id: string): Promise<'pending' | 'published' | null> {
   // Inline validation to prevent path traversal - CodeQL recognizes this pattern
   if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {

@@ -102,6 +102,16 @@ program
   })
 
 program
+  .command('reschedule')
+  .description('Reschedule idea-linked posts for optimal slot placement, displacing non-idea content')
+  .option('--dry-run', 'Preview changes without updating posts')
+  .action(async (opts) => {
+    const { runReschedule } = await import('./commands/reschedule.js')
+    await runReschedule({ dryRun: opts.dryRun })
+    process.exit(0)
+  })
+
+program
   .command('chat')
   .description('Interactive chat session with the schedule management agent')
   .action(async () => {
