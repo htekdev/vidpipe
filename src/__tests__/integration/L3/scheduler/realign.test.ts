@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, test, expect, vi, beforeEach } from 'vitest'
 import type { RealignPlan, ClipTypeMaps } from '../../../../L3-services/scheduler/realign.js'
 
 // ── Mock L1 infrastructure only ────────────────────────────────────────

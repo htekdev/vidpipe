@@ -1,5 +1,5 @@
 name: Post-Push CI Gate
-description: After pushing, polls GitHub PR check runs and fails if any CI job fails.
+description: After pushing, watches GitHub PR check runs and fails if any CI job fails.
 on:
   push:
     lifecycle: post
@@ -8,86 +8,28 @@ steps:
   - name: Wait for CI checks to complete
     timeout: 600
     run: |
-      Write-Host "⏳ Waiting for CI checks on the pushed branch..."
-      
       $branch = git rev-parse --abbrev-ref HEAD 2>$null
       if (-not $branch) {
         Write-Host "⚠️ Could not determine branch — skipping CI check"
         exit 0
       }
       
-      # Find the PR number for this branch
-      $prJson = gh pr list --head $branch --json number,state --jq '.[0]' 2>$null
-      if (-not $prJson -or $prJson -eq 'null') {
+      $prJson = gh pr list --head $branch --json number --jq '.[0].number' 2>$null
+      if (-not $prJson) {
         Write-Host "ℹ️ No open PR found for branch '$branch' — skipping CI check"
         exit 0
       }
       
-      $pr = $prJson | ConvertFrom-Json
-      $prNumber = $pr.number
-      Write-Host "📋 Found PR #$prNumber for branch '$branch'"
+      Write-Host "⏳ Watching CI checks for PR #$prJson on branch '$branch'..."
+      gh pr checks $prJson --watch --fail-fast
+      $exitCode = $LASTEXITCODE
       
-      # Poll until all checks complete (max 10 minutes)
-      $maxAttempts = 60
-      $pollInterval = 10
-      
-      for ($i = 0; $i -lt $maxAttempts; $i++) {
-        $checksJson = gh pr checks $prNumber --json name,state,conclusion 2>$null
-        if (-not $checksJson) {
-          Write-Host "  ⏳ Waiting for checks to appear... (attempt $($i + 1))"
-          Start-Sleep -Seconds $pollInterval
-          continue
-        }
-        
-        $checks = $checksJson | ConvertFrom-Json
-        if ($checks.Count -eq 0) {
-          Write-Host "  ⏳ No checks yet... (attempt $($i + 1))"
-          Start-Sleep -Seconds $pollInterval
-          continue
-        }
-        
-        $pending = $checks | Where-Object { $_.state -eq 'PENDING' -or $_.state -eq 'IN_PROGRESS' -or $_.state -eq 'QUEUED' }
-        $failed = $checks | Where-Object { $_.conclusion -eq 'FAILURE' -or $_.conclusion -eq 'failure' }
-        $passed = $checks | Where-Object { $_.conclusion -eq 'SUCCESS' -or $_.conclusion -eq 'success' }
-        $skipped = $checks | Where-Object { $_.conclusion -eq 'SKIPPED' -or $_.conclusion -eq 'skipped' -or $_.conclusion -eq 'NEUTRAL' }
-        
-        if ($pending.Count -gt 0) {
-          $pendingNames = ($pending | ForEach-Object { $_.name }) -join ', '
-          Write-Host "  ⏳ $($pending.Count) check(s) still running: $pendingNames (attempt $($i + 1))"
-          Start-Sleep -Seconds $pollInterval
-          continue
-        }
-        
-        # All checks complete
-        Write-Host ""
-        Write-Host "📊 CI Results for PR #${prNumber}:"
-        
-        foreach ($check in $checks) {
-          $icon = switch ($check.conclusion) {
-            { $_ -eq 'SUCCESS' -or $_ -eq 'success' } { '✅' }
-            { $_ -eq 'FAILURE' -or $_ -eq 'failure' } { '❌' }
-            { $_ -eq 'SKIPPED' -or $_ -eq 'skipped' -or $_ -eq 'NEUTRAL' } { '⏭️' }
-            default { '❓' }
-          }
-          Write-Host "  $icon $($check.name): $($check.conclusion)"
-        }
-        
-        Write-Host ""
-        Write-Host "Summary: $($passed.Count) passed, $($failed.Count) failed, $($skipped.Count) skipped"
-        
-        if ($failed.Count -gt 0) {
-          $failedNames = ($failed | ForEach-Object { $_.name }) -join ', '
-          Write-Host ""
-          Write-Error "❌ CI FAILED: $failedNames"
-          Write-Host ""
-          Write-Host "Fix the failing checks and push again."
-          exit 1
-        }
-        
-        Write-Host ""
+      if ($exitCode -eq 0) {
         Write-Host "✅ All CI checks passed!"
-        exit 0
+      } elseif ($exitCode -eq 8) {
+        Write-Host "⏳ Checks still pending (should not happen with --watch)"
+      } else {
+        Write-Host "❌ CI checks failed!"
       }
       
-      Write-Error "⏰ Timed out waiting for CI checks after $($maxAttempts * $pollInterval) seconds"
-      exit 1
+      exit $exitCode

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, test, expect, vi, beforeEach } from 'vitest'
 
 // Mock L1 infrastructure (ESM imports verified)
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
@@ -139,6 +139,10 @@ describe('L3 Integration: scheduler calendar with no Late API', () => {
         displacementEnabled: false,
         dryRun: true,
         depth: 0,
+        ideaRefs: [],
+        samePlatformMs: 0,
+        crossPlatformMs: 0,
+        platform: 'tiktok',
       }
 
       expect(ctx.timezone).toBe('America/Chicago')
