@@ -68,6 +68,11 @@ export interface ScheduleContext {
   displacementEnabled: boolean
   dryRun: boolean
   depth: number
+  /** Idea spacing references — empty when not idea-aware */
+  ideaRefs: IdeaRef[]
+  samePlatformMs: number
+  crossPlatformMs: number
+  platform: string
 }
 
 // ── Utility functions ──────────────────────────────────────────────────
@@ -351,14 +356,32 @@ export async function schedulePost(
     checked++
     const booked = ctx.bookedMap.get(ms)
 
-    // ── Case 1: Empty slot → take it ────────────────────────────────
+    // ── Case 1: Empty slot → check spacing then take it ───────────
     if (!booked) {
+      // Check idea spacing — skip slots too close to same-idea posts
+      if (isIdeaPost && ctx.ideaRefs.length > 0 &&
+          !passesIdeaSpacing(ms, ctx.platform, ctx.ideaRefs, ctx.samePlatformMs, ctx.crossPlatformMs)) {
+        skippedSpacing++
+        if (skippedSpacing <= 5 || skippedSpacing % 50 === 0) {
+          logger.debug(`${indent}[schedulePost] ⏭️ Slot ${datetime} too close to same-idea post — skipping`)
+        }
+        continue
+      }
       logger.debug(`${indent}[schedulePost] ✅ Found empty slot: ${datetime} (checked ${checked} candidates, skipped ${skippedBooked} booked, ${skippedSpacing} spacing)`)
       return datetime
     }
 
     // ── Case 2: Taken by non-idea Late post → displace it ──────────
     if (isIdeaPost && ctx.displacementEnabled && !booked.ideaLinked && booked.source === 'late' && booked.postId) {
+      // Check spacing before displacing — no point if we can't use the slot
+      if (ctx.ideaRefs.length > 0 &&
+          !passesIdeaSpacing(ms, ctx.platform, ctx.ideaRefs, ctx.samePlatformMs, ctx.crossPlatformMs)) {
+        skippedSpacing++
+        if (skippedSpacing <= 5 || skippedSpacing % 50 === 0) {
+          logger.debug(`${indent}[schedulePost] ⏭️ Slot ${datetime} too close to same-idea post — skipping (even though displaceable)`)
+        }
+        continue
+      }
       logger.info(`${indent}[schedulePost] 🔄 Slot ${datetime} taken by non-idea post ${booked.postId} — displacing`)
 
       // Recursively find a new home for the displaced post
@@ -444,7 +467,19 @@ export async function findNextSlot(
   const ideaLinkedPostIds = await getIdeaLinkedLatePostIds()
   const label = `${platform}/${clipType ?? 'default'}`
 
-  logger.info(`[findNextSlot] Scheduling ${label} (idea=${isIdeaAware}, booked=${bookedMap.size} slots)`)
+  // Build idea spacing references if idea-aware
+  let ideaRefs: IdeaRef[] = []
+  let samePlatformMs = 0
+  let crossPlatformMs = 0
+  if (isIdeaAware) {
+    const allBookedMap = await buildBookedMap()
+    ideaRefs = await getIdeaReferences(ideaIds, allBookedMap)
+    const spacingConfig = getIdeaSpacingConfig()
+    samePlatformMs = spacingConfig.samePlatformHours * HOUR_MS
+    crossPlatformMs = spacingConfig.crossPlatformHours * HOUR_MS
+  }
+
+  logger.info(`[findNextSlot] Scheduling ${label} (idea=${isIdeaAware}, booked=${bookedMap.size} slots, spacingRefs=${ideaRefs.length})`)
 
   const ctx: ScheduleContext = {
     timezone,
@@ -454,6 +489,10 @@ export async function findNextSlot(
     displacementEnabled: getDisplacementConfig().enabled,
     dryRun: false,
     depth: 0,
+    ideaRefs,
+    samePlatformMs,
+    crossPlatformMs,
+    platform,
   }
 
   const result = await schedulePost(platformConfig, nowMs, isIdeaAware, label, ctx)
@@ -523,11 +562,15 @@ export async function rescheduleIdeaPosts(options?: { dryRun?: boolean }): Promi
   const ctx: ScheduleContext = {
     timezone,
     bookedMap: fullBookedMap,
-    ideaLinkedPostIds: new Set<string>(), // empty — all idea posts removed from map
+    ideaLinkedPostIds: new Set<string>(),
     lateClient,
     displacementEnabled: getDisplacementConfig().enabled,
     dryRun,
     depth: 0,
+    ideaRefs: [],
+    samePlatformMs: 0,
+    crossPlatformMs: 0,
+    platform: '',
   }
 
   for (const item of ideaPosts) {

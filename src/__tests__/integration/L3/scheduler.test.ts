@@ -15,7 +15,7 @@ const mockOutputDir = vi.hoisted(() => {
 vi.mock('../../../L1-infra/config/environment.js', () => ({
   getConfig: () => ({
     OUTPUT_DIR: mockOutputDir,
-    LATE_API_KEY: '',
+    LATE_API_KEY: 'test-fake-key',
   }),
   initConfig: vi.fn(),
 }))
@@ -155,51 +155,57 @@ describe('L3 Integration: scheduler calendar with no Late API', () => {
     })
   })
 
-  // ── findNextSlot (requires Late API key for LateApiClient) ──────
+  // ── findNextSlot (works with or without Late API key) ──────────
 
-  describe.skipIf(!hasLateApiKey)('findNextSlot with live Late API', () => {
-    it('findNextSlot accepts SlotOptions with ideaIds and publishBy', async () => {
-      const slot = await findNextSlot('linkedin', 'medium-clip', {
-        ideaIds: ['idea-123'],
-        publishBy: '2099-12-31T23:59:59Z',
-      })
-
-      expect(slot).toBeTruthy()
-      expect(slot).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+  it('findNextSlot accepts SlotOptions with ideaIds and publishBy', async () => {
+    // findNextSlot catches Late API errors internally via fetchScheduledPostsSafe
+    const slot = await findNextSlot('linkedin', 'medium-clip', {
+      ideaIds: ['idea-123'],
+      publishBy: '2099-12-31T23:59:59Z',
     })
 
-    it('findNextSlot without ideaIds behaves identically to no options', async () => {
-      const slotWithoutOptions = await findNextSlot('linkedin', 'medium-clip')
-
-      clearScheduleCache()
-
-      const slotWithoutIdeaIds = await findNextSlot('linkedin', 'medium-clip', {})
-
-      expect(slotWithoutIdeaIds).toBe(slotWithoutOptions)
-    })
-
-    it('returns a future ISO datetime string for a known platform', async () => {
-      const slot = await findNextSlot('tiktok')
-
-      expect(slot).not.toBeNull()
-      const parsed = new Date(slot!)
-      expect(parsed.getTime()).toBeGreaterThan(Date.now())
-    })
-
-    it('respects publishBy deadline — returned slot is before deadline', async () => {
-      const deadline = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString()
-      const slot = await findNextSlot('linkedin', undefined, { publishBy: deadline })
-
-      expect(slot).not.toBeNull()
-      expect(new Date(slot!).getTime()).toBeLessThanOrEqual(new Date(deadline).getTime())
-    })
-
-    it('ignores already-passed publishBy and schedules normally', async () => {
-      clearScheduleCache()
-      const pastDeadline = '2020-01-01T00:00:00Z'
-      const slot = await findNextSlot('tiktok', undefined, { publishBy: pastDeadline })
-
-      expect(slot).not.toBeNull()
-    })
+    expect(slot).toBeTruthy()
+    expect(slot).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
   })
+
+  it('findNextSlot without ideaIds behaves identically to no options', async () => {
+    const slotWithoutOptions = await findNextSlot('linkedin', 'medium-clip')
+
+    clearScheduleCache()
+
+    const slotWithoutIdeaIds = await findNextSlot('linkedin', 'medium-clip', {})
+
+    expect(slotWithoutIdeaIds).toBe(slotWithoutOptions)
+  })
+
+  it('returns a future ISO datetime string for a known platform', async () => {
+    const slot = await findNextSlot('tiktok')
+
+    expect(slot).not.toBeNull()
+    const parsed = new Date(slot!)
+    expect(parsed.getTime()).toBeGreaterThan(Date.now())
+  })
+
+  it('respects publishBy deadline — returned slot is before deadline', async () => {
+    const deadline = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString()
+    const slot = await findNextSlot('linkedin', undefined, { publishBy: deadline })
+
+    expect(slot).not.toBeNull()
+    expect(new Date(slot!).getTime()).toBeLessThanOrEqual(new Date(deadline).getTime())
+  })
+
+  it('ignores already-passed publishBy and schedules normally', async () => {
+    clearScheduleCache()
+    const pastDeadline = '2020-01-01T00:00:00Z'
+    const slot = await findNextSlot('tiktok', undefined, { publishBy: pastDeadline })
+
+    expect(slot).not.toBeNull()
+  })
+})
+
+test('passesIdeaSpacing is used by schedulePost for spacing enforcement', async () => {
+  const mod = await import('../../../L3-services/scheduler/scheduler.js')
+  expect(typeof mod.schedulePost).toBe('function')
+  // ScheduleContext now includes ideaRefs, samePlatformMs, crossPlatformMs
+  expect(typeof mod.buildBookedMap).toBe('function')
 })

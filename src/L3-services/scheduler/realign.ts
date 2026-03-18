@@ -208,6 +208,10 @@ export async function buildRealignPlan(options: {
     displacementEnabled: getDisplacementConfig().enabled,
     dryRun: true,
     depth: 0,
+    ideaRefs: [],
+    samePlatformMs: 0,
+    crossPlatformMs: 0,
+    platform: '',
   }
 
   // Populate idea-linked IDs from the booked map

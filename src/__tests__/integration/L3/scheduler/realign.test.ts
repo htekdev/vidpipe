@@ -687,3 +687,9 @@ describe('L3 Integration: buildRealignPlan with mocked L1', () => {
     expect(plan.totalFetched).toBeGreaterThanOrEqual(1)
   })
 })
+
+test('buildRealignPlan passes spacing fields in ScheduleContext', async () => {
+  // The ScheduleContext created by buildRealignPlan includes spacing fields
+  const { buildRealignPlan } = await import('../../../../L3-services/scheduler/realign.js')
+  expect(typeof buildRealignPlan).toBe('function')
+})

@@ -212,7 +212,7 @@ describe('scheduler idea-aware slot resolution', () => {
     expect(mockSchedulePost).not.toHaveBeenCalled()
   })
 
-  it('finds first empty slot for idea-aware scheduling (spacing not enforced in schedulePost)', async () => {
+  it('enforces same-platform spacing for idea-aware scheduling', async () => {
     mockGetScheduledItemsByIdeaIds.mockResolvedValue([
       makeQueueItem({
         id: 'idea-previous',
@@ -226,8 +226,8 @@ describe('scheduler idea-aware slot resolution', () => {
 
     const slot = await findNextSlot('tiktok', 'short', { ideaIds: ['idea-1'] })
 
-    // New recursive schedulePost does not enforce idea spacing — first empty slot wins
-    expect(slot).toBe('2026-03-03T09:00:00+00:00')
+    // Previous idea post at 20:00 on Mar 2 — 24h same-platform spacing skips Mar 3 (13h gap)
+    expect(slot).toBe('2026-03-04T09:00:00+00:00')
     expect(mockSchedulePost).not.toHaveBeenCalled()
   })
 
@@ -286,7 +286,7 @@ describe('scheduler idea-aware slot resolution', () => {
     expect(mockSchedulePost).not.toHaveBeenCalled()
   })
 
-  it('displaces first non-idea post when multiple slots are occupied', async () => {
+  it('displaces first non-idea post respecting spacing when multiple slots are occupied', async () => {
     mockGetScheduledPosts.mockResolvedValue([
       makeLatePost({ _id: 'late-1', scheduledFor: '2026-03-03T09:00:00+00:00' }),
       makeLatePost({ _id: 'late-2', scheduledFor: '2026-03-04T09:00:00+00:00' }),
@@ -306,9 +306,9 @@ describe('scheduler idea-aware slot resolution', () => {
       ideaIds: ['idea-1'],
     })
 
-    // Spacing no longer enforced — displaces late-1 from Mar 3, late-1 displaced to Mar 5
-    expect(slot).toBe('2026-03-03T09:00:00+00:00')
-    expect(mockSchedulePost).toHaveBeenCalledWith('late-1', '2026-03-05T09:00:00+00:00')
+    // 24h spacing blocks Mar 3 (13h from previous), displaces late-2 from Mar 4
+    expect(slot).toBe('2026-03-04T09:00:00+00:00')
+    expect(mockSchedulePost).toHaveBeenCalledWith('late-2', '2026-03-05T09:00:00+00:00')
   })
 
   it('displaces earliest non-idea post when multiple taken slots exist', async () => {
@@ -347,7 +347,7 @@ describe('scheduler idea-aware slot resolution', () => {
     expect(mockSchedulePost).not.toHaveBeenCalled()
   })
 
-  it('finds first empty slot regardless of cross-platform timing', async () => {
+  it('enforces cross-platform spacing for same-idea content', async () => {
     mockGetScheduledItemsByIdeaIds.mockResolvedValue([
       makeQueueItem({
         id: 'idea-instagram',
@@ -361,8 +361,8 @@ describe('scheduler idea-aware slot resolution', () => {
 
     const slot = await findNextSlot('tiktok', 'short', { ideaIds: ['idea-1'] })
 
-    // Cross-platform spacing not enforced in schedulePost — first empty slot wins
-    expect(slot).toBe('2026-03-03T09:00:00+00:00')
+    // Instagram post at 06:00 Mar 3 — 6h cross-platform spacing blocks tiktok at 09:00 (3h gap)
+    expect(slot).toBe('2026-03-04T09:00:00+00:00')
   })
 
   it('ignores publishBy and schedules normally when it has passed', async () => {
