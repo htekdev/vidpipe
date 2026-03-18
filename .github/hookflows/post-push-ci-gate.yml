@@ -14,20 +14,29 @@ steps:
         exit 0
       }
       
-      $prJson = gh pr list --head $branch --json number --jq '.[0].number' 2>$null
-      if (-not $prJson) {
+      $prNumber = gh pr list --head $branch --json number --jq '.[0].number' 2>$null
+      if (-not $prNumber) {
         Write-Host "ℹ️ No open PR found for branch '$branch' — skipping CI check"
         exit 0
       }
       
-      Write-Host "⏳ Watching CI checks for PR #$prJson on branch '$branch'..."
-      gh pr checks $prJson --watch --fail-fast
+      # Wait for checks to appear (GitHub needs a few seconds after push)
+      Write-Host "⏳ Waiting for CI checks to start for PR #$prNumber..."
+      for ($i = 0; $i -lt 12; $i++) {
+        Start-Sleep -Seconds 5
+        $checkCount = gh pr checks $prNumber --json name --jq 'length' 2>$null
+        if ($checkCount -and [int]$checkCount -gt 0) {
+          Write-Host "  Found $checkCount check(s) — watching..."
+          break
+        }
+        Write-Host "  ⏳ No checks yet... (waited $((($i + 1) * 5))s)"
+      }
+      
+      gh pr checks $prNumber --watch --fail-fast
       $exitCode = $LASTEXITCODE
       
       if ($exitCode -eq 0) {
         Write-Host "✅ All CI checks passed!"
-      } elseif ($exitCode -eq 8) {
-        Write-Host "⏳ Checks still pending (should not happen with --watch)"
       } else {
         Write-Host "❌ CI checks failed!"
       }
