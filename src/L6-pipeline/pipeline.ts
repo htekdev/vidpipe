@@ -17,6 +17,7 @@ import type {
   PipelineStage,
   Chapter,
   Idea,
+  Platform,
 } from '../L0-pure/types/index'
 import { PipelineStage as Stage, getStageInfo, TOTAL_STAGES } from '../L0-pure/types/index'
 import type { ShortVideoAsset } from '../L5-assets/ShortVideoAsset.js'
@@ -305,10 +306,20 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
     if (!cfg.SKIP_SHORTS) {
       const shortAssets = await trackStage<ShortVideoAsset[]>(Stage.Shorts, async () => {
         const assets = await asset.getShorts()
-        // Apply intro/outro to each short (if configured for 'shorts' video type)
+        // Apply intro/outro to each short and its variants (if configured)
         if (!cfg.SKIP_INTRO_OUTRO) {
           for (const shortAsset of assets) {
-            await shortAsset.getIntroOutroVideo()
+            const introOutroPath = await shortAsset.getIntroOutroVideo()
+            if (introOutroPath !== shortAsset.clip.outputPath) {
+              shortAsset.clip.outputPath = introOutroPath
+            }
+            const variantResults = await shortAsset.getIntroOutroVariants()
+            if (shortAsset.clip.variants) {
+              for (const variant of shortAsset.clip.variants) {
+                const updated = variantResults.get(variant.platform as Platform)
+                if (updated) variant.path = updated
+              }
+            }
           }
         }
         return assets
@@ -323,10 +334,13 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
     if (!cfg.SKIP_MEDIUM_CLIPS) {
       const mediumAssets = await trackStage<MediumClipAsset[]>(Stage.MediumClips, async () => {
         const assets = await asset.getMediumClips()
-        // Apply intro/outro to each medium clip (if configured for 'medium-clips' video type)
+        // Apply intro/outro to each medium clip (if configured)
         if (!cfg.SKIP_INTRO_OUTRO) {
           for (const clipAsset of assets) {
-            await clipAsset.getIntroOutroVideo()
+            const introOutroPath = await clipAsset.getIntroOutroVideo()
+            if (introOutroPath !== clipAsset.clip.outputPath) {
+              clipAsset.clip.outputPath = introOutroPath
+            }
           }
         }
         return assets
@@ -379,7 +393,7 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
 
     // 13. Queue Build — asset handles publish-queue/ population
     if (!cfg.SKIP_SOCIAL_PUBLISH && socialPosts.length > 0) {
-      await trackStage<void>(Stage.QueueBuild, () => asset.buildQueue(shorts, mediumClips, socialPosts, captionedVideoPath))
+      await trackStage<void>(Stage.QueueBuild, () => asset.buildQueue(shorts, mediumClips, socialPosts, introOutroVideoPath ?? captionedVideoPath))
     } else if (cfg.SKIP_SOCIAL_PUBLISH) {
       skipStage(Stage.QueueBuild, 'SKIP_SOCIAL_PUBLISH')
     } else {

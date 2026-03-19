@@ -12,6 +12,7 @@ vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   fileExists: mockFileExists,
   ensureDirectory: mockEnsureDirectory,
   writeTextFile: mockWriteTextFile,
+  removeFile: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('../../../L1-infra/process/process.js', () => ({

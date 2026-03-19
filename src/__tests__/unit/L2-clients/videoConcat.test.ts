@@ -29,6 +29,7 @@ vi.mock('../../../../src/L1-infra/paths/paths.js', () => ({
 
 vi.mock('../../../../src/L2-clients/ffmpeg/ffmpeg.js', () => ({
   getFFmpegPath: () => 'ffmpeg',
+  getFFprobePath: () => 'ffprobe',
   createFFmpeg: vi.fn(),
 }))
 

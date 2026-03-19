@@ -165,7 +165,9 @@ describe('L5 Unit: ShortVideoAsset intro/outro', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockFileExists.mockResolvedValue(false)
-    mockApplyIntroOutro.mockResolvedValue('/shorts/my-clip/media-intro-outro.mp4')
+    mockApplyIntroOutro.mockImplementation(
+      async (_input: string, _type: string, output: string) => output,
+    )
     mockExtractCompositeClip.mockResolvedValue(undefined)
   })
 
@@ -200,7 +202,7 @@ describe('L5 Unit: ShortVideoAsset intro/outro', () => {
       'shorts',
       '/shorts/new-clip/media-intro-outro.mp4',
     )
-    expect(result).toBe('/shorts/my-clip/media-intro-outro.mp4')
+    expect(result).toBe('/shorts/new-clip/media-intro-outro.mp4')
   })
 })
 

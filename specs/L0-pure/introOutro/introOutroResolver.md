@@ -49,5 +49,5 @@ Pure config resolution logic for intro/outro video segments. Resolves toggle sta
 ## Notes
 
 - The `config` parameter is the `introOutro` section of `brand.json`.
-- `videoType` values include `"full"`, `"short"`, and `"medium-clip"`.
+- `videoType` values include `"main"`, `"shorts"`, and `"medium-clips"`.
 - Platform overrides allow different intro/outro behavior per social platform (e.g., YouTube shorts skip intro, LinkedIn keeps it).

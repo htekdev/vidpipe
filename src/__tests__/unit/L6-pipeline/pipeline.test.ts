@@ -615,7 +615,7 @@ describe('processVideo', () => {
       { id: 's1', title: 'Short 1', slug: 'short-1', segments: [], totalDuration: 30, outputPath: '/short1.mp4', description: 'desc', tags: ['tag'] },
     ]
     // Mock getShorts to return mock assets with clip property
-    mockGetShorts.mockResolvedValue(shorts.map(s => ({ clip: s, getIntroOutroVideo: vi.fn().mockResolvedValue(s.outputPath) })))
+    mockGetShorts.mockResolvedValue(shorts.map(s => ({ clip: s, getIntroOutroVideo: vi.fn().mockResolvedValue(s.outputPath), getIntroOutroVariants: vi.fn().mockResolvedValue(new Map()) })))
     mockGenerateShortPostsData.mockResolvedValue([{ platform: 'x', content: 'post', hashtags: [], links: [], characterCount: 4, outputPath: '/post.md' }])
 
     const result = await processVideo('/videos/test.mp4')

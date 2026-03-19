@@ -1,5 +1,5 @@
 import { concatVideos, normalizeForConcat } from '../../L2-clients/ffmpeg/videoConcat.js'
-import { fileExists } from '../../L1-infra/fileSystem/fileSystem.js'
+import { fileExists, removeFile } from '../../L1-infra/fileSystem/fileSystem.js'
 import { resolve, join, dirname } from '../../L1-infra/paths/paths.js'
 import { getConfig } from '../../L1-infra/config/environment.js'
 import { getIntroOutroConfig } from '../../L1-infra/config/brand.js'
@@ -55,16 +55,19 @@ export async function applyIntroOutro(
   const introPath = introRelative ? resolve(brandDir, introRelative) : null
   const outroPath = outroRelative ? resolve(brandDir, outroRelative) : null
 
-  // Validate files exist
-  if (introPath && !(await fileExists(introPath))) {
+  // Validate files exist (cache results to avoid duplicate I/O)
+  const introExists = introPath ? await fileExists(introPath) : false
+  const outroExists = outroPath ? await fileExists(outroPath) : false
+
+  if (introPath && !introExists) {
     logger.warn(`Intro video not found: ${introPath} — skipping intro`)
   }
-  if (outroPath && !(await fileExists(outroPath))) {
+  if (outroPath && !outroExists) {
     logger.warn(`Outro video not found: ${outroPath} — skipping outro`)
   }
 
-  const validIntro = introPath && (await fileExists(introPath)) ? introPath : null
-  const validOutro = outroPath && (await fileExists(outroPath)) ? outroPath : null
+  const validIntro = introPath && introExists ? introPath : null
+  const validOutro = outroPath && outroExists ? outroPath : null
 
   if (!validIntro && !validOutro) {
     logger.debug('No valid intro/outro files found — skipping')
@@ -74,30 +77,30 @@ export async function applyIntroOutro(
   // Normalize bookend videos to match content codec/resolution
   const videoDir = dirname(outputPath)
   const segments: string[] = []
+  const normalizedIntroPath = validIntro ? join(videoDir, '.intro-normalized.mp4') : null
+  const normalizedOutroPath = validOutro ? join(videoDir, '.outro-normalized.mp4') : null
 
-  if (validIntro) {
-    const normalizedIntro = join(videoDir, '.intro-normalized.mp4')
-    if (config.fadeDuration > 0) {
-      // xfade will re-encode anyway, normalize for consistent resolution
-      await normalizeForConcat(validIntro, videoPath, normalizedIntro)
-      segments.push(normalizedIntro)
-    } else {
-      await normalizeForConcat(validIntro, videoPath, normalizedIntro)
-      segments.push(normalizedIntro)
+  try {
+    if (validIntro && normalizedIntroPath) {
+      await normalizeForConcat(validIntro, videoPath, normalizedIntroPath)
+      segments.push(normalizedIntroPath)
     }
+
+    segments.push(videoPath)
+
+    if (validOutro && normalizedOutroPath) {
+      await normalizeForConcat(validOutro, videoPath, normalizedOutroPath)
+      segments.push(normalizedOutroPath)
+    }
+
+    logger.info(`Applying intro/outro (${validIntro ? 'intro' : ''}${validIntro && validOutro ? '+' : ''}${validOutro ? 'outro' : ''}) for ${videoType}${platform ? ` / ${platform}` : ''}: ${outputPath}`)
+
+    await concatVideos(segments, outputPath, { fadeDuration: config.fadeDuration })
+
+    return outputPath
+  } finally {
+    // Best-effort cleanup of temporary normalized files
+    if (normalizedIntroPath) await removeFile(normalizedIntroPath).catch(() => {})
+    if (normalizedOutroPath) await removeFile(normalizedOutroPath).catch(() => {})
   }
-
-  segments.push(videoPath)
-
-  if (validOutro) {
-    const normalizedOutro = join(videoDir, '.outro-normalized.mp4')
-    await normalizeForConcat(validOutro, videoPath, normalizedOutro)
-    segments.push(normalizedOutro)
-  }
-
-  logger.info(`Applying intro/outro (${validIntro ? 'intro' : ''}${validIntro && validOutro ? '+' : ''}${validOutro ? 'outro' : ''}) for ${videoType}${platform ? ` / ${platform}` : ''}: ${outputPath}`)
-
-  await concatVideos(segments, outputPath, { fadeDuration: config.fadeDuration })
-
-  return outputPath
 }

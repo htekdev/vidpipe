@@ -1,4 +1,4 @@
-import { createFFmpeg, getFFmpegPath } from './ffmpeg.js'
+import { createFFmpeg, getFFmpegPath, getFFprobePath } from './ffmpeg.js'
 import { execCommand } from '../../L1-infra/process/process.js'
 import { ensureDirectory, writeTextFile, fileExists } from '../../L1-infra/fileSystem/fileSystem.js'
 import { dirname, join } from '../../L1-infra/paths/paths.js'
@@ -172,7 +172,7 @@ export async function normalizeForConcat(
 
 /** Get a video file's duration in seconds. */
 async function getVideoDuration(videoPath: string): Promise<number> {
-  const { stdout } = await execCommand(getFFmpegPath().replace('ffmpeg', 'ffprobe'), [
+  const { stdout } = await execCommand(getFFprobePath(), [
     '-v', 'error',
     '-show_entries', 'format=duration',
     '-of', 'csv=p=0',
@@ -194,9 +194,7 @@ interface VideoProperties {
 
 /** Get a video file's resolution and framerate. */
 async function getVideoProperties(videoPath: string): Promise<VideoProperties> {
-  const probePath = getFFmpegPath().replace('ffmpeg', 'ffprobe')
-
-  const { stdout } = await execCommand(probePath, [
+  const { stdout } = await execCommand(getFFprobePath(), [
     '-v', 'error',
     '-select_streams', 'v:0',
     '-show_entries', 'stream=width,height,r_frame_rate',

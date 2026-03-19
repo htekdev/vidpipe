@@ -1,3 +1,4 @@
+// Updated: review feedback fixes — temp file cleanup, ffprobe path, fileExists caching
 import { describe, test, expect } from 'vitest'
 import { resolveIntroOutroToggle, resolveIntroPath, resolveOutroPath } from '../../L0-pure/introOutro/introOutroResolver.js'
 import type { IntroOutroConfig } from '../../L0-pure/types/index.js'

@@ -343,7 +343,7 @@ async function handleSetFade(brand: BrandJson, brandPath: string, args: string[]
 }
 
 async function handleSetRule(brand: BrandJson, brandPath: string, args: string[]): Promise<void> {
-  if (args.length < 2) {
+  if (args.length < 3) {
     console.error('Usage: vidpipe intro-outro set-rule <video-type> <intro|outro|both> <on|off>')
     console.error('  video-type: main, shorts, medium-clips')
     console.error('  Example: vidpipe intro-outro set-rule shorts intro off')
@@ -357,7 +357,13 @@ async function handleSetRule(brand: BrandJson, brandPath: string, args: string[]
     return
   }
   const target = args[1] // 'intro', 'outro', or 'both'
-  const value = args[2]?.toLowerCase() === 'on' || args[2]?.toLowerCase() === 'true'
+  const rawValue = args[2].toLowerCase()
+  if (!['on', 'off', 'true', 'false'].includes(rawValue)) {
+    console.error(`Invalid value: ${args[2]}. Must be one of: on, off, true, false`)
+    process.exitCode = 1
+    return
+  }
+  const value = rawValue === 'on' || rawValue === 'true'
 
   const cfg = getIntroOutro(brand)
   if (!cfg.rules) cfg.rules = {}

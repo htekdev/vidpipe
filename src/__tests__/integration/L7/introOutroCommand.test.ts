@@ -199,6 +199,11 @@ describe('intro-outro CLI integration', () => {
     expect(process.exitCode).toBe(1)
   })
 
+  test('set-rule with only 2 args sets exit code', async () => {
+    await runIntroOutro('set-rule', ['main', 'intro'])
+    expect(process.exitCode).toBe(1)
+  })
+
   test('set-rule with invalid video type sets exit code', async () => {
     await runIntroOutro('set-rule', ['invalid', 'intro', 'on'])
     expect(process.exitCode).toBe(1)
@@ -207,6 +212,17 @@ describe('intro-outro CLI integration', () => {
   test('set-rule with invalid target sets exit code', async () => {
     await runIntroOutro('set-rule', ['main', 'invalid', 'on'])
     expect(process.exitCode).toBe(1)
+  })
+
+  test('set-rule with invalid value (not on/off/true/false) sets exit code', async () => {
+    await runIntroOutro('set-rule', ['main', 'intro', 'maybe'])
+    expect(process.exitCode).toBe(1)
+  })
+
+  test('set-rule with valid on value sets toggle', async () => {
+    await runIntroOutro('set-rule', ['main', 'intro', 'on'])
+    expect(mockWriteJsonFile).toHaveBeenCalled()
+    expect(process.exitCode).toBeUndefined()
   })
 
   test('set-intro-ratio with invalid ratio sets exit code', async () => {

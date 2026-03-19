@@ -231,6 +231,11 @@ describe('L7 Unit: intro-outro command', () => {
     expect(mockWriteJsonFile).not.toHaveBeenCalled()
   })
 
+  it('set-rule with invalid value (not on/off) sets exit code', async () => {
+    await runIntroOutro('set-rule', ['main', 'intro', 'maybe'])
+    expect(process.exitCode).toBe(1)
+  })
+
   // ── set-intro-ratio / set-outro-ratio ─────────────────────────────────────
 
   it('set-intro-ratio sets aspect ratio file', async () => {

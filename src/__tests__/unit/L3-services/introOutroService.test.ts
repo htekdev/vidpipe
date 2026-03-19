@@ -36,6 +36,7 @@ vi.mock('../../../../src/L1-infra/config/brand.js', () => ({
 
 vi.mock('../../../../src/L1-infra/fileSystem/fileSystem.js', () => ({
   fileExists: mockFileExists,
+  removeFile: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock('../../../../src/L1-infra/paths/paths.js', () => ({
