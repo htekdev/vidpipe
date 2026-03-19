@@ -1,5 +1,6 @@
 // Updated: review feedback fixes — pipeline passes introOutroVideoPath to buildQueue
 // Regression: getIntroOutroVideo uses clip.outputPath when available
+// Fix: getIntroOutroVideo prefers captionedPath over raw outputPath
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 
 const mockConcatVideos = vi.hoisted(() => vi.fn().mockResolvedValue('/out/result.mp4'))

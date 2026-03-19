@@ -155,12 +155,16 @@ export class ShortVideoAsset extends VideoAsset {
       return this.introOutroVideoPath
     }
 
-    // Use the already-extracted clip (outputPath from ShortsAgent) if available,
-    // falling back to getResult() which re-extracts to videoDir/media.mp4
-    let clipPath: string
-    if (this.clip.outputPath && await fileExists(this.clip.outputPath)) {
-      clipPath = this.clip.outputPath
-    } else {
+    // Prefer the captioned version (has burned-in captions), then the raw clip
+    const candidates = [this.clip.captionedPath, this.clip.outputPath]
+    let clipPath: string | undefined
+    for (const candidate of candidates) {
+      if (candidate && await fileExists(candidate)) {
+        clipPath = candidate
+        break
+      }
+    }
+    if (!clipPath) {
       clipPath = await this.getResult()
     }
     return applyIntroOutro(clipPath, 'shorts', this.introOutroVideoPath)

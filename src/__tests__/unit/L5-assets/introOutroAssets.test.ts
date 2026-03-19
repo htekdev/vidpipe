@@ -211,6 +211,7 @@ describe('L5 Unit: ShortVideoAsset intro/outro', () => {
       .mockResolvedValueOnce(true)    // clip.outputPath exists
 
     const clip = makeShortClip('existing-clip')
+    clip.captionedPath = undefined  // Ensure captionedPath doesn't exist
     clip.outputPath = '/shorts/existing-clip.mp4'
     const asset = new ShortVideoAsset(mockParent, clip, '/shorts')
 
@@ -225,19 +226,40 @@ describe('L5 Unit: ShortVideoAsset intro/outro', () => {
     )
   })
 
-  it('falls back to getResult when clip.outputPath does not exist', async () => {
+  it('prefers captionedPath over outputPath for intro/outro input', async () => {
     mockFileExists
       .mockResolvedValueOnce(false)   // introOutroVideoPath doesn't exist
-      .mockResolvedValueOnce(false)   // clip.outputPath doesn't exist
+      .mockResolvedValueOnce(true)    // captionedPath exists
+
+    const clip = makeShortClip('captioned-clip')
+    clip.captionedPath = '/shorts/captioned-clip-captioned.mp4'
+    clip.outputPath = '/shorts/captioned-clip.mp4'
+    const asset = new ShortVideoAsset(mockParent, clip, '/shorts')
+
+    await asset.getIntroOutroVideo()
+
+    expect(mockApplyIntroOutro).toHaveBeenCalledWith(
+      '/shorts/captioned-clip-captioned.mp4',
+      'shorts',
+      expect.stringContaining('intro-outro'),
+    )
+  })
+
+  it('falls back to getResult when neither captionedPath nor outputPath exist', async () => {
+    mockFileExists
+      .mockResolvedValueOnce(false)   // introOutroVideoPath doesn't exist
+      .mockResolvedValueOnce(false)   // captionedPath doesn't exist (first candidate in loop)
+      .mockResolvedValueOnce(false)   // clip.outputPath doesn't exist (second candidate in loop)
       .mockResolvedValueOnce(true)    // base media.mp4 exists (for getResult)
 
     const clip = makeShortClip('fallback-clip')
+    clip.captionedPath = '/shorts/fallback-clip-captioned.mp4'  // Set but won't exist
     clip.outputPath = '/shorts/fallback-clip.mp4'
     const asset = new ShortVideoAsset(mockParent, clip, '/shorts')
 
     await asset.getIntroOutroVideo()
 
-    // Should have called applyIntroOutro with the base media path since clip.outputPath doesn't exist
+    // Should have called applyIntroOutro with the base media path since both candidates don't exist
     expect(mockApplyIntroOutro).toHaveBeenCalledWith(
       expect.stringContaining('media.mp4'),
       'shorts',
@@ -413,6 +435,7 @@ describe('L5 Unit: MediumClipAsset intro/outro', () => {
       .mockResolvedValueOnce(true)    // clip.outputPath exists
 
     const clip = makeMediumClip('existing-medium')
+    clip.captionedPath = undefined  // Ensure captionedPath doesn't exist
     clip.outputPath = '/medium-clips/existing-medium.mp4'
     const asset = new MediumClipAsset(mockParent, clip, '/medium-clips')
 
@@ -426,13 +449,34 @@ describe('L5 Unit: MediumClipAsset intro/outro', () => {
     )
   })
 
-  it('falls back to getResult when clip.outputPath does not exist', async () => {
+  it('prefers captionedPath over outputPath for intro/outro input', async () => {
     mockFileExists
       .mockResolvedValueOnce(false)   // introOutroVideoPath doesn't exist
-      .mockResolvedValueOnce(false)   // clip.outputPath doesn't exist
+      .mockResolvedValueOnce(true)    // captionedPath exists
+
+    const clip = makeMediumClip('captioned-medium')
+    clip.captionedPath = '/medium-clips/captioned-medium-captioned.mp4'
+    clip.outputPath = '/medium-clips/captioned-medium.mp4'
+    const asset = new MediumClipAsset(mockParent, clip, '/medium-clips')
+
+    await asset.getIntroOutroVideo()
+
+    expect(mockApplyIntroOutro).toHaveBeenCalledWith(
+      '/medium-clips/captioned-medium-captioned.mp4',
+      'medium-clips',
+      expect.stringContaining('intro-outro'),
+    )
+  })
+
+  it('falls back to getResult when neither captionedPath nor outputPath exist', async () => {
+    mockFileExists
+      .mockResolvedValueOnce(false)   // introOutroVideoPath doesn't exist
+      .mockResolvedValueOnce(false)   // captionedPath doesn't exist (first candidate in loop)
+      .mockResolvedValueOnce(false)   // clip.outputPath doesn't exist (second candidate in loop)
       .mockResolvedValueOnce(true)    // media.mp4 exists (for getResult)
 
     const clip = makeMediumClip('fallback-medium')
+    clip.captionedPath = '/medium-clips/fallback-medium-captioned.mp4'  // Set but won't exist
     clip.outputPath = '/medium-clips/fallback-medium.mp4'
     const asset = new MediumClipAsset(mockParent, clip, '/medium-clips')
 
