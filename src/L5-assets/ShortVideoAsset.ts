@@ -155,8 +155,15 @@ export class ShortVideoAsset extends VideoAsset {
       return this.introOutroVideoPath
     }
 
-    const videoPath = await this.getResult()
-    return applyIntroOutro(videoPath, 'shorts', this.introOutroVideoPath)
+    // Use the already-extracted clip (outputPath from ShortsAgent) if available,
+    // falling back to getResult() which re-extracts to videoDir/media.mp4
+    let clipPath: string
+    if (this.clip.outputPath && await fileExists(this.clip.outputPath)) {
+      clipPath = this.clip.outputPath
+    } else {
+      clipPath = await this.getResult()
+    }
+    return applyIntroOutro(clipPath, 'shorts', this.introOutroVideoPath)
   }
 
   /**

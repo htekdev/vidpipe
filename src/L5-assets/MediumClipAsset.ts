@@ -136,7 +136,14 @@ export class MediumClipAsset extends VideoAsset {
       return this.introOutroVideoPath
     }
 
-    const videoPath = await this.getResult()
-    return applyIntroOutro(videoPath, 'medium-clips', this.introOutroVideoPath)
+    // Use the already-extracted clip (outputPath from MediumVideoAgent) if available,
+    // falling back to getResult() which re-extracts to videoDir/media.mp4
+    let clipPath: string
+    if (this.clip.outputPath && await fileExists(this.clip.outputPath)) {
+      clipPath = this.clip.outputPath
+    } else {
+      clipPath = await this.getResult()
+    }
+    return applyIntroOutro(clipPath, 'medium-clips', this.introOutroVideoPath)
   }
 }

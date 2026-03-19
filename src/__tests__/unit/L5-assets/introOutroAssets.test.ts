@@ -204,6 +204,46 @@ describe('L5 Unit: ShortVideoAsset intro/outro', () => {
     )
     expect(result).toBe('/shorts/new-clip/media-intro-outro.mp4')
   })
+
+  it('uses clip.outputPath when it exists instead of re-extracting', async () => {
+    mockFileExists
+      .mockResolvedValueOnce(false)   // introOutroVideoPath doesn't exist
+      .mockResolvedValueOnce(true)    // clip.outputPath exists
+
+    const clip = makeShortClip('existing-clip')
+    clip.outputPath = '/shorts/existing-clip.mp4'
+    const asset = new ShortVideoAsset(mockParent, clip, '/shorts')
+
+    await asset.getIntroOutroVideo()
+
+    // Should use clip.outputPath, NOT call extractCompositeClip
+    expect(mockExtractCompositeClip).not.toHaveBeenCalled()
+    expect(mockApplyIntroOutro).toHaveBeenCalledWith(
+      '/shorts/existing-clip.mp4',
+      'shorts',
+      expect.stringContaining('intro-outro'),
+    )
+  })
+
+  it('falls back to getResult when clip.outputPath does not exist', async () => {
+    mockFileExists
+      .mockResolvedValueOnce(false)   // introOutroVideoPath doesn't exist
+      .mockResolvedValueOnce(false)   // clip.outputPath doesn't exist
+      .mockResolvedValueOnce(true)    // base media.mp4 exists (for getResult)
+
+    const clip = makeShortClip('fallback-clip')
+    clip.outputPath = '/shorts/fallback-clip.mp4'
+    const asset = new ShortVideoAsset(mockParent, clip, '/shorts')
+
+    await asset.getIntroOutroVideo()
+
+    // Should have called applyIntroOutro with the base media path since clip.outputPath doesn't exist
+    expect(mockApplyIntroOutro).toHaveBeenCalledWith(
+      expect.stringContaining('media.mp4'),
+      'shorts',
+      expect.stringContaining('intro-outro'),
+    )
+  })
 })
 
 // ── ShortVideoAsset getIntroOutroVariants ────────────────────────────────────
@@ -365,6 +405,44 @@ describe('L5 Unit: MediumClipAsset intro/outro', () => {
       '/medium-clips/new-medium/media-intro-outro.mp4',
     )
     expect(result).toBe('/medium-clips/new-medium/media-intro-outro.mp4')
+  })
+
+  it('uses clip.outputPath when it exists instead of re-extracting', async () => {
+    mockFileExists
+      .mockResolvedValueOnce(false)   // introOutroVideoPath doesn't exist
+      .mockResolvedValueOnce(true)    // clip.outputPath exists
+
+    const clip = makeMediumClip('existing-medium')
+    clip.outputPath = '/medium-clips/existing-medium.mp4'
+    const asset = new MediumClipAsset(mockParent, clip, '/medium-clips')
+
+    await asset.getIntroOutroVideo()
+
+    expect(mockExtractCompositeClip).not.toHaveBeenCalled()
+    expect(mockApplyIntroOutro).toHaveBeenCalledWith(
+      '/medium-clips/existing-medium.mp4',
+      'medium-clips',
+      expect.stringContaining('intro-outro'),
+    )
+  })
+
+  it('falls back to getResult when clip.outputPath does not exist', async () => {
+    mockFileExists
+      .mockResolvedValueOnce(false)   // introOutroVideoPath doesn't exist
+      .mockResolvedValueOnce(false)   // clip.outputPath doesn't exist
+      .mockResolvedValueOnce(true)    // media.mp4 exists (for getResult)
+
+    const clip = makeMediumClip('fallback-medium')
+    clip.outputPath = '/medium-clips/fallback-medium.mp4'
+    const asset = new MediumClipAsset(mockParent, clip, '/medium-clips')
+
+    await asset.getIntroOutroVideo()
+
+    expect(mockApplyIntroOutro).toHaveBeenCalledWith(
+      expect.stringContaining('media.mp4'),
+      'medium-clips',
+      expect.stringContaining('intro-outro'),
+    )
   })
 })
 
