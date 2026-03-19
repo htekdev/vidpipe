@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { Transcript, VideoFile, StageResult, VideoSummary, ShortClip, MediumClip, SocialPost, Chapter, Idea } from '../../../L0-pure/types/index.js'
 import { PipelineStage, Platform } from '../../../L0-pure/types/index.js'
 
+// Fix: pipeline updates captionedPath so queue builder uses intro/outro version
+
 // ---- Hoisted mock variables (vi.mock is hoisted above imports) ----
 
 const {

@@ -1,6 +1,7 @@
 // Updated: review feedback fixes — temp file cleanup, ffprobe path, fileExists caching
 // Regression: getIntroOutroVideo prefers clip.outputPath over re-extraction
 // Fix: getIntroOutroVideo prefers captionedPath for proper caption + intro/outro ordering
+// Fix: pipeline sets captionedPath = introOutroPath for queue builder resolution
 import { describe, test, expect } from 'vitest'
 import { resolveIntroOutroToggle, resolveIntroPath, resolveOutroPath } from '../../L0-pure/introOutro/introOutroResolver.js'
 import type { IntroOutroConfig } from '../../L0-pure/types/index.js'

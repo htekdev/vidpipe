@@ -312,6 +312,8 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
             const introOutroPath = await shortAsset.getIntroOutroVideo()
             if (introOutroPath !== shortAsset.clip.outputPath) {
               shortAsset.clip.outputPath = introOutroPath
+              // Update captionedPath so queue builder uses the intro/outro version
+              shortAsset.clip.captionedPath = introOutroPath
             }
             const variantResults = await shortAsset.getIntroOutroVariants()
             if (shortAsset.clip.variants) {
@@ -340,6 +342,8 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
             const introOutroPath = await clipAsset.getIntroOutroVideo()
             if (introOutroPath !== clipAsset.clip.outputPath) {
               clipAsset.clip.outputPath = introOutroPath
+              // Update captionedPath so queue builder uses the intro/outro version
+              clipAsset.clip.captionedPath = introOutroPath
             }
           }
         }
