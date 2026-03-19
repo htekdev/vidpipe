@@ -292,19 +292,45 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
       skipStage(Stage.CaptionBurn, 'SKIP_CAPTIONS')
     }
 
-    // 6. Shorts — asset handles clip planning, extraction, caption burning
+    // 6. Intro/Outro — concat intro + captioned video + outro (silent bookends)
+    let introOutroVideoPath: string | undefined
+    if (!cfg.SKIP_INTRO_OUTRO) {
+      introOutroVideoPath = await trackStage<string>(Stage.IntroOutro, () => asset.getIntroOutroVideo())
+    } else {
+      skipStage(Stage.IntroOutro, 'SKIP_INTRO_OUTRO')
+    }
+
+    // 7. Shorts — asset handles clip planning, extraction, caption burning
     let shorts: ShortClip[] = []
     if (!cfg.SKIP_SHORTS) {
-      const shortAssets = await trackStage<ShortVideoAsset[]>(Stage.Shorts, () => asset.getShorts()) ?? []
+      const shortAssets = await trackStage<ShortVideoAsset[]>(Stage.Shorts, async () => {
+        const assets = await asset.getShorts()
+        // Apply intro/outro to each short (if configured for 'shorts' video type)
+        if (!cfg.SKIP_INTRO_OUTRO) {
+          for (const shortAsset of assets) {
+            await shortAsset.getIntroOutroVideo()
+          }
+        }
+        return assets
+      }) ?? []
       shorts = shortAssets.map(s => s.clip)
     } else {
       skipStage(Stage.Shorts, 'SKIP_SHORTS')
     }
 
-    // 7. Medium Clips — asset handles clip planning, extraction, transitions
+    // 8. Medium Clips — asset handles clip planning, extraction, transitions
     let mediumClips: MediumClip[] = []
     if (!cfg.SKIP_MEDIUM_CLIPS) {
-      const mediumAssets = await trackStage<MediumClipAsset[]>(Stage.MediumClips, () => asset.getMediumClips()) ?? []
+      const mediumAssets = await trackStage<MediumClipAsset[]>(Stage.MediumClips, async () => {
+        const assets = await asset.getMediumClips()
+        // Apply intro/outro to each medium clip (if configured for 'medium-clips' video type)
+        if (!cfg.SKIP_INTRO_OUTRO) {
+          for (const clipAsset of assets) {
+            await clipAsset.getIntroOutroVideo()
+          }
+        }
+        return assets
+      }) ?? []
       mediumClips = mediumAssets.map(m => m.clip)
     } else {
       skipStage(Stage.MediumClips, 'SKIP_MEDIUM_CLIPS')
@@ -398,6 +424,7 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
       enhancedVideoPath,
       captions: captions ? [captions.srt, captions.vtt, captions.ass] : undefined,
       captionedVideoPath,
+      introOutroVideoPath,
       summary,
       chapters,
       shorts,

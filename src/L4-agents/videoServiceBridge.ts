@@ -18,3 +18,17 @@ export {
   singlePassEditAndCaption,
   transcodeToMp4,
 } from '../L3-services/videoOperations/videoOperations.js'
+
+import { applyIntroOutro as _applyIntroOutro } from '../L3-services/introOutro/introOutroService.js'
+import type { IntroOutroVideoType } from '../L0-pure/types/index.js'
+
+/** L4 bridge: apply intro/outro to a video via L3 intro/outro service. */
+export function applyIntroOutro(
+  videoPath: string,
+  videoType: IntroOutroVideoType,
+  outputPath: string,
+  platform?: string,
+  aspectRatio?: string,
+): Promise<string> {
+  return _applyIntroOutro(videoPath, videoType, outputPath, platform, aspectRatio)
+}

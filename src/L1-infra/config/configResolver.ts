@@ -144,6 +144,11 @@ export function resolveConfig(cliOptions: Partial<CLIOptions> = {}): AppEnvironm
       process.env.SKIP_VISUAL_ENHANCEMENT,
       false,
     ),
+    SKIP_INTRO_OUTRO: resolveBoolean(
+      cliOptions.introOutro === undefined ? undefined : !cliOptions.introOutro,
+      process.env.SKIP_INTRO_OUTRO,
+      false,
+    ),
     LATE_API_KEY: resolveString(
       cliOptions.lateApiKey,
       process.env.LATE_API_KEY,

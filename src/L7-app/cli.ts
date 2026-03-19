@@ -12,6 +12,7 @@ import { runRealign } from './commands/realign'
 import { runChat } from './commands/chat'
 import { runIdeate } from './commands/ideate'
 import { runConfigure } from './commands/configure'
+import { runIntroOutro } from './commands/introOutro'
 import { startReviewServer } from './review/server'
 import { openUrl } from '../L1-infra/cli/cli.js'
 import { readTextFileSync, listDirectorySync } from '../L1-infra/fileSystem/fileSystem.js'
@@ -152,6 +153,16 @@ program
     process.exit(process.exitCode ?? 0)
   })
 
+program
+  .command('intro-outro [subcommand]')
+  .description('Manage video intro and outro assets — paths, rules, and platform overrides')
+  .argument('[args...]', 'Arguments for the subcommand')
+  .action(async (subcommand: string | undefined, args: string[]) => {
+    initConfig()
+    await runIntroOutro(subcommand, args)
+    process.exit(process.exitCode ?? 0)
+  })
+
 // --- Default command (process video or watch) ---
 // This must come after subcommands so they take priority
 
@@ -172,6 +183,7 @@ const defaultCmd = program
   .option('--no-social', 'Skip social media post generation')
   .option('--no-captions', 'Skip caption generation/burning')
   .option('--no-visual-enhancement', 'Skip visual enhancement (AI image overlays)')
+  .option('--no-intro-outro', 'Skip intro/outro concatenation')
   .option('--no-social-publish','Skip social media publishing/queue-build stage')
   .option('--late-api-key <key>', 'Late API key (default: env LATE_API_KEY)')
   .option('--late-profile-id <id>', 'Late profile ID (default: env LATE_PROFILE_ID)')
@@ -205,6 +217,7 @@ const defaultCmd = program
       social: opts.social,
       captions: opts.captions,
       visualEnhancement: opts.visualEnhancement,
+      introOutro: opts.introOutro,
       socialPublish: opts.socialPublish,
       lateApiKey: opts.lateApiKey,
       lateProfileId: opts.lateProfileId,

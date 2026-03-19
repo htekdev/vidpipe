@@ -36,6 +36,7 @@ const {
   mockSetIdeas,
   mockGetEditorialDirection,
   mockGetMetadata,
+  mockGetIntroOutroVideo,
 } = vi.hoisted(() => ({
   mockLogger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
   mockGetConfig: vi.fn(),
@@ -68,6 +69,7 @@ const {
   mockSetIdeas: vi.fn(),
   mockGetEditorialDirection: vi.fn().mockResolvedValue('editorial direction text'),
   mockGetMetadata: vi.fn().mockResolvedValue({ width: 1920, height: 1080, duration: 120 }),
+  mockGetIntroOutroVideo: vi.fn().mockResolvedValue('/intro-outro.mp4'),
 }))
 
 // ---- Mock L1 dependencies ----
@@ -165,6 +167,7 @@ function defaultConfig(overrides: Record<string, unknown> = {}) {
     SKIP_CAPTIONS: false,
     SKIP_SOCIAL_PUBLISH: false,
     SKIP_VISUAL_ENHANCEMENT: true,
+    SKIP_INTRO_OUTRO: false,
     GEMINI_API_KEY: '',
     ...overrides,
   }
@@ -394,6 +397,7 @@ describe('processVideo', () => {
       getEnhancedVideo: mockGetEnhancedVideo,
       getCaptions: mockGetCaptions,
       getCaptionedVideo: mockGetCaptionedVideo,
+      getIntroOutroVideo: mockGetIntroOutroVideo,
       getShorts: mockGetShorts,
       getMediumClips: mockGetMediumClips,
       getChapters: mockGetChapters,
@@ -611,7 +615,7 @@ describe('processVideo', () => {
       { id: 's1', title: 'Short 1', slug: 'short-1', segments: [], totalDuration: 30, outputPath: '/short1.mp4', description: 'desc', tags: ['tag'] },
     ]
     // Mock getShorts to return mock assets with clip property
-    mockGetShorts.mockResolvedValue(shorts.map(s => ({ clip: s })))
+    mockGetShorts.mockResolvedValue(shorts.map(s => ({ clip: s, getIntroOutroVideo: vi.fn().mockResolvedValue(s.outputPath) })))
     mockGenerateShortPostsData.mockResolvedValue([{ platform: 'x', content: 'post', hashtags: [], links: [], characterCount: 4, outputPath: '/post.md' }])
 
     const result = await processVideo('/videos/test.mp4')
@@ -625,7 +629,7 @@ describe('processVideo', () => {
       { id: 'm1', title: 'Medium 1', slug: 'medium-1', segments: [{ start: 0, end: 60, description: 'intro' }], totalDuration: 60, outputPath: '/medium1.mp4', description: 'desc', tags: ['tag'], hook: 'hook', topic: 'topic' },
     ]
     // Mock getMediumClips to return mock assets with clip property
-    mockGetMediumClips.mockResolvedValue(clips.map(c => ({ clip: c })))
+    mockGetMediumClips.mockResolvedValue(clips.map(c => ({ clip: c, getIntroOutroVideo: vi.fn().mockResolvedValue(c.outputPath) })))
     mockGenerateMediumClipPostsData.mockResolvedValue([{ platform: 'x', content: 'clip post', hashtags: [], links: [], characterCount: 9, outputPath: '/clip-post.md' }])
 
     const result = await processVideo('/videos/test.mp4')
@@ -709,6 +713,7 @@ describe('progress events', () => {
       getEnhancedVideo: mockGetEnhancedVideo,
       getCaptions: mockGetCaptions,
       getCaptionedVideo: mockGetCaptionedVideo,
+      getIntroOutroVideo: mockGetIntroOutroVideo,
       getShorts: mockGetShorts,
       getMediumClips: mockGetMediumClips,
       getChapters: mockGetChapters,
@@ -752,7 +757,7 @@ describe('progress events', () => {
       expect(startCalls[0][0]).toMatchObject({
         event: 'pipeline:start',
         videoPath: '/videos/test.mp4',
-        totalStages: 15,
+        totalStages: 16,
       })
     })
   })
@@ -881,7 +886,7 @@ describe('progress events', () => {
 
       for (const event of stageEvents) {
         expect(event.stageNumber).toBeGreaterThan(0)
-        expect(event.totalStages).toBe(15)
+        expect(event.totalStages).toBe(16)
         expect(event.name).toBeTruthy()
       }
     })
@@ -969,6 +974,7 @@ describe('progress zero-overhead guard', () => {
       getEnhancedVideo: mockGetEnhancedVideo,
       getCaptions: mockGetCaptions,
       getCaptionedVideo: mockGetCaptionedVideo,
+      getIntroOutroVideo: mockGetIntroOutroVideo,
       getShorts: mockGetShorts,
       getMediumClips: mockGetMediumClips,
       getChapters: mockGetChapters,
@@ -1004,6 +1010,7 @@ describe('data-dependent stage skips', () => {
       getEnhancedVideo: mockGetEnhancedVideo,
       getCaptions: mockGetCaptions,
       getCaptionedVideo: mockGetCaptionedVideo,
+      getIntroOutroVideo: mockGetIntroOutroVideo,
       getShorts: mockGetShorts,
       getMediumClips: mockGetMediumClips,
       getChapters: mockGetChapters,

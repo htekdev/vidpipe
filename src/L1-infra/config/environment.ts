@@ -31,6 +31,7 @@ export interface AppEnvironment {
   SKIP_SOCIAL: boolean
   SKIP_CAPTIONS: boolean
   SKIP_VISUAL_ENHANCEMENT: boolean
+  SKIP_INTRO_OUTRO: boolean
   LATE_API_KEY: string
   LATE_PROFILE_ID: string
   SKIP_SOCIAL_PUBLISH: boolean
@@ -59,6 +60,7 @@ export interface CLIOptions {
   social?: boolean
   captions?: boolean
   visualEnhancement?: boolean
+  introOutro?: boolean
   socialPublish?: boolean
   lateApiKey?: string
   lateProfileId?: string
