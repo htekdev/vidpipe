@@ -22,6 +22,7 @@ export interface GlobalDefaults {
   ideasRepo?: string
   lateProfileId?: string
   geminiModel?: string
+  scheduleConfig?: string
 }
 
 export interface GlobalConfig {

@@ -96,7 +96,6 @@ vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
 vi.mock('../../../L3-services/scheduler/realign.js', () => ({
   buildRealignPlan: vi.fn().mockResolvedValue({ posts: [], toCancel: [], skipped: 0, unmatched: 0, totalFetched: 0 }),
   executeRealignPlan: vi.fn().mockResolvedValue({ updated: 0, cancelled: 0, failed: 0, errors: [] }),
-  buildPrioritizedRealignPlan: vi.fn().mockResolvedValue({ posts: [], toCancel: [], skipped: 0, unmatched: 0, totalFetched: 0 }),
 }));
 
 vi.mock('../../../L0-pure/captions/captionGenerator.js', () => ({

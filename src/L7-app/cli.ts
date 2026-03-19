@@ -103,6 +103,16 @@ program
   })
 
 program
+  .command('reschedule')
+  .description('Reschedule idea-linked posts for optimal slot placement, displacing non-idea content')
+  .option('--dry-run', 'Preview changes without updating posts')
+  .action(async (opts) => {
+    const { runReschedule } = await import('./commands/reschedule.js')
+    await runReschedule({ dryRun: opts.dryRun })
+    process.exit(0)
+  })
+
+program
   .command('chat')
   .description('Interactive chat session with the schedule management agent')
   .action(async () => {
@@ -138,6 +148,7 @@ program
   .option('--publish-by <date>', 'Publish deadline (ISO 8601 date, default: 14 days from now, --no-ai only)')
   .option('--trend-context <context>', 'Why this topic is timely (--no-ai only)')
   .option('--no-ai', 'Skip AI research agent — create directly from CLI flags + defaults')
+  .option('-p, --prompt <prompt>', 'Free-form prompt to guide idea generation (e.g., "Cover this article: https://...")')
   .action(async (opts) => {
     initConfig()
     await runIdeate(opts)

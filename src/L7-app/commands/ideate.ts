@@ -25,6 +25,7 @@ export interface IdeateCommandOptions {
   publishBy?: string
   trendContext?: string
   ai?: boolean
+  prompt?: string
 }
 
 export async function runIdeate(options: IdeateCommandOptions = {}): Promise<void> {
@@ -81,6 +82,9 @@ export async function runIdeate(options: IdeateCommandOptions = {}): Promise<voi
 
   if (options.format !== 'json') {
     console.log('\n🧠 Generating content ideas...\n')
+    if (options.prompt) {
+      console.log(`Prompt: ${options.prompt}`)
+    }
     if (seedTopics?.length) {
       console.log(`Seed topics: ${seedTopics.join(', ')}`)
     }
@@ -92,6 +96,7 @@ export async function runIdeate(options: IdeateCommandOptions = {}): Promise<voi
     count,
     ideasDir: options.output,
     brandPath: options.brand,
+    prompt: options.prompt,
   })
 
   if (ideas.length === 0) {
@@ -186,6 +191,7 @@ async function handleAdd(options: IdeateCommandOptions): Promise<void> {
       count: 1,
       singleTopic: true,
       brandPath: options.brand,
+      prompt: options.prompt,
     })
 
     const idea = ideas[0]
