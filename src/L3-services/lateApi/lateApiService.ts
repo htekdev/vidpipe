@@ -20,4 +20,9 @@ export type {
   LateMediaPresignResult,
   LateMediaUploadResult,
   CreatePostParams,
+  LateQueue,
+  LateQueueSlot,
+  CreateQueueParams,
+  UpdateQueueParams,
+  QueueSlotPreview,
 } from '../../L2-clients/late/lateApi.js'

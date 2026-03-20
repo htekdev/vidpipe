@@ -947,42 +947,7 @@ describe('Real ScheduleAgent', () => {
     mockState.capturedTools.length = 0;
   });
 
-  it('registers start_prioritize_realign tool with correct schema', async () => {
-    const { ScheduleAgent } = await import('../../../L4-agents/ScheduleAgent.js');
-    const agent = new ScheduleAgent();
-    try {
-      await agent.run('test');
-    } catch { /* session mock ends quickly */ }
-
-    const tool = findCapturedTool('start_prioritize_realign');
-    expect(tool).toBeDefined();
-    expect(tool.description).toContain('prioritized realignment');
-
-    const schema = tool.parameters as any;
-    expect(schema.required).toContain('priorities');
-    expect(schema.properties.priorities.type).toBe('array');
-    expect(schema.properties.priorities.items.required).toEqual(
-      expect.arrayContaining(['keywords', 'saturation']),
-    );
-    expect(schema.properties.dryRun).toBeDefined();
-  });
-
-  it('registers check_realign_status tool', async () => {
-    const { ScheduleAgent } = await import('../../../L4-agents/ScheduleAgent.js');
-    const agent = new ScheduleAgent();
-    try {
-      await agent.run('test');
-    } catch { /* session mock ends quickly */ }
-
-    const tool = findCapturedTool('check_realign_status');
-    expect(tool).toBeDefined();
-    expect(tool.description).toContain('progress');
-
-    const schema = tool.parameters as any;
-    expect(schema.required).toContain('jobId');
-  });
-
-  it('does not register swap_posts or old prioritize_realign tool', async () => {
+  it('does not register removed tools', async () => {
     const { ScheduleAgent } = await import('../../../L4-agents/ScheduleAgent.js');
     const agent = new ScheduleAgent();
     try {
@@ -992,6 +957,11 @@ describe('Real ScheduleAgent', () => {
     const toolNames = mockState.capturedTools.map((t: any) => t.name);
     expect(toolNames).not.toContain('swap_posts');
     expect(toolNames).not.toContain('prioritize_realign');
+    expect(toolNames).not.toContain('start_prioritize_realign');
+    expect(toolNames).not.toContain('check_realign_status');
+    expect(toolNames).not.toContain('find_next_slot');
+    expect(toolNames).not.toContain('realign_schedule');
+    expect(toolNames).not.toContain('view_calendar');
   });
 
   it('registers all expected tools', async () => {
@@ -1005,110 +975,9 @@ describe('Real ScheduleAgent', () => {
     expect(toolNames).toEqual(expect.arrayContaining([
       'list_posts',
       'view_schedule_config',
-      'view_calendar',
       'reschedule_post',
       'cancel_post',
-      'find_next_slot',
-      'realign_schedule',
-      'start_prioritize_realign',
-      'check_realign_status',
     ]));
-  });
-
-  it('start_prioritize_realign handler returns job ID and starts background job', async () => {
-    const { ScheduleAgent } = await import('../../../L4-agents/ScheduleAgent.js');
-    const agent = new ScheduleAgent();
-    try {
-      await agent.run('test');
-    } catch { /* session mock ends quickly */ }
-
-    const tool = findCapturedTool('start_prioritize_realign');
-    const result = await tool.handler!(
-      { priorities: [{ keywords: ['devops'], saturation: 1.0 }], dryRun: true },
-      mockInvocation,
-    ) as any;
-
-    expect(result.started).toBe(true);
-    expect(result.jobId).toMatch(/^realign-/);
-    expect(result.dryRun).toBe(true);
-
-    // Wait a tick for the background job to complete
-    await new Promise(r => setTimeout(r, 50));
-  });
-
-  it('check_realign_status handler returns job progress after start', async () => {
-    const { ScheduleAgent } = await import('../../../L4-agents/ScheduleAgent.js');
-    const agent = new ScheduleAgent();
-    try {
-      await agent.run('test');
-    } catch { /* session mock ends quickly */ }
-
-    // Start a dry-run job
-    const startTool = findCapturedTool('start_prioritize_realign');
-    const startResult = await startTool.handler!(
-      { priorities: [{ keywords: ['test'], saturation: 1.0 }], dryRun: true },
-      mockInvocation,
-    ) as any;
-
-    // Wait for background job to complete (dry run is fast)
-    await new Promise(r => setTimeout(r, 100));
-
-    // Check status
-    const checkTool = findCapturedTool('check_realign_status');
-    const status = await checkTool.handler!(
-      { jobId: startResult.jobId },
-      mockInvocation,
-    ) as any;
-
-    expect(status.jobId).toBe(startResult.jobId);
-    expect(status.status).toBe('completed');
-    expect(status.plan).toBeDefined();
-    expect(status.result).toBeDefined();
-  });
-
-  it('check_realign_status handler returns error for unknown job ID', async () => {
-    const { ScheduleAgent } = await import('../../../L4-agents/ScheduleAgent.js');
-    const agent = new ScheduleAgent();
-    try {
-      await agent.run('test');
-    } catch { /* session mock ends quickly */ }
-
-    const checkTool = findCapturedTool('check_realign_status');
-    const result = await checkTool.handler!(
-      { jobId: 'nonexistent-job' },
-      mockInvocation,
-    ) as any;
-
-    expect(result.error).toContain('No realign job found');
-  });
-
-  it('start_prioritize_realign with dryRun=false triggers execution', async () => {
-    const { ScheduleAgent } = await import('../../../L4-agents/ScheduleAgent.js');
-    const agent = new ScheduleAgent();
-    try {
-      await agent.run('test');
-    } catch { /* session mock ends quickly */ }
-
-    const startTool = findCapturedTool('start_prioritize_realign');
-    const result = await startTool.handler!(
-      { priorities: [{ keywords: ['devops'], saturation: 0.5 }], dryRun: false },
-      mockInvocation,
-    ) as any;
-
-    expect(result.started).toBe(true);
-    expect(result.dryRun).toBe(false);
-
-    // Wait for background job to complete
-    await new Promise(r => setTimeout(r, 100));
-
-    // Verify it completed
-    const checkTool = findCapturedTool('check_realign_status');
-    const status = await checkTool.handler!(
-      { jobId: result.jobId },
-      mockInvocation,
-    ) as any;
-    expect(status.status).toBe('completed');
-    expect(status.result).toBeDefined();
   });
 
   it('reschedule_post handler calls schedulePost and returns success', async () => {

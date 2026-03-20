@@ -32,9 +32,7 @@ import {
 } from '../../L3-services/ideaService/ideaService.js'
 import { getIdeasByIds } from '../../L3-services/ideation/ideaService.js'
 import { createLateApiClient } from '../../L3-services/lateApi/lateApiService.js'
-import { buildRealignPlan, executeRealignPlan } from '../../L3-services/scheduler/realign.js'
 import { loadScheduleConfig } from '../../L3-services/scheduler/scheduleConfig.js'
-import { findNextSlot, getScheduleCalendar } from '../../L3-services/scheduler/scheduler.js'
 import {
   burnCaptions,
   captureFrame,
@@ -50,8 +48,6 @@ import type {
   DiagnosticResult,
   IdeateOptions,
   ProcessOptions,
-  RealignOptions,
-  SlotOptions,
   VidPipeConfig,
   VidPipeSDK,
 } from './types.js'
@@ -767,30 +763,6 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
     },
 
     schedule: {
-      async findNextSlot(platform, clipType, options?: SlotOptions) {
-        return await findNextSlot(platform, clipType, {
-          ideaIds: options?.ideaIds?.map((ideaId) => String(ideaId)),
-          publishBy: options?.publishBy,
-        })
-      },
-      async getCalendar(startDate?: Date, endDate?: Date) {
-        return await getScheduleCalendar(startDate, endDate)
-      },
-      async realign(options?: RealignOptions) {
-        const plan = await buildRealignPlan({ platform: options?.platform })
-        if (options?.dryRun) {
-          return {
-            moved: plan.posts.length + plan.toCancel.length,
-            skipped: plan.skipped,
-          }
-        }
-
-        const result = await executeRealignPlan(plan)
-        return {
-          moved: result.updated + result.cancelled,
-          skipped: plan.skipped + result.failed,
-        }
-      },
       async loadConfig() {
         return await loadScheduleConfig()
       },

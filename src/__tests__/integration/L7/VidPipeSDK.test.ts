@@ -20,11 +20,7 @@ const {
   mockCreateIdea,
   mockUpdateIdea,
   mockGetIdeasByIds,
-  mockFindNextSlot,
-  mockGetScheduleCalendar,
   mockLoadScheduleConfig,
-  mockBuildRealignPlan,
-  mockExecuteRealignPlan,
   mockExtractClip,
   mockBurnCaptions,
   mockDetectSilence,
@@ -48,11 +44,7 @@ const {
   mockCreateIdea: vi.fn(),
   mockUpdateIdea: vi.fn(),
   mockGetIdeasByIds: vi.fn(),
-  mockFindNextSlot: vi.fn(),
-  mockGetScheduleCalendar: vi.fn(),
   mockLoadScheduleConfig: vi.fn(),
-  mockBuildRealignPlan: vi.fn(),
-  mockExecuteRealignPlan: vi.fn(),
   mockExtractClip: vi.fn(),
   mockBurnCaptions: vi.fn(),
   mockDetectSilence: vi.fn(),
@@ -89,18 +81,8 @@ vi.mock('../../../L3-services/ideation/ideaService.js', () => ({
   getIdeasByIds: mockGetIdeasByIds,
 }))
 
-vi.mock('../../../L3-services/scheduler/scheduler.js', () => ({
-  findNextSlot: mockFindNextSlot,
-  getScheduleCalendar: mockGetScheduleCalendar,
-}))
-
 vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
   loadScheduleConfig: mockLoadScheduleConfig,
-}))
-
-vi.mock('../../../L3-services/scheduler/realign.js', () => ({
-  buildRealignPlan: mockBuildRealignPlan,
-  executeRealignPlan: mockExecuteRealignPlan,
 }))
 
 vi.mock('../../../L3-services/videoOperations/videoOperations.js', () => ({
@@ -234,11 +216,7 @@ describe('VidPipeSDK', () => {
     mockUpdateIdea.mockResolvedValue(createIdea())
     mockGetIdeasByIds.mockResolvedValue([])
 
-    mockFindNextSlot.mockResolvedValue('2026-02-20T15:00:00.000Z')
-    mockGetScheduleCalendar.mockResolvedValue([])
     mockLoadScheduleConfig.mockResolvedValue({ platforms: {} })
-    mockBuildRealignPlan.mockResolvedValue({ posts: [], toCancel: [], skipped: 0 })
-    mockExecuteRealignPlan.mockResolvedValue({ updated: 0, cancelled: 0, failed: 0 })
 
     mockExtractClip.mockResolvedValue('C:\\output\\clip.mp4')
     mockBurnCaptions.mockResolvedValue('C:\\output\\captioned.mp4')
@@ -328,21 +306,6 @@ describe('VidPipeSDK', () => {
 
     expect(result).toBe(idea)
     expect(mockCreateIdea).toHaveBeenCalledWith(input)
-  })
-
-  it('delegates schedule.findNextSlot and stringifies numeric idea ids', async () => {
-    const sdk = createVidPipe()
-
-    const result = await sdk.schedule.findNextSlot('youtube', 'short', {
-      ideaIds: [101, 202],
-      publishBy: '2026-03-01',
-    })
-
-    expect(result).toBe('2026-02-20T15:00:00.000Z')
-    expect(mockFindNextSlot).toHaveBeenCalledWith('youtube', 'short', {
-      ideaIds: ['101', '202'],
-      publishBy: '2026-03-01',
-    })
   })
 
   it('delegates schedule.loadConfig to loadScheduleConfig', async () => {
@@ -517,44 +480,6 @@ describe('VidPipeSDK', () => {
     expect(mockUpdateIdea).toHaveBeenCalledWith(15, {
       keyTakeaway: 'Updated takeaway',
     })
-  })
-
-  it('passes undefined options through schedule.findNextSlot', async () => {
-    const sdk = createVidPipe()
-
-    const result = await sdk.schedule.findNextSlot('youtube')
-
-    expect(result).toBe('2026-02-20T15:00:00.000Z')
-    expect(mockFindNextSlot).toHaveBeenCalledWith('youtube', undefined, {
-      ideaIds: undefined,
-      publishBy: undefined,
-    })
-  })
-
-  it('delegates schedule calendar and realign helpers', async () => {
-    const sdk = createVidPipe()
-    const calendar = [{ id: 'calendar-entry' }]
-    const plan = { posts: [{ id: 'post-1' }], toCancel: [{ id: 'post-2' }], skipped: 3 }
-    const execution = { updated: 2, cancelled: 1, failed: 4 }
-    const startDate = new Date('2026-02-20T00:00:00.000Z')
-    const endDate = new Date('2026-02-27T00:00:00.000Z')
-    mockGetScheduleCalendar.mockResolvedValue(calendar)
-    mockBuildRealignPlan.mockResolvedValue(plan)
-    mockExecuteRealignPlan.mockResolvedValue(execution)
-
-    expect(await sdk.schedule.getCalendar(startDate, endDate)).toBe(calendar)
-    expect(await sdk.schedule.realign({ platform: 'youtube', dryRun: true })).toStrictEqual({
-      moved: 2,
-      skipped: 3,
-    })
-    expect(await sdk.schedule.realign({ platform: 'youtube' })).toStrictEqual({
-      moved: 3,
-      skipped: 7,
-    })
-    expect(mockGetScheduleCalendar).toHaveBeenCalledWith(startDate, endDate)
-    expect(mockBuildRealignPlan).toHaveBeenNthCalledWith(1, { platform: 'youtube' })
-    expect(mockBuildRealignPlan).toHaveBeenNthCalledWith(2, { platform: 'youtube' })
-    expect(mockExecuteRealignPlan).toHaveBeenCalledWith(plan)
   })
 
   it('maps schedule-config shorthand to defaults.scheduleConfig', () => {

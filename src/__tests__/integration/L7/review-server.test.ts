@@ -8,6 +8,7 @@ import tmp from 'tmp'
 const tmpDirObj = tmp.dirSync({ prefix: 'vidpipe-review-test-', unsafeCleanup: true })
 const tmpDir = tmpDirObj.name
 const mockGetIdeasByIds = vi.hoisted(() => vi.fn())
+const mockGetScheduledPosts = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -23,15 +24,14 @@ vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
   createLateApiClient: () => ({
     async uploadMedia() { return { url: 'https://test.com/media.mp4', type: 'video' } },
     async createPost() { return { _id: 'test-post-id', status: 'scheduled' } },
-    async getScheduledPosts() { return [] },
+    getScheduledPosts: mockGetScheduledPosts,
     async listAccounts() { return [{ id: 'acc-1', platform: 'tiktok', name: 'Test Account' }] },
     async listProfiles() { return [{ id: 'profile-1', name: 'Test Profile' }] },
   }),
 }))
 
-vi.mock('../../../L3-services/scheduler/scheduler.js', () => ({
-  findNextSlot: async () => '2026-02-15T19:00:00-06:00',
-  getScheduleCalendar: async () => [],
+vi.mock('../../../L3-services/scheduler/queueSync.js', () => ({
+  resolveQueueId: async () => ({ profileId: 'test-profile-id', queueId: 'test-queue-id' }),
 }))
 
 vi.mock('../../../L3-services/ideation/ideaService.js', () => ({
@@ -40,10 +40,6 @@ vi.mock('../../../L3-services/ideation/ideaService.js', () => ({
 
 vi.mock('../../../L3-services/socialPosting/accountMapping.js', () => ({
   getAccountId: async () => 'test-account-id',
-}))
-
-vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
-  loadScheduleConfig: async () => ({ timezone: 'America/Chicago', platforms: {} }),
 }))
 
 // ── Import after mocks ────────────────────────────────────────────────
@@ -126,6 +122,8 @@ afterAll(async () => {
 beforeEach(async () => {
   mockGetIdeasByIds.mockReset()
   mockGetIdeasByIds.mockResolvedValue([])
+  mockGetScheduledPosts.mockReset()
+  mockGetScheduledPosts.mockResolvedValue([])
 
   // Clean queue between tests
   await fs.rm(path.join(tmpDir, 'publish-queue'), { recursive: true, force: true })
@@ -341,22 +339,26 @@ describe('Review Server API', () => {
       expect(res.status).toBe(200)
       expect(res.body.slots).toEqual([])
     })
-  })
 
-  // ─── GET /api/schedule/next-slot/:platform ────────────────────────
+    it('returns filtered, mapped, and sorted slots from Late API posts', async () => {
+      mockGetScheduledPosts.mockResolvedValueOnce([
+        { _id: 'p-2', scheduledFor: '2026-03-02T10:00:00Z', platforms: [{ platform: 'youtube' }] },
+        { _id: 'p-1', scheduledFor: '2026-03-01T09:00:00Z', platforms: [{ platform: 'tiktok' }] },
+        { _id: 'p-no-sched', scheduledFor: null, platforms: [{ platform: 'instagram' }] },
+        { _id: 'p-3', scheduledFor: '2026-03-03T08:00:00Z', platforms: [] },
+      ])
 
-  describe('GET /api/schedule/next-slot/:platform', () => {
-    it('returns next slot for platform', async () => {
-      const res = await request(app).get('/api/schedule/next-slot/tiktok')
+      const res = await request(app).get('/api/schedule')
       expect(res.status).toBe(200)
-      expect(res.body.platform).toBe('tiktok')
-      expect(res.body.nextSlot).toBe('2026-02-15T19:00:00-06:00')
-    })
-
-    it('accepts clipType query parameter', async () => {
-      const res = await request(app).get('/api/schedule/next-slot/tiktok?clipType=short')
-      expect(res.status).toBe(200)
-      expect(res.body.platform).toBe('tiktok')
+      expect(res.body.slots).toHaveLength(3)
+      expect(res.body.slots[0]).toEqual({
+        platform: 'tiktok',
+        scheduledFor: '2026-03-01T09:00:00Z',
+        source: 'late',
+        postId: 'p-1',
+      })
+      expect(res.body.slots[1].platform).toBe('youtube')
+      expect(res.body.slots[2].platform).toBe('unknown')
     })
   })
 

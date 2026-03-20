@@ -9,9 +9,7 @@ import {
   type QueueItem,
 } from '../../L3-services/postStore/postStore.js'
 import { getIdeasByIds } from '../../L3-services/ideation/ideaService.js'
-import { findNextSlot, getScheduleCalendar } from '../../L3-services/scheduler/scheduler.js'
 import { createLateApiClient, type LateApiClient, type LateAccount, type LateProfile } from '../../L3-services/lateApi/lateApiService.js'
-import { normalizePlatformString } from '../../L0-pure/types/index.js'
 import logger from '../../L1-infra/logger/configLogger.js'
 import { enqueueApproval } from './approvalQueue.js'
 
@@ -230,24 +228,21 @@ export function createRouter(): Router {
     }
   })
 
-  // GET /api/schedule — current schedule calendar
+  // GET /api/schedule — current schedule calendar (via Late API)
   router.get('/api/schedule', async (req, res) => {
     try {
-      const calendar = await getScheduleCalendar()
-      res.json({ slots: calendar })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      res.status(500).json({ error: msg })
-    }
-  })
-
-  // GET /api/schedule/next-slot/:platform — calculate next available slot
-  router.get('/api/schedule/next-slot/:platform', async (req, res) => {
-    try {
-      const normalized = normalizePlatformString(req.params.platform)
-      const clipType = typeof req.query.clipType === 'string' ? req.query.clipType : undefined
-      const slot = await findNextSlot(normalized, clipType)
-      res.json({ platform: normalized, nextSlot: slot })
+      const client = createLateApiClient()
+      const posts = await client.getScheduledPosts()
+      const slots = posts
+        .filter(p => p.scheduledFor)
+        .map(p => ({
+          platform: p.platforms[0]?.platform ?? 'unknown',
+          scheduledFor: p.scheduledFor!,
+          source: 'late' as const,
+          postId: p._id,
+        }))
+      slots.sort((a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime())
+      res.json({ slots })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       res.status(500).json({ error: msg })

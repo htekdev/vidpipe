@@ -19,8 +19,6 @@ export type {
   VidPipeConfig,
   ProcessOptions,
   IdeateOptions,
-  SlotOptions,
-  RealignOptions,
   DiagnosticCheck,
   DiagnosticResult,
   GeneratedClip,

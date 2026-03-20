@@ -8,7 +8,6 @@ import { progressEmitter } from '../L1-infra/progress/progressEmitter.js'
 import { runDoctor } from './commands/doctor'
 import { runInit } from './commands/init'
 import { runSchedule } from './commands/schedule'
-import { runRealign } from './commands/realign'
 import { runChat } from './commands/chat'
 import { runIdeate } from './commands/ideate'
 import { runConfigure } from './commands/configure'
@@ -94,22 +93,14 @@ program
   })
 
 program
-  .command('realign')
-  .description('Realign all Late scheduled, cancelled, and failed posts to match schedule.json slots')
-  .option('--platform <name>', 'Filter by platform (tiktok, youtube, instagram, linkedin, twitter)')
-  .option('--dry-run', 'Preview changes without updating posts')
+  .command('sync-queues')
+  .description('Sync schedule.json time slots to Late API queue scheduler')
+  .option('--dry-run', 'Preview changes without applying')
+  .option('--reshuffle', 'Redistribute existing queued posts after slot changes')
   .action(async (opts) => {
-    await runRealign({ platform: opts.platform, dryRun: opts.dryRun })
-    process.exit(0)
-  })
-
-program
-  .command('reschedule')
-  .description('Reschedule idea-linked posts for optimal slot placement, displacing non-idea content')
-  .option('--dry-run', 'Preview changes without updating posts')
-  .action(async (opts) => {
-    const { runReschedule } = await import('./commands/reschedule.js')
-    await runReschedule({ dryRun: opts.dryRun })
+    initConfig()
+    const { runSyncQueues } = await import('./commands/syncQueues.js')
+    await runSyncQueues({ dryRun: opts.dryRun, reshuffle: opts.reshuffle })
     process.exit(0)
   })
 
