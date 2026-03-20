@@ -2,18 +2,22 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mockUpdateIdea = vi.hoisted(() => vi.fn())
 const mockGetIdea = vi.hoisted(() => vi.fn())
+const mockSearchIdeas = vi.hoisted(() => vi.fn())
+const mockListIdeas = vi.hoisted(() => vi.fn())
 const mockInitConfig = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../../src/L3-services/ideaService/ideaService.js', () => ({
   updateIdea: mockUpdateIdea,
   getIdea: mockGetIdea,
+  searchIdeas: mockSearchIdeas,
+  listIdeas: mockListIdeas,
 }))
 
 vi.mock('../../../../src/L1-infra/config/environment.js', () => ({
   initConfig: mockInitConfig,
 }))
 
-import { runIdeaUpdate, runIdeaGet } from '../../../../src/L7-app/commands/ideaUpdate.js'
+import { runIdeaUpdate, runIdeaGet, runIdeaSearch } from '../../../../src/L7-app/commands/ideaUpdate.js'
 
 const mockIdea = {
   issueNumber: 42,
@@ -38,6 +42,8 @@ describe('L7 Unit: idea update command', () => {
     vi.clearAllMocks()
     mockUpdateIdea.mockResolvedValue(mockIdea)
     mockGetIdea.mockResolvedValue(mockIdea)
+    mockSearchIdeas.mockResolvedValue([mockIdea])
+    mockListIdeas.mockResolvedValue([mockIdea])
     process.exitCode = undefined
   })
 
@@ -161,5 +167,33 @@ describe('L7 Unit: idea update command', () => {
     mockGetIdea.mockRejectedValue(new Error('API error'))
     await runIdeaGet('42')
     expect(process.exitCode).toBe(1)
+  })
+
+  // runIdeaSearch tests
+  it('searches ideas with query', async () => {
+    await runIdeaSearch('copilot', {})
+    expect(mockSearchIdeas).toHaveBeenCalledWith('copilot')
+  })
+
+  it('lists ideas with filters when no query', async () => {
+    await runIdeaSearch(undefined, { status: 'ready' })
+    expect(mockListIdeas).toHaveBeenCalledWith(expect.objectContaining({ status: 'ready' }))
+  })
+
+  it('outputs json format', async () => {
+    await runIdeaSearch(undefined, { format: 'json' })
+    expect(mockListIdeas).toHaveBeenCalled()
+  })
+
+  it('handles search error', async () => {
+    mockSearchIdeas.mockRejectedValue(new Error('API error'))
+    await runIdeaSearch('test', {})
+    expect(process.exitCode).toBe(1)
+  })
+
+  it('shows no results message', async () => {
+    mockListIdeas.mockResolvedValue([])
+    await runIdeaSearch(undefined, {})
+    // Should not throw
   })
 })

@@ -13,7 +13,7 @@ import { runChat } from './commands/chat'
 import { runIdeate } from './commands/ideate'
 import { runConfigure } from './commands/configure'
 import { runIntroOutro } from './commands/introOutro'
-import { runIdeaUpdate, runIdeaGet } from './commands/ideaUpdate'
+import { runIdeaUpdate, runIdeaGet, runIdeaSearch } from './commands/ideaUpdate'
 import { startReviewServer } from './review/server'
 import { openUrl } from '../L1-infra/cli/cli.js'
 import { readTextFileSync, listDirectorySync } from '../L1-infra/fileSystem/fileSystem.js'
@@ -158,28 +158,36 @@ program
 
 program
   .command('idea')
-  .description('Manage ideas — view and update existing ideas')
-  .argument('<subcommand>', 'Subcommand: get, update')
-  .argument('<issue-number>', 'GitHub issue number of the idea')
+  .description('Manage ideas — view, update, and search existing ideas')
+  .argument('<subcommand>', 'Subcommand: get, update, search')
+  .argument('[arg]', 'Issue number (get/update) or search query (search)')
   .option('--topic <topic>', 'Update the idea topic/title')
   .option('--hook <hook>', 'Update the attention-grabbing hook')
   .option('--audience <audience>', 'Update the target audience')
-  .option('--platforms <platforms>', 'Update target platforms (comma-separated)')
+  .option('--platforms <platforms>', 'Target platforms (comma-separated)')
   .option('--key-takeaway <takeaway>', 'Update the core message')
   .option('--talking-points <points>', 'Update talking points (comma-separated)')
-  .option('--tags <tags>', 'Update tags (comma-separated)')
-  .option('--status <status>', 'Update status (draft|ready|recorded|published)')
+  .option('--tags <tags>', 'Filter/update tags (comma-separated)')
+  .option('--status <status>', 'Filter/update status (draft|ready|recorded|published)')
   .option('--publish-by <date>', 'Update publish deadline (ISO 8601 date)')
   .option('--urgency <level>', 'Set urgency: hot (3d), urgent (7d), soon (14d), flexible (60d)')
   .option('--trend-context <context>', 'Update trend context')
-  .action(async (subcommand: string, issueNumber: string, opts) => {
+  .option('--priority <level>', 'Filter by priority: hot-trend, timely, evergreen')
+  .option('--platform <platform>', 'Filter by platform')
+  .option('--tag <tag>', 'Filter by tag')
+  .option('--format <format>', 'Output format: table (default) or json')
+  .action(async (subcommand: string, arg: string | undefined, opts) => {
     initConfig()
     if (subcommand === 'update') {
-      await runIdeaUpdate(issueNumber, opts)
+      if (!arg) { console.error('Usage: vidpipe idea update <issue-number> [options]'); process.exitCode = 1 }
+      else await runIdeaUpdate(arg, opts)
     } else if (subcommand === 'get') {
-      await runIdeaGet(issueNumber)
+      if (!arg) { console.error('Usage: vidpipe idea get <issue-number>'); process.exitCode = 1 }
+      else await runIdeaGet(arg)
+    } else if (subcommand === 'search') {
+      await runIdeaSearch(arg, opts)
     } else {
-      console.error(`Unknown subcommand: ${subcommand}. Use 'get' or 'update'`)
+      console.error(`Unknown subcommand: ${subcommand}. Use 'get', 'update', or 'search'`)
       process.exitCode = 1
     }
     process.exit(process.exitCode ?? 0)

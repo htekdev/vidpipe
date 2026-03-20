@@ -1,7 +1,7 @@
 import { initConfig } from '../../L1-infra/config/environment.js'
-import { updateIdea, getIdea } from '../../L3-services/ideaService/ideaService.js'
+import { updateIdea, getIdea, searchIdeas, listIdeas } from '../../L3-services/ideaService/ideaService.js'
 import { Platform } from '../../L0-pure/types/index.js'
-import type { IdeaStatus } from '../../L0-pure/types/index.js'
+import type { Idea, IdeaStatus } from '../../L0-pure/types/index.js'
 
 const VALID_PLATFORMS = new Set(Object.values(Platform))
 const VALID_STATUSES = new Set(['draft', 'ready', 'recorded', 'published'] as const)
@@ -148,6 +148,73 @@ export async function runIdeaGet(issueNumber: string): Promise<void> {
     console.log()
   } catch (err) {
     console.error(`Failed to get idea #${num}: ${(err as Error).message}`)
+    process.exitCode = 1
+  }
+}
+
+export interface IdeaSearchOptions {
+  status?: string
+  platform?: string
+  tag?: string
+  priority?: string
+  format?: 'table' | 'json'
+}
+
+function printIdeaTable(ideas: readonly Idea[]): void {
+  console.log(`\n${'#'.padEnd(6)} ${'Topic'.padEnd(40)} ${'Status'.padEnd(12)} ${'Publish By'.padEnd(12)} ${'Platforms'}`)
+  console.log('─'.repeat(100))
+  for (const idea of ideas) {
+    console.log(
+      `${String(idea.issueNumber).padEnd(6)} ${idea.topic.substring(0, 38).padEnd(40)} ${idea.status.padEnd(12)} ${idea.publishBy.padEnd(12)} ${idea.platforms.join(', ')}`,
+    )
+  }
+  console.log(`\n${ideas.length} idea(s) found`)
+}
+
+export async function runIdeaSearch(query: string | undefined, options: IdeaSearchOptions): Promise<void> {
+  initConfig()
+
+  try {
+    let ideas: Idea[]
+
+    if (query) {
+      ideas = await searchIdeas(query)
+    } else {
+      ideas = await listIdeas({
+        status: options.status as IdeaStatus | undefined,
+        platform: options.platform as Platform | undefined,
+        tag: options.tag,
+        priority: options.priority as 'hot-trend' | 'timely' | 'evergreen' | undefined,
+      })
+    }
+
+    // Apply client-side status filter on search results (search doesn't filter by label)
+    if (query && options.status) {
+      ideas = ideas.filter(i => i.status === options.status)
+    }
+
+    if (ideas.length === 0) {
+      console.log('No ideas found.')
+      return
+    }
+
+    if (options.format === 'json') {
+      console.log(JSON.stringify(ideas.map(i => ({
+        issueNumber: i.issueNumber,
+        topic: i.topic,
+        hook: i.hook,
+        status: i.status,
+        platforms: i.platforms,
+        publishBy: i.publishBy,
+        tags: i.tags,
+        issueUrl: i.issueUrl,
+      })), null, 2))
+      return
+    }
+
+    printIdeaTable(ideas)
+  } catch (err) {
+    console.error(`Failed to search ideas: ${(err as Error).message}`)
     process.exitCode = 1
   }
 }

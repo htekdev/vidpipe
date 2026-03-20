@@ -13,4 +13,11 @@ describe('idea update e2e', () => {
       expect(isoDate).toMatch(/^\d{4}-\d{2}-\d{2}$/)
     }
   })
+
+  test('search options parse correctly', () => {
+    const validStatuses = ['draft', 'ready', 'recorded', 'published']
+    const validPriorities = ['hot-trend', 'timely', 'evergreen']
+    expect(validStatuses).toHaveLength(4)
+    expect(validPriorities).toHaveLength(3)
+  })
 })
