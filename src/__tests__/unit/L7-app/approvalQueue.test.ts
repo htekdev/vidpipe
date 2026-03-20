@@ -20,19 +20,9 @@ vi.mock('../../../L3-services/postStore/postStore.js', () => ({
   approveBulk: mockApproveBulk,
 }))
 
-const mockGetIdeasByIds = vi.hoisted(() => vi.fn())
-vi.mock('../../../L3-services/ideation/ideaService.js', () => ({
-  getIdeasByIds: mockGetIdeasByIds,
-}))
-
-const mockFindNextSlot = vi.hoisted(() => vi.fn())
-vi.mock('../../../L3-services/scheduler/scheduler.js', () => ({
-  findNextSlot: mockFindNextSlot,
-}))
-
-const mockLoadScheduleConfig = vi.hoisted(() => vi.fn())
-vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
-  loadScheduleConfig: mockLoadScheduleConfig,
+const mockResolveQueueId = vi.hoisted(() => vi.fn())
+vi.mock('../../../L3-services/scheduler/queueSync.js', () => ({
+  resolveQueueId: mockResolveQueueId,
 }))
 
 const mockGetAccountId = vi.hoisted(() => vi.fn())
@@ -103,13 +93,15 @@ function mockItemsById(items: Record<string, ReturnType<typeof makeItem>>): void
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockLoadScheduleConfig.mockResolvedValue({ timezone: 'America/Chicago', platforms: {} })
-  mockFindNextSlot.mockResolvedValue('2026-04-01T10:00:00-06:00')
-  mockGetIdeasByIds.mockResolvedValue([])
+  mockResolveQueueId.mockResolvedValue({ profileId: 'profile-1', queueId: 'queue-1' })
   mockGetAccountId.mockResolvedValue('acc-123')
   mockFileExists.mockResolvedValue(true)
   mockUploadMedia.mockResolvedValue({ type: 'video', url: 'https://cdn/v.mp4' })
-  mockCreatePost.mockImplementation(async ({ content }: { content: string }) => ({ _id: `late-${content}`, status: 'scheduled' }))
+  mockCreatePost.mockImplementation(async ({ content }: { content: string }) => ({
+    _id: `late-${content}`,
+    status: 'scheduled',
+    scheduledFor: '2026-02-15T19:00:00-06:00',
+  }))
   mockApproveItem.mockResolvedValue(undefined)
   mockApproveBulk.mockResolvedValue(undefined)
 })
@@ -134,98 +126,141 @@ describe('L7 Unit: approvalQueue', () => {
     )
   })
 
-  it('processes idea-linked items before non-idea items', async () => {
-    const publishBy = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+  it('passes queuedFromProfile and queueId from resolveQueueId to createPost', async () => {
     mockItemsById({
-      'non-idea': makeItem('non-idea'),
-      'with-idea': makeItem('with-idea', { ideaIds: ['idea-1'] }),
+      'item-1': makeItem('item-1', {
+        mediaPath: '/m.mp4',
+        sourceMediaPath: '/m.mp4',
+        postContent: 'Test content',
+      }),
     })
-    mockGetIdeasByIds.mockResolvedValue([{ id: 'idea-1', publishBy }])
 
-    await enqueueApproval(['non-idea', 'with-idea'])
+    await enqueueApproval(['item-1'])
 
-    expect(mockCreatePost.mock.calls.map(([args]) => args.content)).toEqual(['with-idea', 'non-idea'])
+    expect(mockResolveQueueId).toHaveBeenCalledWith('youtube', 'short')
+    expect(mockCreatePost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queuedFromProfile: 'profile-1',
+        queueId: 'queue-1',
+      }),
+    )
   })
 
-  it('processes urgent idea-linked items before other idea-linked items', async () => {
-    const urgentPublishBy = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
-    const laterPublishBy = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString()
+  it('reads scheduledFor from Late API response', async () => {
     mockItemsById({
-      'non-urgent-idea': makeItem('non-urgent-idea', { ideaIds: ['idea-later'] }),
-      'urgent-idea': makeItem('urgent-idea', { ideaIds: ['idea-soon'] }),
-      'non-idea': makeItem('non-idea'),
-    })
-    mockGetIdeasByIds.mockImplementation(async (ideaIds: string[]) => {
-      if (ideaIds.includes('idea-soon')) {
-        return [{ id: 'idea-soon', publishBy: urgentPublishBy }]
-      }
-      if (ideaIds.includes('idea-later')) {
-        return [{ id: 'idea-later', publishBy: laterPublishBy }]
-      }
-      return []
+      'item-1': makeItem('item-1', { postContent: 'Test' }),
     })
 
-    await enqueueApproval(['non-urgent-idea', 'non-idea', 'urgent-idea'])
+    const result = await enqueueApproval(['item-1'])
 
-    expect(mockCreatePost.mock.calls.map(([args]) => args.content)).toEqual([
-      'urgent-idea',
-      'non-urgent-idea',
-      'non-idea',
-    ])
+    expect(result.results[0].scheduledFor).toBe('2026-02-15T19:00:00-06:00')
   })
 
-  it('batches idea lookups across approval items', async () => {
-    const earliest = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-    const later = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
+  it('fails when resolveQueueId returns null', async () => {
+    mockResolveQueueId.mockResolvedValue(null)
     mockItemsById({
-      'idea-item-a': makeItem('idea-item-a', { ideaIds: ['idea-1', '42'] }),
-      'idea-item-b': makeItem('idea-item-b', { ideaIds: ['idea-2', 'idea-1'] }),
+      'item-1': makeItem('item-1', { postContent: 'Test' }),
     })
-    mockGetIdeasByIds.mockResolvedValue([
-      { id: 'idea-1', issueNumber: 41, publishBy: later },
-      { id: 'idea-2', issueNumber: 42, publishBy: earliest },
-    ])
 
-    await enqueueApproval(['idea-item-a', 'idea-item-b'])
+    const result = await enqueueApproval(['item-1'])
 
-    expect(mockGetIdeasByIds).toHaveBeenCalledTimes(1)
-    expect(mockGetIdeasByIds).toHaveBeenCalledWith(expect.arrayContaining(['idea-1', 'idea-2', '42']))
-    expect(mockFindNextSlot).toHaveBeenNthCalledWith(1, 'youtube', 'short', {
-      ideaIds: ['idea-1', '42'],
-      publishBy: earliest,
-    })
-    expect(mockFindNextSlot).toHaveBeenNthCalledWith(2, 'youtube', 'short', {
-      ideaIds: ['idea-2', 'idea-1'],
-      publishBy: earliest,
-    })
+    expect(result.failed).toBe(1)
+    expect(result.results[0].error).toContain('No Late API queue')
   })
 
-  it('passes ideaIds and publishBy to findNextSlot for idea-linked items', async () => {
-    const publishBy = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
+  it('processes items in the order given', async () => {
     mockItemsById({
-      'idea-item': makeItem('idea-item', { ideaIds: ['idea-1', 'idea-2'] }),
+      'item-a': makeItem('item-a', { postContent: 'A' }),
+      'item-b': makeItem('item-b', { postContent: 'B' }),
     })
-    mockGetIdeasByIds.mockResolvedValue([
-      { id: 'idea-1', publishBy: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString() },
-      { id: 'idea-2', publishBy },
-    ])
 
-    await enqueueApproval(['idea-item'])
+    await enqueueApproval(['item-a', 'item-b'])
 
-    expect(mockFindNextSlot).toHaveBeenCalledWith('youtube', 'short', {
-      ideaIds: ['idea-1', 'idea-2'],
-      publishBy,
-    })
+    expect(mockCreatePost.mock.calls.map((call: unknown[]) => (call[0] as { content: string }).content)).toEqual(['A', 'B'])
   })
 
-  it('calls findNextSlot with only platform and clipType for non-idea items', async () => {
+  it('returns item-not-found when getItem returns null', async () => {
+    mockGetItem.mockResolvedValue(null)
+
+    const result = await enqueueApproval(['missing-item'])
+
+    expect(result.failed).toBe(1)
+    expect(result.results[0]).toEqual(
+      expect.objectContaining({ itemId: 'missing-item', success: false, error: 'Item not found' }),
+    )
+    expect(mockCreatePost).not.toHaveBeenCalled()
+  })
+
+  it('uses sourceMediaPath fallback when mediaPath is null', async () => {
     mockItemsById({
-      'plain-item': makeItem('plain-item'),
+      'item-fb': makeItem('item-fb', {
+        mediaPath: null,
+        sourceMediaPath: '/source/video.mp4',
+        postContent: 'fallback test',
+      }),
     })
 
-    await enqueueApproval(['plain-item'])
+    const result = await enqueueApproval(['item-fb'])
 
-    expect(mockFindNextSlot).toHaveBeenCalledWith('youtube', 'short')
-    expect(mockFindNextSlot.mock.calls[0]).toHaveLength(2)
+    expect(result.scheduled).toBe(1)
+    expect(mockUploadMedia).toHaveBeenCalledWith('/source/video.mp4')
+  })
+
+  it('marks platform as rate-limited on Daily post limit error', async () => {
+    mockCreatePost.mockRejectedValueOnce(new Error('Daily post limit reached'))
+    mockItemsById({
+      'item-rl1': makeItem('item-rl1', { platform: 'tiktok', postContent: 'first' }),
+      'item-rl2': makeItem('item-rl2', { platform: 'tiktok', postContent: 'second' }),
+    })
+
+    const result = await enqueueApproval(['item-rl1', 'item-rl2'])
+
+    expect(result.failed).toBe(2)
+    expect(result.rateLimitedPlatforms).toContain('tiktok')
+    expect(result.results[0].error).toContain('rate-limited')
+    expect(result.results[1].error).toContain('rate-limited')
+  })
+
+  it('stores scheduledFor and latePostId from createPost response', async () => {
+    mockCreatePost.mockResolvedValueOnce({
+      _id: 'late-post-99',
+      status: 'scheduled',
+      scheduledFor: '2026-03-01T12:00:00Z',
+    })
+    mockItemsById({
+      'item-sf': makeItem('item-sf', { postContent: 'scheduledFor test' }),
+    })
+
+    const result = await enqueueApproval(['item-sf'])
+
+    expect(result.scheduled).toBe(1)
+    expect(result.results[0]).toEqual(
+      expect.objectContaining({
+        itemId: 'item-sf',
+        success: true,
+        scheduledFor: '2026-03-01T12:00:00Z',
+        latePostId: 'late-post-99',
+      }),
+    )
+    expect(mockApproveItem).toHaveBeenCalledWith('item-sf', expect.objectContaining({
+      latePostId: 'late-post-99',
+      scheduledFor: '2026-03-01T12:00:00Z',
+    }))
+  })
+
+  it('passes queueInfo profileId and queueId to createPost', async () => {
+    mockResolveQueueId.mockResolvedValue({ profileId: 'p-abc', queueId: 'q-xyz' })
+    mockItemsById({
+      'item-qi': makeItem('item-qi', { postContent: 'queue info test' }),
+    })
+
+    await enqueueApproval(['item-qi'])
+
+    expect(mockCreatePost).toHaveBeenCalledWith(
+      expect.objectContaining({
+        queuedFromProfile: 'p-abc',
+        queueId: 'q-xyz',
+      }),
+    )
   })
 })

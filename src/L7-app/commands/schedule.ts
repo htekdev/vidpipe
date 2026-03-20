@@ -1,6 +1,5 @@
-import { getScheduleCalendar } from '../../L3-services/scheduler/scheduler'
-import { loadScheduleConfig } from '../../L3-services/scheduler/scheduleConfig'
-import { initConfig } from '../../L1-infra/config/environment'
+import { createLateApiClient } from '../../L3-services/lateApi/lateApiService.js'
+import { initConfig } from '../../L1-infra/config/environment.js'
 
 export interface ScheduleCommandOptions {
   platform?: string
@@ -11,26 +10,28 @@ export async function runSchedule(options: ScheduleCommandOptions = {}): Promise
 
   console.log('\n📅 Posting Schedule\n')
 
-  // Load config to show configured time slots
-  const config = await loadScheduleConfig()
-  
-  // Get upcoming scheduled posts
-  const calendar = await getScheduleCalendar()
+  // Get upcoming scheduled posts from Late API
+  const client = createLateApiClient()
+  const posts = await client.getScheduledPosts(options.platform)
+  const calendar = posts
+    .filter(p => p.scheduledFor)
+    .map(p => ({
+      platform: p.platforms[0]?.platform ?? 'unknown',
+      scheduledFor: p.scheduledFor!,
+      source: 'late' as const,
+      postId: p._id,
+    }))
+  calendar.sort((a, b) => new Date(a.scheduledFor).getTime() - new Date(b.scheduledFor).getTime())
 
-  // Filter by platform if specified
-  const filtered = options.platform 
-    ? calendar.filter(s => s.platform === options.platform)
-    : calendar
-
-  if (filtered.length === 0) {
+  if (calendar.length === 0) {
     console.log('No posts scheduled.')
     console.log('\nRun `vidpipe review` to review and schedule pending posts.')
     return
   }
 
   // Group by date
-  const byDate = new Map<string, typeof filtered>()
-  for (const slot of filtered) {
+  const byDate = new Map<string, typeof calendar>()
+  for (const slot of calendar) {
     const date = new Date(slot.scheduledFor).toLocaleDateString('en-US', {
       weekday: 'short',
       month: 'short',
@@ -48,13 +49,12 @@ export async function runSchedule(options: ScheduleCommandOptions = {}): Promise
         hour: 'numeric',
         minute: '2-digit',
       })
-      const source = slot.source === 'late' ? '🌐' : '📁'
       const icon = getPlatformIcon(slot.platform)
-      console.log(`    ${time}  ${icon} ${slot.platform}  ${source}`)
+      console.log(`    ${time}  ${icon} ${slot.platform}  🌐`)
     }
   }
 
-  console.log(`\n  🌐 = scheduled in Late  📁 = published locally\n`)
+  console.log(`\n  🌐 = scheduled in Late\n`)
 }
 
 function getPlatformIcon(platform: string): string {

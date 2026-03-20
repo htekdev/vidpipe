@@ -1,8 +1,6 @@
 import { fileExists } from '../../L1-infra/fileSystem/fileSystem.js'
 import { getItem, approveItem, approveBulk } from '../../L3-services/postStore/postStore.js'
-import { getIdeasByIds } from '../../L3-services/ideation/ideaService.js'
-import { findNextSlot } from '../../L3-services/scheduler/scheduler.js'
-import { loadScheduleConfig } from '../../L3-services/scheduler/scheduleConfig.js'
+import { resolveQueueId } from '../../L3-services/scheduler/queueSync.js'
 import { getAccountId } from '../../L3-services/socialPosting/accountMapping.js'
 import { createLateApiClient } from '../../L3-services/lateApi/lateApiService.js'
 import { fromLatePlatform, normalizePlatformString } from '../../L0-pure/types/index.js'
@@ -30,7 +28,7 @@ export interface ApprovalResult {
 
 // ── Sequential approval queue ────────────────────────────────────────────
 // All approve operations (single + bulk) funnel through this queue.
-// Items are processed one at a time, preventing findNextSlot() race conditions.
+// Items are processed sequentially to avoid Late API rate limiting.
 
 const queue: ApprovalJob[] = []
 let processing = false
@@ -65,76 +63,16 @@ async function drain(): Promise<void> {
 
 async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> {
   const client = createLateApiClient()
-  const schedConfig = await loadScheduleConfig()
   const publishDataMap = new Map<string, { latePostId: string; scheduledFor: string; publishedUrl?: string; accountId?: string }>()
   const results: ApprovalResult['results'] = []
   const rateLimitedPlatforms = new Set<string>()
-
-  interface EnrichedItem {
-    id: string
-    publishBy: string | null
-    hasIdeas: boolean
-  }
 
   const loadedItems = await Promise.all(
     itemIds.map(async (id) => ({ id, item: await getItem(id) })),
   )
   const itemMap = new Map(loadedItems.map(({ id, item }) => [id, item]))
 
-  const allIdeaIds = new Set<string>()
-  for (const { item } of loadedItems) {
-    if (item?.metadata.ideaIds?.length) {
-      for (const ideaId of item.metadata.ideaIds) {
-        allIdeaIds.add(ideaId)
-      }
-    }
-  }
-
-  let ideaMap = new Map<string, { publishBy?: string }>()
-  if (allIdeaIds.size > 0) {
-    try {
-      const allIdeas = await getIdeasByIds([...allIdeaIds])
-      for (const idea of allIdeas) {
-        ideaMap.set(idea.id, idea)
-        ideaMap.set(String(idea.issueNumber), idea)
-      }
-    } catch {
-      // Fall through — enriched items will have no publishBy
-    }
-  }
-
-  const enriched: EnrichedItem[] = loadedItems.map(({ id, item }) => {
-    if (!item?.metadata.ideaIds?.length) {
-      return { id, publishBy: null, hasIdeas: false }
-    }
-
-    const dates = item.metadata.ideaIds
-      .map((ideaId) => ideaMap.get(ideaId)?.publishBy)
-      .filter((publishBy): publishBy is string => Boolean(publishBy))
-      .sort()
-    return { id, publishBy: dates[0] ?? null, hasIdeas: true }
-  })
-
-  const now = Date.now()
-  const sevenDays = 7 * 24 * 60 * 60 * 1000
-  enriched.sort((a, b) => {
-    const aPublishByTime = a.publishBy ? new Date(a.publishBy).getTime() : Number.NaN
-    const bPublishByTime = b.publishBy ? new Date(b.publishBy).getTime() : Number.NaN
-    const aUrgent = a.hasIdeas && Number.isFinite(aPublishByTime) && (aPublishByTime - now) < sevenDays
-    const bUrgent = b.hasIdeas && Number.isFinite(bPublishByTime) && (bPublishByTime - now) < sevenDays
-    if (aUrgent && !bUrgent) return -1
-    if (!aUrgent && bUrgent) return 1
-    if (a.hasIdeas && !b.hasIdeas) return -1
-    if (!a.hasIdeas && b.hasIdeas) return 1
-    return 0
-  })
-
-  const sortedIds = enriched.map((entry) => entry.id)
-  const publishByMap = new Map(
-    enriched.flatMap((entry) => (entry.publishBy ? [[entry.id, entry.publishBy] as const] : [])),
-  )
-
-  for (const itemId of sortedIds) {
+  for (const itemId of itemIds) {
     const item = itemMap.get(itemId) ?? null
 
     try {
@@ -150,13 +88,9 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
         continue
       }
 
-      const ideaIds = item.metadata.ideaIds
-      const publishBy = publishByMap.get(itemId)
-      const slot = ideaIds?.length
-        ? await findNextSlot(latePlatform, item.metadata.clipType, { ideaIds, publishBy })
-        : await findNextSlot(latePlatform, item.metadata.clipType)
-      if (!slot) {
-        results.push({ itemId, success: false, error: `No available slot for ${latePlatform}` })
+      const queueInfo = await resolveQueueId(latePlatform, item.metadata.clipType)
+      if (!queueInfo) {
+        results.push({ itemId, success: false, error: `No Late API queue for ${latePlatform}/${item.metadata.clipType}. Run 'vidpipe sync-queues' first.` })
         continue
       }
 
@@ -193,21 +127,22 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
       const latePost = await client.createPost({
         content: item.postContent,
         platforms: [{ platform: latePlatform, accountId }],
-        scheduledFor: slot,
-        timezone: schedConfig.timezone,
+        queuedFromProfile: queueInfo.profileId,
+        queueId: queueInfo.queueId,
         isDraft: false,
         mediaItems,
         platformSpecificData: item.metadata.platformSpecificData,
         tiktokSettings,
       })
 
+      const scheduledFor = latePost.scheduledFor ?? ''
       publishDataMap.set(itemId, {
         latePostId: latePost._id,
-        scheduledFor: slot,
+        scheduledFor,
         publishedUrl: undefined,
         accountId,
       })
-      results.push({ itemId, success: true, scheduledFor: slot, latePostId: latePost._id })
+      results.push({ itemId, success: true, scheduledFor, latePostId: latePost._id })
     } catch (itemErr) {
       const itemMsg = itemErr instanceof Error ? itemErr.message : String(itemErr)
       if (itemMsg.includes('429') || itemMsg.includes('Daily post limit')) {

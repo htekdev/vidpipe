@@ -6,7 +6,6 @@ import type {
   PipelineResult,
   Platform,
   ProgressEvent,
-  ScheduleSlot,
   ShortClip,
   SocialPost,
 } from '../../L0-pure/types/index.js'
@@ -88,26 +87,6 @@ export interface IdeateOptions {
 }
 
 /**
- * Options for finding the next scheduling slot.
- */
-export interface SlotOptions {
-  /** Idea issue numbers for spacing rules */
-  ideaIds?: number[]
-  /** Urgency deadline (ISO 8601 date) */
-  publishBy?: string
-}
-
-/**
- * Options for schedule realignment.
- */
-export interface RealignOptions {
-  /** Filter to specific platform */
-  platform?: string
-  /** Preview only, don't execute */
-  dryRun?: boolean
-}
-
-/**
  * A single diagnostic check returned by the SDK doctor command.
  */
 export interface DiagnosticCheck {
@@ -150,9 +129,6 @@ export interface VidPipeSDK {
 
   /** Schedule management */
   schedule: {
-    findNextSlot(platform: string, clipType?: string, options?: SlotOptions): Promise<string | null>
-    getCalendar(startDate?: Date, endDate?: Date): Promise<ScheduleSlot[]>
-    realign(options?: RealignOptions): Promise<{ moved: number; skipped: number }>
     loadConfig(): Promise<ScheduleConfig>
   }
 

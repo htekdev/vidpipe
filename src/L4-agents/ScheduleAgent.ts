@@ -1,47 +1,22 @@
 import { BaseAgent } from './BaseAgent.js'
 import { createLateApiClient } from '../L3-services/lateApi/lateApiService.js'
-import { findNextSlot, getScheduleCalendar } from '../L3-services/scheduler/scheduler.js'
 import { loadScheduleConfig } from '../L3-services/scheduler/scheduleConfig.js'
-import { buildRealignPlan, executeRealignPlan } from '../L3-services/scheduler/realign.js'
 import logger from '../L1-infra/logger/configLogger.js'
 import type { LatePost } from '../L3-services/lateApi/lateApiService.js'
-import type { RealignPlan } from '../L3-services/scheduler/realign.js'
 import type { ToolWithHandler, UserInputHandler, LLMSession } from '../L3-services/llm/providerFactory.js'
 
 /** Friendly labels for tool calls shown in chat mode */
 const TOOL_LABELS: Record<string, string> = {
   list_posts: '📋 Listing posts',
   view_schedule_config: '⚙️  Loading schedule config',
-  view_calendar: '📅 Loading calendar',
   reschedule_post: '🔄 Rescheduling post',
   cancel_post: '🚫 Cancelling post',
-  find_next_slot: '🔍 Finding next slot',
-  realign_schedule: '📐 Running realignment',
-  start_prioritize_realign: '🎯 Starting prioritized realignment',
-  check_realign_status: '📊 Checking realignment progress',
   ask_user: '💬 Asking for your input',
-}
-
-interface RealignJob {
-  id: string
-  status: 'planning' | 'executing' | 'completed' | 'failed'
-  startedAt: string
-  completedAt?: string
-  progress: { completed: number; total: number; phase: 'planning' | 'cancelling' | 'updating' }
-  plan?: {
-    totalFetched: number
-    toReschedule: number
-    toCancel: number
-    skipped: number
-    unmatched: number
-  }
-  result?: { updated: number; cancelled: number; failed: number; errors: Array<{ postId: string; error: string }> }
-  error?: string
 }
 
 const SYSTEM_PROMPT = `You are a schedule management assistant for Late.co social media posts.
 
-You help the user view, analyze, and reprioritize their posting schedule across platforms.
+You help the user view, analyze, and manage their posting schedule across platforms.
 
 Available platforms: x (twitter), youtube, tiktok, instagram, linkedin
 Clip types: short (15-60s vertical clips), medium-clip (60-180s clips), video (full-length)
@@ -50,18 +25,12 @@ When listing posts, always show content previews (first 60 chars) so the user ca
 Use ask_user when you need clarification on priorities or decisions — never guess at user intent.
 Be concise and actionable. Prefer tables or bullet lists over prose.
 
-For themed scheduling, use start_prioritize_realign to kick off the job, then poll with
-check_realign_status until it completes. The priorities array is ordered — rule[0] is checked
-first for each slot. Each rule has keywords to match post content, a saturation (0.0–1.0) controlling
-how aggressively to fill slots with matches, and optional from/to dates for the active range.
-Example: "DevOps this week, hooks next week" → two rules with different date ranges.
-Workflow: start_prioritize_realign (dryRun=true) → check_realign_status → review plan → if approved,
-start_prioritize_realign (dryRun=false) → check_realign_status (poll every few seconds until completed).`
+Schedule management is handled by the Late API queue scheduler. Use list_posts to view scheduled
+content, reschedule_post to move posts, and cancel_post to remove them.`
 
 export class ScheduleAgent extends BaseAgent {
   private userInputHandler?: UserInputHandler
   private chatOutput?: (message: string) => void
-  private realignJobs = new Map<string, RealignJob>()
 
   constructor(userInputHandler?: UserInputHandler, model?: string) {
     super('ScheduleAgent', SYSTEM_PROMPT, undefined, model)
@@ -139,18 +108,6 @@ export class ScheduleAgent extends BaseAgent {
         handler: async (args) => this.handleToolCall('view_schedule_config', args as Record<string, unknown>),
       },
       {
-        name: 'view_calendar',
-        description: 'Show upcoming scheduled posts as a calendar view.',
-        parameters: {
-          type: 'object',
-          properties: {
-            days: { type: 'number', description: 'Number of days to look ahead (default: 7)' },
-          },
-          required: [],
-        },
-        handler: async (args) => this.handleToolCall('view_calendar', args as Record<string, unknown>),
-      },
-      {
         name: 'reschedule_post',
         description: 'Move a post to a new scheduled time.',
         parameters: {
@@ -175,78 +132,6 @@ export class ScheduleAgent extends BaseAgent {
         },
         handler: async (args) => this.handleToolCall('cancel_post', args as Record<string, unknown>),
       },
-      {
-        name: 'find_next_slot',
-        description: 'Find the next available posting slot for a platform.',
-        parameters: {
-          type: 'object',
-          properties: {
-            platform: { type: 'string', description: 'Platform: x, twitter, youtube, tiktok, instagram, linkedin' },
-            clipType: { type: 'string', description: 'Clip type: short, medium-clip, video' },
-          },
-          required: ['platform'],
-        },
-        handler: async (args) => this.handleToolCall('find_next_slot', args as Record<string, unknown>),
-      },
-      {
-        name: 'realign_schedule',
-        description: 'Run full schedule realignment — preview the plan or execute it.',
-        parameters: {
-          type: 'object',
-          properties: {
-            platform: { type: 'string', description: 'Limit realignment to a specific platform' },
-            execute: { type: 'boolean', description: 'If true, execute the plan. If false (default), only preview.' },
-          },
-          required: [],
-        },
-        handler: async (args) => this.handleToolCall('realign_schedule', args as Record<string, unknown>),
-      },
-      {
-        name: 'start_prioritize_realign',
-        description: 'Start a prioritized realignment in the background. Returns a job ID immediately. Use check_realign_status to poll progress. The priorities array is ordered: rule[0] is checked first for each slot.',
-        parameters: {
-          type: 'object',
-          properties: {
-            priorities: {
-              type: 'array',
-              description: 'Ordered array of priority rules. Array order = priority rank — rule[0] is checked first for each slot, then rule[1], etc.',
-              items: {
-                type: 'object',
-                properties: {
-                  keywords: {
-                    type: 'array',
-                    items: { type: 'string' },
-                    description: 'Search terms to match post content (case-insensitive). Posts matching ANY keyword are included.',
-                  },
-                  saturation: {
-                    type: 'number',
-                    description: 'Probability 0.0-1.0 of filling each slot with a match. 1.0 = always, 0.5 = ~50% of slots.',
-                  },
-                  from: { type: 'string', description: 'Start date (YYYY-MM-DD) for when this rule is active. Omit for immediately.' },
-                  to: { type: 'string', description: 'End date (YYYY-MM-DD) for when this rule expires. Omit for no end.' },
-                },
-                required: ['keywords', 'saturation'],
-              },
-            },
-            platform: { type: 'string', description: 'Limit to one platform: x, youtube, tiktok, instagram, linkedin' },
-            dryRun: { type: 'boolean', description: 'If true (default), only build the plan without executing. Set to false to build AND execute.' },
-          },
-          required: ['priorities'],
-        },
-        handler: async (args) => this.handleToolCall('start_prioritize_realign', args as Record<string, unknown>),
-      },
-      {
-        name: 'check_realign_status',
-        description: 'Check the progress of a running prioritized realignment job. Poll this periodically after calling start_prioritize_realign.',
-        parameters: {
-          type: 'object',
-          properties: {
-            jobId: { type: 'string', description: 'The job ID returned by start_prioritize_realign' },
-          },
-          required: ['jobId'],
-        },
-        handler: async (args) => this.handleToolCall('check_realign_status', args as Record<string, unknown>),
-      },
     ]
   }
 
@@ -254,13 +139,8 @@ export class ScheduleAgent extends BaseAgent {
     switch (toolName) {
       case 'list_posts': return this.listPosts(args)
       case 'view_schedule_config': return this.viewScheduleConfig(args)
-      case 'view_calendar': return this.viewCalendar(args)
       case 'reschedule_post': return this.reschedulePost(args)
       case 'cancel_post': return this.cancelPost(args)
-      case 'find_next_slot': return this.findNextSlot(args)
-      case 'realign_schedule': return this.realignSchedule(args)
-      case 'start_prioritize_realign': return this.startPrioritizeRealign(args)
-      case 'check_realign_status': return this.checkRealignStatus(args)
       default: return { error: `Unknown tool: ${toolName}` }
     }
   }
@@ -335,20 +215,6 @@ export class ScheduleAgent extends BaseAgent {
     }
   }
 
-  private async viewCalendar(args: Record<string, unknown>): Promise<unknown> {
-    try {
-      const days = (args.days as number) ?? 7
-      const startDate = new Date()
-      const endDate = new Date()
-      endDate.setDate(endDate.getDate() + days)
-      const calendar = await getScheduleCalendar(startDate, endDate)
-      return { days, slots: calendar }
-    } catch (err) {
-      logger.error('view_calendar failed', { error: err })
-      return { error: `Failed to get calendar: ${(err as Error).message}` }
-    }
-  }
-
   private async reschedulePost(args: Record<string, unknown>): Promise<unknown> {
     try {
       const postId = args.postId as string
@@ -374,136 +240,4 @@ export class ScheduleAgent extends BaseAgent {
     }
   }
 
-  private async findNextSlot(args: Record<string, unknown>): Promise<unknown> {
-    try {
-      const platform = args.platform as string
-      const clipType = args.clipType as string | undefined
-      const normalized = platform === 'twitter' ? 'x' : platform
-      const slot = await findNextSlot(normalized, clipType)
-      if (!slot) return { error: `No available slot found for ${normalized}` }
-      return { platform: normalized, clipType: clipType ?? 'any', nextSlot: slot }
-    } catch (err) {
-      logger.error('find_next_slot failed', { error: err })
-      return { error: `Failed to find next slot: ${(err as Error).message}` }
-    }
-  }
-
-  private async realignSchedule(args: Record<string, unknown>): Promise<unknown> {
-    try {
-      const platform = args.platform as string | undefined
-      const execute = (args.execute as boolean) ?? false
-      const plan: RealignPlan = await buildRealignPlan({ platform })
-      if (!execute) {
-        return {
-          preview: true,
-          totalFetched: plan.totalFetched,
-          toReschedule: plan.posts.length,
-          toCancel: plan.toCancel.length,
-          skipped: plan.skipped,
-          unmatched: plan.unmatched,
-          moves: plan.posts.map(p => ({
-            postId: p.post._id,
-            platform: p.platform,
-            clipType: p.clipType,
-            from: p.oldScheduledFor,
-            to: p.newScheduledFor,
-          })),
-        }
-      }
-      const result = await executeRealignPlan(plan)
-      return { executed: true, ...result }
-    } catch (err) {
-      logger.error('realign_schedule failed', { error: err })
-      return { error: `Failed to realign schedule: ${(err as Error).message}` }
-    }
-  }
-
-  private async startPrioritizeRealign(args: Record<string, unknown>): Promise<unknown> {
-    try {
-      const platform = args.platform as string | undefined
-      const dryRun = (args.dryRun as boolean) ?? true
-
-      const jobId = `realign-${Date.now()}`
-      const job: RealignJob = {
-        id: jobId,
-        status: 'planning',
-        startedAt: new Date().toISOString(),
-        progress: { completed: 0, total: 0, phase: 'planning' },
-      }
-      this.realignJobs.set(jobId, job)
-
-      // Fire-and-forget — runs in background
-      this.runRealignJob(job, platform, dryRun).catch((err) => {
-        job.status = 'failed'
-        job.error = err instanceof Error ? err.message : String(err)
-        job.completedAt = new Date().toISOString()
-        logger.error('Realign job failed', { jobId, error: err })
-      })
-
-      return {
-        started: true,
-        jobId,
-        dryRun,
-        message: `Realignment started. Use check_realign_status with jobId "${jobId}" to monitor progress.`,
-      }
-    } catch (err) {
-      logger.error('start_prioritize_realign failed', { error: err })
-      return { error: `Failed to start prioritize realign: ${(err as Error).message}` }
-    }
-  }
-
-  private async runRealignJob(
-    job: RealignJob,
-    platform: string | undefined,
-    dryRun: boolean,
-  ): Promise<void> {
-    // Phase 1: Build plan (schedulePost handles idea priority + displacement)
-    const plan: RealignPlan = await buildRealignPlan({ platform })
-    job.plan = {
-      totalFetched: plan.totalFetched,
-      toReschedule: plan.posts.length,
-      toCancel: plan.toCancel.length,
-      skipped: plan.skipped,
-      unmatched: plan.unmatched,
-    }
-
-    if (dryRun) {
-      job.status = 'completed'
-      job.completedAt = new Date().toISOString()
-      job.result = { updated: 0, cancelled: 0, failed: 0, errors: [] }
-      return
-    }
-
-    // Phase 2: Execute
-    job.status = 'executing'
-    job.progress = { completed: 0, total: plan.toCancel.length + plan.posts.length, phase: 'cancelling' }
-
-    const result = await executeRealignPlan(plan, (completed, total, phase) => {
-      job.progress = { completed, total, phase }
-    })
-
-    job.status = 'completed'
-    job.completedAt = new Date().toISOString()
-    job.result = result
-  }
-
-  private async checkRealignStatus(args: Record<string, unknown>): Promise<unknown> {
-    const jobId = args.jobId as string
-    const job = this.realignJobs.get(jobId)
-    if (!job) return { error: `No realign job found with ID: ${jobId}` }
-
-    const response: Record<string, unknown> = {
-      jobId: job.id,
-      status: job.status,
-      startedAt: job.startedAt,
-      progress: job.progress,
-    }
-
-    if (job.plan) response.plan = job.plan
-    if (job.completedAt) response.completedAt = job.completedAt
-    if (job.result) response.result = job.result
-    if (job.error) response.error = job.error
-
-    return response
-  }
 }

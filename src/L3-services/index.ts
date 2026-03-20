@@ -2,9 +2,7 @@
 export { createIdea, listIdeas, getIdea, updateIdea, linkVideoToIdea, markRecorded } from './ideaService/ideaService.js'
 export { getIdeasByIds } from './ideation/ideaService.js'
 
-// Scheduler
-export { findNextSlot, getScheduleCalendar, rescheduleIdeaPosts } from './scheduler/scheduler.js'
-export type { SlotOptions, SlotResult, RescheduleResult } from './scheduler/scheduler.js'
+// Scheduler Config (read-only schedule viewer)
 export { loadScheduleConfig, getDefaultScheduleConfig, getPlatformSchedule } from './scheduler/scheduleConfig.js'
 export type {
   DayOfWeek,
@@ -15,15 +13,6 @@ export type {
   DisplacementConfig,
   ScheduleConfig,
 } from './scheduler/scheduleConfig.js'
-export { buildRealignPlan, executeRealignPlan } from './scheduler/realign.js'
-export type {
-  RealignPost,
-  CancelPost,
-  RealignPlan,
-  RealignResult,
-  PriorityRule,
-  ClipTypeMaps,
-} from './scheduler/realign.js'
 
 // Video Operations
 export {

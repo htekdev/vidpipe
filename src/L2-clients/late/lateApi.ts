@@ -62,6 +62,8 @@ export interface CreatePostParams {
   content: string
   platforms: Array<{ platform: string; accountId: string }>
   scheduledFor?: string
+  queuedFromProfile?: string    // Profile ID for queue-based scheduling
+  queueId?: string              // Specific queue ID (defaults to profile's default queue)
   timezone?: string
   isDraft?: boolean
   mediaItems?: Array<{ type: 'image' | 'video'; url: string; thumbnail?: { url: string } }>
@@ -75,6 +77,50 @@ export interface CreatePostParams {
     express_consent_given: boolean
     [key: string]: unknown
   }
+}
+
+export interface LateQueueSlot {
+  dayOfWeek: number  // 0=Sunday, 1=Monday, ..., 6=Saturday
+  time: string       // HH:MM format
+}
+
+export interface LateQueue {
+  _id: string
+  profileId: string
+  name: string
+  timezone: string
+  slots: LateQueueSlot[]
+  active: boolean
+  isDefault: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CreateQueueParams {
+  profileId: string
+  name: string
+  timezone: string
+  slots: LateQueueSlot[]
+  active?: boolean
+}
+
+export interface UpdateQueueParams {
+  profileId: string
+  queueId?: string
+  name?: string
+  timezone: string
+  slots: LateQueueSlot[]
+  active?: boolean
+  setAsDefault?: boolean
+  reshuffleExisting?: boolean
+}
+
+export interface QueueSlotPreview {
+  profileId: string
+  nextSlot: string    // ISO 8601 datetime
+  timezone: string
+  queueId: string
+  queueName: string
 }
 
 // ── Client ─────────────────────────────────────────────────────────────
@@ -281,5 +327,59 @@ export class LateApiClient {
       logger.error(`Late API connection failed: ${message}`)
       return { valid: false, error: message }
     }
+  }
+
+  // ── Queue management ──────────────────────────────────────────────────
+
+  async createQueue(params: CreateQueueParams): Promise<LateQueue> {
+    const data = await this.request<{ success: boolean; schedule: LateQueue }>('/queue/slots', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    })
+    return data.schedule
+  }
+
+  async updateQueue(params: UpdateQueueParams): Promise<{ schedule: LateQueue; reshuffledCount: number }> {
+    const data = await this.request<{ success: boolean; schedule: LateQueue; reshuffledCount: number }>('/queue/slots', {
+      method: 'PUT',
+      body: JSON.stringify(params),
+    })
+    return { schedule: data.schedule, reshuffledCount: data.reshuffledCount }
+  }
+
+  async deleteQueue(profileId: string, queueId: string): Promise<void> {
+    const params = new URLSearchParams({ profileId, queueId })
+    await this.request<void>(`/queue/slots?${params}`, {
+      method: 'DELETE',
+    })
+  }
+
+  async listQueues(profileId: string, options?: { all?: boolean; queueId?: string }): Promise<LateQueue[]> {
+    const params = new URLSearchParams({ profileId })
+    if (options?.all) params.set('all', 'true')
+    if (options?.queueId) params.set('queueId', options.queueId)
+
+    const data = await this.request<{
+      exists: boolean
+      schedule?: LateQueue
+      schedules?: LateQueue[]
+    }>(`/queue/slots?${params}`)
+
+    if (data.schedules) return data.schedules
+    if (data.schedule) return [data.schedule]
+    return []
+  }
+
+  async getNextQueueSlot(profileId: string, queueId?: string): Promise<QueueSlotPreview> {
+    const params = new URLSearchParams({ profileId })
+    if (queueId) params.set('queueId', queueId)
+    return this.request<QueueSlotPreview>(`/queue/next-slot?${params}`)
+  }
+
+  async previewQueueSlots(profileId: string, count = 10, queueId?: string): Promise<string[]> {
+    const params = new URLSearchParams({ profileId, count: String(count) })
+    if (queueId) params.set('queueId', queueId)
+    const data = await this.request<{ slots: string[] }>(`/queue/preview?${params}`)
+    return data.slots ?? []
   }
 }

@@ -32,9 +32,6 @@ describe('SDK exports', () => {
 
   it('schedule namespace has expected methods', () => {
     const sdk = createVidPipe()
-    expect(typeof sdk.schedule.findNextSlot).toBe('function')
-    expect(typeof sdk.schedule.getCalendar).toBe('function')
-    expect(typeof sdk.schedule.realign).toBe('function')
     expect(typeof sdk.schedule.loadConfig).toBe('function')
   })
 
