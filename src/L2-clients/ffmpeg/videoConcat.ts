@@ -92,10 +92,19 @@ async function concatWithXfade(
   const durations = await Promise.all(segments.map(s => getVideoDuration(s)))
 
   // Build xfade filter chain for N segments
+  // Prepend fps+settb normalization to each input to prevent timebase mismatches
+  // (e.g., intro at 30fps/tbn=15360 vs content at 29.34fps/tbn=1697600)
   const inputs = segments.flatMap(s => ['-i', s])
   const filterParts: string[] = []
-  let prevLabel = '[0:v]'
-  let prevAudioLabel = '[0:a]'
+
+  // Normalize each input: force constant 30fps and reset timebase/pts
+  for (let i = 0; i < segments.length; i++) {
+    filterParts.push(`[${i}:v]fps=30,settb=AVTB,setpts=PTS-STARTPTS[vin${i}]`)
+    filterParts.push(`[${i}:a]aresample=async=1,asetpts=PTS-STARTPTS[ain${i}]`)
+  }
+
+  let prevLabel = '[vin0]'
+  let prevAudioLabel = '[ain0]'
   let cumulativeOffset = 0
 
   for (let i = 1; i < segments.length; i++) {
@@ -104,10 +113,10 @@ async function concatWithXfade(
     const outAudioLabel = i < segments.length - 1 ? `[a${i}]` : '[aout]'
 
     filterParts.push(
-      `${prevLabel}[${i}:v]xfade=transition=fade:duration=${fadeDuration}:offset=${offset.toFixed(3)}${outLabel}`,
+      `${prevLabel}[vin${i}]xfade=transition=fade:duration=${fadeDuration}:offset=${offset.toFixed(3)}${outLabel}`,
     )
     filterParts.push(
-      `${prevAudioLabel}[${i}:a]acrossfade=d=${fadeDuration}${outAudioLabel}`,
+      `${prevAudioLabel}[ain${i}]acrossfade=d=${fadeDuration}${outAudioLabel}`,
     )
 
     prevLabel = outLabel

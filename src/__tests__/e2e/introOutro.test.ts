@@ -8,6 +8,7 @@ import type { IntroOutroConfig } from '../../L0-pure/types/index.js'
 
 // E2E tests for intro/outro — no mocking.
 // FFmpeg-dependent tests are skipped when FFmpeg is unavailable.
+// Regression: xfade uses fps=30,settb=AVTB to normalize inputs before crossfade
 
 describe('intro/outro e2e', () => {
   test('full config resolution chain works end-to-end', () => {

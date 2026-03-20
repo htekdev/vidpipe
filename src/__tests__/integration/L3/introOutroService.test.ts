@@ -37,6 +37,7 @@ vi.mock('../../../L1-infra/paths/paths.js', () => ({
 
 import { applyIntroOutro } from '../../../L3-services/introOutro/introOutroService.js'
 
+// Regression: xfade normalizes fps/timebase to prevent mismatched input errors
 describe('introOutro L3 integration', () => {
   beforeEach(() => {
     vi.clearAllMocks()

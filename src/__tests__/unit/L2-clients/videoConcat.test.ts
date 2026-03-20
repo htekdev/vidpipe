@@ -155,6 +155,10 @@ describe('videoConcat', () => {
       expect(filterValue).toContain('xfade')
       expect(filterValue).toContain('transition=fade')
       expect(filterValue).toContain('duration=1')
+      // Regression: inputs must be fps/timebase-normalized to prevent xfade mismatch
+      expect(filterValue).toContain('fps=30')
+      expect(filterValue).toContain('settb=AVTB')
+      expect(filterValue).toContain('setpts=PTS-STARTPTS')
     })
 
     it('videoConcat.REQ-004 - maps [vout] and [aout] streams', async () => {
