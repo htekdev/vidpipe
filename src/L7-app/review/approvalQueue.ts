@@ -168,6 +168,7 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
       }
 
       let mediaItems: Array<{ type: 'image' | 'video'; url: string; thumbnail?: string }> | undefined
+      let platformSpecificData: Record<string, unknown> | undefined = item.metadata.platformSpecificData
       const effectiveMediaPath = item.mediaPath ?? item.metadata.sourceMediaPath
       if (effectiveMediaPath) {
         const mediaExists = await fileExists(effectiveMediaPath)
@@ -183,7 +184,16 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
           if (effectiveThumbnailPath && await fileExists(effectiveThumbnailPath)) {
             try {
               const thumbUpload = await client.uploadMedia(effectiveThumbnailPath)
-              mediaItem.thumbnail = thumbUpload.url
+              const thumbUrl = thumbUpload.url
+
+              // YouTube: thumbnail field on mediaItems
+              mediaItem.thumbnail = thumbUrl
+
+              // Instagram: instagramThumbnail in platformSpecificData
+              if (latePlatform === 'instagram') {
+                platformSpecificData = { ...platformSpecificData, instagramThumbnail: thumbUrl }
+              }
+
               logger.info(`Uploaded thumbnail for ${String(item.id).replace(/[\r\n]/g, '')}`)
             } catch (thumbErr) {
               logger.warn(`Failed to upload thumbnail for ${String(item.id).replace(/[\r\n]/g, '')}: ${thumbErr instanceof Error ? thumbErr.message : String(thumbErr)}`)
@@ -211,7 +221,7 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
         timezone: schedConfig.timezone,
         isDraft: false,
         mediaItems,
-        platformSpecificData: item.metadata.platformSpecificData,
+        platformSpecificData,
         tiktokSettings,
       })
 

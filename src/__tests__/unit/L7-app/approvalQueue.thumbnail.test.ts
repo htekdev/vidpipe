@@ -271,4 +271,26 @@ describe('L7 Unit: approvalQueue — thumbnail upload', () => {
     // thumbnail should NOT be set since upload failed
     expect(mediaItem.thumbnail).toBeUndefined()
   })
+
+  it('sets instagramThumbnail in platformSpecificData for instagram posts', async () => {
+    mockUploadMedia
+      .mockResolvedValueOnce({ type: 'video', url: 'https://cdn/v.mp4' })
+      .mockResolvedValueOnce({ type: 'image', url: 'https://cdn/thumb.png' })
+
+    mockItemsById({
+      'item-ig': makeItem('item-ig', {
+        mediaPath: '/m.mp4',
+        sourceMediaPath: '/m.mp4',
+        thumbnailPath: '/recordings/test/thumbnail.png',
+        platform: 'instagram',
+        postContent: 'IG post',
+      }),
+    })
+
+    await enqueueApproval(['item-ig'])
+
+    const createPostArgs = mockCreatePost.mock.calls[0][0]
+    expect(createPostArgs.platformSpecificData).toBeDefined()
+    expect(createPostArgs.platformSpecificData.instagramThumbnail).toBe('https://cdn/thumb.png')
+  })
 })

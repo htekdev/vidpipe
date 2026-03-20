@@ -48,6 +48,11 @@ describe('E2E: thumbnail generation module integrity', () => {
     expect(typeof mod.runThumbnail).toBe('function')
   })
 
+  test('L7 approvalQueue module is importable', async () => {
+    const mod = await import('../../L7-app/review/approvalQueue.js')
+    expect(typeof mod.enqueueApproval).toBe('function')
+  })
+
   test('resolveThumbnailConfig returns valid shape without API', async () => {
     const { resolveThumbnailConfig } = await import(
       '../../L3-services/imageGeneration/thumbnailGeneration.js'

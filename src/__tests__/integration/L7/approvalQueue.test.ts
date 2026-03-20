@@ -412,5 +412,24 @@ describe('enqueueApproval', () => {
         expect(createPostCall.mediaItems[0].thumbnail).toBe('https://cdn/thumb.png')
       }
     })
+
+    it('sets instagramThumbnail in platformSpecificData for instagram', async () => {
+      mockGetItem.mockResolvedValue(makeQueueItem({
+        thumbnailPath: '/test/thumb.png',
+        metadata: { platform: 'instagram', thumbnailPath: '/test/thumb.png' },
+      }))
+      mockFileExists.mockResolvedValue(true)
+      mockUploadMedia
+        .mockResolvedValueOnce({ url: 'https://cdn/media.mp4', type: 'video' })
+        .mockResolvedValueOnce({ url: 'https://cdn/ig-thumb.png', type: 'image' })
+      mockCreatePost.mockResolvedValue({ _id: 'late-ig' })
+
+      await enqueueApproval(['item-1'])
+
+      const call = mockCreatePost.mock.calls[0]?.[0]
+      if (call?.platformSpecificData) {
+        expect(call.platformSpecificData.instagramThumbnail).toBe('https://cdn/ig-thumb.png')
+      }
+    })
   })
 })
