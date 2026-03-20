@@ -128,6 +128,7 @@ describe('queueBuilder', () => {
       expect.objectContaining({ ideaIds: ['idea-1', 'idea-2'] }),
       expect.any(String),
       expect.any(String),
+      undefined,
     );
   });
 
@@ -217,6 +218,7 @@ describe('queueBuilder', () => {
       expect.objectContaining({ mediaType: 'image' }),
       expect.any(String),
       expect.stringContaining('cover.png'),
+      undefined,
     );
   });
 
@@ -238,6 +240,7 @@ describe('queueBuilder', () => {
       expect.objectContaining({ mediaType: 'image' }),
       expect.any(String),
       expect.stringContaining('cover.png'),
+      undefined,
     );
   });
 
@@ -255,6 +258,7 @@ describe('queueBuilder', () => {
       expect.any(String),
       expect.objectContaining({ sourceMediaPath: null }),
       expect.any(String),
+      undefined,
       undefined,
     );
   });

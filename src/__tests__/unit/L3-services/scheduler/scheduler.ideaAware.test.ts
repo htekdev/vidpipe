@@ -158,6 +158,7 @@ function makeQueueItem(overrides: QueueItemOverrides = {}): QueueItem {
     postContent: overrides.postContent ?? 'Post content',
     hasMedia: overrides.hasMedia ?? true,
     mediaPath: overrides.mediaPath ?? 'clip.mp4',
+    thumbnailPath: overrides.thumbnailPath ?? null,
     folderPath: overrides.folderPath ?? 'C:\\queue\\queue-item-1',
     metadata: {
       id: metadataOverrides.id ?? overrides.id ?? 'queue-item-1',

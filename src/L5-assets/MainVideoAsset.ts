@@ -44,6 +44,7 @@ import { generateSocialPosts, generateShortPosts } from '../L4-agents/SocialMedi
 import { generateBlogPost } from '../L4-agents/BlogAgent.js'
 import { buildPublishQueue } from '../L4-agents/pipelineServiceBridge.js'
 import { enhanceVideo } from './visualEnhancement.js'
+import { generateThumbnailForClip } from './thumbnailGeneration.js'
 import { getConfig } from '../L1-infra/config/environment.js'
 import logger from '../L1-infra/logger/configLogger.js'
 import type { ProduceResult } from '../L4-agents/ProducerAgent.js'
@@ -907,6 +908,44 @@ export class MainVideoAsset extends VideoAsset {
     await writeJsonFile(this.summaryJsonPath, summary)
     logger.info(`Generated summary for ${this.slug}`)
     return summary
+  }
+
+  /**
+   * Generate a thumbnail for the main video.
+   *
+   * Uses the ThumbnailAgent to plan and generate a click-worthy thumbnail
+   * based on the video's summary, title, and key topics. Skips if thumbnails
+   * are disabled or a thumbnail already exists (idempotent).
+   *
+   * @param opts - Asset options (force to regenerate)
+   * @returns Path to the generated thumbnail, or null if skipped
+   */
+  async generateThumbnail(opts?: AssetOptions): Promise<string | null> {
+    const summary = await this.getSummary().catch(() => null)
+    const transcript = await this.getTranscript().catch(() => null)
+    const videoPath = await this.getCaptionedVideo().catch(
+      () => this.getEditedVideo().catch(() => this.sourcePath),
+    )
+    const thumbnailDir = join(this.videoDir, 'thumbnails')
+
+    const title = summary?.title ?? this.slug
+    const description = summary?.overview ?? transcript?.text?.substring(0, 500) ?? this.slug
+    const topics = summary?.keyTopics ?? []
+
+    const result = await generateThumbnailForClip({
+      title,
+      description,
+      topics,
+      videoPath,
+      outputDir: thumbnailDir,
+      contentType: 'main',
+    }, opts?.force)
+
+    if (result) {
+      logger.info(`[MainVideoAsset] Generated main video thumbnail: ${result}`)
+    }
+
+    return result
   }
 
   /**

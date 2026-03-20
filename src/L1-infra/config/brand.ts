@@ -1,7 +1,7 @@
 import { fileExistsSync, readTextFileSync } from '../fileSystem/fileSystem.js'
 import { getConfig } from './environment'
 import logger from '../logger/configLogger'
-import type { IntroOutroConfig } from '../../L0-pure/types/index.js'
+import type { IntroOutroConfig, ThumbnailConfig } from '../../L0-pure/types/index.js'
 
 export interface BrandConfig {
   name: string
@@ -29,6 +29,7 @@ export interface BrandConfig {
     socialFocus: string
   }
   introOutro?: IntroOutroConfig
+  thumbnail?: ThumbnailConfig
 }
 
 const defaultBrand: BrandConfig = {
@@ -92,6 +93,20 @@ function validateBrandConfig(brand: Partial<BrandConfig>): void {
   if (!brand.customVocabulary || brand.customVocabulary.length === 0) {
     logger.warn('brand.json: "customVocabulary" is empty — Whisper prompt will be blank')
   }
+
+  if (brand.thumbnail?.enabled) {
+    const validSizes = ['1024x1024', '1536x1024', '1024x1536', 'auto']
+    if (brand.thumbnail.size && !validSizes.includes(brand.thumbnail.size)) {
+      logger.warn(`brand.json: thumbnail.size "${brand.thumbnail.size}" is not a valid size (${validSizes.join(', ')})`)
+    }
+    const validQualities = ['low', 'medium', 'high']
+    if (brand.thumbnail.quality && !validQualities.includes(brand.thumbnail.quality)) {
+      logger.warn(`brand.json: thumbnail.quality "${brand.thumbnail.quality}" is not valid (${validQualities.join(', ')})`)
+    }
+    if (brand.thumbnail.referenceImage) {
+      logger.info(`brand.json: thumbnail reference image configured: ${brand.thumbnail.referenceImage}`)
+    }
+  }
 }
 
 export function getBrandConfig(): BrandConfig {
@@ -123,4 +138,10 @@ export function getWhisperPrompt(): string {
 export function getIntroOutroConfig(): IntroOutroConfig {
   const brand = getBrandConfig()
   return brand.introOutro ?? { enabled: false, fadeDuration: 0 }
+}
+
+/** Get the thumbnail configuration from brand config with safe defaults. */
+export function getThumbnailConfig(): ThumbnailConfig {
+  const brand = getBrandConfig()
+  return brand.thumbnail ?? { enabled: false }
 }

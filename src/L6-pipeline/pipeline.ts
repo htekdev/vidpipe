@@ -327,6 +327,15 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
         return assets
       }) ?? []
       shorts = shortAssets.map(s => s.clip)
+
+      // Generate thumbnails for each short clip
+      for (const shortAsset of shortAssets) {
+        try {
+          await shortAsset.generateThumbnail()
+        } catch (err) {
+          logger.warn(`[Pipeline] Failed to generate thumbnail for short ${shortAsset.slug}: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
     } else {
       skipStage(Stage.Shorts, 'SKIP_SHORTS')
     }
@@ -350,6 +359,15 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
         return assets
       }) ?? []
       mediumClips = mediumAssets.map(m => m.clip)
+
+      // Generate thumbnails for each medium clip
+      for (const clipAsset of mediumAssets) {
+        try {
+          await clipAsset.generateThumbnail()
+        } catch (err) {
+          logger.warn(`[Pipeline] Failed to generate thumbnail for medium clip ${clipAsset.slug}: ${err instanceof Error ? err.message : String(err)}`)
+        }
+      }
     } else {
       skipStage(Stage.MediumClips, 'SKIP_MEDIUM_CLIPS')
     }
@@ -359,6 +377,13 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
 
     // 9. Summary — asset handles README generation (after shorts/chapters for references)
     const summary = await trackStage<VideoSummary>(Stage.Summary, () => asset.getSummary())
+
+    // Generate main video thumbnail (after summary so we have title/topics context)
+    try {
+      await asset.generateThumbnail()
+    } catch (err) {
+      logger.warn(`[Pipeline] Failed to generate main video thumbnail: ${err instanceof Error ? err.message : String(err)}`)
+    }
 
     // 10. Social Media — asset handles platform-specific post generation
     let socialPosts: SocialPost[] = []

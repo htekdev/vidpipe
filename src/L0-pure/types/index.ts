@@ -113,6 +113,8 @@ export interface VideoFile {
   size: number;
   createdAt: Date;
   layout?: VideoLayout;
+  /** Path to generated thumbnail image for this video */
+  thumbnailPath?: string;
 }
 
 /**
@@ -261,6 +263,8 @@ export interface ShortClip {
   shareReason?: string;
   /** Whether the content naturally loops back to the beginning */
   isLoopCandidate?: boolean;
+  /** Path to generated thumbnail image for this short clip */
+  thumbnailPath?: string;
 }
 
 // ============================================================================
@@ -306,6 +310,8 @@ export interface MediumClip {
   saveReason?: string;
   /** Retention hooks planned at ~15-20 second intervals within the clip */
   microHooks?: string[];
+  /** Path to generated thumbnail image for this medium clip */
+  thumbnailPath?: string;
 }
 
 // ============================================================================
@@ -457,6 +463,63 @@ export interface IntroOutroConfig {
   rules?: Partial<Record<IntroOutroVideoType, IntroOutroToggle>>
   /** Per-platform overrides of the default rules. */
   platformOverrides?: Partial<Record<string, Partial<Record<IntroOutroVideoType, Partial<IntroOutroToggle>>>>>
+}
+
+// ============================================================================
+// THUMBNAIL CONFIGURATION
+// ============================================================================
+
+/** Content type identifier for thumbnail rule configuration. */
+export type ThumbnailContentType = 'main' | 'shorts' | 'medium-clips'
+
+/** Image size for thumbnail generation. */
+export type ThumbnailSize = '1024x1024' | '1536x1024' | '1024x1536' | 'auto'
+
+/** Quality tier for thumbnail generation. */
+export type ThumbnailQuality = 'low' | 'medium' | 'high'
+
+/** Per-platform overrides for thumbnail generation. */
+export interface ThumbnailPlatformOverride {
+  /** Platform-specific reference image for style transfer. */
+  referenceImage?: string
+  /** Platform-specific style description. */
+  style?: string
+  /** Platform-specific image size. */
+  size?: ThumbnailSize
+  /** Platform-specific prompt override. */
+  promptOverride?: string
+}
+
+/** Complete thumbnail configuration stored in brand.json. */
+export interface ThumbnailConfig {
+  /** Master toggle — when false, thumbnail generation is skipped entirely. */
+  enabled: boolean
+  /** Path to reference image for style transfer (relative to repo root). */
+  referenceImage?: string
+  /** Override the AI-generated prompt entirely. */
+  promptOverride?: string
+  /** Style description appended to generated prompts. */
+  style?: string
+  /** Image size for generation. */
+  size?: ThumbnailSize
+  /** Quality tier. */
+  quality?: ThumbnailQuality
+  /** Which content types get thumbnails. */
+  rules?: Partial<Record<ThumbnailContentType, boolean>>
+  /** Per-platform overrides. */
+  platformOverrides?: Partial<Record<string, ThumbnailPlatformOverride>>
+}
+
+/** Result from thumbnail generation. */
+export interface ThumbnailResult {
+  /** The prompt used (either AI-generated or overridden). */
+  prompt: string
+  /** Path to the generated thumbnail image file. */
+  outputPath: string
+  /** Whether a reference image was used for style transfer. */
+  referenceUsed: boolean
+  /** Target platform if platform-specific. */
+  platform?: string
 }
 
 /**

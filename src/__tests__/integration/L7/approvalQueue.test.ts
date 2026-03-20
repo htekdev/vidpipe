@@ -83,6 +83,7 @@ function makeQueueItem(overrides: Partial<Omit<QueueItem, 'metadata'>> & { metad
     postContent: 'Test post content #test',
     hasMedia: true,
     mediaPath: '/test/media.mp4',
+    thumbnailPath: null,
     folderPath: '/test/publish-queue/item-1',
     ...restOverrides,
   }

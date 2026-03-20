@@ -104,5 +104,27 @@
       "medium-clips": { "intro": true, "outro": true }
     },
     "platformOverrides": {}
+  },
+  "thumbnail": {
+    "enabled": true,
+    "referenceImage": "./assets/thumbnail-reference.png",
+    "style": "Bold, colorful YouTube-style thumbnail with large readable text overlay, high contrast, professional lighting, tech-focused aesthetic",
+    "size": "1536x1024",
+    "quality": "high",
+    "rules": {
+      "main": true,
+      "shorts": true,
+      "medium-clips": true
+    },
+    "platformOverrides": {
+      "tiktok": {
+        "size": "1024x1536",
+        "style": "TikTok-native vertical thumbnail, bold text, bright colors, emoji-friendly"
+      },
+      "instagram": {
+        "size": "1024x1024",
+        "style": "Clean, Instagram-aesthetic square thumbnail with minimal text, vibrant colors"
+      }
+    }
   }
 }

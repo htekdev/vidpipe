@@ -126,6 +126,11 @@ vi.mock('../../../L5-assets/visualEnhancement.js', () => ({
   }),
 }))
 
+const mockGenerateThumbnailForClip = vi.fn()
+vi.mock('../../../L5-assets/thumbnailGeneration.js', () => ({
+  generateThumbnailForClip: (...args: unknown[]) => mockGenerateThumbnailForClip(...args),
+}))
+
 describe('MainVideoAsset', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -967,6 +972,84 @@ describe('MainVideoAsset', () => {
       expect(mockGenerateShortPosts).toHaveBeenCalledWith(
         expect.any(Object), expect.objectContaining({ title: 'Medium Clip' }),
         expect.any(Object), undefined, mockSummary,
+      )
+    })
+  })
+
+  describe('generateThumbnail', () => {
+    it('calls generateThumbnailForClip with summary context', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
+        title: 'My Great Video',
+        overview: 'An overview of the video content',
+        keyTopics: ['testing', 'typescript'],
+        snapshots: [],
+        markdownPath: '/recordings/test/README.md',
+      })
+      vi.mocked(fileSystem.readTextFile).mockResolvedValue('SRT content')
+      mockGenerateThumbnailForClip.mockResolvedValue('/recordings/test/thumbnails/thumbnail.png')
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+      const result = await asset.generateThumbnail()
+
+      expect(mockGenerateThumbnailForClip).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'My Great Video',
+          description: 'An overview of the video content',
+          topics: ['testing', 'typescript'],
+          outputDir: expect.stringContaining('thumbnails'),
+          contentType: 'main',
+        }),
+        undefined,
+      )
+      expect(result).toBe('/recordings/test/thumbnails/thumbnail.png')
+    })
+
+    it('falls back to slug when summary is unavailable', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockRejectedValue(new Error('not found'))
+      vi.mocked(fileSystem.readTextFile).mockRejectedValue(new Error('not found'))
+      mockGenerateThumbnailForClip.mockResolvedValue('/recordings/test/thumbnails/thumbnail.png')
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+      const result = await asset.generateThumbnail()
+
+      expect(mockGenerateThumbnailForClip).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'test',
+          description: 'test',
+          topics: [],
+          contentType: 'main',
+        }),
+        undefined,
+      )
+      expect(result).toBe('/recordings/test/thumbnails/thumbnail.png')
+    })
+
+    it('returns null when bridge returns null', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockRejectedValue(new Error('not found'))
+      vi.mocked(fileSystem.readTextFile).mockRejectedValue(new Error('not found'))
+      mockGenerateThumbnailForClip.mockResolvedValue(null)
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+      const result = await asset.generateThumbnail()
+
+      expect(result).toBeNull()
+    })
+
+    it('passes force flag from opts', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockRejectedValue(new Error('not found'))
+      vi.mocked(fileSystem.readTextFile).mockRejectedValue(new Error('not found'))
+      mockGenerateThumbnailForClip.mockResolvedValue('/out/thumb.png')
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+      await asset.generateThumbnail({ force: true })
+
+      expect(mockGenerateThumbnailForClip).toHaveBeenCalledWith(
+        expect.any(Object),
+        true,
       )
     })
   })

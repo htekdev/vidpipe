@@ -30,6 +30,8 @@ export interface QueueItemMetadata {
   /** Content idea IDs that influenced this queue item */
   ideaIds?: string[]
   platformSpecificData?: Record<string, unknown>
+  /** Path to generated thumbnail image for this queue item */
+  thumbnailPath?: string | null
 }
 
 export interface QueueItem {
@@ -38,6 +40,7 @@ export interface QueueItem {
   postContent: string
   hasMedia: boolean
   mediaPath: string | null
+  thumbnailPath: string | null
   folderPath: string
 }
 
@@ -91,12 +94,17 @@ async function readQueueItem(folderPath: string, id: string): Promise<QueueItem 
       hasMedia = true
     }
 
+    // Check for thumbnail
+    const thumbnailPath = join(folderPath, 'thumbnail.png')
+    const hasThumbnail = await fileExists(thumbnailPath)
+
     return {
       id,
       metadata,
       postContent,
       hasMedia,
       mediaPath,
+      thumbnailPath: hasThumbnail ? thumbnailPath : (metadata.thumbnailPath ?? null),
       folderPath,
     }
   } catch (err) {
@@ -193,6 +201,7 @@ export async function createItem(
   metadata: QueueItemMetadata,
   postContent: string,
   mediaSourcePath?: string,
+  thumbnailSourcePath?: string,
 ): Promise<QueueItem> {
   // Inline validation to prevent path traversal - CodeQL recognizes this pattern
   if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
@@ -214,6 +223,14 @@ export async function createItem(
     hasMedia = true
   }
 
+  // Copy thumbnail if provided
+  let thumbnailPath: string | null = null
+  if (thumbnailSourcePath) {
+    const thumbDest = join(folderPath, 'thumbnail.png')
+    await copyFile(thumbnailSourcePath, thumbDest)
+    thumbnailPath = thumbDest
+  }
+
   logger.debug(`Created queue item: ${String(id).replace(/[\r\n]/g, '')}`)
 
   return {
@@ -222,6 +239,7 @@ export async function createItem(
     postContent,
     hasMedia,
     mediaPath: hasMedia ? mediaPath : null,
+    thumbnailPath,
     folderPath,
   }
 }

@@ -12,6 +12,7 @@ import type { AssetOptions } from './Asset.js'
 import type { ShortClip, Platform, Transcript, Segment, Word } from '../L0-pure/types/index.js'
 import { Platform as PlatformEnum } from '../L0-pure/types/index.js'
 import { extractCompositeClip, applyIntroOutro } from '../L4-agents/videoServiceBridge.js'
+import { generateThumbnailForClip } from './thumbnailGeneration.js'
 import type { MainVideoAsset } from './MainVideoAsset.js'
 
 /**
@@ -244,5 +245,36 @@ export class ShortVideoAsset extends VideoAsset {
       language: parentTranscript.language,
       duration: this.clip.totalDuration,
     }
+  }
+
+  /**
+   * Generate a thumbnail for this short clip.
+   *
+   * Uses the ThumbnailAgent to plan and generate a click-worthy thumbnail
+   * based on the clip's content. Skips if thumbnails are disabled or
+   * a thumbnail already exists (idempotent).
+   *
+   * @param opts - Asset options (force to regenerate)
+   * @returns Path to the generated thumbnail, or null if skipped
+   */
+  async generateThumbnail(opts?: AssetOptions): Promise<string | null> {
+    const videoPath = this.clip.captionedPath ?? this.clip.outputPath
+    const thumbnailDir = join(this.videoDir, 'thumbnails')
+
+    const result = await generateThumbnailForClip({
+      title: this.clip.title,
+      description: this.clip.description,
+      hook: this.clip.hook,
+      topics: this.clip.tags,
+      videoPath,
+      outputDir: thumbnailDir,
+      contentType: 'shorts',
+    }, opts?.force)
+
+    if (result) {
+      this.clip.thumbnailPath = result
+    }
+
+    return result
   }
 }

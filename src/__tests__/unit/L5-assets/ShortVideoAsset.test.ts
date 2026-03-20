@@ -17,6 +17,12 @@ vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
 
 vi.mock('../../../L4-agents/videoServiceBridge.js', () => ({
   extractCompositeClip: (...args: unknown[]) => mockExtractCompositeClip(...args),
+  applyIntroOutro: vi.fn().mockImplementation(async (clipPath: string) => clipPath),
+}))
+
+const mockGenerateThumbnailForClip = vi.fn<(...args: unknown[]) => Promise<string | null>>()
+vi.mock('../../../L5-assets/thumbnailGeneration.js', () => ({
+  generateThumbnailForClip: (...args: unknown[]) => mockGenerateThumbnailForClip(...args),
 }))
 
 vi.mock('../../../L1-infra/paths/paths.js', () => ({
@@ -168,6 +174,71 @@ describe('ShortVideoAsset', () => {
       const asset = new ShortVideoAsset(makeParent(), makeClip(), '/shorts')
       const posts = await asset.getSocialPosts()
       expect(posts).toHaveLength(5)
+    })
+  })
+
+  describe('generateThumbnail', () => {
+    it('calls generateThumbnailForClip with clip context', async () => {
+      mockGenerateThumbnailForClip.mockResolvedValue('/shorts/test-short/thumbnails/thumbnail.png')
+      const clip = makeClip({
+        captionedPath: '/shorts/test-short/media-captioned.mp4',
+        tags: ['#test', '#short'],
+      })
+      const asset = new ShortVideoAsset(makeParent(), clip, '/shorts')
+
+      const result = await asset.generateThumbnail()
+
+      expect(mockGenerateThumbnailForClip).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Test Short',
+          description: 'A test short',
+          topics: ['#test', '#short'],
+          videoPath: '/shorts/test-short/media-captioned.mp4',
+          outputDir: '/shorts/test-short/thumbnails',
+          contentType: 'shorts',
+        }),
+        undefined,
+      )
+      expect(result).toBe('/shorts/test-short/thumbnails/thumbnail.png')
+      expect(clip.thumbnailPath).toBe('/shorts/test-short/thumbnails/thumbnail.png')
+    })
+
+    it('uses outputPath as videoPath when captionedPath is undefined', async () => {
+      mockGenerateThumbnailForClip.mockResolvedValue('/shorts/test-short/thumbnails/thumbnail.png')
+      const clip = makeClip({ captionedPath: undefined })
+      const asset = new ShortVideoAsset(makeParent(), clip, '/shorts')
+
+      await asset.generateThumbnail()
+
+      expect(mockGenerateThumbnailForClip).toHaveBeenCalledWith(
+        expect.objectContaining({
+          videoPath: '/out/test-short/media.mp4',
+        }),
+        undefined,
+      )
+    })
+
+    it('returns null when bridge returns null', async () => {
+      mockGenerateThumbnailForClip.mockResolvedValue(null)
+      const clip = makeClip()
+      const asset = new ShortVideoAsset(makeParent(), clip, '/shorts')
+
+      const result = await asset.generateThumbnail()
+
+      expect(result).toBeNull()
+      expect(clip.thumbnailPath).toBeUndefined()
+    })
+
+    it('passes force flag from opts', async () => {
+      mockGenerateThumbnailForClip.mockResolvedValue('/out/thumbnail.png')
+      const asset = new ShortVideoAsset(makeParent(), makeClip(), '/shorts')
+
+      await asset.generateThumbnail({ force: true })
+
+      expect(mockGenerateThumbnailForClip).toHaveBeenCalledWith(
+        expect.any(Object),
+        true,
+      )
     })
   })
 
