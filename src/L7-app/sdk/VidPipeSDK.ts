@@ -31,6 +31,7 @@ import {
   updateIdea,
 } from '../../L3-services/ideaService/ideaService.js'
 import { getIdeasByIds } from '../../L3-services/ideation/ideaService.js'
+import { loadAndValidateIdea } from '../../L3-services/interview/interviewService.js'
 import { createLateApiClient } from '../../L3-services/lateApi/lateApiService.js'
 import { buildRealignPlan, executeRealignPlan } from '../../L3-services/scheduler/realign.js'
 import { loadScheduleConfig } from '../../L3-services/scheduler/scheduleConfig.js'
@@ -44,6 +45,7 @@ import {
 } from '../../L3-services/videoOperations/videoOperations.js'
 import type { Platform as VariantPlatform } from '../../L3-services/videoOperations/videoOperations.js'
 import { generateIdeas } from '../../L6-pipeline/ideation.js'
+import { startInterview as startInterviewPipeline } from '../../L6-pipeline/ideation.js'
 import { processVideoSafe } from '../../L6-pipeline/pipeline.js'
 import type {
   DiagnosticCheck,
@@ -52,6 +54,7 @@ import type {
   ProcessOptions,
   RealignOptions,
   SlotOptions,
+  StartInterviewOptions,
   VidPipeConfig,
   VidPipeSDK,
 } from './types.js'
@@ -748,6 +751,13 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
         singleTopic: options?.singleTopic,
       })
     },
+
+    /* v8 ignore start -- VidPipeSDK is a facade; startInterview delegates to L3+L6, tested in ideateStart command */
+    async startInterview(ideaNumber: number, options: StartInterviewOptions) {
+      const idea = await loadAndValidateIdea(ideaNumber)
+      return await startInterviewPipeline(idea, options.answerProvider, options.onEvent)
+    },
+    /* v8 ignore stop */
 
     ideas: {
       async list(filters) {

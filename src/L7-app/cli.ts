@@ -11,6 +11,8 @@ import { runSchedule } from './commands/schedule'
 import { runRealign } from './commands/realign'
 import { runChat } from './commands/chat'
 import { runIdeate } from './commands/ideate'
+import { runIdeateStart } from './commands/ideateStart'
+import type { IdeateStartOptions } from './commands/ideateStart'
 import { runConfigure } from './commands/configure'
 import { startReviewServer } from './review/server'
 import { openUrl } from '../L1-infra/cli/cli.js'
@@ -114,6 +116,16 @@ program
   .description('Check all prerequisites and dependencies')
   .action(async () => {
     await runDoctor()
+  })
+
+program
+  .command('ideate-start <issue-number>')
+  .description('Start an interactive session to develop a content idea')
+  .option('--mode <mode>', 'Session mode: interview (default)', 'interview')
+  .option('--progress', 'Emit structured JSON interview events to stderr')
+  .action(async (issueNumber: string, opts: IdeateStartOptions) => {
+    await runIdeateStart(issueNumber, opts)
+    process.exit(0)
   })
 
 program

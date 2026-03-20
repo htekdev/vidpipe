@@ -13,6 +13,7 @@ import {
 } from '../L4-agents/pipelineServiceBridge.js'
 import { ScheduleAgent as _ScheduleAgent } from '../L4-agents/ScheduleAgent.js'
 import { generateIdeas as _generateIdeas } from '../L4-agents/IdeationAgent.js'
+import { InterviewAgent as _InterviewAgent } from '../L4-agents/InterviewAgent.js'
 
 // Re-export types (exempt from layer rules)
 export type { CostReport, QueueBuildResult } from '../L4-agents/pipelineServiceBridge.js'
@@ -51,6 +52,13 @@ export function buildPublishQueue(...args: Parameters<typeof _buildPublishQueue>
 // Ideation
 export function generateIdeas(...args: Parameters<typeof _generateIdeas>): ReturnType<typeof _generateIdeas> {
   return _generateIdeas(...args)
+}
+
+// Interview agent factory
+export function createInterviewAgent(
+  ...args: ConstructorParameters<typeof _InterviewAgent>
+): InstanceType<typeof _InterviewAgent> {
+  return new _InterviewAgent(...args)
 }
 
 // Schedule agent factory

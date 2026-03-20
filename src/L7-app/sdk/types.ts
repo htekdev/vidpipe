@@ -1,14 +1,19 @@
 import type {
+  AnswerProvider,
   CreateIdeaInput,
   Idea,
   IdeaFilters,
+  InterviewEvent,
+  InterviewResult,
   MediumClip,
   PipelineResult,
   Platform,
   ProgressEvent,
+  QuestionContext,
   ScheduleSlot,
   ShortClip,
   SocialPost,
+  StartMode,
 } from '../../L0-pure/types/index.js'
 import type { AppEnvironment } from '../../L1-infra/config/environment.js'
 import type { GlobalConfig } from '../../L1-infra/config/globalConfig.js'
@@ -131,6 +136,21 @@ export interface DiagnosticResult {
 export type GeneratedClip = ShortClip | MediumClip
 
 /**
+ * Options for starting an interactive interview session on an idea.
+ */
+export interface StartInterviewOptions {
+  /** Session mode (default: 'interview') */
+  mode?: StartMode
+  /**
+   * Async function called when the agent asks a question.
+   * The SDK consumer shows the question and returns the user's answer.
+   */
+  answerProvider: AnswerProvider
+  /** Callback for real-time interview events (questions, thinking, tool calls, insights) */
+  onEvent?: (event: InterviewEvent) => void
+}
+
+/**
  * Main VidPipe SDK interface.
  */
 export interface VidPipeSDK {
@@ -139,6 +159,9 @@ export interface VidPipeSDK {
 
   /** Generate AI-powered content ideas */
   ideate(options?: IdeateOptions): Promise<Idea[]>
+
+  /** Start an interactive session to develop an idea (Socratic interview, etc.) */
+  startInterview(ideaNumber: number, options: StartInterviewOptions): Promise<InterviewResult>
 
   /** Idea management */
   ideas: {

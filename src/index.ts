@@ -19,6 +19,7 @@ export type {
   VidPipeConfig,
   ProcessOptions,
   IdeateOptions,
+  StartInterviewOptions,
   SlotOptions,
   RealignOptions,
   DiagnosticCheck,
@@ -99,6 +100,25 @@ export type {
   IdeaFilters,
   IdeaCommentData,
 
+  // Interview / Ideate Start
+  StartMode,
+  InterviewEvent,
+  InterviewStartEvent,
+  QuestionAskedEvent,
+  AnswerReceivedEvent,
+  ThinkingStartEvent,
+  ThinkingEndEvent,
+  ToolCallStartEvent,
+  ToolCallEndEvent,
+  InsightDiscoveredEvent,
+  InterviewCompleteEvent,
+  InterviewErrorEvent,
+  InterviewResult,
+  InterviewInsights,
+  QAPair,
+  QuestionContext,
+  AnswerProvider,
+
   // Scheduling
   ScheduleSlot,
 } from './L0-pure/types/index.js'
@@ -116,6 +136,9 @@ export {
 
 // === Progress listener type ===
 export type { ProgressListener } from './L1-infra/progress/progressEmitter.js'
+
+// === Interview listener type ===
+export type { InterviewListener } from './L1-infra/progress/interviewEmitter.js'
 
 // === Caption style type ===
 export type { CaptionStyle } from './L0-pure/types/index.js'

@@ -153,10 +153,16 @@ class CopilotSessionWrapper implements LLMSession {
     let sdkError: Error | undefined
 
     try {
-      response = await this.session.sendAndWait(
-        { prompt: message },
-        this.timeoutMs,
-      )
+      if (this.timeoutMs === 0) {
+        // No timeout — use send() + session.idle for interactive agents
+        // that block on user input inside tool handlers.
+        response = await this.sendAndWaitForIdle(message)
+      } else {
+        response = await this.session.sendAndWait(
+          { prompt: message },
+          this.timeoutMs,
+        )
+      }
     } catch (err) {
       sdkError = err instanceof Error ? err : new Error(String(err))
       
@@ -187,6 +193,43 @@ class CopilotSessionWrapper implements LLMSession {
       quotaSnapshots: this.lastQuotaSnapshots,
       durationMs: Date.now() - start,
     }
+  }
+
+  /**
+   * Send a message and wait for session.idle without any timeout.
+   * Used by interactive agents (interview, chat) where tool handlers
+   * block waiting for human input — the SDK's sendAndWait() timeout
+   * would fire while the agent is legitimately waiting for the user.
+   */
+  private sendAndWaitForIdle(message: string): Promise<{ data?: { content?: string } } | undefined> {
+    return new Promise<{ data?: { content?: string } } | undefined>((resolve, reject) => {
+      let lastAssistantMessage: { data?: { content?: string } } | undefined
+
+      const unsubMessage = this.session.on('assistant.message', (event: { data?: { content?: string } }) => {
+        lastAssistantMessage = event
+      })
+
+      const unsubIdle = this.session.on('session.idle', () => {
+        unsubMessage()
+        unsubIdle()
+        unsubError()
+        resolve(lastAssistantMessage)
+      })
+
+      const unsubError = this.session.on('session.error', (event: { data?: { message?: string } }) => {
+        unsubMessage()
+        unsubIdle()
+        unsubError()
+        reject(new Error(event.data?.message ?? 'Unknown session error'))
+      })
+
+      this.session.send({ prompt: message }).catch((err: unknown) => {
+        unsubMessage()
+        unsubIdle()
+        unsubError()
+        reject(err instanceof Error ? err : new Error(String(err)))
+      })
+    })
   }
 
   on(event: ProviderEventType, handler: (event: ProviderEvent) => void): void {
