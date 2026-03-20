@@ -169,6 +169,29 @@ describe('Integration L3: generateThumbnail disabled paths', () => {
   })
 })
 
+// ── Content-type-aware default sizes (no API required) ──────────────────────
+describe('Integration L3: content-type-aware default sizes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetConfig.mockReturnValue({ REPO_ROOT: '/repo' })
+  })
+
+  test('shorts resolve to portrait size 1024x1536 by default', () => {
+    mockGetThumbnailConfig.mockReturnValue({ enabled: true })
+    const config = resolveThumbnailConfig(undefined, 'shorts')
+    expect(config.size).toBe('1024x1536')
+  })
+
+  test('main and medium-clips resolve to landscape size 1536x1024 by default', () => {
+    mockGetThumbnailConfig.mockReturnValue({ enabled: true })
+    const mainConfig = resolveThumbnailConfig(undefined, 'main')
+    expect(mainConfig.size).toBe('1536x1024')
+
+    const mediumConfig = resolveThumbnailConfig(undefined, 'medium-clips')
+    expect(mediumConfig.size).toBe('1536x1024')
+  })
+})
+
 // ── Tests requiring OPENAI_API_KEY (L2 runs real) ───────────────────────────
 const hasApiKey = !!process.env.OPENAI_API_KEY
 

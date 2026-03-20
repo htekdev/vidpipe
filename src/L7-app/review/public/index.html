@@ -379,6 +379,32 @@
         </div>`
     }
 
+    function ThumbnailPreview({ group }) {
+      const firstItem = group.items[0]
+      if (!firstItem) return null
+      const thumbnailUrl = '/media/queue/' + encodeURIComponent(firstItem.id) + '/thumbnail.png'
+      const [loaded, setLoaded] = useState(false)
+      const [error, setError] = useState(false)
+
+      if (error) return null
+
+      return html`
+        <div class="px-5 pb-3">
+          <div class="text-xs font-semibold text-gray-400 mb-2">🖼️ Thumbnail:</div>
+          <div class="rounded-xl overflow-hidden bg-black/20 border border-white/10 inline-block">
+            <img
+              src=${thumbnailUrl}
+              alt="Thumbnail preview"
+              class="max-h-48 w-auto object-contain rounded-xl"
+              style=${{ display: loaded ? 'block' : 'none' }}
+              onLoad=${() => setLoaded(true)}
+              onError=${() => setError(true)}
+            />
+            ${!loaded && !error && html`<div class="h-24 w-40 flex items-center justify-center text-gray-500 text-xs">Loading...</div>`}
+          </div>
+        </div>`
+    }
+
     function PlatformCheckboxes({ group, selectedPlatforms, onToggle, accounts }) {
       return html`
         <div class="px-5 pb-3">
@@ -423,13 +449,27 @@
     }
 
     function PostContentPreview({ group }) {
-      const firstItem = group.items[0]
-      const content = firstItem.postContent || ''
       return html`
         <div class="px-5 pb-3">
-          <div class="text-xs font-semibold text-gray-400 mb-1">Post preview:</div>
-          <div class="text-sm leading-relaxed text-gray-200 whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
-            ${truncate(content, 300)}
+          <div class="text-xs font-semibold text-gray-400 mb-2">📝 Posts per platform:</div>
+          <div class="space-y-3">
+            ${group.items.map(item => {
+              const platform = normalizePlatform(item.metadata.platform)
+              const cfg = PLATFORMS[platform] || { icon: '❓', color: '#888', name: platform }
+              const content = item.postContent || ''
+              return html`
+                <div class="rounded-lg border border-white/10 bg-white/5 overflow-hidden">
+                  <div class="flex items-center gap-2 px-3 py-1.5 border-b border-white/10 bg-white/5">
+                    <span class="text-sm">${cfg.icon}</span>
+                    <span class="text-xs font-semibold" style="color: ${cfg.color}">${cfg.name}</span>
+                    <span class="text-xs text-gray-500 ml-auto">${content.length} chars</span>
+                  </div>
+                  <div class="text-sm leading-relaxed text-gray-300 whitespace-pre-wrap break-words max-h-40 overflow-y-auto px-3 py-2">
+                    ${content}
+                  </div>
+                </div>
+              `
+            })}
           </div>
         </div>`
     }
@@ -497,6 +537,7 @@
             <!-- Scrollable middle: video + checkboxes + preview -->
             <div class="flex-1 overflow-y-auto min-h-0">
               <${VideoPlayer} group=${group} />
+              <${ThumbnailPreview} group=${group} />
               <${PlatformCheckboxes} 
                 group=${group} 
                 selectedPlatforms=${selectedPlatforms} 

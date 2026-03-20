@@ -53,7 +53,7 @@ export function resolveThumbnailConfig(
   let referenceImage = config.referenceImage ?? null
   let style = config.style ?? null
   let promptOverride = config.promptOverride ?? null
-  let size: ThumbnailSize = config.size ?? '1536x1024'
+  let size: ThumbnailSize = config.size ?? contentTypeDefaultSize(contentType)
   const quality: ThumbnailQuality = config.quality ?? 'high'
 
   // Apply platform overrides if present
@@ -75,6 +75,16 @@ export function resolveThumbnailConfig(
   }
 
   return { enabled: true, referenceImagePath, style, promptOverride, size, quality }
+}
+
+/** Default thumbnail size based on content type's natural aspect ratio. */
+function contentTypeDefaultSize(contentType?: ThumbnailContentType): ThumbnailSize {
+  switch (contentType) {
+    case 'shorts': return '1024x1536'       // 9:16 portrait — matches short clip format
+    case 'medium-clips': return '1536x1024' // 16:9 landscape
+    case 'main': return '1536x1024'         // 16:9 landscape
+    default: return '1536x1024'
+  }
 }
 
 /**

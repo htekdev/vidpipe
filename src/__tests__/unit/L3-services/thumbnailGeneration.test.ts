@@ -332,4 +332,39 @@ describe('L3 thumbnailGeneration service', () => {
       await expect(generateThumbnail('prompt', '/out/thumb.png')).rejects.toThrow('DALL-E unavailable')
     })
   })
+
+  describe('content-type-aware default sizing', () => {
+    test('shorts default to portrait 1024x1536 when no size configured', () => {
+      mockGetThumbnailConfig.mockReturnValue({ enabled: true })
+      const config = resolveThumbnailConfig(undefined, 'shorts')
+      expect(config.size).toBe('1024x1536')
+    })
+
+    test('medium-clips default to landscape 1536x1024', () => {
+      mockGetThumbnailConfig.mockReturnValue({ enabled: true })
+      const config = resolveThumbnailConfig(undefined, 'medium-clips')
+      expect(config.size).toBe('1536x1024')
+    })
+
+    test('main defaults to landscape 1536x1024', () => {
+      mockGetThumbnailConfig.mockReturnValue({ enabled: true })
+      const config = resolveThumbnailConfig(undefined, 'main')
+      expect(config.size).toBe('1536x1024')
+    })
+
+    test('explicit config.size overrides content-type default', () => {
+      mockGetThumbnailConfig.mockReturnValue({ enabled: true, size: '1024x1024' })
+      const config = resolveThumbnailConfig(undefined, 'shorts')
+      expect(config.size).toBe('1024x1024')
+    })
+
+    test('platform override size takes precedence over content-type default', () => {
+      mockGetThumbnailConfig.mockReturnValue({
+        enabled: true,
+        platformOverrides: { tiktok: { size: '1024x1536' } },
+      })
+      const config = resolveThumbnailConfig('tiktok', 'main')
+      expect(config.size).toBe('1024x1536')
+    })
+  })
 })
