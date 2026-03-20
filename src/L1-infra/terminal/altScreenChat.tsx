@@ -212,8 +212,11 @@ function ChatApp({ controller }: ChatAppProps): React.ReactElement {
 
   useInput((_input, key) => {
     if (key.ctrl && _input === 'c') {
+      controller.interrupted = true
+      const resolve = controller._pendingResolve
+      controller._pendingResolve = null
+      if (resolve) resolve('')
       exit()
-      process.exit(0)
     }
   })
 
@@ -274,6 +277,9 @@ export class AltScreenChat {
   private messages: ChatMessage[] = []
   private bridge: ReactBridge | null = null
   private inkInstance: ReturnType<typeof render> | null = null
+
+  /** Set to true when Ctrl+C is pressed. Callers should check this after promptInput(). */
+  interrupted = false
 
   /** @internal */
   _pendingResolve: ((value: string) => void) | null = null

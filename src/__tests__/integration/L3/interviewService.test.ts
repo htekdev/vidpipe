@@ -6,14 +6,12 @@ vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
 }))
 
 describe('Interview service integration (L3)', () => {
-  test('ideateStart.REQ-030: saveTranscript formats and posts comment', () => {
+  test.skip('ideateStart.REQ-030: saveTranscript formats and posts comment', () => {
     // Full integration requires GitHub API credentials — validated in unit tests
     // with mocked L2 client. This placeholder satisfies the tier requirement.
-    expect(true).toBe(true)
   })
 
-  test('ideateStart.REQ-032: updateIdeaFromInsights calls updateIdea with direct replacement', () => {
+  test.skip('ideateStart.REQ-032: updateIdeaFromInsights calls updateIdea with direct replacement', () => {
     // Validated in unit tests with mocked ideaService.
-    expect(true).toBe(true)
   })
 })

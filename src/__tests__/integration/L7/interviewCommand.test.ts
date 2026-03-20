@@ -37,6 +37,7 @@ const mockAltScreenChatInstance = vi.hoisted(() => ({
   setStatus: vi.fn(),
   clearStatus: vi.fn(),
   promptInput: vi.fn().mockResolvedValue('no'),
+  interrupted: false,
   title: 'Test',
   subtitle: 'Test',
   inputPrompt: '> ',
@@ -237,9 +238,9 @@ describe('ideate-start command integration (L7)', () => {
   })
 
   // Stubs for E2E territory
-  test('ideateStart.REQ-011: builds on previous answers (E2E)', () => { expect(true).toBe(true) })
-  test('ideateStart.REQ-012: continues until /end (E2E)', () => { expect(true).toBe(true) })
-  test('ideateStart.REQ-013: Ctrl+C saves partial (E2E)', () => { expect(true).toBe(true) })
-  test('ideateStart.REQ-016: research tools (E2E)', () => { expect(true).toBe(true) })
-  test('ideateStart.REQ-034: partial save on interrupt (E2E)', () => { expect(true).toBe(true) })
+  test.skip('ideateStart.REQ-011: builds on previous answers (E2E)', () => {})
+  test.skip('ideateStart.REQ-012: continues until /end (E2E)', () => {})
+  test.skip('ideateStart.REQ-013: Ctrl+C saves partial (E2E)', () => {})
+  test.skip('ideateStart.REQ-016: research tools (E2E)', () => {})
+  test.skip('ideateStart.REQ-034: partial save on interrupt (E2E)', () => {})
 })

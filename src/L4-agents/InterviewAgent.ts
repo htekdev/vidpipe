@@ -218,13 +218,15 @@ export class InterviewAgent extends BaseAgent {
       throw new Error('No answer provider configured — cannot ask questions')
     }
 
+    const askedAt = new Date().toISOString()
     const answer = await this.answerProvider(question, context)
+    const answeredAt = new Date().toISOString()
 
     const pair: QAPair = {
       question,
       answer,
-      askedAt: new Date().toISOString(),
-      answeredAt: new Date().toISOString(),
+      askedAt,
+      answeredAt,
       questionNumber: context.questionNumber,
     }
     this.transcript.push(pair)

@@ -50,6 +50,10 @@ export async function runIdeateStart(issueNumber: string, options: IdeateStartOp
       context.questionNumber,
     )
     const answer = await chat.promptInput()
+    if (chat.interrupted) {
+      // Ctrl+C was pressed — return /end to cleanly stop the interview
+      return '/end'
+    }
     // Log internally for transcript (doesn't affect display)
     chat.addMessage('agent', question)
     chat.addMessage('user', answer)
