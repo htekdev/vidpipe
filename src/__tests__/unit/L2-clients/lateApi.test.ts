@@ -113,6 +113,30 @@ describe('LateApiClient', () => {
         scheduledFor: '2025-06-01T12:00:00Z',
       })
     })
+
+    it('passes thumbnail as string URL in mediaItems', async () => {
+      const newPost = {
+        _id: 'post-2',
+        content: 'Video post',
+        status: 'scheduled',
+        platforms: [{ platform: 'youtube', accountId: 'acct-1' }],
+        scheduledFor: '2025-06-01T12:00:00Z',
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      }
+      mockFetch.mockResolvedValueOnce(jsonResponse({ post: newPost }))
+
+      await client.createPost({
+        content: 'Video post',
+        platforms: [{ platform: 'youtube', accountId: 'acct-1' }],
+        mediaItems: [{ type: 'video', url: 'https://cdn/video.mp4', thumbnail: 'https://cdn/thumb.jpg' }],
+      })
+
+      const [, opts] = mockFetch.mock.calls[0]
+      const body = JSON.parse(opts.body)
+      expect(body.mediaItems[0].thumbnail).toBe('https://cdn/thumb.jpg')
+      expect(typeof body.mediaItems[0].thumbnail).toBe('string')
+    })
   })
 
   describe('deletePost', () => {

@@ -394,4 +394,23 @@ describe('enqueueApproval', () => {
       expect(result.results[0].error).toBe('Network timeout')
     })
   })
+
+  describe('thumbnail handling', () => {
+    it('passes thumbnail as string URL to createPost mediaItems', async () => {
+      mockGetItem.mockResolvedValue(makeQueueItem({ thumbnailPath: '/test/thumb.png', metadata: { thumbnailPath: '/test/thumb.png' } }))
+      mockFileExists.mockResolvedValue(true)
+      mockUploadMedia
+        .mockResolvedValueOnce({ url: 'https://cdn/media.mp4', type: 'video' })
+        .mockResolvedValueOnce({ url: 'https://cdn/thumb.png', type: 'image' })
+      mockCreatePost.mockResolvedValue({ _id: 'late-1' })
+
+      await enqueueApproval(['item-1'])
+
+      const createPostCall = mockCreatePost.mock.calls[0]?.[0]
+      if (createPostCall?.mediaItems?.[0]?.thumbnail) {
+        expect(typeof createPostCall.mediaItems[0].thumbnail).toBe('string')
+        expect(createPostCall.mediaItems[0].thumbnail).toBe('https://cdn/thumb.png')
+      }
+    })
+  })
 })

@@ -196,6 +196,17 @@ describe('Integration L3: content-type-aware default sizes', () => {
     const mod = await import('../../../L3-services/imageGeneration/thumbnailGeneration.js')
     expect(typeof mod.generateThumbnail).toBe('function')
   })
+
+  test('L2 Late API CreatePostParams accepts thumbnail as string URL', async () => {
+    // Type-level validation: thumbnail field is string, not object
+    const params: import('../../../L2-clients/late/lateApi.js').CreatePostParams = {
+      content: 'test',
+      platforms: [{ platform: 'youtube', accountId: 'a' }],
+      mediaItems: [{ type: 'video', url: 'https://cdn/v.mp4', thumbnail: 'https://cdn/thumb.jpg' }],
+    }
+    expect(params.mediaItems![0].thumbnail).toBe('https://cdn/thumb.jpg')
+    expect(typeof params.mediaItems![0].thumbnail).toBe('string')
+  })
 })
 
 // ── Tests requiring OPENAI_API_KEY (L2 runs real) ───────────────────────────

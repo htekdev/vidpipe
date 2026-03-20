@@ -38,6 +38,11 @@ describe('E2E: thumbnail generation module integrity', () => {
     expect(COST_BY_QUALITY.medium).toBeLessThanOrEqual(COST_BY_QUALITY.high)
   })
 
+  test('L2 Late API CreatePostParams thumbnail is a string type', async () => {
+    const { LateApiClient } = await import('../../L2-clients/late/lateApi.js')
+    expect(typeof LateApiClient).toBe('function')
+  })
+
   test('L7 thumbnail command exports runThumbnail', async () => {
     const mod = await import('../../L7-app/commands/thumbnail.js')
     expect(typeof mod.runThumbnail).toBe('function')

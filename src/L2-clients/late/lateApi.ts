@@ -64,7 +64,7 @@ export interface CreatePostParams {
   scheduledFor?: string
   timezone?: string
   isDraft?: boolean
-  mediaItems?: Array<{ type: 'image' | 'video'; url: string; thumbnail?: { url: string } }>
+  mediaItems?: Array<{ type: 'image' | 'video'; url: string; thumbnail?: string }>
   platformSpecificData?: Record<string, unknown>
   tiktokSettings?: {
     privacy_level: string

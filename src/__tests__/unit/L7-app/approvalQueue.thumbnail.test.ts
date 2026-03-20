@@ -154,7 +154,7 @@ describe('L7 Unit: approvalQueue — thumbnail upload', () => {
       expect.objectContaining({
         mediaItems: expect.arrayContaining([
           expect.objectContaining({
-            thumbnail: { url: 'https://cdn/thumb.png' },
+            thumbnail: 'https://cdn/thumb.png',
           }),
         ]),
       }),
