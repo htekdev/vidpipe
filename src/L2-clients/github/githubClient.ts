@@ -40,6 +40,8 @@ export interface UpdateGitHubIssueInput {
 export interface ListGitHubIssuesOptions {
   labels?: readonly string[]
   maxResults?: number
+  /** GitHub issue state filter. Default: 'all'. */
+  state?: 'open' | 'closed' | 'all'
 }
 
 export interface SearchGitHubIssuesOptions {
@@ -220,7 +222,7 @@ export class GitHubClient {
         const response = await this.octokit.rest.issues.listForRepo({
           owner: this.owner,
           repo: this.repo,
-          state: 'open',
+          state: options.state ?? 'all',
           labels: options.labels && options.labels.length > 0 ? normalizeLabels(options.labels).join(',') : undefined,
           sort: undefined,
           direction: undefined,

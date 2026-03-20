@@ -1,5 +1,7 @@
 import { describe, it, test, expect, vi, beforeEach } from 'vitest'
 
+// Fix: listIssues defaults to state='all' to include closed ideas
+
 // Mock L1 infrastructure (ESM imports verified)
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
