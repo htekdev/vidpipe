@@ -13,6 +13,7 @@ import { runChat } from './commands/chat'
 import { runIdeate } from './commands/ideate'
 import { runConfigure } from './commands/configure'
 import { runIntroOutro } from './commands/introOutro'
+import { runThumbnail } from './commands/thumbnail'
 import { runIdeaUpdate, runIdeaGet, runIdeaSearch } from './commands/ideaUpdate'
 import { startReviewServer } from './review/server'
 import { openUrl } from '../L1-infra/cli/cli.js'
@@ -210,6 +211,26 @@ program
     initConfig()
     await runIntroOutro(subcommand, args)
     process.exit(process.exitCode ?? 0)
+  })
+
+program
+  .command('thumbnail')
+  .description('Generate a thumbnail for a recording folder or video file')
+  .argument('<path>', 'Path to a recording folder or video file')
+  .option('-p, --platform <platform>', 'Target platform (youtube, tiktok, instagram, linkedin, x)')
+  .option('--prompt <text>', 'Custom thumbnail prompt (overrides AI planning)')
+  .option('-o, --output <path>', 'Output directory for the thumbnail')
+  .option('-t, --type <type>', 'Content type: main, shorts, or medium-clips', 'main')
+  .option('-f, --force', 'Regenerate even if thumbnail exists')
+  .action(async (path: string, opts: Record<string, unknown>) => {
+    await runThumbnail(path, {
+      platform: opts.platform as string | undefined,
+      prompt: opts.prompt as string | undefined,
+      output: opts.output as string | undefined,
+      type: opts.type as string | undefined,
+      force: opts.force as boolean | undefined,
+    })
+    process.exit(0)
   })
 
 // --- Default command (process video or watch) ---

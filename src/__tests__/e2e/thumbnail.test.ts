@@ -32,6 +32,11 @@ describe('E2E: thumbnail generation module integrity', () => {
     expect(mod.COST_BY_QUALITY).toEqual({ low: 0.04, medium: 0.07, high: 0.07 })
   })
 
+  test('L7 thumbnail command exports runThumbnail', async () => {
+    const mod = await import('../../L7-app/commands/thumbnail.js')
+    expect(typeof mod.runThumbnail).toBe('function')
+  })
+
   test('resolveThumbnailConfig returns valid shape without API', async () => {
     const { resolveThumbnailConfig } = await import(
       '../../L3-services/imageGeneration/thumbnailGeneration.js'
