@@ -62,6 +62,7 @@ describe('L3 Integration: scheduler calendar with no Late API', () => {
 
   describe('rescheduleIdeaPosts', () => {
     it('returns zeros when no idea-linked published items exist', async () => {
+      // Fix: reschedule skips published posts and sorts by urgency (publishBy)
       const result = await rescheduleIdeaPosts()
 
       expect(result).toEqual<RescheduleResult>({

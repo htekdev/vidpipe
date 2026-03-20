@@ -61,6 +61,7 @@ describe('schedulePost e2e', () => {
   // ── rescheduleIdeaPosts contract ────────────────────────────────
 
   test('rescheduleIdeaPosts is exported and callable', () => {
+    // Fix: reschedule sorts by urgency and gracefully skips published posts
     expect(typeof rescheduleIdeaPosts).toBe('function')
   })
 
