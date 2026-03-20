@@ -73,6 +73,8 @@ describe('vidpipe thumbnail CLI command', () => {
     mockGetThumbnailConfig.mockReturnValue({ enabled: false })
     await runThumbnail('video.mp4')
     expect(mockExit).toHaveBeenCalledWith(1)
+    // Verifies return after process.exit prevents further execution
+    expect(mockGenerateThumbnail).not.toHaveBeenCalled()
   })
 
   test('generates thumbnail for a video file', async () => {
@@ -187,5 +189,32 @@ describe('vidpipe thumbnail CLI command', () => {
       undefined,
       'shorts',
     )
+  })
+
+  test('exits and returns when video file not found', async () => {
+    mockFileExists
+      .mockResolvedValueOnce(false)  // summary.json
+      .mockResolvedValueOnce(false)  // transcript.json
+      .mockResolvedValueOnce(false)  // file does NOT exist
+
+    await runThumbnail('nonexistent.mp4')
+
+    expect(mockExit).toHaveBeenCalledWith(1)
+    // return after process.exit prevents generateThumbnail from being called
+    expect(mockGenerateThumbnail).not.toHaveBeenCalled()
+  })
+
+  test('exits and returns on generation error', async () => {
+    mockFileExists
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true)
+      .mockResolvedValueOnce(false)
+
+    mockGenerateThumbnail.mockRejectedValue(new Error('API key missing'))
+
+    await runThumbnail('video.mp4')
+
+    expect(mockExit).toHaveBeenCalledWith(1)
   })
 })

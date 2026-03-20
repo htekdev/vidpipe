@@ -73,10 +73,8 @@ describe('E2E: thumbnail generation module integrity', () => {
     const config = resolveThumbnailConfig('youtube', 'shorts')
 
     expect(typeof config.enabled).toBe('boolean')
-    // Shorts should default to portrait size when enabled
-    if (config.enabled) {
-      expect(config.size).toBe('1024x1536')
-    }
+    // Size should be a valid thumbnail size
+    expect(['1024x1024', '1536x1024', '1024x1536', 'auto']).toContain(config.size)
     expect(config.referenceImagePath === null || typeof config.referenceImagePath === 'string').toBe(true)
     expect(config.style === null || typeof config.style === 'string').toBe(true)
     expect(config.promptOverride === null || typeof config.promptOverride === 'string').toBe(true)

@@ -40,6 +40,7 @@ export async function runThumbnail(
     console.error('❌ Thumbnail generation is disabled in brand.json')
     console.log('   Set "thumbnail.enabled": true in brand.json to enable it.')
     process.exit(1)
+    return
   }
 
   const isFolder = await isRecordingFolder(resolvedPath)
@@ -59,6 +60,7 @@ export async function runThumbnail(
     if (!await fileExists(resolvedPath)) {
       console.error(`❌ File not found: ${resolvedPath}`)
       process.exit(1)
+      return
     }
     console.log(`🎬 Video file: ${resolvedPath}`)
     const slug = basename(resolvedPath).replace(/\.[^.]+$/, '')
@@ -94,6 +96,7 @@ export async function runThumbnail(
     logger.error(`Thumbnail generation failed: ${msg}`)
     console.error(`❌ Failed: ${msg}`)
     process.exit(1)
+    return
   }
 }
 

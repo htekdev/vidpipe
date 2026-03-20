@@ -27,4 +27,9 @@ describe('thumbnail command module', () => {
     expect(opts.platform).toBe('youtube')
     expect(opts.force).toBe(true)
   })
+
+  test('ThumbnailCommandOptions accepts minimal options', async () => {
+    const opts: import('../../../L7-app/commands/thumbnail.js').ThumbnailCommandOptions = {}
+    expect(opts.force).toBeUndefined()
+  })
 })
