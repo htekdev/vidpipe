@@ -119,7 +119,7 @@ describe('L7 Unit: configure command', () => {
 
     expect(mockLoadGlobalConfig).toHaveBeenCalledTimes(1)
     expect(mockMaskSecret).toHaveBeenCalledWith('sk-secret-value')
-    expect(mockConsoleLog).toHaveBeenCalledTimes(18)
+    expect(mockConsoleLog).toHaveBeenCalledTimes(19)
 
     const logs = getLogs()
     expect(logs).toContain('credentials.openaiApiKey')
@@ -156,6 +156,24 @@ describe('L7 Unit: configure command', () => {
 
     expect(mockGetConfigPath).toHaveBeenCalledTimes(1)
     expect(mockConsoleLog).toHaveBeenCalledWith('C:\\Users\\test\\AppData\\Roaming\\vidpipe\\config.json')
+  })
+
+  it('maps schedule-config to defaults.scheduleConfig for set', async () => {
+    mockGetGlobalConfigValue.mockReturnValue('/custom/schedule.json')
+
+    await runConfigure('set', ['schedule-config', '/custom/schedule.json'])
+
+    expect(mockSetGlobalConfigValue).toHaveBeenCalledWith('defaults', 'scheduleConfig', '/custom/schedule.json')
+    expect(getLogs()).toContain('Set defaults.scheduleConfig = /custom/schedule.json')
+  })
+
+  it('maps schedule-config to defaults.scheduleConfig for get', async () => {
+    mockGetGlobalConfigValue.mockReturnValue('/custom/schedule.json')
+
+    await runConfigure('get', ['schedule-config'])
+
+    expect(mockGetGlobalConfigValue).toHaveBeenCalledWith('defaults', 'scheduleConfig')
+    expect(getLogs()).toContain('defaults.scheduleConfig = /custom/schedule.json')
   })
 
   it('prints an error for an unknown subcommand', async () => {

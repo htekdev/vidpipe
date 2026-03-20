@@ -14,6 +14,8 @@ import { runIdeate } from './commands/ideate'
 import { runIdeateStart } from './commands/ideateStart'
 import type { IdeateStartOptions } from './commands/ideateStart'
 import { runConfigure } from './commands/configure'
+import { runIntroOutro } from './commands/introOutro'
+import { runIdeaUpdate, runIdeaGet, runIdeaSearch } from './commands/ideaUpdate'
 import { startReviewServer } from './review/server'
 import { openUrl } from '../L1-infra/cli/cli.js'
 import { readTextFileSync, listDirectorySync } from '../L1-infra/fileSystem/fileSystem.js'
@@ -104,6 +106,16 @@ program
   })
 
 program
+  .command('reschedule')
+  .description('Reschedule idea-linked posts for optimal slot placement, displacing non-idea content')
+  .option('--dry-run', 'Preview changes without updating posts')
+  .action(async (opts) => {
+    const { runReschedule } = await import('./commands/reschedule.js')
+    await runReschedule({ dryRun: opts.dryRun })
+    process.exit(0)
+  })
+
+program
   .command('chat')
   .description('Interactive chat session with the schedule management agent')
   .action(async () => {
@@ -149,10 +161,48 @@ program
   .option('--publish-by <date>', 'Publish deadline (ISO 8601 date, default: 14 days from now, --no-ai only)')
   .option('--trend-context <context>', 'Why this topic is timely (--no-ai only)')
   .option('--no-ai', 'Skip AI research agent — create directly from CLI flags + defaults')
+  .option('-p, --prompt <prompt>', 'Free-form prompt to guide idea generation (e.g., "Cover this article: https://...")')
   .action(async (opts) => {
     initConfig()
     await runIdeate(opts)
     process.exit(0)
+  })
+
+program
+  .command('idea')
+  .description('Manage ideas — view, update, and search existing ideas')
+  .argument('<subcommand>', 'Subcommand: get, update, search')
+  .argument('[arg]', 'Issue number (get/update) or search query (search)')
+  .option('--topic <topic>', 'Update the idea topic/title')
+  .option('--hook <hook>', 'Update the attention-grabbing hook')
+  .option('--audience <audience>', 'Update the target audience')
+  .option('--platforms <platforms>', 'Target platforms (comma-separated)')
+  .option('--key-takeaway <takeaway>', 'Update the core message')
+  .option('--talking-points <points>', 'Update talking points (comma-separated)')
+  .option('--tags <tags>', 'Filter/update tags (comma-separated)')
+  .option('--status <status>', 'Filter/update status (draft|ready|recorded|published)')
+  .option('--publish-by <date>', 'Update publish deadline (ISO 8601 date)')
+  .option('--urgency <level>', 'Set urgency: hot (3d), urgent (7d), soon (14d), flexible (60d)')
+  .option('--trend-context <context>', 'Update trend context')
+  .option('--priority <level>', 'Filter by priority: hot-trend, timely, evergreen')
+  .option('--platform <platform>', 'Filter by platform')
+  .option('--tag <tag>', 'Filter by tag')
+  .option('--format <format>', 'Output format: table (default) or json')
+  .action(async (subcommand: string, arg: string | undefined, opts) => {
+    initConfig()
+    if (subcommand === 'update') {
+      if (!arg) { console.error('Usage: vidpipe idea update <issue-number> [options]'); process.exitCode = 1 }
+      else await runIdeaUpdate(arg, opts)
+    } else if (subcommand === 'get') {
+      if (!arg) { console.error('Usage: vidpipe idea get <issue-number>'); process.exitCode = 1 }
+      else await runIdeaGet(arg)
+    } else if (subcommand === 'search') {
+      await runIdeaSearch(arg, opts)
+    } else {
+      console.error(`Unknown subcommand: ${subcommand}. Use 'get', 'update', or 'search'`)
+      process.exitCode = 1
+    }
+    process.exit(process.exitCode ?? 0)
   })
 
 program
@@ -161,6 +211,16 @@ program
   .argument('[args...]', 'Arguments for the subcommand (e.g., key and value for set)')
   .action(async (subcommand: string | undefined, args: string[]) => {
     await runConfigure(subcommand, args)
+    process.exit(process.exitCode ?? 0)
+  })
+
+program
+  .command('intro-outro [subcommand]')
+  .description('Manage video intro and outro assets — paths, rules, and platform overrides')
+  .argument('[args...]', 'Arguments for the subcommand')
+  .action(async (subcommand: string | undefined, args: string[]) => {
+    initConfig()
+    await runIntroOutro(subcommand, args)
     process.exit(process.exitCode ?? 0)
   })
 
@@ -184,6 +244,7 @@ const defaultCmd = program
   .option('--no-social', 'Skip social media post generation')
   .option('--no-captions', 'Skip caption generation/burning')
   .option('--no-visual-enhancement', 'Skip visual enhancement (AI image overlays)')
+  .option('--no-intro-outro', 'Skip intro/outro concatenation')
   .option('--no-social-publish','Skip social media publishing/queue-build stage')
   .option('--late-api-key <key>', 'Late API key (default: env LATE_API_KEY)')
   .option('--late-profile-id <id>', 'Late profile ID (default: env LATE_PROFILE_ID)')
@@ -217,6 +278,7 @@ const defaultCmd = program
       social: opts.social,
       captions: opts.captions,
       visualEnhancement: opts.visualEnhancement,
+      introOutro: opts.introOutro,
       socialPublish: opts.socialPublish,
       lateApiKey: opts.lateApiKey,
       lateProfileId: opts.lateProfileId,

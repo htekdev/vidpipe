@@ -17,6 +17,7 @@ import type {
   PipelineStage,
   Chapter,
   Idea,
+  Platform,
 } from '../L0-pure/types/index'
 import { PipelineStage as Stage, getStageInfo, TOTAL_STAGES } from '../L0-pure/types/index'
 import type { ShortVideoAsset } from '../L5-assets/ShortVideoAsset.js'
@@ -292,19 +293,62 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
       skipStage(Stage.CaptionBurn, 'SKIP_CAPTIONS')
     }
 
-    // 6. Shorts — asset handles clip planning, extraction, caption burning
+    // 6. Intro/Outro — concat intro + captioned video + outro (silent bookends)
+    let introOutroVideoPath: string | undefined
+    if (!cfg.SKIP_INTRO_OUTRO) {
+      introOutroVideoPath = await trackStage<string>(Stage.IntroOutro, () => asset.getIntroOutroVideo())
+    } else {
+      skipStage(Stage.IntroOutro, 'SKIP_INTRO_OUTRO')
+    }
+
+    // 7. Shorts — asset handles clip planning, extraction, caption burning
     let shorts: ShortClip[] = []
     if (!cfg.SKIP_SHORTS) {
-      const shortAssets = await trackStage<ShortVideoAsset[]>(Stage.Shorts, () => asset.getShorts()) ?? []
+      const shortAssets = await trackStage<ShortVideoAsset[]>(Stage.Shorts, async () => {
+        const assets = await asset.getShorts()
+        // Apply intro/outro to each short and its variants (if configured)
+        if (!cfg.SKIP_INTRO_OUTRO) {
+          for (const shortAsset of assets) {
+            const introOutroPath = await shortAsset.getIntroOutroVideo()
+            if (introOutroPath !== shortAsset.clip.outputPath) {
+              shortAsset.clip.outputPath = introOutroPath
+              // Update captionedPath so queue builder uses the intro/outro version
+              shortAsset.clip.captionedPath = introOutroPath
+            }
+            const variantResults = await shortAsset.getIntroOutroVariants()
+            if (shortAsset.clip.variants) {
+              for (const variant of shortAsset.clip.variants) {
+                const updated = variantResults.get(variant.platform as Platform)
+                if (updated) variant.path = updated
+              }
+            }
+          }
+        }
+        return assets
+      }) ?? []
       shorts = shortAssets.map(s => s.clip)
     } else {
       skipStage(Stage.Shorts, 'SKIP_SHORTS')
     }
 
-    // 7. Medium Clips — asset handles clip planning, extraction, transitions
+    // 8. Medium Clips — asset handles clip planning, extraction, transitions
     let mediumClips: MediumClip[] = []
     if (!cfg.SKIP_MEDIUM_CLIPS) {
-      const mediumAssets = await trackStage<MediumClipAsset[]>(Stage.MediumClips, () => asset.getMediumClips()) ?? []
+      const mediumAssets = await trackStage<MediumClipAsset[]>(Stage.MediumClips, async () => {
+        const assets = await asset.getMediumClips()
+        // Apply intro/outro to each medium clip (if configured)
+        if (!cfg.SKIP_INTRO_OUTRO) {
+          for (const clipAsset of assets) {
+            const introOutroPath = await clipAsset.getIntroOutroVideo()
+            if (introOutroPath !== clipAsset.clip.outputPath) {
+              clipAsset.clip.outputPath = introOutroPath
+              // Update captionedPath so queue builder uses the intro/outro version
+              clipAsset.clip.captionedPath = introOutroPath
+            }
+          }
+        }
+        return assets
+      }) ?? []
       mediumClips = mediumAssets.map(m => m.clip)
     } else {
       skipStage(Stage.MediumClips, 'SKIP_MEDIUM_CLIPS')
@@ -353,7 +397,7 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
 
     // 13. Queue Build — asset handles publish-queue/ population
     if (!cfg.SKIP_SOCIAL_PUBLISH && socialPosts.length > 0) {
-      await trackStage<void>(Stage.QueueBuild, () => asset.buildQueue(shorts, mediumClips, socialPosts, captionedVideoPath))
+      await trackStage<void>(Stage.QueueBuild, () => asset.buildQueue(shorts, mediumClips, socialPosts, introOutroVideoPath ?? captionedVideoPath))
     } else if (cfg.SKIP_SOCIAL_PUBLISH) {
       skipStage(Stage.QueueBuild, 'SKIP_SOCIAL_PUBLISH')
     } else {
@@ -398,6 +442,7 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
       enhancedVideoPath,
       captions: captions ? [captions.srt, captions.vtt, captions.ass] : undefined,
       captionedVideoPath,
+      introOutroVideoPath,
       summary,
       chapters,
       shorts,

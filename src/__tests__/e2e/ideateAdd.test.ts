@@ -4,6 +4,7 @@
  * No mocking — verifies the ideate module exports and --add option types.
  * GitHub API calls are not made (no GITHUB_TOKEN configured in CI).
  */
+// Fix: listIssues defaults to state='all' to include closed ideas
 import { describe, test, expect } from 'vitest'
 import type { IdeateCommandOptions } from '../../L7-app/commands/ideate.js'
 
@@ -28,6 +29,7 @@ describe('E2E: ideate --add command', () => {
       trendContext: 'Timely because...',
       ai: false,
       format: 'json',
+      prompt: 'Cover this article: https://example.com',
     }
 
     expect(options.add).toBe(true)
@@ -42,6 +44,7 @@ describe('E2E: ideate --add command', () => {
     expect(options.trendContext).toBe('Timely because...')
     expect(options.ai).toBe(false)
     expect(options.format).toBe('json')
+    expect(options.prompt).toBe('Cover this article: https://example.com')
   })
 
   test('IdeateCommandOptions --add fields default to undefined', () => {

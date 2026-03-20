@@ -274,6 +274,32 @@ describe('resetGlobalConfig', () => {
   })
 })
 
+describe('GlobalDefaults accepts scheduleConfig', () => {
+  it('stores and retrieves scheduleConfig from the defaults section', () => {
+    setPlatform('linux')
+    setExistingPaths(['/home/tester/.config/vidpipe'])
+
+    setGlobalConfigValue('defaults', 'scheduleConfig', '/custom/schedule.json')
+
+    const configWrite = getWriteCall('/home/tester/.config/vidpipe/config.json')
+    expect(configWrite).toBeDefined()
+    expect(JSON.parse(configWrite![1])).toEqual({
+      credentials: {},
+      defaults: { scheduleConfig: '/custom/schedule.json' },
+    })
+  })
+
+  it('reads scheduleConfig from a saved config file', () => {
+    mockExistsSync.mockReturnValue(true)
+    mockReadFileSync.mockReturnValue(JSON.stringify({
+      credentials: {},
+      defaults: { scheduleConfig: '/shared/schedule.json' },
+    }))
+
+    expect(getGlobalConfigValue('defaults', 'scheduleConfig')).toBe('/shared/schedule.json')
+  })
+})
+
 describe('maskSecret', () => {
   it('returns a fixed mask for short values', () => {
     expect(maskSecret('short-key')).toBe('****')

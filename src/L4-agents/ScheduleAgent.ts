@@ -2,10 +2,10 @@ import { BaseAgent } from './BaseAgent.js'
 import { createLateApiClient } from '../L3-services/lateApi/lateApiService.js'
 import { findNextSlot, getScheduleCalendar } from '../L3-services/scheduler/scheduler.js'
 import { loadScheduleConfig } from '../L3-services/scheduler/scheduleConfig.js'
-import { buildRealignPlan, executeRealignPlan, buildPrioritizedRealignPlan } from '../L3-services/scheduler/realign.js'
+import { buildRealignPlan, executeRealignPlan } from '../L3-services/scheduler/realign.js'
 import logger from '../L1-infra/logger/configLogger.js'
 import type { LatePost } from '../L3-services/lateApi/lateApiService.js'
-import type { RealignPlan, PriorityRule } from '../L3-services/scheduler/realign.js'
+import type { RealignPlan } from '../L3-services/scheduler/realign.js'
 import type { ToolWithHandler, UserInputHandler, LLMSession } from '../L3-services/llm/providerFactory.js'
 
 /** Friendly labels for tool calls shown in chat mode */
@@ -420,7 +420,6 @@ export class ScheduleAgent extends BaseAgent {
 
   private async startPrioritizeRealign(args: Record<string, unknown>): Promise<unknown> {
     try {
-      const priorities = (args.priorities as PriorityRule[]) ?? []
       const platform = args.platform as string | undefined
       const dryRun = (args.dryRun as boolean) ?? true
 
@@ -434,7 +433,7 @@ export class ScheduleAgent extends BaseAgent {
       this.realignJobs.set(jobId, job)
 
       // Fire-and-forget — runs in background
-      this.runRealignJob(job, priorities, platform, dryRun).catch((err) => {
+      this.runRealignJob(job, platform, dryRun).catch((err) => {
         job.status = 'failed'
         job.error = err instanceof Error ? err.message : String(err)
         job.completedAt = new Date().toISOString()
@@ -445,7 +444,7 @@ export class ScheduleAgent extends BaseAgent {
         started: true,
         jobId,
         dryRun,
-        message: `Prioritized realignment started. Use check_realign_status with jobId "${jobId}" to monitor progress.`,
+        message: `Realignment started. Use check_realign_status with jobId "${jobId}" to monitor progress.`,
       }
     } catch (err) {
       logger.error('start_prioritize_realign failed', { error: err })
@@ -455,12 +454,11 @@ export class ScheduleAgent extends BaseAgent {
 
   private async runRealignJob(
     job: RealignJob,
-    priorities: PriorityRule[],
     platform: string | undefined,
     dryRun: boolean,
   ): Promise<void> {
-    // Phase 1: Build plan
-    const plan: RealignPlan = await buildPrioritizedRealignPlan({ priorities, platform })
+    // Phase 1: Build plan (schedulePost handles idea priority + displacement)
+    const plan: RealignPlan = await buildRealignPlan({ platform })
     job.plan = {
       totalFetched: plan.totalFetched,
       toReschedule: plan.posts.length,

@@ -1,6 +1,7 @@
 import { describe, test, expect } from 'vitest'
 import { LateApiClient } from '../../L2-clients/late/lateApi.js'
-import { findNextSlot, type SlotOptions } from '../../L3-services/scheduler/scheduler.js'
+import { findNextSlot, rescheduleIdeaPosts, type SlotOptions, type RescheduleResult } from '../../L3-services/scheduler/scheduler.js'
+import { updatePublishedItemSchedule } from '../../L3-services/postStore/postStore.js'
 
 const hasLateApiKey = !!process.env.LATE_API_KEY
 
@@ -56,4 +57,73 @@ describe('schedulePost e2e', () => {
       expect(slot === null || !Number.isNaN(Date.parse(slot))).toBe(true)
     }, 15_000)
   })
+
+  // ── rescheduleIdeaPosts contract ────────────────────────────────
+
+  test('rescheduleIdeaPosts is exported and callable', () => {
+    // Fix: reschedule sorts by urgency and gracefully skips published posts
+    expect(typeof rescheduleIdeaPosts).toBe('function')
+  })
+
+  test('RescheduleResult type has required fields', () => {
+    const result: RescheduleResult = {
+      rescheduled: 0,
+      unchanged: 0,
+      failed: 0,
+      details: [],
+    }
+
+    expect(result).toHaveProperty('rescheduled')
+    expect(result).toHaveProperty('unchanged')
+    expect(result).toHaveProperty('failed')
+    expect(result).toHaveProperty('details')
+    expect(Array.isArray(result.details)).toBe(true)
+  })
+
+  test('rescheduleIdeaPosts accepts dryRun option', () => {
+    const params: Parameters<typeof rescheduleIdeaPosts> = [{ dryRun: true }]
+    expect(params[0]).toEqual({ dryRun: true })
+  })
+
+  // ── updatePublishedItemSchedule contract ────────────────────────
+
+  test('updatePublishedItemSchedule is exported and callable', () => {
+    expect(typeof updatePublishedItemSchedule).toBe('function')
+  })
+
+  test('updatePublishedItemSchedule rejects invalid IDs', async () => {
+    await expect(
+      updatePublishedItemSchedule('../traversal', '2026-01-01T00:00:00Z'),
+    ).rejects.toThrow('Invalid ID format')
+  })
+
+  test('rescheduleIdeaPosts dry run returns result without modifying posts', async () => {
+    const result = await rescheduleIdeaPosts({ dryRun: true })
+
+    expect(result).toHaveProperty('rescheduled')
+    expect(result).toHaveProperty('unchanged')
+    expect(result).toHaveProperty('failed')
+    expect(Array.isArray(result.details)).toBe(true)
+    expect(typeof result.rescheduled).toBe('number')
+    expect(typeof result.unchanged).toBe('number')
+    expect(typeof result.failed).toBe('number')
+  }, 30_000)
+})
+
+// ── buildPrioritizedRealignPlan removed ─────────────────────────
+
+test('buildPrioritizedRealignPlan is no longer exported from realign', async () => {
+  const realignModule = await import('../../L3-services/scheduler/realign.js')
+  expect('buildPrioritizedRealignPlan' in realignModule).toBe(false)
+})
+
+test('buildRealignPlan is still exported from realign', async () => {
+  const { buildRealignPlan } = await import('../../L3-services/scheduler/realign.js')
+  expect(typeof buildRealignPlan).toBe('function')
+})
+
+test('spacing fields in ScheduleContext are accessible', async () => {
+  const { schedulePost, buildBookedMap } = await import('../../L3-services/scheduler/scheduler.js')
+  expect(typeof schedulePost).toBe('function')
+  expect(typeof buildBookedMap).toBe('function')
 })

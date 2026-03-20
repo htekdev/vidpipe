@@ -66,6 +66,7 @@ import {
   updateItem,
   itemExists,
   getPublishedItems,
+  updatePublishedItemSchedule,
 } from '../../../L3-services/postStore/postStore.js'
 import type { QueueItemMetadata } from '../../../L3-services/postStore/postStore.js'
 
@@ -634,6 +635,57 @@ describe('L3 Integration: postStore', () => {
       const items = await getPublishedItems()
       expect(items[0].id).toBe('earlier')
       expect(items[1].id).toBe('later')
+    })
+  })
+
+  // ── updatePublishedItemSchedule ─────────────────────────────────
+
+  describe('updatePublishedItemSchedule', () => {
+    it('reads metadata, updates scheduledFor, and writes back', async () => {
+      const existingMeta = makeMetadata({
+        id: 'item-resched',
+        status: 'published',
+        scheduledFor: '2026-03-01T19:00:00-06:00',
+        latePostId: 'late-123',
+      })
+      mockReadTextFile.mockResolvedValueOnce(JSON.stringify(existingMeta))
+      mockWriteTextFile.mockResolvedValueOnce(undefined)
+
+      await updatePublishedItemSchedule('item-resched', '2026-03-05T20:00:00-06:00')
+
+      expect(mockReadTextFile).toHaveBeenCalledWith(
+        expect.stringContaining('item-resched'),
+      )
+      expect(mockWriteTextFile).toHaveBeenCalledWith(
+        expect.stringContaining('item-resched'),
+        expect.any(String),
+      )
+
+      const writtenJson = JSON.parse(mockWriteTextFile.mock.calls[0][1])
+      expect(writtenJson.scheduledFor).toBe('2026-03-05T20:00:00-06:00')
+      // Other metadata fields should be preserved
+      expect(writtenJson.id).toBe('item-resched')
+      expect(writtenJson.latePostId).toBe('late-123')
+    })
+
+    it('rejects invalid ID format to prevent path traversal', async () => {
+      await expect(
+        updatePublishedItemSchedule('../etc/passwd', '2026-03-01T19:00:00Z'),
+      ).rejects.toThrow('Invalid ID format')
+    })
+
+    it('rejects empty ID', async () => {
+      await expect(
+        updatePublishedItemSchedule('', '2026-03-01T19:00:00Z'),
+      ).rejects.toThrow('Invalid ID format')
+    })
+
+    it('throws when metadata file does not exist', async () => {
+      mockReadTextFile.mockRejectedValueOnce(new Error('ENOENT: no such file'))
+
+      await expect(
+        updatePublishedItemSchedule('nonexistent-item', '2026-03-01T19:00:00Z'),
+      ).rejects.toThrow()
     })
   })
 })

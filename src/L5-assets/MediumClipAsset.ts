@@ -13,7 +13,7 @@ import { fileExists, ensureDirectory } from '../L1-infra/fileSystem/fileSystem.j
 import type { MediumClip, Platform } from '../L0-pure/types/index.js'
 import { Platform as PlatformEnum } from '../L0-pure/types/index.js'
 import type { AssetOptions } from './Asset.js'
-import { extractCompositeClip } from '../L4-agents/videoServiceBridge.js'
+import { extractCompositeClip, applyIntroOutro } from '../L4-agents/videoServiceBridge.js'
 import type { MainVideoAsset } from './MainVideoAsset.js'
 
 /**
@@ -58,6 +58,11 @@ export class MediumClipAsset extends VideoAsset {
    */
   get videoPath(): string {
     return join(this.videoDir, 'media.mp4')
+  }
+
+  /** Path to the clip with intro/outro applied */
+  get introOutroVideoPath(): string {
+    return join(this.videoDir, 'media-intro-outro.mp4')
   }
 
   /**
@@ -118,5 +123,31 @@ export class MediumClipAsset extends VideoAsset {
     await extractCompositeClip(parentVideo, this.clip.segments, this.videoPath)
 
     return this.videoPath
+  }
+
+  /**
+   * Apply intro/outro to the medium clip.
+   * Uses brand config rules for 'medium-clips' video type.
+   *
+   * @returns Path to the intro/outro'd video, or the original path if skipped
+   */
+  async getIntroOutroVideo(): Promise<string> {
+    if (await fileExists(this.introOutroVideoPath)) {
+      return this.introOutroVideoPath
+    }
+
+    // Prefer the captioned version (has burned-in captions), then the raw clip
+    const candidates = [this.clip.captionedPath, this.clip.outputPath]
+    let clipPath: string | undefined
+    for (const candidate of candidates) {
+      if (candidate && await fileExists(candidate)) {
+        clipPath = candidate
+        break
+      }
+    }
+    if (!clipPath) {
+      clipPath = await this.getResult()
+    }
+    return applyIntroOutro(clipPath, 'medium-clips', this.introOutroVideoPath)
   }
 }

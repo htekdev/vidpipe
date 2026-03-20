@@ -27,6 +27,8 @@ vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
     }
     return schedule
   },
+  getDisplacementConfig: () => ({ enabled: true, canDisplace: 'non-idea-only' }),
+  getIdeaSpacingConfig: () => ({ samePlatformHours: 24, crossPlatformHours: 6 }),
   clearScheduleCache: vi.fn(),
 }))
 
@@ -34,6 +36,7 @@ vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
 const mockGetPublishedItems = vi.fn()
 vi.mock('../../../L3-services/postStore/postStore.js', () => ({
   getPublishedItems: () => mockGetPublishedItems(),
+  getScheduledItemsByIdeaIds: vi.fn().mockResolvedValue([]),
 }))
 
 // Mock LateApiClient

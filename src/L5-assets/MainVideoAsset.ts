@@ -32,7 +32,7 @@ import {
 } from '../L1-infra/fileSystem/fileSystem.js'
 import { slugify } from '../L0-pure/text/text.js'
 import { generateSRT, generateVTT, generateStyledASS } from '../L0-pure/captions/captionGenerator.js'
-import { ffprobe, burnCaptions, transcodeToMp4 } from '../L4-agents/videoServiceBridge.js'
+import { ffprobe, burnCaptions, transcodeToMp4, applyIntroOutro } from '../L4-agents/videoServiceBridge.js'
 import { transcribeVideo, analyzeVideoClipDirection } from '../L4-agents/analysisServiceBridge.js'
 import { removeDeadSilence } from '../L4-agents/SilenceRemovalAgent.js'
 import { generateShorts } from '../L4-agents/ShortsAgent.js'
@@ -119,6 +119,11 @@ export class MainVideoAsset extends VideoAsset {
   /** Path to the fully produced video: videoDir/{slug}-produced.mp4 */
   get producedVideoPath(): string {
     return join(this.videoDir, `${this.slug}-produced.mp4`)
+  }
+
+  /** Path to the video with intro/outro applied: videoDir/{slug}-intro-outro.mp4 */
+  get introOutroVideoPath(): string {
+    return join(this.videoDir, `${this.slug}-intro-outro.mp4`)
   }
 
   /** Path to a produced video for a specific aspect ratio: videoDir/{slug}-produced-{ar}.mp4 */
@@ -469,6 +474,23 @@ export class MainVideoAsset extends VideoAsset {
     await burnCaptions(enhancedPath, captions.ass, this.captionedVideoPath)
     logger.info(`Captions burned into video: ${this.captionedVideoPath}`)
     return this.captionedVideoPath
+  }
+
+  /**
+   * Get the video with intro/outro applied.
+   * Concatenates intro (if configured) + captioned video + outro (if configured).
+   *
+   * @param opts - Options controlling generation
+   * @returns Path to the intro/outro video, or captioned video if skipped
+   */
+  async getIntroOutroVideo(opts?: AssetOptions): Promise<string> {
+    if (!opts?.force && (await fileExists(this.introOutroVideoPath))) {
+      return this.introOutroVideoPath
+    }
+
+    const captionedPath = await this.getCaptionedVideo(opts)
+    const result = await applyIntroOutro(captionedPath, 'main', this.introOutroVideoPath)
+    return result
   }
 
   /**

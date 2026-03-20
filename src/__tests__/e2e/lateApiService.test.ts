@@ -15,4 +15,25 @@ describe('E2E: lateApiService wrappers', () => {
     expect(typeof client.createPost).toBe('function')
     expect(typeof client.validateConnection).toBe('function')
   })
+
+  test('client exposes pagination methods', () => {
+    const client = createLateApiClient('e2e-test-key')
+    expect(typeof client.getScheduledPosts).toBe('function')
+    expect(typeof client.getDraftPosts).toBe('function')
+    expect(typeof client.listPosts).toBe('function')
+  })
+})
+
+describe.skipIf(!process.env.LATE_API_KEY)('E2E: Late API pagination (live)', () => {
+  test('getScheduledPosts returns array', async () => {
+    const client = createLateApiClient(process.env.LATE_API_KEY!)
+    const posts = await client.getScheduledPosts()
+    expect(Array.isArray(posts)).toBe(true)
+  })
+
+  test('getDraftPosts returns array', async () => {
+    const client = createLateApiClient(process.env.LATE_API_KEY!)
+    const posts = await client.getDraftPosts()
+    expect(Array.isArray(posts)).toBe(true)
+  })
 })

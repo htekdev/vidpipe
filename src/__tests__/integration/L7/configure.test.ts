@@ -119,7 +119,7 @@ describe('L7 Integration: configure command', () => {
 
     expect(mockLoadGlobalConfig).toHaveBeenCalledTimes(1)
     expect(mockMaskSecret).toHaveBeenCalledWith('sk-secret-value')
-    expect(mockConsoleLog).toHaveBeenCalledTimes(18)
+    expect(mockConsoleLog).toHaveBeenCalledTimes(19)
 
     const logs = getLogs()
     expect(logs).toContain('credentials.openaiApiKey')
@@ -220,5 +220,13 @@ describe('L7 Integration: configure command', () => {
 
     expect(getLogs()).toContain('Unknown configure subcommand: nope')
     expect(process.exitCode).toBe(1)
+  })
+
+  it('maps schedule-config to defaults.scheduleConfig for set', async () => {
+    mockGetGlobalConfigValue.mockReturnValue('/shared/schedule.json')
+
+    await runConfigure('set', ['schedule-config', '/shared/schedule.json'])
+
+    expect(mockSetGlobalConfigValue).toHaveBeenCalledWith('defaults', 'scheduleConfig', '/shared/schedule.json')
   })
 })

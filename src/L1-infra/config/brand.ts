@@ -1,6 +1,7 @@
 import { fileExistsSync, readTextFileSync } from '../fileSystem/fileSystem.js'
 import { getConfig } from './environment'
 import logger from '../logger/configLogger'
+import type { IntroOutroConfig } from '../../L0-pure/types/index.js'
 
 export interface BrandConfig {
   name: string
@@ -27,6 +28,7 @@ export interface BrandConfig {
     blogFocus: string
     socialFocus: string
   }
+  introOutro?: IntroOutroConfig
 }
 
 const defaultBrand: BrandConfig = {
@@ -115,4 +117,10 @@ export function getBrandConfig(): BrandConfig {
 export function getWhisperPrompt(): string {
   const brand = getBrandConfig()
   return brand.customVocabulary.join(', ')
+}
+
+/** Get the intro/outro configuration from brand config with safe defaults. */
+export function getIntroOutroConfig(): IntroOutroConfig {
+  const brand = getBrandConfig()
+  return brand.introOutro ?? { enabled: false, fadeDuration: 0 }
 }

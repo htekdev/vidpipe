@@ -158,17 +158,11 @@ export class LateApiClient {
   }
 
   async getScheduledPosts(platform?: string): Promise<LatePost[]> {
-    const params = new URLSearchParams({ status: 'scheduled' })
-    if (platform) params.set('platform', platform)
-    const data = await this.request<{ posts: LatePost[] }>(`/posts?${params}`)
-    return data.posts ?? []
+    return this.listPosts({ status: 'scheduled', platform })
   }
 
   async getDraftPosts(platform?: string): Promise<LatePost[]> {
-    const params = new URLSearchParams({ status: 'draft' })
-    if (platform) params.set('platform', platform)
-    const data = await this.request<{ posts: LatePost[] }>(`/posts?${params}`)
-    return data.posts ?? []
+    return this.listPosts({ status: 'draft', platform })
   }
 
   async createPost(params: CreatePostParams): Promise<LatePost> {

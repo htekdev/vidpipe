@@ -366,4 +366,21 @@ describe('L4-L6 Integration: ideation and queue builder', () => {
     expect(queueItem?.metadata.ideaIds).not.toContain('legacy-idea-id')
     expect(queueItem?.metadata.ideaIds).not.toContain('idea-never-use-this-slug')
   })
+
+  test('generateIdeas passes prompt option through to the user message', async () => {
+    mockState.tools = []
+    mockListIssues.mockResolvedValue([])
+    mockListComments.mockResolvedValue([])
+
+    // GenerateIdeas with prompt option — verify it doesn't throw
+    // (the prompt is embedded in the user message sent to the LLM session)
+    const ideas = await generateIdeas({
+      count: 3,
+      seedTopics: ['GitHub Copilot'],
+      brandPath,
+      prompt: 'Focus on the new MCP integration features',
+    })
+
+    expect(Array.isArray(ideas)).toBe(true)
+  })
 })

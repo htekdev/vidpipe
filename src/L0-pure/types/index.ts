@@ -409,6 +409,7 @@ export enum PipelineStage {
   Chapters = 'chapters',
   Captions = 'captions',
   CaptionBurn = 'caption-burn',
+  IntroOutro = 'intro-outro',
   Summary = 'summary',
   Shorts = 'shorts',
   MediumClips = 'medium-clips',
@@ -417,6 +418,45 @@ export enum PipelineStage {
   MediumClipPosts = 'medium-clip-posts',
   Blog = 'blog',
   QueueBuild = 'queue-build',
+}
+
+// ============================================================================
+// INTRO/OUTRO CONFIGURATION
+// ============================================================================
+
+/** Which type of video is being processed — determines intro/outro rules. */
+export type IntroOutroVideoType = 'main' | 'shorts' | 'medium-clips'
+
+/** Toggle for whether to include intro and/or outro for a given context. */
+export interface IntroOutroToggle {
+  intro: boolean
+  outro: boolean
+}
+
+/** File paths for a single bookend (intro or outro), with optional per-platform and per-aspect-ratio overrides. */
+export interface IntroOutroFileConfig {
+  /** Default file path (relative to repo root or absolute). */
+  default?: string
+  /** Platform-specific file path overrides. */
+  platforms?: Partial<Record<string, string>>
+  /** Aspect-ratio-specific file path overrides (e.g., '9:16' → './assets/intro-portrait.mp4'). */
+  aspectRatios?: Partial<Record<string, string>>
+}
+
+/** Complete intro/outro configuration stored in brand.json. */
+export interface IntroOutroConfig {
+  /** Master toggle — when false, intro/outro is skipped entirely. */
+  enabled: boolean
+  /** Crossfade duration in seconds between intro/content and content/outro. 0 = hard cut. */
+  fadeDuration: number
+  /** Intro video file configuration. */
+  intro?: IntroOutroFileConfig
+  /** Outro video file configuration. */
+  outro?: IntroOutroFileConfig
+  /** Default rules per video type. */
+  rules?: Partial<Record<IntroOutroVideoType, IntroOutroToggle>>
+  /** Per-platform overrides of the default rules. */
+  platformOverrides?: Partial<Record<string, Partial<Record<IntroOutroVideoType, Partial<IntroOutroToggle>>>>>
 }
 
 /**
@@ -449,6 +489,7 @@ export interface PipelineResult {
   captions?: string[];
   captionedVideoPath?: string;
   enhancedVideoPath?: string;
+  introOutroVideoPath?: string;
   summary?: VideoSummary;
   chapters?: Chapter[];
   shorts: ShortClip[];
@@ -484,15 +525,16 @@ export const PIPELINE_STAGES: readonly StageInfo[] = [
   { stage: PipelineStage.VisualEnhancement, name: 'Visual Enhancement', stageNumber: 4 },
   { stage: PipelineStage.Captions, name: 'Captions', stageNumber: 5 },
   { stage: PipelineStage.CaptionBurn, name: 'Caption Burn', stageNumber: 6 },
-  { stage: PipelineStage.Shorts, name: 'Shorts', stageNumber: 7 },
-  { stage: PipelineStage.MediumClips, name: 'Medium Clips', stageNumber: 8 },
-  { stage: PipelineStage.Chapters, name: 'Chapters', stageNumber: 9 },
-  { stage: PipelineStage.Summary, name: 'Summary', stageNumber: 10 },
-  { stage: PipelineStage.SocialMedia, name: 'Social Media', stageNumber: 11 },
-  { stage: PipelineStage.ShortPosts, name: 'Short Posts', stageNumber: 12 },
-  { stage: PipelineStage.MediumClipPosts, name: 'Medium Clip Posts', stageNumber: 13 },
-  { stage: PipelineStage.QueueBuild, name: 'Queue Build', stageNumber: 14 },
-  { stage: PipelineStage.Blog, name: 'Blog', stageNumber: 15 },
+  { stage: PipelineStage.IntroOutro, name: 'Intro/Outro', stageNumber: 7 },
+  { stage: PipelineStage.Shorts, name: 'Shorts', stageNumber: 8 },
+  { stage: PipelineStage.MediumClips, name: 'Medium Clips', stageNumber: 9 },
+  { stage: PipelineStage.Chapters, name: 'Chapters', stageNumber: 10 },
+  { stage: PipelineStage.Summary, name: 'Summary', stageNumber: 11 },
+  { stage: PipelineStage.SocialMedia, name: 'Social Media', stageNumber: 12 },
+  { stage: PipelineStage.ShortPosts, name: 'Short Posts', stageNumber: 13 },
+  { stage: PipelineStage.MediumClipPosts, name: 'Medium Clip Posts', stageNumber: 14 },
+  { stage: PipelineStage.QueueBuild, name: 'Queue Build', stageNumber: 15 },
+  { stage: PipelineStage.Blog, name: 'Blog', stageNumber: 16 },
 ] as const
 
 /** Total number of pipeline stages. Derived from PIPELINE_STAGES, not hardcoded. */
