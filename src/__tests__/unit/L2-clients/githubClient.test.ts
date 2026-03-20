@@ -251,7 +251,7 @@ describe('GitHubClient', () => {
       expect(mockIssuesListForRepo).toHaveBeenCalledWith({
         owner: 'owner',
         repo: 'repo',
-        state: 'open',
+        state: 'all',
         labels: undefined,
         sort: undefined,
         direction: undefined,
@@ -275,7 +275,7 @@ describe('GitHubClient', () => {
       expect(mockIssuesListForRepo).toHaveBeenNthCalledWith(1, {
         owner: 'owner',
         repo: 'repo',
-        state: 'open',
+        state: 'all',
         labels: 'bug',
         sort: undefined,
         direction: undefined,
@@ -285,7 +285,7 @@ describe('GitHubClient', () => {
       expect(mockIssuesListForRepo).toHaveBeenNthCalledWith(2, {
         owner: 'owner',
         repo: 'repo',
-        state: 'open',
+        state: 'all',
         labels: 'bug',
         sort: undefined,
         direction: undefined,
@@ -293,6 +293,17 @@ describe('GitHubClient', () => {
         page: 2,
       })
       expect(issues.map((issue) => issue.number)).toEqual(Array.from({ length: 101 }, (_, index) => index + 1))
+    })
+
+    it('githubClient.REQ-005 - passes state option to GitHub API', async () => {
+      mockIssuesListForRepo.mockResolvedValueOnce({ data: [makeIssue({ number: 1 })] })
+      const client = new GitHubClient('token', 'owner/repo')
+
+      await client.listIssues({ state: 'closed' })
+
+      expect(mockIssuesListForRepo).toHaveBeenCalledWith(
+        expect.objectContaining({ state: 'closed' }),
+      )
     })
   })
 

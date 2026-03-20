@@ -32,7 +32,7 @@ describe('PIPELINE_STAGES', () => {
     })
 
     test('progressEvents.REQ-012 - TOTAL_STAGES is 15', () => {
-      expect(TOTAL_STAGES).toBe(15)
+      expect(TOTAL_STAGES).toBe(16)
     })
   })
 
@@ -84,7 +84,7 @@ describe('getStageInfo', () => {
     expect(info).toEqual<StageInfo>({
       stage: PipelineStage.Blog,
       name: 'Blog',
-      stageNumber: 15,
+      stageNumber: 16,
     })
   })
 
@@ -159,12 +159,12 @@ describe('ProgressEvent type discrimination', () => {
     const event: ProgressEvent = {
       event: 'pipeline:complete',
       totalDuration: 45000,
-      stagesCompleted: 13,
+      stagesCompleted: 14,
       stagesFailed: 1,
       stagesSkipped: 1,
       timestamp: '2026-01-01T00:00:00.000Z',
     }
     expect(event.event).toBe('pipeline:complete')
-    expect(event.stagesCompleted + event.stagesFailed + event.stagesSkipped).toBe(15)
+    expect(event.stagesCompleted + event.stagesFailed + event.stagesSkipped).toBe(16)
   })
 })

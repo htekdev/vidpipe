@@ -4,6 +4,7 @@
  * No mocking — verifies the ideate module exports and --add option types.
  * GitHub API calls are not made (no GITHUB_TOKEN configured in CI).
  */
+// Fix: listIssues defaults to state='all' to include closed ideas
 import { describe, test, expect } from 'vitest'
 import type { IdeateCommandOptions } from '../../L7-app/commands/ideate.js'
 

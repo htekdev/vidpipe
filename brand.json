@@ -84,5 +84,25 @@
     "DevOps-first perspective on AI — not just prompting, but governance and testing",
     "Weekly Copilot CLI coverage that nobody else does consistently",
     "Real engineer building real tools, not a reviewer reading changelogs"
-  ]
+  ],
+  "introOutro": {
+    "enabled": false,
+    "fadeDuration": 0.5,
+    "intro": {
+      "default": "./assets/intro.mp4",
+      "platforms": {},
+      "aspectRatios": {}
+    },
+    "outro": {
+      "default": "./assets/outro.mp4",
+      "platforms": {},
+      "aspectRatios": {}
+    },
+    "rules": {
+      "main": { "intro": true, "outro": true },
+      "shorts": { "intro": false, "outro": true },
+      "medium-clips": { "intro": true, "outro": true }
+    },
+    "platformOverrides": {}
+  }
 }

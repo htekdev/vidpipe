@@ -553,7 +553,29 @@ export async function rescheduleIdeaPosts(options?: { dryRun?: boolean }): Promi
     }
   }
 
-  ideaPosts.sort((a, b) => a.metadata.createdAt.localeCompare(b.metadata.createdAt))
+  // Sort idea posts by urgency: earliest publishBy first (hot-trend before evergreen)
+  // Fetch the linked ideas to get their publishBy dates
+  const { getIdea } = await import('../ideaService/ideaService.js')
+  const ideaPublishByMap = new Map<string, string>()
+  for (const item of ideaPosts) {
+    const ideaId = item.metadata.ideaIds?.[0]
+    if (ideaId && !ideaPublishByMap.has(ideaId)) {
+      try {
+        const idea = await getIdea(parseInt(ideaId, 10))
+        if (idea?.publishBy) ideaPublishByMap.set(ideaId, idea.publishBy)
+      } catch {
+        // Idea not found — will sort to end
+      }
+    }
+  }
+
+  ideaPosts.sort((a, b) => {
+    const aId = a.metadata.ideaIds?.[0]
+    const bId = b.metadata.ideaIds?.[0]
+    const aDate = aId ? ideaPublishByMap.get(aId) ?? '9999' : '9999'
+    const bDate = bId ? ideaPublishByMap.get(bId) ?? '9999' : '9999'
+    return aDate.localeCompare(bDate)
+  })
 
   const lateClient = new LateApiClient()
   const result: RescheduleResult = { rescheduled: 0, unchanged: 0, failed: 0, details: [] }
@@ -610,7 +632,19 @@ export async function rescheduleIdeaPosts(options?: { dryRun?: boolean }): Promi
       }
 
       if (!dryRun) {
-        await lateClient.schedulePost(latePostId, newSlotDatetime)
+        try {
+          await lateClient.schedulePost(latePostId, newSlotDatetime)
+        } catch (scheduleErr) {
+          const errMsg = scheduleErr instanceof Error ? scheduleErr.message : String(scheduleErr)
+          // Late API returns 400 for already-published posts — skip gracefully
+          if (errMsg.includes('Published posts can only have their recycling config updated')) {
+            logger.info(`Skipping ${label}: post already published on platform`)
+            result.details.push({ itemId: item.id, platform, latePostId, oldSlot, newSlot: null, error: 'Already published — skipped' })
+            result.unchanged++
+            continue
+          }
+          throw scheduleErr
+        }
         await updatePublishedItemSchedule(item.id, newSlotDatetime)
       }
 

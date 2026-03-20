@@ -48,6 +48,7 @@ const mockGetScheduledItemsByIdeaIds = vi.hoisted(() => vi.fn())
 const mockUpdatePublishedItemSchedule = vi.hoisted(() => vi.fn())
 const mockGetScheduledPosts = vi.hoisted(() => vi.fn())
 const mockSchedulePost = vi.hoisted(() => vi.fn())
+const mockGetIdea = vi.hoisted(() => vi.fn())
 
 // ── Module mocks ──────────────────────────────────────────────────────
 
@@ -103,6 +104,10 @@ vi.mock('../../../../L2-clients/late/lateApi.js', () => ({
       return mockSchedulePost(...args)
     }
   },
+}))
+
+vi.mock('../../../../L3-services/ideaService/ideaService.js', () => ({
+  getIdea: (...args: unknown[]) => mockGetIdea(...args),
 }))
 
 // ── Import after mocks ────────────────────────────────────────────────
@@ -212,6 +217,7 @@ describe('rescheduleIdeaPosts', () => {
     mockGetScheduledPosts.mockResolvedValue([])
     mockSchedulePost.mockResolvedValue(makeLatePost())
     mockUpdatePublishedItemSchedule.mockResolvedValue(undefined)
+    mockGetIdea.mockResolvedValue({ publishBy: '2026-06-01' })
   })
 
   afterEach(() => {
@@ -515,38 +521,45 @@ describe('rescheduleIdeaPosts', () => {
     expect(result.details.length).toBeGreaterThanOrEqual(1)
   })
 
-  it('sorts idea posts by createdAt and processes oldest first', async () => {
-    const newerPost = makeQueueItem({
-      id: 'idea-newer',
+  it('sorts idea posts by urgency (publishBy) and processes most urgent first', async () => {
+    const urgentPost = makeQueueItem({
+      id: 'idea-urgent',
       metadata: {
         platform: 'tiktok',
         clipType: 'short',
-        latePostId: 'late-newer',
-        ideaIds: ['idea-N'],
+        latePostId: 'late-urgent',
+        ideaIds: ['42'],
         scheduledFor: '2026-03-10T09:00:00+00:00',
         createdAt: '2026-03-02T00:00:00Z',
       },
     })
-    const olderPost = makeQueueItem({
-      id: 'idea-older',
+    const flexiblePost = makeQueueItem({
+      id: 'idea-flexible',
       metadata: {
         platform: 'tiktok',
         clipType: 'short',
-        latePostId: 'late-older',
-        ideaIds: ['idea-O'],
+        latePostId: 'late-flexible',
+        ideaIds: ['43'],
         scheduledFor: '2026-03-11T09:00:00+00:00',
         createdAt: '2026-03-01T00:00:00Z',
       },
     })
-    // Return in reverse order — newer first
-    mockGetPublishedItems.mockResolvedValue([newerPost, olderPost])
+    // Return in reverse urgency order — flexible first
+    mockGetPublishedItems.mockResolvedValue([flexiblePost, urgentPost])
+    // Mock ideas with different publishBy dates
+    mockGetIdea
+      .mockImplementation(async (issueNumber: number) => {
+        if (issueNumber === 42) return { publishBy: '2026-03-05' }  // urgent — 3 days
+        if (issueNumber === 43) return { publishBy: '2026-06-01' }  // flexible — 3 months
+        return null
+      })
 
     const result = await rescheduleIdeaPosts()
 
     expect(result.rescheduled).toBe(2)
-    // Older post should get the earlier slot (first call to Late API)
-    expect(mockSchedulePost).toHaveBeenNthCalledWith(1, 'late-older', expect.any(String))
-    expect(mockSchedulePost).toHaveBeenNthCalledWith(2, 'late-newer', expect.any(String))
+    // Urgent post (publishBy 2026-03-05) should get the earlier slot
+    expect(mockSchedulePost).toHaveBeenNthCalledWith(1, 'late-urgent', expect.any(String))
+    expect(mockSchedulePost).toHaveBeenNthCalledWith(2, 'late-flexible', expect.any(String))
   })
 
   it('filters out posts without latePostId', async () => {
