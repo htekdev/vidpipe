@@ -162,7 +162,7 @@ describe('L2 openai imageGeneration', () => {
     expect(body.quality).toBe('low')
   })
 
-  it('appends base prompt for solid background', async () => {
+  it('appends base prompt for full-canvas rendering', async () => {
     setApiKey('test-key-123')
 
     const mockFetch = vi.fn().mockResolvedValue({
@@ -173,6 +173,7 @@ describe('L2 openai imageGeneration', () => {
 
     await generateImage('my diagram', '/out/img.png')
     const body = JSON.parse(mockFetch.mock.calls[0][1].body)
-    expect(body.prompt).toContain('solid opaque background')
+    expect(body.prompt).toContain('fill the entire canvas edge-to-edge')
+    expect(body.prompt).toContain('NO borders')
   })
 })

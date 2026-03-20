@@ -290,4 +290,29 @@ describe('L2 generateImageWithReference', () => {
       generateImageWithReference('prompt', '/out/img.png', '/ref/style.png'),
     ).rejects.toThrow('Invalid image data')
   })
+
+  test('appends full-canvas base prompt to reference image prompt', async () => {
+    mockGetConfig.mockReturnValue({ OPENAI_API_KEY: 'test-key' })
+    mockReadFileBuffer.mockResolvedValue(Buffer.alloc(100))
+    const sharpInstance = {
+      resize: vi.fn().mockReturnThis(),
+      png: vi.fn().mockReturnThis(),
+      toBuffer: vi.fn().mockResolvedValue(Buffer.alloc(50)),
+    }
+    mockSharp.mockReturnValue(sharpInstance)
+    mockFetchRaw.mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: [{ b64_json: Buffer.from('test').toString('base64') }] }),
+    })
+    mockDirname.mockReturnValue('/out')
+    mockEnsureDirectory.mockResolvedValue(undefined)
+    mockWriteFileBuffer.mockResolvedValue(undefined)
+
+    await generateImageWithReference('tech thumbnail', '/out/img.png', '/ref/style.png')
+
+    const body = mockFetchRaw.mock.calls[0][1].body as Buffer
+    const bodyStr = body.toString()
+    expect(bodyStr).toContain('fill the entire canvas edge-to-edge')
+    expect(bodyStr).toContain('NO borders')
+  })
 })

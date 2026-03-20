@@ -25,8 +25,8 @@ export const COST_BY_QUALITY: Record<ImageQuality, number> = {
   high: 0.07,
 }
 
-/** Base styling appended to every image prompt to ensure overlays stand out on video */
-const IMAGE_BASE_PROMPT = `\n\nRendering requirements: The image MUST have a solid opaque background (not transparent). Include a thin border or subtle drop shadow around the entire image. Use a clean, flat design style suitable for overlaying on top of video content. The image should look like a polished infographic card that clearly separates from whatever is behind it.`
+/** Base rendering requirements appended to every image prompt */
+const IMAGE_BASE_PROMPT = `\n\nRendering requirements: The image MUST fill the entire canvas edge-to-edge with NO borders, NO margins, NO drop shadows, and NO padding. Do NOT render the image as a card or frame floating on a background. The content must extend fully to all edges of the image dimensions.`
 
 /**
  * Validate and sanitize raw image bytes from the API response.
@@ -140,7 +140,7 @@ export async function generateImageWithReference(
   const size = options?.size ?? 'auto'
   const quality = options?.quality ?? 'high'
   const stylePrefix = options?.style ? `Style: ${options.style}. ` : ''
-  const fullPrompt = `${stylePrefix}Produce an image in the same visual style, color palette, and aesthetic as the reference image provided. ${prompt}`
+  const fullPrompt = `${stylePrefix}Produce an image in the same visual style, color palette, and aesthetic as the reference image provided. ${prompt}${IMAGE_BASE_PROMPT}`
 
   logger.info(`[ImageGen] Generating image with reference: ${prompt.substring(0, 100)}...`)
   logger.debug(`[ImageGen] Reference: ${referenceImagePath}, Size: ${size}, Quality: ${quality}`)

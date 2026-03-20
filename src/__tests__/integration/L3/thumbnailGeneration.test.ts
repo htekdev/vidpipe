@@ -190,6 +190,12 @@ describe('Integration L3: content-type-aware default sizes', () => {
     const mediumConfig = resolveThumbnailConfig(undefined, 'medium-clips')
     expect(mediumConfig.size).toBe('1536x1024')
   })
+
+  test('L2 generateImage is importable from L3 thumbnailGeneration context', async () => {
+    // Verifies the L2→L3 dependency chain works without import errors
+    const mod = await import('../../../L3-services/imageGeneration/thumbnailGeneration.js')
+    expect(typeof mod.generateThumbnail).toBe('function')
+  })
 })
 
 // ── Tests requiring OPENAI_API_KEY (L2 runs real) ───────────────────────────

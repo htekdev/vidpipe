@@ -32,6 +32,12 @@ describe('E2E: thumbnail generation module integrity', () => {
     expect(mod.COST_BY_QUALITY).toEqual({ low: 0.04, medium: 0.07, high: 0.07 })
   })
 
+  test('L2 imageGeneration COST_BY_QUALITY has correct pricing tiers', async () => {
+    const { COST_BY_QUALITY } = await import('../../L2-clients/openai/imageGeneration.js')
+    expect(COST_BY_QUALITY.low).toBeLessThan(COST_BY_QUALITY.medium)
+    expect(COST_BY_QUALITY.medium).toBeLessThanOrEqual(COST_BY_QUALITY.high)
+  })
+
   test('L7 thumbnail command exports runThumbnail', async () => {
     const mod = await import('../../L7-app/commands/thumbnail.js')
     expect(typeof mod.runThumbnail).toBe('function')
