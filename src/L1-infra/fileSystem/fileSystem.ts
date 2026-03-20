@@ -315,9 +315,9 @@ export async function readFileBuffer(filePath: string): Promise<Buffer> {
   return fsp.readFile(filePath)
 }
 
-/** Write a Buffer to a file (binary-safe). */
+/** Write a Buffer to a file (binary-safe, owner-only permissions). */
 export async function writeFileBuffer(filePath: string, data: Buffer): Promise<void> {
-  await fsp.writeFile(filePath, data)
+  await fsp.writeFile(filePath, data, { mode: 0o600 })
 }
 
 // ── Specialized ────────────────────────────────────────────────
