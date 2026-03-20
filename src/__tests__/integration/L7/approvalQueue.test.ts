@@ -22,14 +22,9 @@ vi.mock('../../../L3-services/postStore/postStore.js', () => ({
   approveBulk: mockApproveBulk,
 }))
 
-const mockFindNextSlot = vi.hoisted(() => vi.fn())
-vi.mock('../../../L3-services/scheduler/scheduler.js', () => ({
-  findNextSlot: mockFindNextSlot,
-}))
-
-const mockLoadScheduleConfig = vi.hoisted(() => vi.fn())
-vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
-  loadScheduleConfig: mockLoadScheduleConfig,
+const mockResolveQueueId = vi.hoisted(() => vi.fn())
+vi.mock('../../../L3-services/scheduler/queueSync.js', () => ({
+  resolveQueueId: mockResolveQueueId,
 }))
 
 const mockGetAccountId = vi.hoisted(() => vi.fn())
@@ -92,12 +87,11 @@ function makeQueueItem(overrides: Partial<Omit<QueueItem, 'metadata'>> & { metad
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockLoadScheduleConfig.mockResolvedValue({ timezone: 'America/Chicago', platforms: {} })
-  mockFindNextSlot.mockResolvedValue('2026-03-01T10:00:00-06:00')
+  mockResolveQueueId.mockResolvedValue({ profileId: 'test-profile', queueId: 'test-queue' })
   mockGetAccountId.mockResolvedValue('acc-tiktok-123')
   mockFileExists.mockResolvedValue(true)
   mockUploadMedia.mockResolvedValue({ type: 'video', url: 'https://cdn.test/media.mp4' })
-  mockCreatePost.mockResolvedValue({ _id: 'late-post-001', status: 'scheduled' })
+  mockCreatePost.mockResolvedValue({ _id: 'late-post-001', status: 'scheduled', scheduledFor: '2026-03-01T10:00:00-06:00' })
   mockApproveItem.mockResolvedValue(undefined)
   mockApproveBulk.mockResolvedValue(undefined)
 })
@@ -122,7 +116,8 @@ describe('enqueueApproval', () => {
       expect(mockCreatePost).toHaveBeenCalledWith(
         expect.objectContaining({
           content: 'Test post content #test',
-          scheduledFor: '2026-03-01T10:00:00-06:00',
+          queuedFromProfile: 'test-profile',
+          queueId: 'test-queue',
         }),
       )
       expect(mockApproveItem).toHaveBeenCalledWith('approve-1', expect.objectContaining({
@@ -196,8 +191,8 @@ describe('enqueueApproval', () => {
         .mockResolvedValueOnce(makeQueueItem({ id: 'bulk-a' }))
         .mockResolvedValueOnce(makeQueueItem({ id: 'bulk-b' }))
       mockCreatePost
-        .mockResolvedValueOnce({ _id: 'late-a' })
-        .mockResolvedValueOnce({ _id: 'late-b' })
+        .mockResolvedValueOnce({ _id: 'late-a', scheduledFor: '2026-03-01T10:00:00-06:00' })
+        .mockResolvedValueOnce({ _id: 'late-b', scheduledFor: '2026-03-01T11:00:00-06:00' })
 
       const result = await enqueueApproval(['bulk-a', 'bulk-b'])
 
@@ -360,20 +355,21 @@ describe('enqueueApproval', () => {
   })
 
   describe('error handling', () => {
-    it('handles no available slot gracefully', async () => {
+    it('handles no queue for platform/clipType gracefully', async () => {
       const item = makeQueueItem({ id: 'no-slot' })
       mockGetItem.mockResolvedValue(item)
-      mockFindNextSlot.mockResolvedValue(null)
+      mockResolveQueueId.mockResolvedValue(null)
 
       const result = await enqueueApproval(['no-slot'])
 
       expect(result.failed).toBe(1)
-      expect(result.results[0].error).toContain('No available slot')
+      expect(result.results[0].error).toContain('No Late API queue')
     })
 
     it('handles no account for platform', async () => {
       const item = makeQueueItem({ id: 'no-acct', metadata: { accountId: '' } })
       mockGetItem.mockResolvedValue(item)
+      mockResolveQueueId.mockResolvedValue({ profileId: 'test-profile', queueId: 'test-queue' })
       mockGetAccountId.mockResolvedValue(null)
 
       const result = await enqueueApproval(['no-acct'])
