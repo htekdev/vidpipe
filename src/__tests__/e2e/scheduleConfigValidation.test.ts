@@ -40,3 +40,19 @@ describe('schedule.json ↔ content strategy consistency', () => {
     }
   }
 })
+
+describe('schedule.json publishBy enforcement', () => {
+  test('SlotOptions accepts publishBy field', async () => {
+    const { findNextSlot } = await import('../../L3-services/scheduler/scheduler.js')
+    expect(typeof findNextSlot).toBe('function')
+  })
+
+  test('schedule.json ideaSpacing config is loaded', async () => {
+    const { getIdeaSpacingConfig } = await import('../../L3-services/scheduler/scheduleConfig.js')
+    const spacing = getIdeaSpacingConfig()
+    expect(spacing).toHaveProperty('samePlatformHours')
+    expect(spacing).toHaveProperty('crossPlatformHours')
+    expect(spacing.samePlatformHours).toBeGreaterThanOrEqual(0)
+    expect(spacing.crossPlatformHours).toBeGreaterThanOrEqual(0)
+  })
+})

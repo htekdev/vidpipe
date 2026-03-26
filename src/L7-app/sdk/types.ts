@@ -1,4 +1,5 @@
 import type {
+  AgendaResult,
   AnswerProvider,
   CreateIdeaInput,
   Idea,
@@ -74,6 +75,8 @@ export interface ProcessOptions {
   skipVisualEnhancement?: boolean
   /** Skip publishing generated social content */
   skipSocialPublish?: boolean
+  /** ISO 8601 date for the publish-by deadline of auto-created ideas (default: 7 days from now) */
+  publishBy?: string
   /** Callback for real-time pipeline progress events (stage starts, completions, errors) */
   onProgress?: (event: ProgressEvent) => void
 }
@@ -151,6 +154,14 @@ export interface StartInterviewOptions {
 }
 
 /**
+ * Options for generating a recording agenda from multiple ideas.
+ */
+export interface GenerateAgendaSDKOptions {
+  /** Override the output file path for the agenda markdown */
+  outputPath?: string
+}
+
+/**
  * Main VidPipe SDK interface.
  */
 export interface VidPipeSDK {
@@ -162,6 +173,9 @@ export interface VidPipeSDK {
 
   /** Start an interactive session to develop an idea (Socratic interview, etc.) */
   startInterview(ideaNumber: number, options: StartInterviewOptions): Promise<InterviewResult>
+
+  /** Generate a structured recording agenda from multiple ideas */
+  generateAgenda(ideaNumbers: number[], options?: GenerateAgendaSDKOptions): Promise<AgendaResult>
 
   /** Idea management */
   ideas: {

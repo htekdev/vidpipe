@@ -73,6 +73,7 @@ vi.mock('../../../L2-clients/ffmpeg/ffmpeg.js', () => ({
 import { generateIdeas } from '../../../L4-agents/IdeationAgent.js'
 import { MainVideoAsset } from '../../../L5-assets/MainVideoAsset.js'
 import { getItem } from '../../../L3-services/postStore/postStore.js'
+import { generateAgenda, discoverIdeas } from '../../../L6-pipeline/ideation.js'
 
 interface MockGitHubIssue {
   number: number
@@ -382,5 +383,36 @@ describe('L4-L6 Integration: ideation and queue builder', () => {
     })
 
     expect(Array.isArray(ideas)).toBe(true)
+  })
+
+  test('L6 generateAgenda bridge creates AgendaAgent, runs, and destroys', async () => {
+    mockListIssues.mockResolvedValue([])
+    mockListComments.mockResolvedValue([])
+
+    const ideas: readonly Idea[] = [makeIdea(42, 'idea-42'), makeIdea(99, 'idea-99')]
+    const result = await generateAgenda(ideas)
+
+    expect(result).toBeDefined()
+    expect(Array.isArray(result.sections)).toBe(true)
+    expect(typeof result.markdown).toBe('string')
+  })
+
+  test('L6 discoverIdeas bridge creates IdeaDiscoveryAgent and returns result', async () => {
+    mockListIssues.mockResolvedValue([])
+    mockListComments.mockResolvedValue([])
+
+    const result = await discoverIdeas({
+      shorts: [],
+      mediumClips: [],
+      transcript: [],
+      summary: 'Test video about coding workflows',
+      publishBy: '2026-04-01',
+      defaultPlatforms: [Platform.YouTube],
+    })
+
+    expect(result).toBeDefined()
+    expect(Array.isArray(result.assignments)).toBe(true)
+    expect(typeof result.matchedCount).toBe('number')
+    expect(typeof result.createdCount).toBe('number')
   })
 })

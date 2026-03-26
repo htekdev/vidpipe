@@ -1,8 +1,8 @@
 {
   "timezone": "America/Chicago",
   "ideaSpacing": {
-    "samePlatformHours": 24,
-    "crossPlatformHours": 6
+    "samePlatformHours": 6,
+    "crossPlatformHours": 0
   },
   "displacement": {
     "enabled": true,

@@ -146,6 +146,7 @@ describe('L3 Integration: scheduler calendar with no Late API', () => {
         samePlatformMs: 0,
         crossPlatformMs: 0,
         platform: 'tiktok',
+        ideaPublishByMap: new Map(),
       }
 
       expect(ctx.timezone).toBe('America/Chicago')

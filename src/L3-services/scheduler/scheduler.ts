@@ -3,6 +3,7 @@ import logger from '../../L1-infra/logger/configLogger.js'
 import {
   getPublishedItems,
   getScheduledItemsByIdeaIds,
+  updatePublishedItemSchedule,
   type QueueItem,
 } from '../postStore/postStore.js'
 import {
@@ -30,11 +31,15 @@ export interface BookedSlot {
   platform: string
   status?: string
   ideaLinked: boolean
+  /** Idea IDs linked to this slot (for publishBy comparison during displacement) */
+  ideaIds?: string[]
 }
 
 export interface SlotOptions {
   ideaIds?: string[]
   publishBy?: string
+  /** Pre-built map of ideaId → publishByMs. Used for testing; auto-built from ideaService if omitted. */
+  _ideaPublishByMap?: Map<string, number>
 }
 
 export interface SlotResult {
@@ -73,6 +78,10 @@ export interface ScheduleContext {
   samePlatformMs: number
   crossPlatformMs: number
   platform: string
+  /** publishBy deadline cap — only applied at depth 0 (primary post, not displaced) */
+  publishByMs?: number
+  /** Maps ideaId → publishByMs for incumbent publishBy comparison during displacement */
+  ideaPublishByMap: Map<string, number>
 }
 
 // ── Utility functions ──────────────────────────────────────────────────
@@ -148,7 +157,7 @@ async function fetchScheduledPostsSafe(platform?: string): Promise<LatePost[]> {
 }
 
 /**
- * Build the full booked slot map with idea-linked flags.
+ * Build the full booked slot map with idea-linked flags and ideaIds.
  */
 export async function buildBookedMap(platform?: string): Promise<Map<number, BookedSlot>> {
   const [latePosts, publishedItems] = await Promise.all([
@@ -156,11 +165,13 @@ export async function buildBookedMap(platform?: string): Promise<Map<number, Boo
     getPublishedItems(),
   ])
 
-  // Build a set of Late post IDs that are idea-linked
+  // Build maps from Late post IDs to idea info
   const ideaLinkedPostIds = new Set<string>()
+  const latePostIdToIdeaIds = new Map<string, string[]>()
   for (const item of publishedItems) {
     if (item.metadata.latePostId && item.metadata.ideaIds?.length) {
       ideaLinkedPostIds.add(item.metadata.latePostId)
+      latePostIdToIdeaIds.set(item.metadata.latePostId, item.metadata.ideaIds)
     }
   }
 
@@ -178,6 +189,7 @@ export async function buildBookedMap(platform?: string): Promise<Map<number, Boo
           platform: scheduledPlatform.platform,
           status: post.status,
           ideaLinked: ideaLinkedPostIds.has(post._id),
+          ideaIds: latePostIdToIdeaIds.get(post._id),
         })
       }
     }
@@ -195,6 +207,7 @@ export async function buildBookedMap(platform?: string): Promise<Map<number, Boo
         itemId: item.id,
         platform: item.metadata.platform,
         ideaLinked: Boolean(item.metadata.ideaIds?.length),
+        ideaIds: item.metadata.ideaIds,
       })
     }
   }
@@ -320,6 +333,69 @@ async function getIdeaReferences(
   return refs
 }
 
+/**
+ * Get the earliest publishBy (ms) for a booked slot's linked ideas.
+ * Returns undefined if no publishBy is known.
+ */
+function getBookedSlotPublishByMs(
+  booked: BookedSlot,
+  ideaPublishByMap: ReadonlyMap<string, number>,
+): number | undefined {
+  if (!booked.ideaIds?.length) return undefined
+  let earliest: number | undefined
+  for (const ideaId of booked.ideaIds) {
+    const ms = ideaPublishByMap.get(ideaId)
+    if (ms !== undefined && (earliest === undefined || ms < earliest)) {
+      earliest = ms
+    }
+  }
+  return earliest
+}
+
+/**
+ * Build a map of ideaId → publishByMs from the booked map's idea references.
+ */
+async function buildIdeaPublishByMap(
+  bookedMap: ReadonlyMap<number, BookedSlot>,
+  lookupIdeaPublishBy: (ideaId: string) => Promise<number | undefined>,
+): Promise<Map<string, number>> {
+  const allIdeaIds = new Set<string>()
+  for (const slot of bookedMap.values()) {
+    if (slot.ideaIds) {
+      for (const id of slot.ideaIds) allIdeaIds.add(id)
+    }
+  }
+
+  const map = new Map<string, number>()
+  if (allIdeaIds.size === 0) return map
+
+  for (const ideaId of allIdeaIds) {
+    const ms = await lookupIdeaPublishBy(ideaId)
+    if (ms !== undefined) map.set(ideaId, ms)
+  }
+
+  return map
+}
+
+/**
+ * Create a lookup function that resolves ideaId → publishByMs via ideaService.
+ * Uses dynamic import to avoid pulling in the full ideaService dependency tree at load time.
+ */
+async function createIdeaPublishByLookup(): Promise<(ideaId: string) => Promise<number | undefined>> {
+  try {
+    const { getIdea } = await import('../ideaService/ideaService.js')
+    return async (ideaId: string) => {
+      try {
+        const idea = await getIdea(parseInt(ideaId, 10))
+        if (idea?.publishBy) return new Date(idea.publishBy).getTime()
+      } catch { /* idea not found */ }
+      return undefined
+    }
+  } catch {
+    return async () => undefined
+  }
+}
+
 // ── Core recursive scheduler ───────────────────────────────────────────
 
 /**
@@ -350,9 +426,13 @@ export async function schedulePost(
   let skippedBooked = 0
   let skippedSpacing = 0
 
-  logger.debug(`${indent}[schedulePost] Looking for slot for ${label} (idea=${isIdeaPost}) from ${new Date(fromMs).toISOString()}`)
+  // Only cap timeslot search at publishBy for the primary post (depth 0).
+  // Displaced posts (depth > 0) are free to go past the deadline.
+  const maxMs = ctx.depth === 0 ? ctx.publishByMs : undefined
 
-  for (const { datetime, ms } of generateTimeslots(platformConfig, ctx.timezone, fromMs)) {
+  logger.debug(`${indent}[schedulePost] Looking for slot for ${label} (idea=${isIdeaPost}) from ${new Date(fromMs).toISOString()}${maxMs ? ` until ${new Date(maxMs).toISOString()}` : ''}`)
+
+  for (const { datetime, ms } of generateTimeslots(platformConfig, ctx.timezone, fromMs, maxMs)) {
     checked++
     const booked = ctx.bookedMap.get(ms)
 
@@ -367,7 +447,7 @@ export async function schedulePost(
         }
         continue
       }
-      logger.debug(`${indent}[schedulePost] ✅ Found empty slot: ${datetime} (checked ${checked} candidates, skipped ${skippedBooked} booked, ${skippedSpacing} spacing)`)
+      logger.info(`${indent}[schedulePost] ✅ Found empty slot: ${datetime} (checked ${checked}, skipped ${skippedBooked} booked, ${skippedSpacing} spacing)`)
       return datetime
     }
 
@@ -411,7 +491,7 @@ export async function schedulePost(
         const newMs = normalizeDateTime(newHome)
         ctx.bookedMap.set(newMs, { ...booked, scheduledFor: newHome })
 
-        logger.debug(`${indent}[schedulePost] ✅ Taking slot: ${datetime} (checked ${checked} candidates)`)
+        logger.info(`${indent}[schedulePost] ✅ Taking slot: ${datetime} (checked ${checked}, displaced ${booked.postId})`)
         return datetime
       }
 
@@ -419,8 +499,58 @@ export async function schedulePost(
       logger.warn(`${indent}[schedulePost] ⚠️ Could not displace ${booked.postId} — no empty slot found after ${datetime}`)
     }
 
-    // ── Case 3: Taken by idea post → skip ──────────────────────────
+    // ── Case 3: Taken by idea post ──────────────────────────────────
     if (booked.ideaLinked) {
+      // publishBy-aware displacement: soonest deadline wins the slot
+      if (isIdeaPost && ctx.displacementEnabled && ctx.publishByMs && booked.source === 'late' && booked.postId) {
+        const incumbentPublishByMs = getBookedSlotPublishByMs(booked, ctx.ideaPublishByMap)
+
+        // Our post wins if: (a) incumbent has no deadline, or (b) our deadline is sooner
+        if (!incumbentPublishByMs || ctx.publishByMs < incumbentPublishByMs) {
+          // Check spacing before displacing
+          if (ctx.ideaRefs.length > 0 &&
+              !passesIdeaSpacing(ms, ctx.platform, ctx.ideaRefs, ctx.samePlatformMs, ctx.crossPlatformMs)) {
+            skippedSpacing++
+            if (skippedSpacing <= 5 || skippedSpacing % 50 === 0) {
+              logger.debug(`${indent}[schedulePost] ⏭️ Slot ${datetime} too close to same-idea post — skipping (even though idea-displaceable)`)
+            }
+            continue
+          }
+
+          logger.info(`${indent}[schedulePost] 🔄 Slot ${datetime} taken by idea post ${booked.postId} with later deadline — displacing`)
+
+          // Displaced idea post keeps its own publishBy for further comparisons
+          const newHome = await schedulePost(
+            platformConfig, ms, true,
+            `displaced-idea:${booked.postId}`,
+            { ...ctx, depth: ctx.depth + 1, publishByMs: incumbentPublishByMs },
+          )
+
+          if (newHome) {
+            if (!ctx.dryRun) {
+              try {
+                await ctx.lateClient.schedulePost(booked.postId, newHome)
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err)
+                logger.warn(`${indent}[schedulePost] ⚠️ Failed to displace idea ${booked.postId} via Late API: ${msg} — skipping slot`)
+                continue
+              }
+            }
+            logger.info(`${indent}[schedulePost] 📦 Displaced idea ${booked.postId}: ${datetime} → ${newHome}`)
+
+            ctx.bookedMap.delete(ms)
+            const newMs = normalizeDateTime(newHome)
+            ctx.bookedMap.set(newMs, { ...booked, scheduledFor: newHome })
+
+            logger.info(`${indent}[schedulePost] ✅ Taking slot: ${datetime} (checked ${checked}, displaced idea ${booked.postId})`)
+            return datetime
+          }
+
+          logger.warn(`${indent}[schedulePost] ⚠️ Could not displace idea ${booked.postId} — no slot found after ${datetime}`)
+        }
+      }
+
+      // Can't displace (no publishBy, incumbent has sooner deadline, or displacement failed) — skip
       skippedBooked++
       if (skippedBooked <= 5 || skippedBooked % 50 === 0) {
         logger.debug(`${indent}[schedulePost] ⏭️ Slot ${datetime} taken by idea post ${booked.postId ?? booked.itemId} — skipping`)
@@ -444,6 +574,9 @@ export async function schedulePost(
 /**
  * Find the next available posting slot for a platform.
  * Uses recursive displacement: idea posts bump non-idea posts to later slots.
+ * When publishBy is set, uses two-pass scheduling:
+ *   Pass 1: Search only slots before the publishBy deadline
+ *   Pass 2 (fallback): Search all slots if nothing available before deadline
  */
 export async function findNextSlot(
   platform: string,
@@ -461,6 +594,8 @@ export async function findNextSlot(
   const nowMs = Date.now()
   const ideaIds = options?.ideaIds?.filter(Boolean) ?? []
   const isIdeaAware = ideaIds.length > 0
+  const publishBy = options?.publishBy
+  const publishByMs = publishBy ? new Date(publishBy).getTime() : undefined
 
   // Build shared context
   const bookedMap = await buildBookedMap(platform)
@@ -479,7 +614,18 @@ export async function findNextSlot(
     crossPlatformMs = spacingConfig.crossPlatformHours * HOUR_MS
   }
 
-  logger.info(`[findNextSlot] Scheduling ${label} (idea=${isIdeaAware}, booked=${bookedMap.size} slots, spacingRefs=${ideaRefs.length})`)
+  // Build publishBy map for incumbent idea posts (needed for idea-vs-idea displacement)
+  let ideaPublishByMap: Map<string, number>
+  if (options?._ideaPublishByMap) {
+    ideaPublishByMap = options._ideaPublishByMap
+  } else if (publishByMs && Number.isFinite(publishByMs) && publishByMs > nowMs) {
+    const lookup = await createIdeaPublishByLookup()
+    ideaPublishByMap = await buildIdeaPublishByMap(bookedMap, lookup)
+  } else {
+    ideaPublishByMap = new Map<string, number>()
+  }
+
+  logger.info(`[findNextSlot] Scheduling ${label} (idea=${isIdeaAware}, booked=${bookedMap.size} slots, spacingRefs=${ideaRefs.length}${publishBy ? `, publishBy=${publishBy}` : ''})`)
 
   const ctx: ScheduleContext = {
     timezone,
@@ -493,12 +639,37 @@ export async function findNextSlot(
     samePlatformMs,
     crossPlatformMs,
     platform,
+    ideaPublishByMap,
   }
 
-  const result = await schedulePost(platformConfig, nowMs, isIdeaAware, label, ctx)
+  // Two-pass scheduling when publishBy is set and in the future
+  let result: string | null = null
+  if (publishByMs && Number.isFinite(publishByMs) && publishByMs > nowMs) {
+    // Pass 1: try to find a slot before the publishBy deadline
+    result = await schedulePost(platformConfig, nowMs, isIdeaAware, label, { ...ctx, publishByMs })
+
+    if (!result) {
+      // Pass 2: no slot before deadline — search past it as fallback
+      logger.warn(`[findNextSlot] ⚠️ No slot for ${label} before publishBy ${publishBy} — searching past deadline`)
+      result = await schedulePost(platformConfig, nowMs, isIdeaAware, label, { ...ctx, publishByMs: undefined })
+    }
+  } else {
+    // No publishBy or already passed — search without cap
+    result = await schedulePost(platformConfig, nowMs, isIdeaAware, label, { ...ctx, publishByMs: undefined })
+  }
 
   if (!result) {
-    logger.warn(`[findNextSlot] No available slot for "${sanitizeLogValue(platform)}" within ${MAX_LOOKAHEAD_DAYS} days`)
+    logger.warn(`[findNextSlot] ❌ No available slot for "${sanitizeLogValue(platform)}" within ${MAX_LOOKAHEAD_DAYS} days`)
+  } else if (publishByMs && Number.isFinite(publishByMs)) {
+    const slotMs = new Date(result).getTime()
+    if (slotMs > publishByMs) {
+      const daysLate = Math.ceil((slotMs - publishByMs) / (24 * 60 * 60 * 1000))
+      logger.warn(`[findNextSlot] ⚠️ ${label} scheduled for ${result} — ${daysLate} day(s) AFTER publishBy deadline ${publishBy}`)
+    } else {
+      logger.info(`[findNextSlot] ✅ ${label} → ${result} (within publishBy ${publishBy})`)
+    }
+  } else {
+    logger.info(`[findNextSlot] ✅ ${label} → ${result}`)
   }
 
   return result
@@ -527,7 +698,6 @@ export interface RescheduleResult {
  */
 export async function rescheduleIdeaPosts(options?: { dryRun?: boolean }): Promise<RescheduleResult> {
   const dryRun = options?.dryRun ?? false
-  const { updatePublishedItemSchedule } = await import('../postStore/postStore.js')
   const config = await loadScheduleConfig()
   const { timezone } = config
 
@@ -554,17 +724,14 @@ export async function rescheduleIdeaPosts(options?: { dryRun?: boolean }): Promi
   }
 
   // Sort idea posts by urgency: earliest publishBy first (hot-trend before evergreen)
-  // Fetch the linked ideas to get their publishBy dates
-  const { getIdea } = await import('../ideaService/ideaService.js')
+  const lookup = await createIdeaPublishByLookup()
   const ideaPublishByMap = new Map<string, string>()
   for (const item of ideaPosts) {
     const ideaId = item.metadata.ideaIds?.[0]
     if (ideaId && !ideaPublishByMap.has(ideaId)) {
-      try {
-        const idea = await getIdea(parseInt(ideaId, 10))
-        if (idea?.publishBy) ideaPublishByMap.set(ideaId, idea.publishBy)
-      } catch {
-        // Idea not found — will sort to end
+      const publishByMs = await lookup(ideaId)
+      if (publishByMs !== undefined) {
+        ideaPublishByMap.set(ideaId, new Date(publishByMs).toISOString())
       }
     }
   }
@@ -581,6 +748,12 @@ export async function rescheduleIdeaPosts(options?: { dryRun?: boolean }): Promi
   const result: RescheduleResult = { rescheduled: 0, unchanged: 0, failed: 0, details: [] }
   const nowMs = Date.now()
 
+  // Convert the string publishBy map to numeric for ScheduleContext
+  const ideaPublishByMsMap = new Map<string, number>()
+  for (const [ideaId, dateStr] of ideaPublishByMap) {
+    ideaPublishByMsMap.set(ideaId, new Date(dateStr).getTime())
+  }
+
   const ctx: ScheduleContext = {
     timezone,
     bookedMap: fullBookedMap,
@@ -593,6 +766,7 @@ export async function rescheduleIdeaPosts(options?: { dryRun?: boolean }): Promi
     samePlatformMs: 0,
     crossPlatformMs: 0,
     platform: '',
+    ideaPublishByMap: ideaPublishByMsMap,
   }
 
   for (const item of ideaPosts) {

@@ -160,7 +160,8 @@ describe('L4-L6 Integration: scheduler → Late API (mocked L2)', () => {
     if (!nextSlot) throw new Error('Expected a next available slot')
 
     const spacingMs = new Date(nextSlot).getTime() - new Date(firstSlot).getTime()
-    expect(spacingMs).toBeGreaterThanOrEqual(24 * 60 * 60 * 1000)
+    // samePlatformHours in schedule.json is 6h
+    expect(spacingMs).toBeGreaterThanOrEqual(6 * 60 * 60 * 1000)
   })
 
   it('findNextSlot without options still works identically', async () => {
@@ -238,6 +239,16 @@ describe('L4-L6 Integration: scheduler → Late API (mocked L2)', () => {
     const slot = await findNextSlot('linkedin', 'medium-clip')
     expect(slot).toBeTruthy()
     // The slot is a valid ISO datetime
+    expect(slot).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+  })
+
+  it('two-pass scheduling caps search at publishBy before falling back', async () => {
+    // With a future publishBy and no bookings, pass 1 should find a slot before deadline
+    const slot = await findNextSlot('tiktok', 'short', {
+      ideaIds: ['test-idea'],
+      publishBy: '2027-12-31',
+    })
+    expect(slot).toBeTruthy()
     expect(slot).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
   })
 })

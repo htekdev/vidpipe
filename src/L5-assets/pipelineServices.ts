@@ -14,6 +14,8 @@ import {
 import { ScheduleAgent as _ScheduleAgent } from '../L4-agents/ScheduleAgent.js'
 import { generateIdeas as _generateIdeas } from '../L4-agents/IdeationAgent.js'
 import { InterviewAgent as _InterviewAgent } from '../L4-agents/InterviewAgent.js'
+import { AgendaAgent as _AgendaAgent } from '../L4-agents/AgendaAgent.js'
+import { IdeaDiscoveryAgent as _IdeaDiscoveryAgent } from '../L4-agents/IdeaDiscoveryAgent.js'
 
 // Re-export types (exempt from layer rules)
 export type { CostReport, QueueBuildResult } from '../L4-agents/pipelineServiceBridge.js'
@@ -66,4 +68,18 @@ export function createScheduleAgent(
   ...args: ConstructorParameters<typeof _ScheduleAgent>
 ): InstanceType<typeof _ScheduleAgent> {
   return new _ScheduleAgent(...args)
+}
+
+// Agenda agent factory
+export function createAgendaAgent(
+  ...args: ConstructorParameters<typeof _AgendaAgent>
+): InstanceType<typeof _AgendaAgent> {
+  return new _AgendaAgent(...args)
+}
+
+// Idea discovery agent factory
+export function createIdeaDiscoveryAgent(
+  ...args: ConstructorParameters<typeof _IdeaDiscoveryAgent>
+): InstanceType<typeof _IdeaDiscoveryAgent> {
+  return new _IdeaDiscoveryAgent(...args)
 }

@@ -12,6 +12,7 @@ import * as captionGenerator from '../../../L0-pure/captions/captionGenerator.js
 
 vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   fileExists: vi.fn(),
+  fileExistsSync: vi.fn().mockReturnValue(false),
   readJsonFile: vi.fn(),
   writeJsonFile: vi.fn(),
   readTextFile: vi.fn(),
@@ -53,6 +54,13 @@ vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
     error: vi.fn(),
     debug: vi.fn(),
   },
+}))
+
+vi.mock('../../../L1-infra/config/brand.js', () => ({
+  getBrandConfig: vi.fn().mockReturnValue({
+    name: 'TestBrand',
+    hashtags: { platforms: { youtube: [], tiktok: [], instagram: [], linkedin: [], x: [] } },
+  }),
 }))
 
 
@@ -116,6 +124,13 @@ vi.mock('../../../L4-agents/BlogAgent.js', () => ({
 
 vi.mock('../../../L4-agents/pipelineServiceBridge.js', () => ({
   buildPublishQueue: vi.fn().mockResolvedValue({ itemsCreated: 0, itemsSkipped: 0, errors: [] }),
+}))
+
+const mockIdeaDiscoveryDiscover = vi.hoisted(() => vi.fn())
+vi.mock('../../../L4-agents/IdeaDiscoveryAgent.js', () => ({
+  IdeaDiscoveryAgent: class MockIdeaDiscoveryAgent {
+    discover = mockIdeaDiscoveryDiscover
+  },
 }))
 
 vi.mock('../../../L5-assets/visualEnhancement.js', () => ({
@@ -1051,6 +1066,161 @@ describe('MainVideoAsset', () => {
         expect.any(Object),
         true,
       )
+    })
+  })
+
+  describe('discoverIdeas()', () => {
+    it('applies assignments to short clips and adds new ideas', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
+        text: 'transcript text',
+        segments: [{ start: 0, end: 10, text: 'Hello' }],
+        words: [],
+        language: 'en',
+        duration: 100,
+      })
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+
+      const shorts = [
+        {
+          id: 'short-1',
+          title: 'Short One',
+          slug: 'short-one',
+          segments: [],
+          totalDuration: 30,
+          outputPath: '/out/short1.mp4',
+          description: 'Desc',
+          tags: [],
+          hook: 'Hook',
+        },
+      ]
+      const mediumClips = [
+        {
+          id: 'medium-1',
+          title: 'Medium One',
+          slug: 'medium-one',
+          segments: [],
+          totalDuration: 120,
+          outputPath: '/out/medium1.mp4',
+          description: 'Desc',
+          tags: [],
+          hook: 'Hook',
+        },
+      ]
+
+      const newIdea = {
+        issueNumber: 42,
+        issueUrl: 'https://github.com/test/repo/issues/42',
+        repoFullName: 'test/repo',
+        id: 'idea-new',
+        topic: 'New Idea',
+        hook: 'Fresh hook',
+        audience: 'Devs',
+        keyTakeaway: 'Key',
+        talkingPoints: ['Point'],
+        platforms: [],
+        status: 'draft' as const,
+        tags: [],
+        createdAt: '2026-01-01',
+        updatedAt: '2026-01-01',
+        publishBy: '2026-03-01',
+      }
+
+      mockIdeaDiscoveryDiscover.mockResolvedValue({
+        assignments: [
+          { clipId: 'short-1', ideaIssueNumber: 42 },
+          { clipId: 'medium-1', ideaIssueNumber: 42 },
+        ],
+        newIdeas: [newIdea],
+        matchedCount: 0,
+        createdCount: 1,
+      })
+
+      const result = await asset.discoverIdeas(shorts as any, mediumClips as any, '2026-03-01')
+
+      expect(result.assignments).toHaveLength(2)
+      expect(result.newIdeas).toHaveLength(1)
+      expect(result.createdCount).toBe(1)
+
+      // Assignments applied to clip objects
+      expect((shorts[0] as Record<string, unknown>).ideaIssueNumber).toBe(42)
+      expect((mediumClips[0] as Record<string, unknown>).ideaIssueNumber).toBe(42)
+
+      // New idea added to asset's ideas list
+      expect(asset.ideas).toContainEqual(expect.objectContaining({ issueNumber: 42 }))
+
+      // Clip-idea map updated
+      expect(asset.clipIdeaMap.get('short-1')).toBe(42)
+      expect(asset.clipIdeaMap.get('medium-1')).toBe(42)
+    })
+
+    it('does not duplicate existing ideas', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
+        text: 'transcript text',
+        segments: [{ start: 0, end: 10, text: 'Hello' }],
+        words: [],
+        language: 'en',
+        duration: 100,
+      })
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+
+      const existingIdea = {
+        issueNumber: 10,
+        issueUrl: 'https://github.com/test/repo/issues/10',
+        repoFullName: 'test/repo',
+        id: 'idea-existing',
+        topic: 'Existing',
+        hook: 'Hook',
+        audience: 'Devs',
+        keyTakeaway: 'Key',
+        talkingPoints: [],
+        platforms: [],
+        status: 'draft' as const,
+        tags: [],
+        createdAt: '2026-01-01',
+        updatedAt: '2026-01-01',
+        publishBy: '2026-03-01',
+      }
+      asset.setIdeas([existingIdea])
+
+      mockIdeaDiscoveryDiscover.mockResolvedValue({
+        assignments: [],
+        newIdeas: [existingIdea],
+        matchedCount: 1,
+        createdCount: 0,
+      })
+
+      await asset.discoverIdeas([], [], '2026-03-01')
+
+      // Should still be only 1 idea, not duplicated
+      expect(asset.ideas).toHaveLength(1)
+    })
+
+    it('returns result with zero assignments when no clips match', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
+        text: 'transcript text',
+        segments: [],
+        words: [],
+        language: 'en',
+        duration: 100,
+      })
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+
+      mockIdeaDiscoveryDiscover.mockResolvedValue({
+        assignments: [],
+        newIdeas: [],
+        matchedCount: 0,
+        createdCount: 0,
+      })
+
+      const result = await asset.discoverIdeas([], [], '2026-03-01')
+      expect(result.assignments).toHaveLength(0)
+      expect(result.newIdeas).toHaveLength(0)
     })
   })
 })

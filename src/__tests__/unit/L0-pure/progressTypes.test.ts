@@ -31,8 +31,8 @@ describe('PIPELINE_STAGES', () => {
       expect(TOTAL_STAGES).toBe(PIPELINE_STAGES.length)
     })
 
-    test('progressEvents.REQ-012 - TOTAL_STAGES is 15', () => {
-      expect(TOTAL_STAGES).toBe(16)
+    test('progressEvents.REQ-012 - TOTAL_STAGES is 17', () => {
+      expect(TOTAL_STAGES).toBe(17)
     })
   })
 
@@ -84,7 +84,7 @@ describe('getStageInfo', () => {
     expect(info).toEqual<StageInfo>({
       stage: PipelineStage.Blog,
       name: 'Blog',
-      stageNumber: 16,
+      stageNumber: 17,
     })
   })
 

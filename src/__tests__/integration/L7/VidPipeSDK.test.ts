@@ -582,4 +582,9 @@ describe('VidPipeSDK', () => {
     expect(mockCaptureFrame).toHaveBeenCalledWith('C:\\videos\\recording.mp4', 12, 'C:\\output\\frame.png')
     expect(mockGeneratePlatformVariants).toHaveBeenCalledWith('C:\\videos\\recording.mp4', 'C:\\output', 'recording', ['youtube'])
   })
+
+  it('sdk exposes generateAgenda method', () => {
+    const sdk = createVidPipe()
+    expect(typeof sdk.generateAgenda).toBe('function')
+  })
 })

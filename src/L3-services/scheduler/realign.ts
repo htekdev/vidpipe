@@ -212,6 +212,7 @@ export async function buildRealignPlan(options: {
     samePlatformMs: 0,
     crossPlatformMs: 0,
     platform: '',
+    ideaPublishByMap: new Map(),
   }
 
   // Populate idea-linked IDs from the booked map

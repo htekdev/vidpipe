@@ -1,6 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { LatePost } from '../../../../L2-clients/late/lateApi.js'
 import type { RealignPlan, ClipTypeMaps } from '../../../../L3-services/scheduler/realign.js'
+import type { ScheduleContext } from '../../../../L3-services/scheduler/scheduler.js'
+
+// Verify ScheduleContext includes ideaPublishByMap (structural test)
+const _typeCheck: ScheduleContext['ideaPublishByMap'] = new Map<string, number>()
 
 // ── Mocks (L2 only) ───────────────────────────────────────────────────
 

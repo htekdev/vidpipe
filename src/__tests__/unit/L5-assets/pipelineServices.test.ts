@@ -19,6 +19,12 @@ const mockGenerateIdeas = vi.hoisted(() => vi.fn())
 const mockScheduleAgent = vi.hoisted(() => vi.fn().mockImplementation(function(this: Record<string, unknown>) {
   this.run = vi.fn()
 }))
+const mockAgendaAgent = vi.hoisted(() => vi.fn().mockImplementation(function(this: Record<string, unknown>) {
+  this.generate = vi.fn()
+}))
+const mockIdeaDiscoveryAgent = vi.hoisted(() => vi.fn().mockImplementation(function(this: Record<string, unknown>) {
+  this.discover = vi.fn()
+}))
 
 vi.mock('../../../L4-agents/pipelineServiceBridge.js', () => ({
   costTracker: {
@@ -44,9 +50,18 @@ vi.mock('../../../L4-agents/ScheduleAgent.js', () => ({
   ScheduleAgent: mockScheduleAgent,
 }))
 
+vi.mock('../../../L4-agents/AgendaAgent.js', () => ({
+  AgendaAgent: mockAgendaAgent,
+}))
+
+vi.mock('../../../L4-agents/IdeaDiscoveryAgent.js', () => ({
+  IdeaDiscoveryAgent: mockIdeaDiscoveryAgent,
+}))
+
 import {
   costTracker, markPending, markProcessing, markCompleted, markFailed,
   buildPublishQueue, generateIdeas, createScheduleAgent,
+  createAgendaAgent, createIdeaDiscoveryAgent,
 } from '../../../L5-assets/pipelineServices.js'
 
 describe('L5 Unit: pipelineServices wrappers', () => {
@@ -104,6 +119,20 @@ describe('L5 Unit: pipelineServices wrappers', () => {
   it('createScheduleAgent delegates to L4 ScheduleAgent constructor', () => {
     const agent = createScheduleAgent()
     expect(mockScheduleAgent).toHaveBeenCalledOnce()
+    expect(agent).toBeDefined()
+  })
+
+  it('createAgendaAgent delegates to L4 AgendaAgent constructor', () => {
+    const ideas = [{ issueNumber: 42 }, { issueNumber: 43 }] as never[]
+    const agent = createAgendaAgent(ideas)
+    expect(mockAgendaAgent).toHaveBeenCalledWith(ideas)
+    expect(agent).toBeDefined()
+  })
+
+  it('createIdeaDiscoveryAgent delegates to L4 IdeaDiscoveryAgent constructor', () => {
+    const opts = { shorts: [], mediumClips: [], transcript: [], summary: '', publishBy: '2026-04-01' }
+    const agent = createIdeaDiscoveryAgent(opts as never)
+    expect(mockIdeaDiscoveryAgent).toHaveBeenCalledWith(opts)
     expect(agent).toBeDefined()
   })
 })
