@@ -209,3 +209,15 @@ test('passesIdeaSpacing is used by schedulePost for spacing enforcement', async 
   // schedulePost accepts SchedulePostOptions with ideaIds, publishBy, postId, dryRun
   expect(typeof mod.buildBookedMap).toBe('function')
 })
+
+test('buildBookedMap excludes stale local entries with past scheduledFor', async () => {
+  const { buildBookedMap } = await import('../../../L3-services/scheduler/scheduler.js')
+  const map = await buildBookedMap()
+  // All local entries should have future scheduledFor
+  for (const [, slot] of map) {
+    if (slot.source === 'local') {
+      const ms = new Date(slot.scheduledFor).getTime()
+      expect(ms).toBeGreaterThan(Date.now() - 60_000) // allow 1 min tolerance
+    }
+  }
+})

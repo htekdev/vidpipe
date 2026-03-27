@@ -567,10 +567,11 @@ describe('getScheduleCalendar', () => {
   })
 
   it('includes local published items with scheduledFor', async () => {
+    const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
     mockGetPublishedItems.mockResolvedValue([
       {
         id: 'local-1',
-        metadata: { platform: 'tiktok', scheduledFor: '2025-06-15T10:00:00+00:00' },
+        metadata: { platform: 'tiktok', scheduledFor: futureDate },
       },
     ])
 

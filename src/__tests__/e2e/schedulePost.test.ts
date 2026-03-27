@@ -127,3 +127,14 @@ test('schedulePost and buildBookedMap are exported', async () => {
   expect(typeof schedulePost).toBe('function')
   expect(typeof buildBookedMap).toBe('function')
 })
+
+test('buildBookedMap only includes future local entries', async () => {
+  const { buildBookedMap } = await import('../../L3-services/scheduler/scheduler.js')
+  const map = await buildBookedMap()
+  const nowMs = Date.now()
+  for (const [, slot] of map) {
+    if (slot.source === 'local') {
+      expect(new Date(slot.scheduledFor).getTime()).toBeGreaterThan(nowMs - 60_000)
+    }
+  }
+})

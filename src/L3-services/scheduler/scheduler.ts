@@ -175,6 +175,7 @@ export async function buildBookedMap(platform?: string): Promise<Map<number, Boo
     if (platform && item.metadata.platform !== platform) continue
     if (!item.metadata.scheduledFor) continue
     const ms = normalizeDateTime(item.metadata.scheduledFor)
+    if (ms < Date.now()) continue // Stale — already published, slot is free
     // Don't overwrite Late entries (Late is source of truth for scheduling)
     if (!map.has(ms)) {
       map.set(ms, {
