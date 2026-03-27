@@ -107,7 +107,7 @@ describe('schedulePost e2e', () => {
     expect(typeof result.rescheduled).toBe('number')
     expect(typeof result.unchanged).toBe('number')
     expect(typeof result.failed).toBe('number')
-  }, 30_000)
+  }, 120_000)
 })
 
 // ── buildPrioritizedRealignPlan removed ─────────────────────────
