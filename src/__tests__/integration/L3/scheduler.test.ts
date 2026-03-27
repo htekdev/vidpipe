@@ -29,7 +29,7 @@ import {
   schedulePost,
   type SlotOptions,
   type RescheduleResult,
-  type ScheduleContext,
+  type SchedulePostOptions,
 } from '../../../L3-services/scheduler/scheduler.js'
 import { clearScheduleCache } from '../../../L3-services/scheduler/scheduleConfig.js'
 
@@ -133,24 +133,16 @@ describe('L3 Integration: scheduler calendar with no Late API', () => {
       expect(typeof schedulePost).toBe('function')
     })
 
-    it('ScheduleContext type is properly exported', () => {
-      const ctx: ScheduleContext = {
-        timezone: 'America/Chicago',
-        bookedMap: new Map(),
-        ideaLinkedPostIds: new Set(),
-        lateClient: {} as never,
-        displacementEnabled: false,
+    it('SchedulePostOptions type is properly exported', () => {
+      const opts: SchedulePostOptions = {
+        ideaIds: ['idea-1'],
+        publishBy: '2099-12-31T23:59:59Z',
+        postId: 'late-post-1',
         dryRun: true,
-        depth: 0,
-        ideaRefs: [],
-        samePlatformMs: 0,
-        crossPlatformMs: 0,
-        platform: 'tiktok',
-        ideaPublishByMap: new Map(),
       }
 
-      expect(ctx.timezone).toBe('America/Chicago')
-      expect(ctx.depth).toBe(0)
+      expect(opts.dryRun).toBe(true)
+      expect(opts.ideaIds).toEqual(['idea-1'])
     })
   })
 
@@ -214,6 +206,6 @@ describe('L3 Integration: scheduler calendar with no Late API', () => {
 test('passesIdeaSpacing is used by schedulePost for spacing enforcement', async () => {
   const mod = await import('../../../L3-services/scheduler/scheduler.js')
   expect(typeof mod.schedulePost).toBe('function')
-  // ScheduleContext now includes ideaRefs, samePlatformMs, crossPlatformMs
+  // schedulePost accepts SchedulePostOptions with ideaIds, publishBy, postId, dryRun
   expect(typeof mod.buildBookedMap).toBe('function')
 })

@@ -327,15 +327,7 @@ describe('scheduler idea-aware slot resolution', () => {
     expect(mockSchedulePost).toHaveBeenCalledWith('late-1', '2026-03-05T09:00:00+00:00')
   })
 
-  it('skips occupied slots when displacement is disabled and finds first empty slot', async () => {
-    mockLoadScheduleConfig.mockResolvedValue(
-      makeScheduleConfig({
-        displacement: {
-          enabled: false,
-          canDisplace: 'non-idea-only',
-        },
-      }),
-    )
+  it('always displaces non-idea posts for idea scheduling', async () => {
     mockGetScheduledPosts.mockResolvedValue([
       makeLatePost({ _id: 'late-1', scheduledFor: '2026-03-03T09:00:00+00:00' }),
       makeLatePost({ _id: 'late-2', scheduledFor: '2026-03-04T09:00:00+00:00' }),
@@ -345,9 +337,9 @@ describe('scheduler idea-aware slot resolution', () => {
       ideaIds: ['idea-1'],
     })
 
-    // Displacement disabled — skips occupied Mar 3 and Mar 4, finds empty Mar 5
-    expect(slot).toBe('2026-03-05T09:00:00+00:00')
-    expect(mockSchedulePost).not.toHaveBeenCalled()
+    // Displacement always happens for idea posts — displaces late-1 from Mar 3
+    expect(slot).toBe('2026-03-03T09:00:00+00:00')
+    expect(mockSchedulePost).toHaveBeenCalledWith('late-1', '2026-03-05T09:00:00+00:00')
   })
 
   it('enforces cross-platform spacing for same-idea content', async () => {

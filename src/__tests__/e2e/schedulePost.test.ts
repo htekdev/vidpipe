@@ -122,7 +122,7 @@ test('buildRealignPlan is still exported from realign', async () => {
   expect(typeof buildRealignPlan).toBe('function')
 })
 
-test('spacing fields in ScheduleContext are accessible', async () => {
+test('schedulePost and buildBookedMap are exported', async () => {
   const { schedulePost, buildBookedMap } = await import('../../L3-services/scheduler/scheduler.js')
   expect(typeof schedulePost).toBe('function')
   expect(typeof buildBookedMap).toBe('function')

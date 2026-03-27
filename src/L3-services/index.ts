@@ -3,8 +3,8 @@ export { createIdea, listIdeas, getIdea, updateIdea, linkVideoToIdea, markRecord
 export { getIdeasByIds } from './ideation/ideaService.js'
 
 // Scheduler
-export { findNextSlot, getScheduleCalendar, rescheduleIdeaPosts } from './scheduler/scheduler.js'
-export type { SlotOptions, SlotResult, RescheduleResult } from './scheduler/scheduler.js'
+export { schedulePost, findNextSlot, getScheduleCalendar, rescheduleAllPosts, rescheduleIdeaPosts } from './scheduler/scheduler.js'
+export type { SchedulePostOptions, SlotOptions, SlotResult, RescheduleResult } from './scheduler/scheduler.js'
 export { loadScheduleConfig, getDefaultScheduleConfig, getPlatformSchedule } from './scheduler/scheduleConfig.js'
 export type {
   DayOfWeek,

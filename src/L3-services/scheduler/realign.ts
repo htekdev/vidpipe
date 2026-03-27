@@ -3,7 +3,6 @@ import type { LatePost } from '../../L2-clients/late/lateApi.js'
 import {
   loadScheduleConfig,
   getPlatformSchedule,
-  getDisplacementConfig,
   type DayOfWeek,
   type PlatformSchedule,
 } from './scheduleConfig.js'
@@ -15,7 +14,6 @@ import {
   getTimezoneOffset,
   buildSlotDatetime,
   getDayOfWeekInTimezone,
-  type ScheduleContext,
   type BookedSlot,
 } from './scheduler.js'
 
@@ -198,27 +196,14 @@ export async function buildRealignPlan(options: {
     tagged.push({ post, platform, clipType })
   }
 
-  // Build shared schedule context
+  // Build booked map for tracking slot availability
   const bookedMap = await buildBookedMap()
-  const ctx: ScheduleContext = {
-    timezone,
-    bookedMap,
-    ideaLinkedPostIds: new Set<string>(),
-    lateClient: client,
-    displacementEnabled: getDisplacementConfig().enabled,
-    dryRun: true,
-    depth: 0,
-    ideaRefs: [],
-    samePlatformMs: 0,
-    crossPlatformMs: 0,
-    platform: '',
-    ideaPublishByMap: new Map(),
-  }
 
-  // Populate idea-linked IDs from the booked map
+  // Determine which posts are idea-linked from the booked map
+  const ideaLinkedPostIds = new Set<string>()
   for (const [, slot] of bookedMap) {
     if (slot.ideaLinked && slot.postId) {
-      ctx.ideaLinkedPostIds.add(slot.postId)
+      ideaLinkedPostIds.add(slot.postId)
     }
   }
 
@@ -228,12 +213,10 @@ export async function buildRealignPlan(options: {
 
   // Sort: idea-linked posts first (they get priority slots via displacement)
   tagged.sort((a, b) => {
-    const aIdea = ctx.ideaLinkedPostIds.has(a.post._id) ? 0 : 1
-    const bIdea = ctx.ideaLinkedPostIds.has(b.post._id) ? 0 : 1
+    const aIdea = ideaLinkedPostIds.has(a.post._id) ? 0 : 1
+    const bIdea = ideaLinkedPostIds.has(b.post._id) ? 0 : 1
     return aIdea - bIdea
   })
-
-  const nowMs = Date.now()
 
   for (const { post, platform, clipType } of tagged) {
     const schedulePlatform = normalizeSchedulePlatform(platform)
@@ -261,9 +244,13 @@ export async function buildRealignPlan(options: {
       }
     }
 
-    const isIdea = ctx.ideaLinkedPostIds.has(post._id)
-    const label = `${schedulePlatform}/${clipType}:${post._id.slice(-6)}`
-    const newSlot = await schedulePost(platformConfig, nowMs, isIdea, label, ctx)
+    const isIdea = ideaLinkedPostIds.has(post._id)
+    const newSlot = await schedulePost(schedulePlatform, clipType, {
+      postId: post._id,
+      ideaIds: isIdea ? (bookedMap.get(new Date(post.scheduledFor ?? 0).getTime())?.ideaIds ?? []) : undefined,
+      dryRun: true,
+      _bookedMap: bookedMap,
+    })
 
     if (!newSlot) {
       if (post.status !== 'cancelled') {
@@ -274,7 +261,7 @@ export async function buildRealignPlan(options: {
 
     // Mark the new slot as taken
     const newMs = new Date(newSlot).getTime()
-    ctx.bookedMap.set(newMs, {
+    bookedMap.set(newMs, {
       scheduledFor: newSlot, source: 'late', postId: post._id,
       platform: schedulePlatform, ideaLinked: isIdea,
     })

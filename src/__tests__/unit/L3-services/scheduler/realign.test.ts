@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import type { LatePost } from '../../../../L2-clients/late/lateApi.js'
 import type { RealignPlan, ClipTypeMaps } from '../../../../L3-services/scheduler/realign.js'
-import type { ScheduleContext } from '../../../../L3-services/scheduler/scheduler.js'
+import type { SchedulePostOptions } from '../../../../L3-services/scheduler/scheduler.js'
 
-// Verify ScheduleContext includes ideaPublishByMap (structural test)
-const _typeCheck: ScheduleContext['ideaPublishByMap'] = new Map<string, number>()
+// Verify SchedulePostOptions includes _ideaPublishByMap (structural test)
+const _typeCheck: SchedulePostOptions['_ideaPublishByMap'] = new Map<string, number>()
 
 // ── Mocks (L2 only) ───────────────────────────────────────────────────
 
@@ -342,8 +342,9 @@ describe('buildRealignPlan', () => {
     mockBuildBookedMap.mockResolvedValue(bookedMap)
 
     const calls: string[] = []
-    mockSchedulerSchedulePost.mockImplementation((_cfg: unknown, _ms: unknown, isIdea: boolean, label: string) => {
-      calls.push(`${label}:idea=${isIdea}`)
+    mockSchedulerSchedulePost.mockImplementation((platform: string, _clipType?: string, options?: SchedulePostOptions) => {
+      const isIdea = options?.ideaIds !== undefined
+      calls.push(`${options?.postId ?? platform}:idea=${isIdea}`)
       return '2026-03-04T09:00:00+00:00'
     })
 
