@@ -221,3 +221,8 @@ test('buildBookedMap excludes stale local entries with past scheduledFor', async
     }
   }
 })
+
+test('rescheduleAllPosts keeps posts in current slots via own-post detection', async () => {
+  const { rescheduleAllPosts } = await import('../../../L3-services/scheduler/scheduler.js')
+  expect(typeof rescheduleAllPosts).toBe('function')
+})

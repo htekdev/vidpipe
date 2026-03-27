@@ -739,14 +739,11 @@ export async function rescheduleAllPosts(options?: { dryRun?: boolean }): Promis
 
   logger.info(`Rescheduling ${allPosts.length} posts (${ideaPosts.length} idea, ${nonIdeaPosts.length} non-idea)`)
 
-  // Build booked map EXCLUDING all posts being rescheduled — they're all "in flight"
-  const rescheduleLatePostIds = new Set(allPosts.map((item) => item.metadata.latePostId!))
+  // Keep the booked map intact — own-post detection in findSlot (Case 2)
+  // handles the case where a post finds its own current slot.
+  // This ensures the scheduler sees the real calendar state and only moves
+  // posts when a genuinely better slot is available.
   const bookedMap = await buildBookedMap()
-  for (const [ms, slot] of bookedMap) {
-    if (slot.postId && rescheduleLatePostIds.has(slot.postId)) {
-      bookedMap.delete(ms)
-    }
-  }
 
   // Build publishBy map (numeric) for idea-vs-idea displacement
   const ideaPublishByMsMap = new Map<string, number>()
@@ -849,6 +846,15 @@ export async function rescheduleAllPosts(options?: { dryRun?: boolean }): Promis
           throw scheduleErr
         }
         await updatePublishedItemSchedule(item.id, newSlotDatetime)
+      }
+
+      // Free the old slot so other posts can use it
+      if (oldSlot) {
+        const oldMs = normalizeDateTime(oldSlot)
+        const oldBooked = bookedMap.get(oldMs)
+        if (oldBooked?.postId === latePostId) {
+          bookedMap.delete(oldMs)
+        }
       }
 
       bookedMap.set(newSlotMs, {

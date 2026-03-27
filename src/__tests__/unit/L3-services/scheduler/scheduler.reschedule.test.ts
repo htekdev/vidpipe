@@ -753,4 +753,44 @@ describe('rescheduleAllPosts', () => {
     expect(normalDetail.error).toBeUndefined()
     expect(normalDetail.newSlot).not.toBeNull()
   })
+
+  it('keeps booked map intact so posts see each other during reschedule', async () => {
+    // Two idea posts at future slots — both should be kept unchanged
+    // because their existing slots ARE the best available (own-post detection)
+    const post1 = makeQueueItem({
+      id: 'keep-1',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: 'late-keep-1',
+        ideaIds: ['idea-keep'],
+        scheduledFor: '2026-03-03T09:00:00+00:00',
+      },
+    })
+    const post2 = makeQueueItem({
+      id: 'keep-2',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: 'late-keep-2',
+        ideaIds: ['idea-keep-2'],
+        scheduledFor: '2026-03-04T09:00:00+00:00',
+      },
+    })
+
+    // Late API returns these posts at their current slots
+    mockGetScheduledPosts.mockResolvedValue([
+      makeLatePost({ _id: 'late-keep-1', scheduledFor: '2026-03-03T09:00:00+00:00', platforms: [{ platform: 'tiktok', accountId: 'a' }] }),
+      makeLatePost({ _id: 'late-keep-2', scheduledFor: '2026-03-04T09:00:00+00:00', platforms: [{ platform: 'tiktok', accountId: 'a' }] }),
+    ])
+    mockGetPublishedItems.mockResolvedValue([post1, post2])
+
+    const result = await rescheduleAllPosts({ dryRun: true })
+
+    // Both should be unchanged — own-post detection keeps them in place
+    expect(result.unchanged).toBe(2)
+    expect(result.rescheduled).toBe(0)
+    // Late API schedulePost should NOT have been called (no moves)
+    expect(mockSchedulePost).not.toHaveBeenCalled()
+  })
 })

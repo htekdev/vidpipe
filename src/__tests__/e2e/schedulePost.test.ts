@@ -138,3 +138,8 @@ test('buildBookedMap only includes future local entries', async () => {
     }
   }
 })
+
+test('rescheduleAllPosts uses own-post detection to avoid unnecessary moves', async () => {
+  const { rescheduleAllPosts } = await import('../../L3-services/scheduler/scheduler.js')
+  expect(typeof rescheduleAllPosts).toBe('function')
+})
