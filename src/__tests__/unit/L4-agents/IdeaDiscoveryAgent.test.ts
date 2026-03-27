@@ -845,5 +845,29 @@ describe('IdeaDiscoveryAgent', () => {
     test('can be called without prior session', async () => {
       await expect(agent.destroy()).resolves.toBeUndefined()
     })
+
+    test('delegates to BaseAgent.destroy() (super.destroy)', async () => {
+      const BaseAgentProto = Object.getPrototypeOf(Object.getPrototypeOf(agent))
+      const superDestroySpy = vi.spyOn(BaseAgentProto, 'destroy')
+
+      await agent.destroy()
+
+      expect(superDestroySpy).toHaveBeenCalledOnce()
+      superDestroySpy.mockRestore()
+    })
+  })
+
+  describe('discover lifecycle', () => {
+    test('discover does not call destroy — caller manages lifecycle', async () => {
+      const agentWithClips = new IdeaDiscoveryAgent(createInputWithClips({
+        providedIdeas: [makeIdea()],
+      }))
+      const destroySpy = vi.spyOn(agentWithClips, 'destroy')
+
+      await agentWithClips.discover()
+
+      expect(destroySpy).not.toHaveBeenCalled()
+      destroySpy.mockRestore()
+    })
   })
 })

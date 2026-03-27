@@ -22,6 +22,7 @@ import { runIntroOutro } from './commands/introOutro'
 import { runThumbnail } from './commands/thumbnail'
 import { runIdeaUpdate, runIdeaGet, runIdeaSearch } from './commands/ideaUpdate'
 import { startReviewServer } from './review/server'
+import { parsePublishBy } from './parsePublishBy'
 import { openUrl } from '../L1-infra/cli/cli.js'
 import { readTextFileSync, listDirectorySync } from '../L1-infra/fileSystem/fileSystem.js'
 import { projectRoot, join, resolve, extname } from '../L1-infra/paths/paths.js'
@@ -163,10 +164,11 @@ program
   .action(async (opts: DiscoverIdeasCommandOptions) => {
     initConfig({})
     if (opts.publishBy) {
-      const raw = String(opts.publishBy).trim()
-      const relativeMatch = raw.match(/^\+(\d+)d$/i)
-      if (relativeMatch) {
-        opts.publishBy = new Date(Date.now() + parseInt(relativeMatch[1], 10) * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      try {
+        opts.publishBy = parsePublishBy(String(opts.publishBy))
+      } catch (err) {
+        logger.error((err as Error).message)
+        process.exit(1)
       }
     }
     await runDiscoverIdeas(opts)

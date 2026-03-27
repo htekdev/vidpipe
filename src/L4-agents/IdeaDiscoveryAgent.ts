@@ -253,11 +253,7 @@ export class IdeaDiscoveryAgent extends BaseAgent {
       hasMcp,
     )
 
-    try {
-      await this.run(userMessage)
-    } finally {
-      await this.destroy()
-    }
+    await this.run(userMessage)
 
     return {
       assignments: [...this.assignments],
@@ -515,9 +511,6 @@ export class IdeaDiscoveryAgent extends BaseAgent {
   }
 
   async destroy(): Promise<void> {
-    try {
-      await this.session?.close()
-    } catch { /* best-effort cleanup */ }
-    this.session = null
+    await super.destroy()
   }
 }

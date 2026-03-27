@@ -281,6 +281,19 @@ describe('AgendaAgent', () => {
     })
   })
 
+  describe('destroy', () => {
+    test('delegates to BaseAgent.destroy() (super.destroy)', async () => {
+      // Access the prototype chain to spy on BaseAgent.destroy
+      const BaseAgentProto = Object.getPrototypeOf(Object.getPrototypeOf(agent))
+      const superDestroySpy = vi.spyOn(BaseAgentProto, 'destroy')
+
+      await agent.destroy()
+
+      expect(superDestroySpy).toHaveBeenCalledOnce()
+      superDestroySpy.mockRestore()
+    })
+  })
+
   describe('resetForRetry()', () => {
     test('clears sections, intro, outro, and finalized flag', async () => {
       const handle = (agent as unknown as {

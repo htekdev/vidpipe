@@ -307,8 +307,7 @@ export class AgendaAgent extends BaseAgent {
   }
 
   async destroy(): Promise<void> {
-    try { await this.session?.close() } catch { /* best-effort cleanup */ }
-    this.session = null
+    await super.destroy()
   }
 }
 

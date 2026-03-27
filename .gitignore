@@ -5,6 +5,7 @@ dist/
 cache/
 coverage/
 coverage-out.tmp
+coverage-output.txt
 
 # Social publishing queue (transient — reviewed via vidpipe review)
 publish-queue/
