@@ -13,11 +13,16 @@ import { runChat } from './commands/chat'
 import { runIdeate } from './commands/ideate'
 import { runIdeateStart } from './commands/ideateStart'
 import type { IdeateStartOptions } from './commands/ideateStart'
+import { runAgenda } from './commands/agenda'
+import type { AgendaCommandOptions } from './commands/agenda'
+import { runDiscoverIdeas } from './commands/discoverIdeas'
+import type { DiscoverIdeasCommandOptions } from './commands/discoverIdeas'
 import { runConfigure } from './commands/configure'
 import { runIntroOutro } from './commands/introOutro'
 import { runThumbnail } from './commands/thumbnail'
 import { runIdeaUpdate, runIdeaGet, runIdeaSearch } from './commands/ideaUpdate'
 import { startReviewServer } from './review/server'
+import { parsePublishBy } from './parsePublishBy'
 import { openUrl } from '../L1-infra/cli/cli.js'
 import { readTextFileSync, listDirectorySync } from '../L1-infra/fileSystem/fileSystem.js'
 import { projectRoot, join, resolve, extname } from '../L1-infra/paths/paths.js'
@@ -138,6 +143,35 @@ program
   .option('--progress', 'Emit structured JSON interview events to stderr')
   .action(async (issueNumber: string, opts: IdeateStartOptions) => {
     await runIdeateStart(issueNumber, opts)
+    process.exit(0)
+  })
+
+program
+  .command('agenda <issue-numbers...>')
+  .description('Generate a structured recording agenda from multiple ideas')
+  .option('--output <path>', 'Output file path for the agenda markdown')
+  .action(async (issueNumbers: string[], opts: AgendaCommandOptions) => {
+    initConfig({})
+    await runAgenda(issueNumbers, opts)
+    process.exit(0)
+  })
+
+program
+  .command('discover-ideas')
+  .description('Retroactively run idea discovery on pending publish queue items that have no ideas assigned')
+  .option('--publish-by <date>', 'Publish-by deadline for new ideas (ISO date or +Nd, default: +7d)')
+  .option('--dry-run', 'Preview what would be updated without making changes')
+  .action(async (opts: DiscoverIdeasCommandOptions) => {
+    initConfig({})
+    if (opts.publishBy) {
+      try {
+        opts.publishBy = parsePublishBy(String(opts.publishBy))
+      } catch (err) {
+        logger.error((err as Error).message)
+        process.exit(1)
+      }
+    }
+    await runDiscoverIdeas(opts)
     process.exit(0)
   })
 
@@ -270,6 +304,7 @@ const defaultCmd = program
   .option('--late-api-key <key>', 'Late API key (default: env LATE_API_KEY)')
   .option('--late-profile-id <id>', 'Late profile ID (default: env LATE_PROFILE_ID)')
   .option('--ideas <ids>', 'Comma-separated idea IDs to link to this video')
+  .option('--publish-by <date>', 'Publish-by deadline for auto-created ideas (ISO date or +Nd for relative, default: +7d)')
   .option('-v, --verbose', 'Verbose logging')
   .option('--progress', 'Emit structured JSON progress events to stderr')
   .option('--doctor', 'Check all prerequisites and exit')
@@ -334,7 +369,24 @@ const defaultCmd = program
     if (videoPath) {
       const resolvedPath = resolve(videoPath)
       logger.info(`Processing single video: ${resolvedPath}`)
-      await processVideoSafe(resolvedPath, ideas)
+
+      // Resolve publishBy: accept ISO date or +Nd relative format
+      let publishBy: string | undefined
+      if (opts.publishBy) {
+        const raw = String(opts.publishBy).trim()
+        const relativeMatch = raw.match(/^\+(\d+)d$/i)
+        if (relativeMatch) {
+          const days = parseInt(relativeMatch[1], 10)
+          publishBy = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        } else if (!Number.isNaN(new Date(raw).getTime())) {
+          publishBy = raw
+        } else {
+          logger.error(`Invalid --publish-by format: "${raw}". Use ISO date (2026-04-01) or relative (+7d).`)
+          process.exit(1)
+        }
+      }
+
+      await processVideoSafe(resolvedPath, ideas, publishBy)
 
       // Mark ideas as recorded
       if (ideas && ideas.length > 0) {

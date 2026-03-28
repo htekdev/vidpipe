@@ -74,6 +74,7 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
     id: string
     publishBy: string | null
     hasIdeas: boolean
+    createdAt: string | null
   }
 
   const loadedItems = await Promise.all(
@@ -104,28 +105,37 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
   }
 
   const enriched: EnrichedItem[] = loadedItems.map(({ id, item }) => {
+    const createdAt = item?.metadata.createdAt ?? null
     if (!item?.metadata.ideaIds?.length) {
-      return { id, publishBy: null, hasIdeas: false }
+      return { id, publishBy: null, hasIdeas: false, createdAt }
     }
 
     const dates = item.metadata.ideaIds
       .map((ideaId) => ideaMap.get(ideaId)?.publishBy)
       .filter((publishBy): publishBy is string => Boolean(publishBy))
       .sort()
-    return { id, publishBy: dates[0] ?? null, hasIdeas: true }
+    return { id, publishBy: dates[0] ?? null, hasIdeas: true, createdAt }
   })
 
-  const now = Date.now()
-  const sevenDays = 7 * 24 * 60 * 60 * 1000
   enriched.sort((a, b) => {
-    const aPublishByTime = a.publishBy ? new Date(a.publishBy).getTime() : Number.NaN
-    const bPublishByTime = b.publishBy ? new Date(b.publishBy).getTime() : Number.NaN
-    const aUrgent = a.hasIdeas && Number.isFinite(aPublishByTime) && (aPublishByTime - now) < sevenDays
-    const bUrgent = b.hasIdeas && Number.isFinite(bPublishByTime) && (bPublishByTime - now) < sevenDays
-    if (aUrgent && !bUrgent) return -1
-    if (!aUrgent && bUrgent) return 1
+    // Tier 1: idea-linked items before non-idea items
     if (a.hasIdeas && !b.hasIdeas) return -1
     if (!a.hasIdeas && b.hasIdeas) return 1
+
+    // Tier 2: within idea items, soonest publishBy first
+    if (a.hasIdeas && b.hasIdeas) {
+      const aTime = a.publishBy ? new Date(a.publishBy).getTime() : Infinity
+      const bTime = b.publishBy ? new Date(b.publishBy).getTime() : Infinity
+      if (aTime !== bTime) return aTime - bTime
+
+      // Tier 3: same publishBy — earliest createdAt wins
+      if (a.createdAt && b.createdAt) {
+        const aCreated = new Date(a.createdAt).getTime()
+        const bCreated = new Date(b.createdAt).getTime()
+        if (aCreated !== bCreated) return aCreated - bCreated
+      }
+    }
+
     return 0
   })
 

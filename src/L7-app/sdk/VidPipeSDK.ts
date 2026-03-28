@@ -45,7 +45,7 @@ import {
 } from '../../L3-services/videoOperations/videoOperations.js'
 import type { Platform as VariantPlatform } from '../../L3-services/videoOperations/videoOperations.js'
 import { generateIdeas } from '../../L6-pipeline/ideation.js'
-import { startInterview as startInterviewPipeline } from '../../L6-pipeline/ideation.js'
+import { startInterview as startInterviewPipeline, generateAgenda as generateAgendaPipeline } from '../../L6-pipeline/ideation.js'
 import { processVideoSafe } from '../../L6-pipeline/pipeline.js'
 import type {
   DiagnosticCheck,
@@ -734,7 +734,7 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
       if (listener) progressEmitter.addListener(listener)
       try {
         return await withTemporaryCliOverrides(cliOverrides, async () => {
-          const result = await processVideoSafe(videoPath, ideas)
+          const result = await processVideoSafe(videoPath, ideas, options?.publishBy)
           if (!result) {
             throw new Error(`VidPipe pipeline failed for "${videoPath}" with an uncaught error`)
           }
@@ -758,6 +758,11 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
     async startInterview(ideaNumber: number, options: StartInterviewOptions) {
       const idea = await loadAndValidateIdea(ideaNumber)
       return await startInterviewPipeline(idea, options.answerProvider, options.onEvent)
+    },
+
+    async generateAgenda(ideaNumbers: number[]) {
+      const ideas = await getIdeasByIds(ideaNumbers.map(String))
+      return await generateAgendaPipeline(ideas)
     },
     /* v8 ignore stop */
 

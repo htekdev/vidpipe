@@ -759,7 +759,7 @@ describe('progress events', () => {
       expect(startCalls[0][0]).toMatchObject({
         event: 'pipeline:start',
         videoPath: '/videos/test.mp4',
-        totalStages: 16,
+        totalStages: 17,
       })
     })
   })
@@ -848,8 +848,8 @@ describe('progress events', () => {
       expect(event.totalDuration).toBeGreaterThanOrEqual(0)
       expect(event.stagesCompleted).toBeGreaterThan(0)
       expect(event.stagesFailed).toBe(0)
-      // Visual enhancement (config), ShortPosts (NO_SHORTS), MediumClipPosts (NO_MEDIUM_CLIPS), QueueBuild (NO_SOCIAL_POSTS)
-      expect(event.stagesSkipped).toBe(4)
+      // Visual enhancement (config), IdeaDiscovery (NO_CLIPS), ShortPosts (NO_SHORTS), MediumClipPosts (NO_MEDIUM_CLIPS), QueueBuild (NO_SOCIAL_POSTS)
+      expect(event.stagesSkipped).toBe(5)
     })
 
     it('progressEvents.REQ-009 - counts failed and skipped stages', async () => {
@@ -888,7 +888,7 @@ describe('progress events', () => {
 
       for (const event of stageEvents) {
         expect(event.stageNumber).toBeGreaterThan(0)
-        expect(event.totalStages).toBe(16)
+        expect(event.totalStages).toBe(17)
         expect(event.name).toBeTruthy()
       }
     })
@@ -1091,8 +1091,8 @@ describe('data-dependent stage skips', () => {
       .map((c: unknown[]) => c[0] as { event: string; stagesSkipped?: number })
       .find(e => e.event === 'pipeline:complete')
 
-    // 1 config (visual enhancement) + 3 data-dependent (short posts, medium clip posts, queue build)
-    expect(completeEvent?.stagesSkipped).toBe(4)
+    // 1 config (visual enhancement) + 4 data-dependent (idea discovery, short posts, medium clip posts, queue build)
+    expect(completeEvent?.stagesSkipped).toBe(5)
   })
 })
 

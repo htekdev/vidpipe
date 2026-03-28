@@ -46,6 +46,11 @@ vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
   }),
 }))
 
+const mockGetIdeasByIds = vi.hoisted(() => vi.fn())
+vi.mock('../../../L3-services/ideation/ideaService.js', () => ({
+  getIdeasByIds: mockGetIdeasByIds,
+}))
+
 // ── Import after mocks ──────────────────────────────────────────────────
 
 import { enqueueApproval } from '../../../L7-app/review/approvalQueue.js'
@@ -101,6 +106,7 @@ beforeEach(() => {
   mockCreatePost.mockResolvedValue({ _id: 'late-post-001', status: 'scheduled' })
   mockApproveItem.mockResolvedValue(undefined)
   mockApproveBulk.mockResolvedValue(undefined)
+  mockGetIdeasByIds.mockResolvedValue([])
 })
 
 // ── Tests ───────────────────────────────────────────────────────────────
@@ -392,6 +398,35 @@ describe('enqueueApproval', () => {
 
       expect(result.failed).toBe(1)
       expect(result.results[0].error).toBe('Network timeout')
+    })
+  })
+
+  describe('publishBy sorting', () => {
+    it('processes idea-linked items before non-idea items', async () => {
+      const ideaItem = makeQueueItem({
+        id: 'idea-first',
+        metadata: { ideaIds: ['42'], createdAt: '2026-03-10T00:00:00Z' },
+      })
+      const plainItem = makeQueueItem({
+        id: 'plain-last',
+        metadata: { createdAt: '2026-03-01T00:00:00Z' },
+      })
+
+      const itemMap: Record<string, QueueItem> = {
+        'idea-first': ideaItem,
+        'plain-last': plainItem,
+      }
+      mockGetItem.mockImplementation(async (id: string) => itemMap[id] ?? null)
+      mockGetIdeasByIds.mockResolvedValue([
+        { issueNumber: 42, publishBy: '2026-03-15' },
+      ])
+
+      // Input order: plain-last first, but idea-first should be processed first
+      const result = await enqueueApproval(['plain-last', 'idea-first'])
+
+      expect(result.scheduled).toBe(2)
+      expect(result.results[0].itemId).toBe('idea-first')
+      expect(result.results[1].itemId).toBe('plain-last')
     })
   })
 

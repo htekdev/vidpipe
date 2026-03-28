@@ -112,7 +112,7 @@ vi.mock('../../../../L3-services/ideaService/ideaService.js', () => ({
 
 // ── Import after mocks ────────────────────────────────────────────────
 
-import { rescheduleIdeaPosts } from '../../../../L3-services/scheduler/scheduler.js'
+import { rescheduleIdeaPosts, rescheduleAllPosts } from '../../../../L3-services/scheduler/scheduler.js'
 
 // ── Helpers ───────────────────────────────────────────────────────────
 
@@ -580,6 +580,217 @@ describe('rescheduleIdeaPosts', () => {
     const result = await rescheduleIdeaPosts()
 
     expect(result).toEqual({ rescheduled: 0, unchanged: 0, failed: 0, details: [] })
+    expect(mockSchedulePost).not.toHaveBeenCalled()
+  })
+})
+
+describe('rescheduleAllPosts', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-03-02T00:00:00Z'))
+    vi.clearAllMocks()
+
+    mockState.config = null
+    mockLoadScheduleConfig.mockResolvedValue(makeScheduleConfig())
+    mockGetPublishedItems.mockResolvedValue([])
+    mockGetScheduledItemsByIdeaIds.mockResolvedValue([])
+    mockGetScheduledPosts.mockResolvedValue([])
+    mockSchedulePost.mockResolvedValue(makeLatePost())
+    mockUpdatePublishedItemSchedule.mockResolvedValue(undefined)
+    mockGetIdea.mockResolvedValue({ publishBy: '2026-06-01' })
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('includes both idea and non-idea posts, processing non-idea posts after idea posts', async () => {
+    const ideaPost = makeQueueItem({
+      id: 'idea-post-mix',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: 'late-idea-mix',
+        ideaIds: ['idea-mix-A'],
+        scheduledFor: '2026-03-10T09:00:00+00:00',
+        createdAt: '2026-03-01T00:00:00Z',
+      },
+    })
+    const nonIdeaPost = makeQueueItem({
+      id: 'non-idea-post-mix',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: 'late-nonidea-mix',
+        ideaIds: undefined,
+        scheduledFor: '2026-03-11T09:00:00+00:00',
+        createdAt: '2026-03-01T01:00:00Z',
+      },
+    })
+    mockGetPublishedItems.mockResolvedValue([nonIdeaPost, ideaPost])
+
+    const result = await rescheduleAllPosts()
+
+    expect(result.rescheduled).toBe(2)
+    expect(result.unchanged).toBe(0)
+    expect(result.failed).toBe(0)
+    expect(result.details).toHaveLength(2)
+
+    // Idea post should be scheduled first (earlier slot), non-idea second
+    expect(mockSchedulePost).toHaveBeenCalledTimes(2)
+    expect(mockSchedulePost).toHaveBeenNthCalledWith(1, 'late-idea-mix', expect.any(String))
+    expect(mockSchedulePost).toHaveBeenNthCalledWith(2, 'late-nonidea-mix', expect.any(String))
+  })
+
+  it('idea posts fill first slots, non-idea posts fill remaining gaps', async () => {
+    const ideaPost1 = makeQueueItem({
+      id: 'idea-slot-1',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: 'late-idea-slot-1',
+        ideaIds: ['idea-slot-A'],
+        scheduledFor: '2026-03-15T09:00:00+00:00',
+        createdAt: '2026-03-01T00:00:00Z',
+      },
+    })
+    const ideaPost2 = makeQueueItem({
+      id: 'idea-slot-2',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: 'late-idea-slot-2',
+        ideaIds: ['idea-slot-B'],
+        scheduledFor: '2026-03-16T09:00:00+00:00',
+        createdAt: '2026-03-01T01:00:00Z',
+      },
+    })
+    const nonIdeaPost1 = makeQueueItem({
+      id: 'nonidea-slot-1',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: 'late-nonidea-slot-1',
+        ideaIds: undefined,
+        scheduledFor: '2026-03-17T09:00:00+00:00',
+        createdAt: '2026-03-01T02:00:00Z',
+      },
+    })
+    const nonIdeaPost2 = makeQueueItem({
+      id: 'nonidea-slot-2',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: 'late-nonidea-slot-2',
+        ideaIds: undefined,
+        scheduledFor: '2026-03-18T09:00:00+00:00',
+        createdAt: '2026-03-01T03:00:00Z',
+      },
+    })
+    // Return in mixed order to verify sorting
+    mockGetPublishedItems.mockResolvedValue([nonIdeaPost1, ideaPost2, nonIdeaPost2, ideaPost1])
+
+    const result = await rescheduleAllPosts()
+
+    expect(result.rescheduled).toBe(4)
+    expect(result.details).toHaveLength(4)
+
+    // Config has tiktok slots on tue(03), wed(04), thu(05), fri(06) at 09:00
+    // System time is 2026-03-02 (Mon), so first available slots are:
+    //   Tue 03/03, Wed 03/04, Thu 03/05, Fri 03/06
+
+    // Idea posts processed first — they get the earliest two slots
+    expect(mockSchedulePost).toHaveBeenNthCalledWith(1, expect.stringMatching(/^late-idea-slot/), '2026-03-03T09:00:00+00:00')
+    expect(mockSchedulePost).toHaveBeenNthCalledWith(2, expect.stringMatching(/^late-idea-slot/), '2026-03-04T09:00:00+00:00')
+
+    // Non-idea posts processed after — they get the remaining slots
+    expect(mockSchedulePost).toHaveBeenNthCalledWith(3, expect.stringMatching(/^late-nonidea-slot/), '2026-03-05T09:00:00+00:00')
+    expect(mockSchedulePost).toHaveBeenNthCalledWith(4, expect.stringMatching(/^late-nonidea-slot/), '2026-03-06T09:00:00+00:00')
+  })
+
+  it('counts already-published posts as unchanged, not failed', async () => {
+    const publishedPost = makeQueueItem({
+      id: 'already-published',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: 'late-already-pub',
+        ideaIds: ['idea-pub'],
+        scheduledFor: '2026-03-10T09:00:00+00:00',
+        createdAt: '2026-03-01T00:00:00Z',
+      },
+    })
+    const normalPost = makeQueueItem({
+      id: 'normal-post',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: 'late-normal',
+        ideaIds: ['idea-normal'],
+        scheduledFor: '2026-03-11T09:00:00+00:00',
+        createdAt: '2026-03-01T01:00:00Z',
+      },
+    })
+    mockGetPublishedItems.mockResolvedValue([publishedPost, normalPost])
+
+    mockSchedulePost
+      .mockRejectedValueOnce(new Error('Published posts can only have their recycling config updated'))
+      .mockResolvedValueOnce(makeLatePost())
+
+    const result = await rescheduleAllPosts()
+
+    // The already-published post should be unchanged, not failed
+    expect(result.unchanged).toBe(1)
+    expect(result.failed).toBe(0)
+    expect(result.rescheduled).toBe(1)
+    expect(result.details).toHaveLength(2)
+
+    const pubDetail = result.details.find((d: { itemId: string }) => d.itemId === 'already-published')!
+    expect(pubDetail.error).toBe('Already published — skipped')
+    expect(pubDetail.newSlot).toBeNull()
+
+    const normalDetail = result.details.find((d: { itemId: string }) => d.itemId === 'normal-post')!
+    expect(normalDetail.error).toBeUndefined()
+    expect(normalDetail.newSlot).not.toBeNull()
+  })
+
+  it('keeps booked map intact so posts see each other during reschedule', async () => {
+    // Two idea posts at future slots — both should be kept unchanged
+    // because their existing slots ARE the best available (own-post detection)
+    const post1 = makeQueueItem({
+      id: 'keep-1',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: 'late-keep-1',
+        ideaIds: ['idea-keep'],
+        scheduledFor: '2026-03-03T09:00:00+00:00',
+      },
+    })
+    const post2 = makeQueueItem({
+      id: 'keep-2',
+      metadata: {
+        platform: 'tiktok',
+        clipType: 'short',
+        latePostId: 'late-keep-2',
+        ideaIds: ['idea-keep-2'],
+        scheduledFor: '2026-03-04T09:00:00+00:00',
+      },
+    })
+
+    // Late API returns these posts at their current slots
+    mockGetScheduledPosts.mockResolvedValue([
+      makeLatePost({ _id: 'late-keep-1', scheduledFor: '2026-03-03T09:00:00+00:00', platforms: [{ platform: 'tiktok', accountId: 'a' }] }),
+      makeLatePost({ _id: 'late-keep-2', scheduledFor: '2026-03-04T09:00:00+00:00', platforms: [{ platform: 'tiktok', accountId: 'a' }] }),
+    ])
+    mockGetPublishedItems.mockResolvedValue([post1, post2])
+
+    const result = await rescheduleAllPosts({ dryRun: true })
+
+    // Both should be unchanged — own-post detection keeps them in place
+    expect(result.unchanged).toBe(2)
+    expect(result.rescheduled).toBe(0)
+    // Late API schedulePost should NOT have been called (no moves)
     expect(mockSchedulePost).not.toHaveBeenCalled()
   })
 })

@@ -61,6 +61,7 @@ interface QueueItemOverrides {
   mediaPath?: string | null
   sourceMediaPath?: string | null
   postContent?: string
+  createdAt?: string
 }
 
 function makeItem(id: string, overrides: QueueItemOverrides = {}) {
@@ -83,7 +84,7 @@ function makeItem(id: string, overrides: QueueItemOverrides = {}) {
       status: 'pending_review' as const,
       latePostId: null,
       publishedUrl: null,
-      createdAt: new Date().toISOString(),
+      createdAt: overrides.createdAt ?? new Date().toISOString(),
       reviewedAt: null,
       publishedAt: null,
       ...(overrides.ideaIds ? { ideaIds: overrides.ideaIds } : {}),
@@ -227,5 +228,108 @@ describe('L7 Unit: approvalQueue', () => {
 
     expect(mockFindNextSlot).toHaveBeenCalledWith('youtube', 'short')
     expect(mockFindNextSlot.mock.calls[0]).toHaveLength(2)
+  })
+})
+
+// ── Sorting tests ─────────────────────────────────────────────────────
+
+describe('L7 Unit: approvalQueue sorting', () => {
+  it('sorts idea items by soonest publishBy first', async () => {
+    const soonDate = '2026-06-01T00:00:00Z'
+    const farDate = '2026-08-01T00:00:00Z'
+    mockItemsById({
+      'item-far': makeItem('item-far', { ideaIds: ['idea-far'] }),
+      'item-soon': makeItem('item-soon', { ideaIds: ['idea-soon'] }),
+    })
+    mockGetIdeasByIds.mockResolvedValue([
+      { id: 'idea-far', publishBy: farDate },
+      { id: 'idea-soon', publishBy: soonDate },
+    ])
+
+    await enqueueApproval(['item-far', 'item-soon'])
+
+    expect(mockCreatePost.mock.calls.map(([a]) => a.content)).toEqual([
+      'item-soon',
+      'item-far',
+    ])
+  })
+
+  it('breaks publishBy ties with earliest createdAt', async () => {
+    const sharedPublishBy = '2026-07-01T00:00:00Z'
+    mockItemsById({
+      'item-newer': makeItem('item-newer', { ideaIds: ['idea-a'], createdAt: '2026-01-15T00:00:00Z' }),
+      'item-older': makeItem('item-older', { ideaIds: ['idea-b'], createdAt: '2026-01-10T00:00:00Z' }),
+    })
+    mockGetIdeasByIds.mockResolvedValue([
+      { id: 'idea-a', publishBy: sharedPublishBy },
+      { id: 'idea-b', publishBy: sharedPublishBy },
+    ])
+
+    await enqueueApproval(['item-newer', 'item-older'])
+
+    expect(mockCreatePost.mock.calls.map(([a]) => a.content)).toEqual([
+      'item-older',
+      'item-newer',
+    ])
+  })
+
+  it('sorts idea items with publishBy before idea items without publishBy', async () => {
+    mockItemsById({
+      'item-undated': makeItem('item-undated', { ideaIds: ['idea-undated'] }),
+      'item-dated': makeItem('item-dated', { ideaIds: ['idea-dated'] }),
+    })
+    mockGetIdeasByIds.mockResolvedValue([
+      { id: 'idea-undated' },
+      { id: 'idea-dated', publishBy: '2026-07-01T00:00:00Z' },
+    ])
+
+    await enqueueApproval(['item-undated', 'item-dated'])
+
+    expect(mockCreatePost.mock.calls.map(([a]) => a.content)).toEqual([
+      'item-dated',
+      'item-undated',
+    ])
+  })
+
+  it('places non-idea items after all idea items', async () => {
+    mockItemsById({
+      'no-idea-1': makeItem('no-idea-1'),
+      'no-idea-2': makeItem('no-idea-2'),
+      'with-idea': makeItem('with-idea', { ideaIds: ['idea-x'] }),
+    })
+    mockGetIdeasByIds.mockResolvedValue([
+      { id: 'idea-x', publishBy: '2026-09-01T00:00:00Z' },
+    ])
+
+    await enqueueApproval(['no-idea-1', 'no-idea-2', 'with-idea'])
+
+    const order = mockCreatePost.mock.calls.map(([a]) => a.content)
+    expect(order[0]).toBe('with-idea')
+    expect(order.slice(1)).toEqual(['no-idea-1', 'no-idea-2'])
+  })
+
+  it('sorts mixed batch: urgent > non-urgent > undated-idea > non-idea', async () => {
+    const urgentDate = '2026-06-05T00:00:00Z'
+    const laterDate = '2026-08-20T00:00:00Z'
+    mockItemsById({
+      'non-idea': makeItem('non-idea'),
+      'undated-idea': makeItem('undated-idea', { ideaIds: ['idea-none'] }),
+      'later-idea': makeItem('later-idea', { ideaIds: ['idea-later'] }),
+      'urgent-idea': makeItem('urgent-idea', { ideaIds: ['idea-urgent'] }),
+    })
+    mockGetIdeasByIds.mockResolvedValue([
+      { id: 'idea-none' },
+      { id: 'idea-later', publishBy: laterDate },
+      { id: 'idea-urgent', publishBy: urgentDate },
+    ])
+
+    await enqueueApproval(['non-idea', 'undated-idea', 'later-idea', 'urgent-idea'])
+
+    expect(mockCreatePost.mock.calls.map(([a]) => a.content)).toEqual([
+      'urgent-idea',
+      'later-idea',
+      'undated-idea',
+      'non-idea',
+    ])
   })
 })

@@ -629,13 +629,12 @@ describe('L3 Integration: buildRealignPlan with mocked L1', () => {
     expect(plan.toCancel).toHaveLength(0)
   })
 
-  it('populates ideaLinkedPostIds from bookedMap entries', async () => {
-    // This test verifies line 255: ctx.ideaLinkedPostIds.add(slot.postId)
+  it('processes posts with idea-linked bookedMap entries', async () => {
     // buildBookedMap returns entries with ideaLinked=true when published items have ideaIds.
     // Since getPublishedItems returns [] (mocked L1), the booked map won't have
     // ideaLinked entries from local items. But fetchScheduledPostsSafe returns Late posts
     // which don't have ideaLinked by default. So we verify the code path runs
-    // without idea-linked entries (it just doesn't add to the set).
+    // without idea-linked entries.
     const post = makeLatePost({
       _id: 'p-idea-check',
       status: 'scheduled',
@@ -688,8 +687,7 @@ describe('L3 Integration: buildRealignPlan with mocked L1', () => {
   })
 })
 
-test('buildRealignPlan passes spacing fields in ScheduleContext', async () => {
-  // The ScheduleContext created by buildRealignPlan includes spacing fields
+test('buildRealignPlan delegates to schedulePost with spacing options', async () => {
   const { buildRealignPlan } = await import('../../../../L3-services/scheduler/realign.js')
   expect(typeof buildRealignPlan).toBe('function')
 })

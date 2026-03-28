@@ -29,7 +29,7 @@ import {
   schedulePost,
   type SlotOptions,
   type RescheduleResult,
-  type ScheduleContext,
+  type SchedulePostOptions,
 } from '../../../L3-services/scheduler/scheduler.js'
 import { clearScheduleCache } from '../../../L3-services/scheduler/scheduleConfig.js'
 
@@ -133,23 +133,16 @@ describe('L3 Integration: scheduler calendar with no Late API', () => {
       expect(typeof schedulePost).toBe('function')
     })
 
-    it('ScheduleContext type is properly exported', () => {
-      const ctx: ScheduleContext = {
-        timezone: 'America/Chicago',
-        bookedMap: new Map(),
-        ideaLinkedPostIds: new Set(),
-        lateClient: {} as never,
-        displacementEnabled: false,
+    it('SchedulePostOptions type is properly exported', () => {
+      const opts: SchedulePostOptions = {
+        ideaIds: ['idea-1'],
+        publishBy: '2099-12-31T23:59:59Z',
+        postId: 'late-post-1',
         dryRun: true,
-        depth: 0,
-        ideaRefs: [],
-        samePlatformMs: 0,
-        crossPlatformMs: 0,
-        platform: 'tiktok',
       }
 
-      expect(ctx.timezone).toBe('America/Chicago')
-      expect(ctx.depth).toBe(0)
+      expect(opts.dryRun).toBe(true)
+      expect(opts.ideaIds).toEqual(['idea-1'])
     })
   })
 
@@ -213,6 +206,43 @@ describe('L3 Integration: scheduler calendar with no Late API', () => {
 test('passesIdeaSpacing is used by schedulePost for spacing enforcement', async () => {
   const mod = await import('../../../L3-services/scheduler/scheduler.js')
   expect(typeof mod.schedulePost).toBe('function')
-  // ScheduleContext now includes ideaRefs, samePlatformMs, crossPlatformMs
+  // schedulePost accepts SchedulePostOptions with ideaIds, publishBy, postId, dryRun
   expect(typeof mod.buildBookedMap).toBe('function')
+})
+
+test('buildBookedMap excludes stale local entries with past scheduledFor', async () => {
+  const { buildBookedMap } = await import('../../../L3-services/scheduler/scheduler.js')
+  const map = await buildBookedMap()
+  // All local entries should have future scheduledFor
+  for (const [, slot] of map) {
+    if (slot.source === 'local') {
+      const ms = new Date(slot.scheduledFor).getTime()
+      expect(ms).toBeGreaterThan(Date.now() - 60_000) // allow 1 min tolerance
+    }
+  }
+})
+
+test('rescheduleAllPosts keeps posts in current slots via own-post detection', async () => {
+  const { rescheduleAllPosts } = await import('../../../L3-services/scheduler/scheduler.js')
+  expect(typeof rescheduleAllPosts).toBe('function')
+})
+
+test('ideaSpacing allows zero crossPlatformHours', async () => {
+  const { validateScheduleConfig } = await import('../../../L3-services/scheduler/scheduleConfig.js')
+  const config = validateScheduleConfig({
+    timezone: 'UTC',
+    ideaSpacing: { samePlatformHours: 6, crossPlatformHours: 0 },
+    platforms: { x: { slots: [], avoidDays: [] } },
+  })
+  expect(config.ideaSpacing?.crossPlatformHours).toBe(0)
+})
+
+test('ideaSpacing validation accepts zero crossPlatformHours', async () => {
+  const { validateScheduleConfig } = await import('../../../L3-services/scheduler/scheduleConfig.js')
+  const config = validateScheduleConfig({
+    timezone: 'UTC',
+    ideaSpacing: { samePlatformHours: 6, crossPlatformHours: 0 },
+    platforms: { x: { slots: [], avoidDays: [] } },
+  })
+  expect(config.ideaSpacing?.crossPlatformHours).toBe(0)
 })

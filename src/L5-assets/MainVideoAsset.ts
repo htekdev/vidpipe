@@ -43,6 +43,8 @@ import { generateSummary } from '../L4-agents/SummaryAgent.js'
 import { generateSocialPosts, generateShortPosts } from '../L4-agents/SocialMediaAgent.js'
 import { generateBlogPost } from '../L4-agents/BlogAgent.js'
 import { buildPublishQueue } from '../L4-agents/pipelineServiceBridge.js'
+import { IdeaDiscoveryAgent } from '../L4-agents/IdeaDiscoveryAgent.js'
+import type { IdeaDiscoveryResult } from '../L4-agents/IdeaDiscoveryAgent.js'
 import { enhanceVideo } from './visualEnhancement.js'
 import { generateThumbnailForClip } from './thumbnailGeneration.js'
 import { getConfig } from '../L1-infra/config/environment.js'
@@ -78,6 +80,9 @@ export class MainVideoAsset extends VideoAsset {
   /** Content ideas linked to this video for editorial direction */
   private _ideas: Idea[] = []
 
+  /** Per-clip idea assignments from idea discovery (clipId → ideaIssueNumber) */
+  private _clipIdeaMap = new Map<string, number>()
+
   /** Set ideas for editorial direction */
   setIdeas(ideas: Idea[]): void {
     this._ideas = ideas
@@ -86,6 +91,11 @@ export class MainVideoAsset extends VideoAsset {
   /** Get linked ideas */
   get ideas(): Idea[] {
     return this._ideas
+  }
+
+  /** Get per-clip idea assignments */
+  get clipIdeaMap(): ReadonlyMap<string, number> {
+    return this._clipIdeaMap
   }
 
   private constructor(sourcePath: string, videoDir: string, slug: string) {
@@ -1222,6 +1232,63 @@ export class MainVideoAsset extends VideoAsset {
     }
 
     return posts
+  }
+
+  /**
+   * Run idea discovery: match clips to existing ideas, create new ones for unmatched.
+   * Updates clip objects with ideaIssueNumber and adds newly created ideas to _ideas.
+   */
+  async discoverIdeas(
+    shorts: ShortClip[],
+    mediumClips: MediumClip[],
+    publishBy: string,
+  ): Promise<IdeaDiscoveryResult> {
+    const transcript = await this.getTranscript()
+    const summary = await this.getSummary()
+    const brand = (await import('../L1-infra/config/brand.js')).getBrandConfig()
+
+    const defaultPlatforms = brand.hashtags?.platforms
+      ? Object.keys(brand.hashtags.platforms).map(p => p as Platform)
+      : [Platform.YouTube, Platform.TikTok, Platform.Instagram, Platform.LinkedIn, Platform.X]
+
+    const agent = new IdeaDiscoveryAgent({
+      shorts,
+      mediumClips,
+      transcript: transcript.segments,
+      summary: typeof summary === 'string' ? summary : summary?.overview ?? '',
+      providedIdeas: this._ideas.length > 0 ? this._ideas : undefined,
+      publishBy,
+      defaultPlatforms,
+    })
+
+    const result = await agent.discover()
+
+    // Apply per-clip assignments to clip objects and the map
+    for (const assignment of result.assignments) {
+      this._clipIdeaMap.set(assignment.clipId, assignment.ideaIssueNumber)
+
+      const short = shorts.find(s => s.id === assignment.clipId)
+      if (short) {
+        short.ideaIssueNumber = assignment.ideaIssueNumber
+        continue
+      }
+      const medium = mediumClips.find(m => m.id === assignment.clipId)
+      if (medium) {
+        medium.ideaIssueNumber = assignment.ideaIssueNumber
+      }
+    }
+
+    // Add newly created ideas to the asset's idea list
+    if (result.newIdeas.length > 0) {
+      const existingIds = new Set(this._ideas.map(i => i.issueNumber))
+      for (const idea of result.newIdeas) {
+        if (!existingIds.has(idea.issueNumber)) {
+          this._ideas.push(idea)
+        }
+      }
+    }
+
+    return result
   }
 
   /**

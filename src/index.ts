@@ -119,6 +119,11 @@ export type {
   QuestionContext,
   AnswerProvider,
 
+  // Agenda
+  AgendaSection,
+  AgendaResult,
+  GenerateAgendaOptions,
+
   // Scheduling
   ScheduleSlot,
 } from './L0-pure/types/index.js'

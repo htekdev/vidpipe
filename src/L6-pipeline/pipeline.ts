@@ -173,7 +173,7 @@ export function adjustTranscript(
  * Each stage runs through {@link runStage} which catches errors. This means a
  * shorts failure doesn't block summary generation.
  */
-export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<PipelineResult> {
+export async function processVideo(videoPath: string, ideas?: Idea[], publishBy?: string): Promise<PipelineResult> {
   const pipelineStart = Date.now()
   const stageResults: StageResult[] = []
   const cfg = getConfig()
@@ -385,7 +385,18 @@ export async function processVideo(videoPath: string, ideas?: Idea[]): Promise<P
       logger.warn(`[Pipeline] Failed to generate main video thumbnail: ${err instanceof Error ? err.message : String(err)}`)
     }
 
-    // 10. Social Media — asset handles platform-specific post generation
+    // 10. Idea Discovery — match clips to existing ideas, create new ones for unmatched
+    const defaultPublishBy = publishBy ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+    const hasClips = shorts.length > 0 || mediumClips.length > 0
+    if (hasClips) {
+      await trackStage<void>(Stage.IdeaDiscovery, async () => {
+        await asset.discoverIdeas(shorts, mediumClips, defaultPublishBy)
+      })
+    } else {
+      skipStage(Stage.IdeaDiscovery, 'NO_CLIPS')
+    }
+
+    // 11. Social Media — asset handles platform-specific post generation
     let socialPosts: SocialPost[] = []
     if (!cfg.SKIP_SOCIAL) {
       const mainPosts = await trackStage<SocialPost[]>(Stage.SocialMedia, () => asset.getSocialPosts()) ?? []
@@ -520,7 +531,7 @@ function generateCostMarkdown(report: CostReport): string {
   return md
 }
 
-export async function processVideoSafe(videoPath: string, ideas?: Idea[]): Promise<PipelineResult | null> {
+export async function processVideoSafe(videoPath: string, ideas?: Idea[], publishBy?: string): Promise<PipelineResult | null> {
   // Derive slug from filename for state tracking (same logic as MainVideoAsset.ingest)
   const filename = basename(videoPath)
   const slug = filename.replace(/\.(mp4|mov|webm|avi|mkv)$/i, '')
@@ -528,7 +539,7 @@ export async function processVideoSafe(videoPath: string, ideas?: Idea[]): Promi
   await markProcessing(slug)
 
   try {
-    const result = await processVideo(videoPath, ideas)
+    const result = await processVideo(videoPath, ideas, publishBy)
     await markCompleted(slug)
     return result
   } catch (err: unknown) {

@@ -265,6 +265,8 @@ export interface ShortClip {
   isLoopCandidate?: boolean;
   /** Path to generated thumbnail image for this short clip */
   thumbnailPath?: string;
+  /** GitHub Issue number of the matched/created idea for this clip (per-clip idea tagging) */
+  ideaIssueNumber?: number;
 }
 
 // ============================================================================
@@ -312,6 +314,8 @@ export interface MediumClip {
   microHooks?: string[];
   /** Path to generated thumbnail image for this medium clip */
   thumbnailPath?: string;
+  /** GitHub Issue number of the matched/created idea for this clip (per-clip idea tagging) */
+  ideaIssueNumber?: number;
 }
 
 // ============================================================================
@@ -417,6 +421,7 @@ export enum PipelineStage {
   CaptionBurn = 'caption-burn',
   IntroOutro = 'intro-outro',
   Summary = 'summary',
+  IdeaDiscovery = 'idea-discovery',
   Shorts = 'shorts',
   MediumClips = 'medium-clips',
   SocialMedia = 'social-media',
@@ -593,11 +598,12 @@ export const PIPELINE_STAGES: readonly StageInfo[] = [
   { stage: PipelineStage.MediumClips, name: 'Medium Clips', stageNumber: 9 },
   { stage: PipelineStage.Chapters, name: 'Chapters', stageNumber: 10 },
   { stage: PipelineStage.Summary, name: 'Summary', stageNumber: 11 },
-  { stage: PipelineStage.SocialMedia, name: 'Social Media', stageNumber: 12 },
-  { stage: PipelineStage.ShortPosts, name: 'Short Posts', stageNumber: 13 },
-  { stage: PipelineStage.MediumClipPosts, name: 'Medium Clip Posts', stageNumber: 14 },
-  { stage: PipelineStage.QueueBuild, name: 'Queue Build', stageNumber: 15 },
-  { stage: PipelineStage.Blog, name: 'Blog', stageNumber: 16 },
+  { stage: PipelineStage.IdeaDiscovery, name: 'Idea Discovery', stageNumber: 12 },
+  { stage: PipelineStage.SocialMedia, name: 'Social Media', stageNumber: 13 },
+  { stage: PipelineStage.ShortPosts, name: 'Short Posts', stageNumber: 14 },
+  { stage: PipelineStage.MediumClipPosts, name: 'Medium Clip Posts', stageNumber: 15 },
+  { stage: PipelineStage.QueueBuild, name: 'Queue Build', stageNumber: 16 },
+  { stage: PipelineStage.Blog, name: 'Blog', stageNumber: 17 },
 ] as const
 
 /** Total number of pipeline stages. Derived from PIPELINE_STAGES, not hardcoded. */
@@ -1091,3 +1097,47 @@ export interface StartModeRunner {
  * The SDK consumer or CLI UI implements this to show the question and collect the response.
  */
 export type AnswerProvider = (question: string, context: QuestionContext) => Promise<string>
+
+// ============================================================================
+// AGENDA
+// ============================================================================
+
+/** A single section in a recording agenda, mapped to one idea. */
+export interface AgendaSection {
+  /** Section position (1-based) */
+  order: number
+  /** Section title for the recording outline */
+  title: string
+  /** GitHub Issue number of the idea this section covers */
+  ideaIssueNumber: number
+  /** Estimated recording time in minutes */
+  estimatedMinutes: number
+  /** Talking points to cover in this section (from the idea + agent refinement) */
+  talkingPoints: string[]
+  /** Transition phrase to lead into the NEXT section (empty for last section) */
+  transition: string
+  /** Recording notes: key phrases, visual cues, energy direction */
+  notes: string
+}
+
+/** Complete result from agenda generation. */
+export interface AgendaResult {
+  /** Ordered list of recording sections */
+  sections: AgendaSection[]
+  /** Opening hook/intro text for the recording */
+  intro: string
+  /** Closing CTA/outro text */
+  outro: string
+  /** Total estimated recording duration in minutes */
+  estimatedDuration: number
+  /** Fully formatted markdown agenda ready to print or save */
+  markdown: string
+  /** Generation duration in milliseconds */
+  durationMs: number
+}
+
+/** Options for generating a recording agenda. */
+export interface GenerateAgendaOptions {
+  /** Override the output file path for the agenda markdown */
+  outputPath?: string
+}

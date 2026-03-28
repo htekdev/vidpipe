@@ -154,6 +154,7 @@ export async function buildPublishQueue(
       let mediaPath: string | null = null
       let sourceClip: string | null = null
       let thumbnailPath: string | null = null
+      let clipIdeaIssueNumber: number | undefined
 
       if (frontmatter.shortSlug) {
         // Short or medium clip post
@@ -166,12 +167,14 @@ export async function buildPublishQueue(
           sourceClip = dirname(short.outputPath)
           mediaPath = resolveShortMedia(short, post.platform)
           thumbnailPath = short.thumbnailPath ?? null
+          clipIdeaIssueNumber = short.ideaIssueNumber
         } else if (medium) {
           clipSlug = medium.slug
           clipType = 'medium-clip'
           sourceClip = dirname(medium.outputPath)
           mediaPath = resolveMediumMedia(medium, post.platform)
           thumbnailPath = medium.thumbnailPath ?? null
+          clipIdeaIssueNumber = medium.ideaIssueNumber
         } else {
           clipSlug = frontmatter.shortSlug
           clipType = 'short'
@@ -238,7 +241,9 @@ export async function buildPublishQueue(
         createdAt: new Date().toISOString(),
         reviewedAt: null,
         publishedAt: null,
-        ideaIds: ideaIds && ideaIds.length > 0 ? ideaIds : undefined,
+        ideaIds: clipIdeaIssueNumber
+          ? [String(clipIdeaIssueNumber)]
+          : ideaIds && ideaIds.length > 0 ? ideaIds : undefined,
         thumbnailPath,
       }
 
