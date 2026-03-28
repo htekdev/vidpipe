@@ -188,8 +188,8 @@ function validateByClipType(byClipType: Record<string, unknown>, platformName: s
 }
 
 function validatePositiveNumber(value: unknown, fieldName: string): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
-    throw new Error(`${fieldName} must be a positive number`)
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    throw new Error(`${fieldName} must be a non-negative number`)
   }
 
   return value

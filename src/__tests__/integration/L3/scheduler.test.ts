@@ -226,3 +226,23 @@ test('rescheduleAllPosts keeps posts in current slots via own-post detection', a
   const { rescheduleAllPosts } = await import('../../../L3-services/scheduler/scheduler.js')
   expect(typeof rescheduleAllPosts).toBe('function')
 })
+
+test('ideaSpacing allows zero crossPlatformHours', async () => {
+  const { validateScheduleConfig } = await import('../../../L3-services/scheduler/scheduleConfig.js')
+  const config = validateScheduleConfig({
+    timezone: 'UTC',
+    ideaSpacing: { samePlatformHours: 6, crossPlatformHours: 0 },
+    platforms: { x: { slots: [], avoidDays: [] } },
+  })
+  expect(config.ideaSpacing?.crossPlatformHours).toBe(0)
+})
+
+test('ideaSpacing validation accepts zero crossPlatformHours', async () => {
+  const { validateScheduleConfig } = await import('../../../L3-services/scheduler/scheduleConfig.js')
+  const config = validateScheduleConfig({
+    timezone: 'UTC',
+    ideaSpacing: { samePlatformHours: 6, crossPlatformHours: 0 },
+    platforms: { x: { slots: [], avoidDays: [] } },
+  })
+  expect(config.ideaSpacing?.crossPlatformHours).toBe(0)
+})

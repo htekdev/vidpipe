@@ -55,4 +55,14 @@ describe('schedule.json publishBy enforcement', () => {
     expect(spacing.samePlatformHours).toBeGreaterThanOrEqual(0)
     expect(spacing.crossPlatformHours).toBeGreaterThanOrEqual(0)
   })
+
+  test('validateScheduleConfig accepts zero crossPlatformHours', async () => {
+    const { validateScheduleConfig } = await import('../../L3-services/scheduler/scheduleConfig.js')
+    const config = validateScheduleConfig({
+      timezone: 'UTC',
+      ideaSpacing: { samePlatformHours: 6, crossPlatformHours: 0 },
+      platforms: { x: { slots: [], avoidDays: [] } },
+    })
+    expect(config.ideaSpacing?.crossPlatformHours).toBe(0)
+  })
 })

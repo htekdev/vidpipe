@@ -54,6 +54,23 @@ describe('scheduleConfig spacing', () => {
     })
   })
 
+  it('accepts zero crossPlatformHours in ideaSpacing', () => {
+    const validated = validateScheduleConfig({
+      timezone: 'UTC',
+      ideaSpacing: { samePlatformHours: 6, crossPlatformHours: 0 },
+      platforms: { x: { slots: [], avoidDays: [] } },
+    })
+    expect(validated.ideaSpacing?.crossPlatformHours).toBe(0)
+  })
+
+  it('rejects negative ideaSpacing hours', () => {
+    expect(() => validateScheduleConfig({
+      timezone: 'UTC',
+      ideaSpacing: { samePlatformHours: -1, crossPlatformHours: 6 },
+      platforms: { x: { slots: [], avoidDays: [] } },
+    })).toThrow('non-negative')
+  })
+
   it('rejects invalid ideaSpacing with negative numbers', () => {
     expect(() => validateScheduleConfig({
       timezone: 'UTC',
@@ -137,5 +154,22 @@ describe('scheduleConfig spacing', () => {
       enabled: true,
       canDisplace: 'non-idea-only',
     })
+  })
+
+  it('accepts zero for crossPlatformHours in validateScheduleConfig', () => {
+    const validated = validateScheduleConfig({
+      timezone: 'UTC',
+      ideaSpacing: { samePlatformHours: 6, crossPlatformHours: 0 },
+      platforms: { x: { slots: [], avoidDays: [] } },
+    })
+    expect(validated.ideaSpacing?.crossPlatformHours).toBe(0)
+  })
+
+  it('rejects negative spacing hours in validateScheduleConfig', () => {
+    expect(() => validateScheduleConfig({
+      timezone: 'UTC',
+      ideaSpacing: { samePlatformHours: -1, crossPlatformHours: 6 },
+      platforms: { x: { slots: [], avoidDays: [] } },
+    })).toThrow('non-negative')
   })
 })
