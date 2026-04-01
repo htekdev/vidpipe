@@ -66,6 +66,7 @@ import type {
   VideoSummary,
   SocialPost,
   WebcamRegion,
+  PipelineSpec,
 } from '../L0-pure/types/index.js'
 
 /**
@@ -82,6 +83,19 @@ export class MainVideoAsset extends VideoAsset {
 
   /** Per-clip idea assignments from idea discovery (clipId → ideaIssueNumber) */
   private _clipIdeaMap = new Map<string, number>()
+
+  /** Pipeline spec controlling clip and platform configuration */
+  private _spec?: PipelineSpec
+
+  /** Set the pipeline spec for configuring agent behavior */
+  setSpec(spec: PipelineSpec): void {
+    this._spec = spec
+  }
+
+  /** Get the pipeline spec */
+  get spec(): PipelineSpec | undefined {
+    return this._spec
+  }
 
   /** Set ideas for editorial direction */
   setIdeas(ideas: Idea[]): void {
@@ -769,7 +783,13 @@ export class MainVideoAsset extends VideoAsset {
   private async generateShortsInternal(): Promise<ShortClip[]> {
     const transcript = await this.getTranscript()
     const videoFile = await this.toVideoFile()
-    const shorts = await generateShorts(videoFile, transcript)
+    const shortsConfig = this._spec?.clips.shorts
+    const shouldGenerateVariants = this._spec?.distribution.platforms.variants
+    const shorts = await generateShorts(
+      videoFile, transcript,
+      undefined, undefined, undefined, undefined,
+      shortsConfig, shouldGenerateVariants,
+    )
     logger.info(`Generated ${shorts.length} short clips`)
     return shorts
   }
@@ -805,7 +825,12 @@ export class MainVideoAsset extends VideoAsset {
   private async generateMediumClipsInternal(): Promise<MediumClip[]> {
     const transcript = await this.getTranscript()
     const videoFile = await this.toVideoFile()
-    const clips = await generateMediumClips(videoFile, transcript)
+    const mediumConfig = this._spec?.clips.medium
+    const clips = await generateMediumClips(
+      videoFile, transcript,
+      undefined, undefined, undefined,
+      mediumConfig,
+    )
     logger.info(`Generated ${clips.length} medium clips for ${this.slug}`)
     return clips
   }
@@ -832,7 +857,12 @@ export class MainVideoAsset extends VideoAsset {
     const summary = await this.getSummary()
     const video = await this.toVideoFile()
     await ensureDirectory(this.socialPostsDir)
-    const posts = await generateSocialPosts(video, transcript, summary, this.socialPostsDir)
+    const toneStrategy = this._spec?.distribution.platforms.toneStrategy
+    const posts = await generateSocialPosts(
+      video, transcript, summary, this.socialPostsDir,
+      undefined, undefined,
+      toneStrategy,
+    )
 
     await this.markSocialPostsComplete()
     return posts
@@ -1302,7 +1332,8 @@ export class MainVideoAsset extends VideoAsset {
   ): Promise<QueueBuildResult> {
     const video = await this.toVideoFile()
     const ideaIds = this._ideas.length > 0 ? this._ideas.map((idea) => String(idea.issueNumber)) : undefined
-    return buildPublishQueue(video, shorts, mediumClips, socialPosts, captionedVideoPath, ideaIds)
+    const variantsEnabled = this._spec?.distribution.platforms.variants
+    return buildPublishQueue(video, shorts, mediumClips, socialPosts, captionedVideoPath, ideaIds, variantsEnabled)
   }
 
   /**

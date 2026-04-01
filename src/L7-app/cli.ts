@@ -279,6 +279,37 @@ program
     process.exit(0)
   })
 
+program
+  .command('specs')
+  .description('List available pipeline spec presets and custom specs')
+  .action(async () => {
+    const { PRESETS } = await import('../L0-pure/pipelineSpec/index.js')
+
+    console.log('\nBuilt-in presets:\n')
+    for (const [name, preset] of Object.entries(PRESETS)) {
+      console.log(`  ${name.padEnd(12)} ${preset.description}`)
+    }
+
+    // List custom specs in pipeline-specs/ directory
+    try {
+      const specsDir = join(projectRoot(), 'pipeline-specs')
+      const files = listDirectorySync(specsDir)
+      const specFiles = files.filter(f => f.endsWith('.yaml') || f.endsWith('.yml') || f.endsWith('.json'))
+      if (specFiles.length > 0) {
+        console.log('\nCustom specs (pipeline-specs/):\n')
+        for (const file of specFiles) {
+          const name = file.replace(/\.(yaml|yml|json)$/, '')
+          console.log(`  ${name}`)
+        }
+      }
+    } catch {
+      // pipeline-specs/ directory doesn't exist — that's fine
+    }
+
+    console.log('\nUsage: vidpipe process --spec <name-or-path> video.mp4\n')
+    process.exit(0)
+  })
+
 // --- Default command (process video or watch) ---
 // This must come after subcommands so they take priority
 
@@ -301,6 +332,7 @@ const defaultCmd = program
   .option('--no-visual-enhancement', 'Skip visual enhancement (AI image overlays)')
   .option('--no-intro-outro', 'Skip intro/outro concatenation')
   .option('--no-social-publish','Skip social media publishing/queue-build stage')
+  .option('--spec <nameOrPath>', 'Pipeline spec preset name or YAML file path')
   .option('--late-api-key <key>', 'Late API key (default: env LATE_API_KEY)')
   .option('--late-profile-id <id>', 'Late profile ID (default: env LATE_PROFILE_ID)')
   .option('--ideas <ids>', 'Comma-separated idea IDs to link to this video')
@@ -350,6 +382,20 @@ const defaultCmd = program
     logger.info(`Watch folder: ${config.WATCH_FOLDER}`)
     logger.info(`Output dir:   ${config.OUTPUT_DIR}`)
 
+    // Resolve pipeline spec if --spec flag is provided
+    let pipelineSpec: import('../L0-pure/types/index.js').PipelineSpec | undefined
+    if (opts.spec) {
+      try {
+        const { loadSpec } = await import('../L1-infra/spec/specLoader.js')
+        pipelineSpec = await loadSpec(opts.spec as string, config.REPO_ROOT)
+        logger.info(`Using pipeline spec: ${pipelineSpec.name}`)
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err)
+        logger.error(`Failed to load pipeline spec: ${msg}`)
+        process.exit(1)
+      }
+    }
+
     // Resolve ideas if --ideas flag is provided
     let ideas: import('../L0-pure/types/index.js').Idea[] | undefined
     if (opts.ideas) {
@@ -386,7 +432,7 @@ const defaultCmd = program
         }
       }
 
-      await processVideoSafe(resolvedPath, ideas, publishBy)
+      await processVideoSafe(resolvedPath, ideas, publishBy, pipelineSpec)
 
       // Mark ideas as recorded
       if (ideas && ideas.length > 0) {
@@ -420,7 +466,7 @@ const defaultCmd = program
         while (queue.length > 0) {
           const vp = queue.shift()!
           logger.info(`Processing video: ${vp}`)
-          await processVideoSafe(vp, ideas)
+          await processVideoSafe(vp, ideas, undefined, pipelineSpec)
           if (onceMode) {
             logger.info('--once flag set, exiting after first video.')
             await shutdown()

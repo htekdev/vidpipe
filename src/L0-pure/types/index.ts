@@ -1141,3 +1141,38 @@ export interface GenerateAgendaOptions {
   /** Override the output file path for the agenda markdown */
   outputPath?: string
 }
+
+// ============================================================================
+// PIPELINE SPEC (re-exports from L0-pure/pipelineSpec)
+// ============================================================================
+
+export type {
+  ClipStrategy,
+  ToneStrategy,
+  DurationRange,
+  ClipConfig,
+  PartialClipConfig,
+  ProcessingConfig,
+  ClipsConfig,
+  ContentConfig,
+  PlatformConfig,
+  DistributionConfig,
+  PipelineSpec,
+  PartialPipelineSpec,
+  SkipFlags,
+  SpecValidationError,
+  PresetName,
+} from '../pipelineSpec/index.js'
+
+export {
+  isPresetName,
+  PRESET_FULL,
+  PRESET_CLEAN,
+  PRESET_MINIMAL,
+  PRESETS,
+  getPreset,
+  validateSpec,
+  mergeWithDefaults,
+  applySkipFlags,
+  resolveFromFlags,
+} from '../pipelineSpec/index.js'

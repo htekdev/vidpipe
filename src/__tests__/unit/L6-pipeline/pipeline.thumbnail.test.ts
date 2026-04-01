@@ -32,6 +32,7 @@ const {
   mockGetBlog,
   mockBuildQueue,
   mockSetIdeas,
+  mockSetSpec,
   mockGetEditorialDirection,
   mockGetMetadata,
   mockGetIntroOutroVideo,
@@ -65,6 +66,7 @@ const {
   mockGetBlog: vi.fn(),
   mockBuildQueue: vi.fn(),
   mockSetIdeas: vi.fn(),
+  mockSetSpec: vi.fn(),
   mockGetEditorialDirection: vi.fn().mockResolvedValue('editorial direction'),
   mockGetMetadata: vi.fn().mockResolvedValue({ width: 1920, height: 1080, duration: 120 }),
   mockGetIntroOutroVideo: vi.fn().mockResolvedValue('/intro-outro.mp4'),
@@ -196,6 +198,7 @@ function makeAssetMock(overrides: Record<string, unknown> = {}) {
     getBlog: mockGetBlog,
     buildQueue: mockBuildQueue,
     setIdeas: mockSetIdeas,
+    setSpec: mockSetSpec,
     generateThumbnail: mockGenerateThumbnail,
     ...overrides,
   } as any // eslint-disable-line @typescript-eslint/no-explicit-any

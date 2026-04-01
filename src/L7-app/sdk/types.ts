@@ -75,6 +75,8 @@ export interface ProcessOptions {
   skipVisualEnhancement?: boolean
   /** Skip publishing generated social content */
   skipSocialPublish?: boolean
+  /** Pipeline spec preset name or path to YAML spec file */
+  spec?: string
   /** ISO 8601 date for the publish-by deadline of auto-created ideas (default: 7 days from now) */
   publishBy?: string
   /** Callback for real-time pipeline progress events (stage starts, completions, errors) */

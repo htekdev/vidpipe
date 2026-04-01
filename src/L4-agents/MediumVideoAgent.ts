@@ -2,7 +2,7 @@ import type { ToolWithHandler } from '../L3-services/llm/providerFactory.js'
 import { BaseAgent } from './BaseAgent'
 import { VideoFile, Transcript, MediumClip, MediumSegment } from '../L0-pure/types/index'
 import type { HookType, EmotionalTrigger, MediumNarrativeStructure, MediumClipType } from '../L0-pure/types/index'
-import type { Idea } from '../L0-pure/types/index.js'
+import type { Idea, ClipConfig } from '../L0-pure/types/index.js'
 import { buildIdeaContext } from '../L0-pure/ideaContext/ideaContext.js'
 import { extractClip, extractCompositeClipWithTransitions, burnCaptions } from '../L3-services/videoOperations/videoOperations.js'
 import { generateStyledASSForSegment, generateStyledASSForComposite } from '../L0-pure/captions/captionGenerator'
@@ -40,7 +40,16 @@ interface PlannedMediumClip {
 
 // ── System prompt ───────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a medium-form video content strategist. Your job is to analyze a video transcript with word-level timestamps and extract the **most valuable, engaging 1-3 minute segments** as standalone medium-form clips.
+function buildMediumSystemPrompt(clipConfig?: ClipConfig): string {
+  const minDuration = clipConfig?.duration?.min ?? 60
+  const maxDuration = clipConfig?.duration?.max ?? 180
+  const minViralScore = clipConfig?.minViralScore ?? 10
+  const maxClips = clipConfig?.maxClips ?? 5
+  const minMinutes = Math.floor(minDuration / 60)
+  const maxMinutes = Math.ceil(maxDuration / 60)
+  const durationLabel = `${minMinutes}-${maxMinutes} minute`
+
+  return `You are a medium-form video content strategist. Your job is to analyze a video transcript with word-level timestamps and extract the **most valuable, engaging ${minMinutes}-${maxMinutes} minute segments** as standalone medium-form clips.
 
 ## Core Philosophy: Value Density Over Coverage
 
@@ -57,7 +66,7 @@ Design every clip to maximize saves and shares.
 ## Your workflow
 1. Read the transcript and note the total duration.
 2. Work through the transcript **section by section** (roughly 5-8 minute chunks). For each chunk, identify segments with genuine standalone value.
-3. For each potential clip, score it using the Viral Score Framework (see below). **Only extract clips scoring 10 or higher.**
+3. For each potential clip, score it using the Viral Score Framework (see below). **Only extract clips scoring ${minViralScore} or higher.**
 4. Call **add_medium_clips** for each batch of clips you find. You can call it as many times as needed.
 5. After your first pass, call **review_medium_clips** to see everything you've planned so far.
 6. Review critically: Does each clip deliver clear, standalone value? Would someone save it? Could segments be combined into something stronger?
@@ -72,7 +81,7 @@ Viral Score = (Hook Strength × 3) + (Emotional Intensity × 2) +
               (Replay Potential × 2)
 
 Maximum score: 60  →  Normalized to 1-20 scale (divide by 3)
-Minimum to extract: 10/20 (higher bar than shorts — medium clips cost more to produce)
+Minimum to extract: ${minViralScore}/20 (higher bar than shorts — medium clips cost more to produce)
 \`\`\`
 
 | Factor | 1 (Weak) | 3 (Moderate) | 5 (Strong) |
@@ -151,10 +160,10 @@ Identify the PRIMARY emotion driving engagement:
 
 ## Duration optimization
 
-- **Sweet spot**: 60-120 seconds (1-2 minutes)
-- **Maximum**: 180 seconds — only if retention quality is exceptional
-- **Under 60 seconds**: Too short for medium format — should be a short instead
-- **Over 120 seconds**: Requires multiple micro-hooks and exceptional pacing
+- **Sweet spot**: ${minDuration}-${Math.min(maxDuration, 120)} seconds (${minMinutes}-${Math.min(maxMinutes, 2)} minutes)
+- **Maximum**: ${maxDuration} seconds — only if retention quality is exceptional
+- **Under ${minDuration} seconds**: Too short for medium format — should be a short instead
+- **Over ${Math.min(maxDuration, 120)} seconds**: Requires multiple micro-hooks and exceptional pacing
 
 ## Differences from shorts
 
@@ -176,7 +185,7 @@ For compilations, segments must be in chronological order.
 
 ## Rules
 
-1. Each clip must be 60-180 seconds total duration.
+1. Each clip must be ${minDuration}-${maxDuration} seconds total duration.
 2. Timestamps must align to word boundaries from the transcript.
 3. Prefer natural sentence and paragraph boundaries for clean entry/exit points.
 4. Each clip must be self-contained — a viewer with no other context should get value.
@@ -184,7 +193,7 @@ For compilations, segments must be in chronological order.
 6. For compilations, specify segments in **chronological order**.
 7. Tags should be lowercase, no hashes, 3-6 per clip.
 8. A 1-second buffer is automatically added around each segment boundary.
-9. **Minimum viral score of 10/20 to extract.** Medium clips cost more to produce — quality bar is higher.
+9. **Minimum viral score of ${minViralScore}/20 to extract.** Medium clips cost more to produce — quality bar is higher.
 10. Every clip MUST have hook, hookType, emotionalTrigger, viralScore, narrativeStructure, clipType, saveReason, and microHooks.
 11. Avoid significant overlap with content that would work better as a short.
 
@@ -192,7 +201,7 @@ For compilations, segments must be in chronological order.
 
 Before adding a clip, ask yourself: **"Would I bookmark this to come back to later?"**
 - If YES → strong clip, add it
-- If "it's informative but not reference-worthy" → score it honestly and only keep if ≥10
+- If "it's informative but not reference-worthy" → score it honestly and only keep if ≥${minViralScore}
 - If NO → drop it or consider if it works better as a short
 
 ## Using Clip Direction
@@ -201,6 +210,9 @@ You may receive AI-generated clip direction with suggested medium clips. Use the
 - Feel free to adjust timestamps, combine suggestions, or ignore ones that don't work
 - You may also find good clips NOT in the suggestions — always analyze the full transcript
 - Pay special attention to suggested hooks and topic arcs — they come from multimodal analysis`
+}
+
+const SYSTEM_PROMPT = buildMediumSystemPrompt()
 
 // ── JSON Schema for the add_medium_clips tool ───────────────────────────────
 
@@ -381,8 +393,10 @@ export async function generateMediumClips(
   model?: string,
   clipDirection?: string,
   ideas?: Idea[],
+  clipConfig?: ClipConfig,
 ): Promise<MediumClip[]> {
-  const systemPrompt = SYSTEM_PROMPT + (ideas?.length ? buildIdeaContext(ideas) : '')
+  const basePrompt = clipConfig ? buildMediumSystemPrompt(clipConfig) : SYSTEM_PROMPT
+  const systemPrompt = basePrompt + (ideas?.length ? buildIdeaContext(ideas) : '')
   const agent = new MediumVideoAgent(systemPrompt, model)
 
   // Build prompt with full transcript including word-level timestamps
@@ -393,11 +407,17 @@ export async function generateMediumClips(
     return `[${seg.start.toFixed(2)}s – ${seg.end.toFixed(2)}s] ${seg.text}\nWords: ${words}`
   })
 
+  const minDuration = clipConfig?.duration?.min ?? 60
+  const maxDuration = clipConfig?.duration?.max ?? 180
+  const minViralScore = clipConfig?.minViralScore ?? 10
+  const minMinutes = Math.floor(minDuration / 60)
+  const maxMinutes = Math.ceil(maxDuration / 60)
+
   const promptParts = [
-    `Analyze the following transcript (${transcript.duration.toFixed(0)}s total) and find the most valuable segments for medium-length clips (1-3 minutes each).\n`,
+    `Analyze the following transcript (${transcript.duration.toFixed(0)}s total) and find the most valuable segments for medium-length clips (${minMinutes}-${maxMinutes} minutes each).\n`,
     `Video: ${video.filename}`,
     `Duration: ${transcript.duration.toFixed(1)}s`,
-    `Focus on value density over coverage — only extract clips scoring 10+ on the viral score framework. Every clip must have hook, hookType, emotionalTrigger, viralScore, narrativeStructure, clipType, saveReason, and microHooks.\n`,
+    `Focus on value density over coverage — only extract clips scoring ${minViralScore}+ on the viral score framework. Every clip must have hook, hookType, emotionalTrigger, viralScore, narrativeStructure, clipType, saveReason, and microHooks.\n`,
     '--- TRANSCRIPT ---\n',
     transcriptLines.join('\n\n'),
     '\n--- END TRANSCRIPT ---',

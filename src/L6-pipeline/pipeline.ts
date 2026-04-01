@@ -18,8 +18,10 @@ import type {
   Chapter,
   Idea,
   Platform,
+  PipelineSpec,
+  SkipFlags,
 } from '../L0-pure/types/index'
-import { PipelineStage as Stage, getStageInfo, TOTAL_STAGES } from '../L0-pure/types/index'
+import { PipelineStage as Stage, getStageInfo, TOTAL_STAGES, resolveFromFlags, applySkipFlags } from '../L0-pure/types/index'
 import type { ShortVideoAsset } from '../L5-assets/ShortVideoAsset.js'
 import type { MediumClipAsset } from '../L5-assets/MediumClipAsset.js'
 import type { CaptionFiles } from '../L5-assets/VideoAsset.js'
@@ -173,11 +175,24 @@ export function adjustTranscript(
  * Each stage runs through {@link runStage} which catches errors. This means a
  * shorts failure doesn't block summary generation.
  */
-export async function processVideo(videoPath: string, ideas?: Idea[], publishBy?: string): Promise<PipelineResult> {
+export async function processVideo(videoPath: string, ideas?: Idea[], publishBy?: string, spec?: PipelineSpec): Promise<PipelineResult> {
   const pipelineStart = Date.now()
   const stageResults: StageResult[] = []
   const cfg = getConfig()
   let stagesSkipped = 0
+
+  // Build effective spec: merge provided spec with env SKIP_* overrides, or derive from flags alone
+  const skipFlags: SkipFlags = {
+    SKIP_SILENCE_REMOVAL: cfg.SKIP_SILENCE_REMOVAL,
+    SKIP_VISUAL_ENHANCEMENT: cfg.SKIP_VISUAL_ENHANCEMENT,
+    SKIP_CAPTIONS: cfg.SKIP_CAPTIONS,
+    SKIP_INTRO_OUTRO: cfg.SKIP_INTRO_OUTRO,
+    SKIP_SHORTS: cfg.SKIP_SHORTS,
+    SKIP_MEDIUM_CLIPS: cfg.SKIP_MEDIUM_CLIPS,
+    SKIP_SOCIAL: cfg.SKIP_SOCIAL,
+    SKIP_SOCIAL_PUBLISH: cfg.SKIP_SOCIAL_PUBLISH,
+  }
+  const effectiveSpec = spec ? applySkipFlags(spec, skipFlags) : resolveFromFlags(skipFlags)
 
   costTracker.reset()
 
@@ -257,57 +272,60 @@ export async function processVideo(videoPath: string, ideas?: Idea[], publishBy?
     logger.info(`Pipeline using ${ideas.length} idea(s) for editorial direction`)
   }
 
+  // Attach spec to asset for agent parameterization
+  asset.setSpec(effectiveSpec)
+
   try {
     // 2. Transcription — asset handles disk check + Whisper call + file write
     const transcript = await trackStage<Transcript>(Stage.Transcription, () => asset.getTranscript())
 
     // 3. Silence Removal — asset handles edited video generation
     let editedVideoPath: string | undefined
-    if (!cfg.SKIP_SILENCE_REMOVAL) {
+    if (effectiveSpec.processing.silenceRemoval) {
       editedVideoPath = await trackStage<string>(Stage.SilenceRemoval, () => asset.getEditedVideo())
     } else {
-      skipStage(Stage.SilenceRemoval, 'SKIP_SILENCE_REMOVAL')
+      skipStage(Stage.SilenceRemoval, 'SPEC_DISABLED')
     }
 
     // 3.5. Visual Enhancement — asset handles overlay generation + compositing
     let enhancedVideoPath: string | undefined
-    if (!cfg.SKIP_VISUAL_ENHANCEMENT) {
+    if (effectiveSpec.processing.visualEnhancement) {
       enhancedVideoPath = await trackStage<string>(Stage.VisualEnhancement, () => asset.getEnhancedVideo())
     } else {
-      skipStage(Stage.VisualEnhancement, 'SKIP_VISUAL_ENHANCEMENT')
+      skipStage(Stage.VisualEnhancement, 'SPEC_DISABLED')
     }
 
     // 4. Captions — asset handles transcript → SRT/VTT/ASS generation
     let captions: CaptionFiles | undefined
-    if (!cfg.SKIP_CAPTIONS) {
+    if (effectiveSpec.processing.captions) {
       captions = await trackStage<CaptionFiles>(Stage.Captions, () => asset.getCaptions())
     } else {
-      skipStage(Stage.Captions, 'SKIP_CAPTIONS')
+      skipStage(Stage.Captions, 'SPEC_DISABLED')
     }
 
     // 5. Caption Burn — asset handles burning captions into video
     let captionedVideoPath: string | undefined
-    if (!cfg.SKIP_CAPTIONS) {
+    if (effectiveSpec.processing.captions) {
       captionedVideoPath = await trackStage<string>(Stage.CaptionBurn, () => asset.getCaptionedVideo())
     } else {
-      skipStage(Stage.CaptionBurn, 'SKIP_CAPTIONS')
+      skipStage(Stage.CaptionBurn, 'SPEC_DISABLED')
     }
 
     // 6. Intro/Outro — concat intro + captioned video + outro (silent bookends)
     let introOutroVideoPath: string | undefined
-    if (!cfg.SKIP_INTRO_OUTRO) {
+    if (effectiveSpec.processing.introOutro) {
       introOutroVideoPath = await trackStage<string>(Stage.IntroOutro, () => asset.getIntroOutroVideo())
     } else {
-      skipStage(Stage.IntroOutro, 'SKIP_INTRO_OUTRO')
+      skipStage(Stage.IntroOutro, 'SPEC_DISABLED')
     }
 
     // 7. Shorts — asset handles clip planning, extraction, caption burning
     let shorts: ShortClip[] = []
-    if (!cfg.SKIP_SHORTS) {
+    if (effectiveSpec.clips.shorts.enabled) {
       const shortAssets = await trackStage<ShortVideoAsset[]>(Stage.Shorts, async () => {
         const assets = await asset.getShorts()
         // Apply intro/outro to each short and its variants (if configured)
-        if (!cfg.SKIP_INTRO_OUTRO) {
+        if (effectiveSpec.processing.introOutro) {
           for (const shortAsset of assets) {
             const introOutroPath = await shortAsset.getIntroOutroVideo()
             if (introOutroPath !== shortAsset.clip.outputPath) {
@@ -337,16 +355,16 @@ export async function processVideo(videoPath: string, ideas?: Idea[], publishBy?
         }
       }
     } else {
-      skipStage(Stage.Shorts, 'SKIP_SHORTS')
+      skipStage(Stage.Shorts, 'SPEC_DISABLED')
     }
 
     // 8. Medium Clips — asset handles clip planning, extraction, transitions
     let mediumClips: MediumClip[] = []
-    if (!cfg.SKIP_MEDIUM_CLIPS) {
+    if (effectiveSpec.clips.medium.enabled) {
       const mediumAssets = await trackStage<MediumClipAsset[]>(Stage.MediumClips, async () => {
         const assets = await asset.getMediumClips()
         // Apply intro/outro to each medium clip (if configured)
-        if (!cfg.SKIP_INTRO_OUTRO) {
+        if (effectiveSpec.processing.introOutro) {
           for (const clipAsset of assets) {
             const introOutroPath = await clipAsset.getIntroOutroVideo()
             if (introOutroPath !== clipAsset.clip.outputPath) {
@@ -369,7 +387,7 @@ export async function processVideo(videoPath: string, ideas?: Idea[], publishBy?
         }
       }
     } else {
-      skipStage(Stage.MediumClips, 'SKIP_MEDIUM_CLIPS')
+      skipStage(Stage.MediumClips, 'SPEC_DISABLED')
     }
 
     // 8. Chapters — asset handles topic boundary detection
@@ -398,7 +416,7 @@ export async function processVideo(videoPath: string, ideas?: Idea[], publishBy?
 
     // 11. Social Media — asset handles platform-specific post generation
     let socialPosts: SocialPost[] = []
-    if (!cfg.SKIP_SOCIAL) {
+    if (effectiveSpec.distribution.enabled) {
       const mainPosts = await trackStage<SocialPost[]>(Stage.SocialMedia, () => asset.getSocialPosts()) ?? []
       socialPosts.push(...mainPosts)
 
@@ -426,16 +444,16 @@ export async function processVideo(videoPath: string, ideas?: Idea[], publishBy?
         skipStage(Stage.MediumClipPosts, 'NO_MEDIUM_CLIPS')
       }
     } else {
-      skipStage(Stage.SocialMedia, 'SKIP_SOCIAL')
-      skipStage(Stage.ShortPosts, 'SKIP_SOCIAL')
-      skipStage(Stage.MediumClipPosts, 'SKIP_SOCIAL')
+      skipStage(Stage.SocialMedia, 'SPEC_DISABLED')
+      skipStage(Stage.ShortPosts, 'SPEC_DISABLED')
+      skipStage(Stage.MediumClipPosts, 'SPEC_DISABLED')
     }
 
     // 13. Queue Build — asset handles publish-queue/ population
-    if (!cfg.SKIP_SOCIAL_PUBLISH && socialPosts.length > 0) {
+    if (effectiveSpec.distribution.publish && socialPosts.length > 0) {
       await trackStage<void>(Stage.QueueBuild, () => asset.buildQueue(shorts, mediumClips, socialPosts, introOutroVideoPath ?? captionedVideoPath))
-    } else if (cfg.SKIP_SOCIAL_PUBLISH) {
-      skipStage(Stage.QueueBuild, 'SKIP_SOCIAL_PUBLISH')
+    } else if (!effectiveSpec.distribution.publish) {
+      skipStage(Stage.QueueBuild, 'SPEC_DISABLED')
     } else {
       skipStage(Stage.QueueBuild, 'NO_SOCIAL_POSTS')
     }
@@ -531,7 +549,7 @@ function generateCostMarkdown(report: CostReport): string {
   return md
 }
 
-export async function processVideoSafe(videoPath: string, ideas?: Idea[], publishBy?: string): Promise<PipelineResult | null> {
+export async function processVideoSafe(videoPath: string, ideas?: Idea[], publishBy?: string, spec?: PipelineSpec): Promise<PipelineResult | null> {
   // Derive slug from filename for state tracking (same logic as MainVideoAsset.ingest)
   const filename = basename(videoPath)
   const slug = filename.replace(/\.(mp4|mov|webm|avi|mkv)$/i, '')
@@ -539,7 +557,7 @@ export async function processVideoSafe(videoPath: string, ideas?: Idea[], publis
   await markProcessing(slug)
 
   try {
-    const result = await processVideo(videoPath, ideas, publishBy)
+    const result = await processVideo(videoPath, ideas, publishBy, spec)
     await markCompleted(slug)
     return result
   } catch (err: unknown) {

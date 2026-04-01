@@ -36,6 +36,7 @@ const {
   mockGetBlog,
   mockBuildQueue,
   mockSetIdeas,
+  mockSetSpec,
   mockGetEditorialDirection,
   mockGetMetadata,
   mockGetIntroOutroVideo,
@@ -69,6 +70,7 @@ const {
   mockGetBlog: vi.fn(),
   mockBuildQueue: vi.fn(),
   mockSetIdeas: vi.fn(),
+  mockSetSpec: vi.fn(),
   mockGetEditorialDirection: vi.fn().mockResolvedValue('editorial direction text'),
   mockGetMetadata: vi.fn().mockResolvedValue({ width: 1920, height: 1080, duration: 120 }),
   mockGetIntroOutroVideo: vi.fn().mockResolvedValue('/intro-outro.mp4'),
@@ -410,6 +412,7 @@ describe('processVideo', () => {
       getBlog: mockGetBlog,
       buildQueue: mockBuildQueue,
       setIdeas: mockSetIdeas,
+      setSpec: mockSetSpec,
       ...overrides,
     } as any
   }
@@ -673,6 +676,7 @@ describe('processVideoSafe', () => {
       getBlog: vi.fn().mockResolvedValue(''),
       buildQueue: vi.fn().mockResolvedValue(undefined),
       setIdeas: vi.fn(),
+      setSpec: vi.fn(),
     } as any)
   })
 
@@ -726,6 +730,7 @@ describe('progress events', () => {
       getBlog: mockGetBlog,
       buildQueue: mockBuildQueue,
       setIdeas: mockSetIdeas,
+      setSpec: mockSetSpec,
       ...overrides,
     } as any
   }
@@ -825,7 +830,7 @@ describe('progress events', () => {
       expect(skipStages).toContain(PipelineStage.Shorts)
 
       const silenceSkip = skipEvents.find(e => e.stage === PipelineStage.SilenceRemoval)
-      expect(silenceSkip?.reason).toBe('SKIP_SILENCE_REMOVAL')
+      expect(silenceSkip?.reason).toBe('SPEC_DISABLED')
     })
   })
 
@@ -987,6 +992,7 @@ describe('progress zero-overhead guard', () => {
       getBlog: mockGetBlog,
       buildQueue: mockBuildQueue,
       setIdeas: mockSetIdeas,
+      setSpec: mockSetSpec,
     } as any)
 
     await processVideo('/videos/test.mp4')
@@ -1023,6 +1029,7 @@ describe('data-dependent stage skips', () => {
       getBlog: mockGetBlog,
       buildQueue: mockBuildQueue,
       setIdeas: mockSetIdeas,
+      setSpec: mockSetSpec,
       ...overrides,
     } as any
   }

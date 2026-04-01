@@ -904,6 +904,7 @@ describe('MainVideoAsset', () => {
         [],
         '/recordings/test/test-captioned.mp4',
         ['1'],
+        undefined,
       )
     })
   })

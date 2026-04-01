@@ -27,13 +27,16 @@ export interface QueueBuildResult {
  * Resolve the media file path for a short clip on a given platform.
  * Uses the content strategy's variantKey to find the right variant,
  * then falls back to captionedPath → outputPath.
+ *
+ * When variantsEnabled is false, variant lookup is skipped entirely
+ * and the fallback path (captioned → original) is always used.
  */
-function resolveShortMedia(clip: ShortClip, platform: Platform): string | null {
+function resolveShortMedia(clip: ShortClip, platform: Platform, variantsEnabled?: boolean): string | null {
   const rule = getMediaRule(platform, 'short')
   if (!rule) return null // platform doesn't accept short media
 
-  // If the rule specifies a variant key, look it up
-  if (rule.variantKey && clip.variants?.length) {
+  // If the rule specifies a variant key, look it up (unless variants are disabled)
+  if (variantsEnabled !== false && rule.variantKey && clip.variants?.length) {
     const match = clip.variants.find(v => v.platform === rule.variantKey)
     if (match) return match.path
 
@@ -141,6 +144,7 @@ export async function buildPublishQueue(
   socialPosts: SocialPost[],
   captionedVideoPath: string | undefined,
   ideaIds?: string[],
+  variantsEnabled?: boolean,
 ): Promise<QueueBuildResult> {
   const result: QueueBuildResult = { itemsCreated: 0, itemsSkipped: 0, errors: [] }
 
@@ -165,7 +169,7 @@ export async function buildPublishQueue(
           clipSlug = short.slug
           clipType = 'short'
           sourceClip = dirname(short.outputPath)
-          mediaPath = resolveShortMedia(short, post.platform)
+          mediaPath = resolveShortMedia(short, post.platform, variantsEnabled)
           thumbnailPath = short.thumbnailPath ?? null
           clipIdeaIssueNumber = short.ideaIssueNumber
         } else if (medium) {

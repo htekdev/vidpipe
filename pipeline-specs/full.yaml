@@ -1,0 +1,49 @@
+# Full pipeline — maximum content production (default)
+#
+# Hook-first shorts, per-platform tone optimization, all processing enabled.
+# This is the current default behaviour and produces the most content.
+
+name: full
+description: Full pipeline with hook-first shorts, per-platform optimization
+
+processing:
+  silenceRemoval: true
+  visualEnhancement: true
+  captions: true
+  introOutro: true
+
+clips:
+  shorts:
+    enabled: true
+    strategy: hook-first
+    duration:
+      min: 15
+      max: 60
+    minViralScore: 8
+    maxClips: 5
+  medium:
+    enabled: true
+    strategy: chronological
+    duration:
+      min: 60
+      max: 180
+    minViralScore: 10
+    maxClips: 5
+
+content:
+  chapters: true
+  summary: true
+  blog: true
+
+distribution:
+  enabled: true
+  publish: true
+  platforms:
+    targets:
+      - youtube
+      - linkedin
+      - instagram
+      - x
+      - tiktok
+    toneStrategy: per-platform
+    variants: true
