@@ -764,7 +764,7 @@ describe('progress events', () => {
       expect(startCalls[0][0]).toMatchObject({
         event: 'pipeline:start',
         videoPath: '/videos/test.mp4',
-        totalStages: 17,
+        totalStages: 18,
       })
     })
   })
@@ -893,7 +893,7 @@ describe('progress events', () => {
 
       for (const event of stageEvents) {
         expect(event.stageNumber).toBeGreaterThan(0)
-        expect(event.totalStages).toBe(17)
+        expect(event.totalStages).toBe(18)
         expect(event.name).toBeTruthy()
       }
     })

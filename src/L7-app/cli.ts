@@ -21,6 +21,7 @@ import { runConfigure } from './commands/configure'
 import { runIntroOutro } from './commands/introOutro'
 import { runThumbnail } from './commands/thumbnail'
 import { runIdeaUpdate, runIdeaGet, runIdeaSearch } from './commands/ideaUpdate'
+import { createCloudCommand } from './commands/cloud'
 import { startReviewServer } from './review/server'
 import { parsePublishBy } from './parsePublishBy'
 import { openUrl } from '../L1-infra/cli/cli.js'
@@ -330,6 +331,8 @@ program
 
 // --- Default command (process video or watch) ---
 // This must come after subcommands so they take priority
+
+program.addCommand(createCloudCommand())
 
 const defaultCmd = program
   .command('process', { isDefault: true })

@@ -96,10 +96,17 @@ async function enrichReviewItems(items: ReviewItem[]): Promise<ReviewQueueItem[]
 }
 
 async function enrichGroupedItems(groups: ReviewGroup[]): Promise<ReviewGroupedItem[]> {
-  return Promise.all(groups.map(async (group) => ({
-    ...group,
-    items: await enrichReviewItems(group.items),
-  })))
+  return Promise.all(groups.map(async (group) => {
+    const firstItem = group.items[0]
+    const hasMedia = group.items.some(item => Boolean(item.mediaFilename))
+    return {
+      ...group,
+      groupKey: group.videoSlug,
+      hasMedia,
+      mediaType: firstItem?.mediaType || 'video',
+      items: await enrichReviewItems(group.items),
+    }
+  }))
 }
 
 export function createRouter(): Router {
