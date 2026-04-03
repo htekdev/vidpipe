@@ -1,8 +1,8 @@
 import { express } from '../../L1-infra/http/http.js'
 import { join, dirname, fileURLToPath } from '../../L1-infra/paths/paths.js'
-import { createRouter } from './routes'
-import { getConfig } from '../../L1-infra/config/environment'
-import logger from '../../L1-infra/logger/configLogger'
+import { createRouter } from './routes.js'
+import { isAzureConfigured } from '../../L3-services/azureStorage/azureStorageService.js'
+import logger from '../../L1-infra/logger/configLogger.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
@@ -14,21 +14,21 @@ export async function startReviewServer(options: ReviewServerOptions = {}): Prom
   port: number
   close: () => Promise<void>
 }> {
+  // Azure Storage is required for the review server
+  if (!isAzureConfigured()) {
+    const msg = 'Review server requires Azure Storage. Set AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY environment variables.'
+    logger.error(msg)
+    throw new Error(msg)
+  }
+
   const app = express()
   const port = options.port || 3847
 
   // Middleware
   app.use(express.json())
 
-  // API routes
+  // API routes (including /api/media/:itemId/:filename for blob proxy)
   app.use(createRouter())
-
-  // Serve media files from publish-queue and published directories
-  const cfg = getConfig()
-  const queueDir = join(cfg.OUTPUT_DIR, 'publish-queue')
-  const publishedDir = join(cfg.OUTPUT_DIR, 'published')
-  app.use('/media/queue', express.static(queueDir))
-  app.use('/media/published', express.static(publishedDir))
 
   // Serve static frontend
   const publicDir = join(__dirname, 'public')
@@ -36,7 +36,7 @@ export async function startReviewServer(options: ReviewServerOptions = {}): Prom
 
   // SPA fallback — serve index.html for non-API routes
   app.get('/{*splat}', (req, res) => {
-    if (!req.path.startsWith('/api/') && !req.path.startsWith('/media/')) {
+    if (!req.path.startsWith('/api/')) {
       res.sendFile(join(publicDir, 'index.html'))
     }
   })

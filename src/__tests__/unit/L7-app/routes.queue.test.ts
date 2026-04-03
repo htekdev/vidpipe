@@ -53,12 +53,17 @@ vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
   loadScheduleConfig: async () => ({ timezone: 'America/Chicago', platforms: {} }),
 }))
 
-vi.mock('../../../L3-services/postStore/postStore.js', () => ({
-  getPendingItems: vi.fn().mockResolvedValue([]),
-  getGroupedPendingItems: vi.fn().mockResolvedValue([]),
-  getItem: vi.fn().mockResolvedValue(null),
+vi.mock('../../../L3-services/azureStorage/azureReviewDataSource.js', () => ({
+  listPendingItems: vi.fn().mockResolvedValue([]),
+  getGroupedItems: vi.fn().mockResolvedValue([]),
+  getItemById: vi.fn().mockResolvedValue(null),
   updateItem: vi.fn().mockResolvedValue(undefined),
   rejectItem: vi.fn().mockResolvedValue(undefined),
+  getMediaStream: vi.fn().mockRejectedValue(new Error('Not found')),
+}))
+
+vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
+  getContentItems: vi.fn().mockResolvedValue([]),
 }))
 
 // ── Import after mocks ─────────────────────────────────────────────────

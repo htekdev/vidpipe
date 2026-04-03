@@ -1,13 +1,15 @@
 import { Router } from '../../L1-infra/http/http.js'
 import {
-  getPendingItems,
-  getGroupedPendingItems,
-  getItem,
-  updateItem,
-  rejectItem,
-  type GroupedQueueItem,
-  type QueueItem,
-} from '../../L3-services/postStore/postStore.js'
+  listPendingItems,
+  getGroupedItems,
+  getItemById,
+  updateItem as azureUpdateItem,
+  rejectItem as azureRejectItem,
+  getMediaStream,
+  type ReviewItem,
+  type ReviewGroup,
+} from '../../L3-services/azureStorage/azureReviewDataSource.js'
+import { getContentItems } from '../../L3-services/azureStorage/azureStorageService.js'
 import { getIdeasByIds } from '../../L3-services/ideation/ideaService.js'
 import { findNextSlot, getScheduleCalendar } from '../../L3-services/scheduler/scheduler.js'
 import { createLateApiClient, type LateApiClient, type LateAccount, type LateProfile } from '../../L3-services/lateApi/lateApiService.js'
@@ -31,8 +33,8 @@ function setCache(key: string, data: unknown, ttl = CACHE_TTL_MS): void {
   cache.set(key, { data, expiry: Date.now() + ttl })
 }
 
-type ReviewQueueItem = QueueItem & { ideaPublishBy?: string }
-type ReviewGroupedQueueItem = Omit<GroupedQueueItem, 'items'> & { items: ReviewQueueItem[] }
+type ReviewQueueItem = ReviewItem & { ideaPublishBy?: string }
+type ReviewGroupedItem = ReviewGroup & { items: ReviewQueueItem[] }
 
 async function getEarliestPublishBy(ideaIds: string[]): Promise<string | undefined> {
   try {
@@ -47,9 +49,9 @@ async function getEarliestPublishBy(ideaIds: string[]): Promise<string | undefin
   }
 }
 
-async function enrichQueueItem(item: QueueItem): Promise<ReviewQueueItem> {
-  const ideaPublishBy = item.metadata.ideaIds?.length
-    ? await getEarliestPublishBy(item.metadata.ideaIds)
+async function enrichReviewItem(item: ReviewItem): Promise<ReviewQueueItem> {
+  const ideaPublishBy = item.ideaIds?.length
+    ? await getEarliestPublishBy(item.ideaIds)
     : undefined
 
   return {
@@ -58,11 +60,11 @@ async function enrichQueueItem(item: QueueItem): Promise<ReviewQueueItem> {
   }
 }
 
-async function enrichQueueItems(items: QueueItem[]): Promise<ReviewQueueItem[]> {
+async function enrichReviewItems(items: ReviewItem[]): Promise<ReviewQueueItem[]> {
   const allIdeaIds = new Set<string>()
   for (const item of items) {
-    if (item.metadata.ideaIds?.length) {
-      for (const ideaId of item.metadata.ideaIds) {
+    if (item.ideaIds?.length) {
+      for (const ideaId of item.ideaIds) {
         allIdeaIds.add(ideaId)
       }
     }
@@ -82,9 +84,9 @@ async function enrichQueueItems(items: QueueItem[]): Promise<ReviewQueueItem[]> 
   }
 
   return items.map((item) => {
-    if (!item.metadata.ideaIds?.length) return { ...item }
+    if (!item.ideaIds?.length) return { ...item }
 
-    const dates = item.metadata.ideaIds
+    const dates = item.ideaIds
       .map((id) => publishByMap.get(id))
       .filter((publishBy): publishBy is string => Boolean(publishBy))
       .sort()
@@ -93,32 +95,53 @@ async function enrichQueueItems(items: QueueItem[]): Promise<ReviewQueueItem[]> 
   })
 }
 
-async function enrichGroupedQueueItems(groups: GroupedQueueItem[]): Promise<ReviewGroupedQueueItem[]> {
+async function enrichGroupedItems(groups: ReviewGroup[]): Promise<ReviewGroupedItem[]> {
   return Promise.all(groups.map(async (group) => ({
     ...group,
-    items: await enrichQueueItems(group.items),
+    items: await enrichReviewItems(group.items),
   })))
 }
 
 export function createRouter(): Router {
   const router = Router()
 
+  // GET /api/media/:itemId/:filename — proxy media from Azure blob storage
+  router.get('/api/media/:itemId/:filename', async (req, res) => {
+    try {
+      const { itemId, filename } = req.params
+      const { stream, contentType } = await getMediaStream(itemId, filename)
+      res.setHeader('Content-Type', contentType)
+      res.setHeader('Cache-Control', 'public, max-age=3600')
+      stream.pipe(res)
+      stream.on('error', () => {
+        if (!res.headersSent) {
+          res.status(500).json({ error: 'Stream error' })
+        }
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (!res.headersSent) {
+        res.status(404).json({ error: msg })
+      }
+    }
+  })
+
   // GET /api/posts/pending — list all pending review items
   router.get('/api/posts/pending', async (req, res) => {
-    const items = await enrichQueueItems(await getPendingItems())
+    const items = await enrichReviewItems(await listPendingItems())
     res.json({ items, total: items.length })
   })
 
   // GET /api/posts/grouped — list pending items grouped by video/clip
   router.get('/api/posts/grouped', async (req, res) => {
-    const groups = await enrichGroupedQueueItems(await getGroupedPendingItems())
+    const groups = await enrichGroupedItems(await getGroupedItems())
     res.json({ groups, total: groups.length })
   })
 
   // GET /api/init — combined endpoint for initial page load (1 request instead of 3)
   router.get('/api/init', async (req, res) => {
     const [groupsResult, accountsResult, profileResult] = await Promise.allSettled([
-      (async () => enrichGroupedQueueItems(await getGroupedPendingItems()))(),
+      (async () => enrichGroupedItems(await getGroupedItems()))(),
       (async () => {
         const cached = getCached<LateAccount[]>('accounts')
         if (cached) return cached
@@ -147,9 +170,14 @@ export function createRouter(): Router {
 
   // GET /api/posts/:id — get single post with full content
   router.get('/api/posts/:id', async (req, res) => {
-    const item = await getItem(req.params.id)
+    // Look up the item across all video slugs
+    const allItems = await getContentItems()
+    const match = allItems.find(r => r.rowKey === req.params.id)
+    if (!match) return res.status(404).json({ error: 'Item not found' })
+
+    const item = await getItemById(match.partitionKey, match.rowKey)
     if (!item) return res.status(404).json({ error: 'Item not found' })
-    res.json(await enrichQueueItem(item))
+    res.json(await enrichReviewItem(item))
   })
 
   // POST /api/posts/:id/approve — enqueue for sequential processing, return 202
@@ -182,10 +210,15 @@ export function createRouter(): Router {
     })
   })
 
-  // POST /api/posts/:id/reject — delete from queue
+  // POST /api/posts/:id/reject — mark as rejected in Azure
   router.post('/api/posts/:id/reject', async (req, res) => {
     try {
-      await rejectItem(req.params.id)
+      // Look up the item to get the videoSlug
+      const allItems = await getContentItems()
+      const match = allItems.find(r => r.rowKey === req.params.id)
+      if (!match) return res.status(404).json({ error: 'Item not found' })
+
+      await azureRejectItem(match.partitionKey, match.rowKey)
       res.json({ success: true })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -193,7 +226,7 @@ export function createRouter(): Router {
     }
   })
 
-  // POST /api/posts/bulk-reject — fire-and-forget: returns 202 immediately, deletes in background
+  // POST /api/posts/bulk-reject — fire-and-forget: returns 202 immediately, rejects in background
   router.post('/api/posts/bulk-reject', (req, res) => {
     const { itemIds } = req.body
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
@@ -202,27 +235,39 @@ export function createRouter(): Router {
 
     res.status(202).json({ accepted: true, count: itemIds.length })
 
-    // Process in background
     ;(async () => {
+      const allItems = await getContentItems()
+      const itemLookup = new Map(allItems.map(r => [r.rowKey, r.partitionKey]))
       let succeeded = 0
       for (const itemId of itemIds) {
         try {
-          await rejectItem(itemId)
+          const videoSlug = itemLookup.get(itemId)
+          if (!videoSlug) {
+            logger.error(`Bulk reject: item not found: ${String(itemId).replace(/[\r\n]/g, '')}`)
+            continue
+          }
+          await azureRejectItem(videoSlug, itemId)
           succeeded++
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
           logger.error(`Bulk reject failed for ${String(itemId).replace(/[\r\n]/g, '')}: ${String(msg).replace(/[\r\n]/g, '')}`)
         }
       }
-      logger.info(`Bulk reject completed: ${succeeded} of ${itemIds.length} removed`)
+      logger.info(`Bulk reject completed: ${succeeded} of ${itemIds.length} rejected`)
     })()
   })
 
   // PUT /api/posts/:id — edit post content
   router.put('/api/posts/:id', async (req, res) => {
     try {
-      const { postContent, metadata } = req.body
-      const updated = await updateItem(req.params.id, { postContent, metadata })
+      const { postContent } = req.body
+
+      // Look up the item to get the videoSlug
+      const allItems = await getContentItems()
+      const match = allItems.find(r => r.rowKey === req.params.id)
+      if (!match) return res.status(404).json({ error: 'Item not found' })
+
+      const updated = await azureUpdateItem(match.partitionKey, match.rowKey, { postContent })
       if (!updated) return res.status(404).json({ error: 'Item not found' })
       res.json(updated)
     } catch (err) {
