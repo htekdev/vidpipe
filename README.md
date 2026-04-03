@@ -126,6 +126,9 @@ vidpipe init              # Interactive setup wizard
 vidpipe review            # Open post review web app
 vidpipe schedule          # View posting schedule
 vidpipe realign           # Realign scheduled posts to match schedule.json
+vidpipe realign --queue   # Queue-based realignment (reshuffleExisting)
+vidpipe sync-queues       # Sync schedule.json queue definitions to Late API
+vidpipe reschedule        # Reschedule idea-linked posts for optimal placement
 vidpipe ideate            # Generate or list saved content ideas
 vidpipe chat              # Interactive schedule management agent
 vidpipe doctor            # Check all prerequisites

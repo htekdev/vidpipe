@@ -362,7 +362,7 @@ Use the `ideas` namespace when you want CRUD-style access to the idea store. Use
 
 ### `schedule.findNextSlot(platform, clipType?, options?)`
 
-Returns the next matching publish slot or `null`.
+Returns the next publish slot. If a mapped Late queue exists for the platform/clipType, previews that queue first. Falls back to local scheduler calculation. Returns `null` if no slot is available.
 
 ```ts
 const nextTikTokSlot = await vidpipe.schedule.findNextSlot('tiktok', 'short', {
@@ -402,6 +402,8 @@ console.log(applied)
 ```
 
 With `dryRun: true`, VidPipe calculates how many posts would move without executing the plan.
+
+Note: Uses per-post realign plan. For queue-based reshuffle, use `vidpipe sync-queues --reshuffle` or `vidpipe realign --queue` via CLI.
 
 ### `schedule.loadConfig()`
 

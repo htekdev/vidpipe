@@ -12,6 +12,8 @@ export interface TimeSlot {
 export interface ClipTypeSchedule {
   slots: TimeSlot[]
   avoidDays: DayOfWeek[]
+  queueId?: string      // Late API queue ID (set after sync-queues)
+  queueName?: string    // Queue name in Late (e.g., 'linkedin-short')
 }
 
 export interface PlatformSchedule {

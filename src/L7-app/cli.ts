@@ -106,8 +106,9 @@ program
   .description('Realign all Late scheduled, cancelled, and failed posts to match schedule.json slots')
   .option('--platform <name>', 'Filter by platform (tiktok, youtube, instagram, linkedin, twitter)')
   .option('--dry-run', 'Preview changes without updating posts')
+  .option('--queue', 'Use Late API queue reshuffle instead of per-post reschedule')
   .action(async (opts) => {
-    await runRealign({ platform: opts.platform, dryRun: opts.dryRun })
+    await runRealign({ platform: opts.platform, dryRun: opts.dryRun, queue: opts.queue })
     process.exit(0)
   })
 
@@ -115,9 +116,26 @@ program
   .command('reschedule')
   .description('Reschedule idea-linked posts for optimal slot placement, displacing non-idea content')
   .option('--dry-run', 'Preview changes without updating posts')
+  .option('--queue', 'Use Late API queue reshuffle instead of per-post reschedule')
   .action(async (opts) => {
     const { runReschedule } = await import('./commands/reschedule.js')
-    await runReschedule({ dryRun: opts.dryRun })
+    await runReschedule({ dryRun: opts.dryRun, queue: opts.queue })
+    process.exit(0)
+  })
+
+program
+  .command('sync-queues')
+  .description('Sync schedule.json queue definitions to Late API queues')
+  .option('--reshuffle', 'Reschedule existing queued posts to match new slot times')
+  .option('--dry-run', 'Preview changes without making API calls')
+  .option('--delete-orphans', 'Delete Late queues not in schedule.json')
+  .action(async (opts) => {
+    const { runSyncQueues } = await import('./commands/syncQueues.js')
+    await runSyncQueues({
+      reshuffle: opts.reshuffle,
+      dryRun: opts.dryRun,
+      deleteOrphans: opts.deleteOrphans,
+    })
     process.exit(0)
   })
 

@@ -33,6 +33,7 @@ import {
 import { getIdeasByIds } from '../../L3-services/ideation/ideaService.js'
 import { loadAndValidateIdea } from '../../L3-services/interview/interviewService.js'
 import { createLateApiClient } from '../../L3-services/lateApi/lateApiService.js'
+import { getQueueId, getProfileId } from '../../L3-services/queueMapping/queueMapping.js'
 import { buildRealignPlan, executeRealignPlan } from '../../L3-services/scheduler/realign.js'
 import { loadScheduleConfig } from '../../L3-services/scheduler/scheduleConfig.js'
 import { findNextSlot, getScheduleCalendar } from '../../L3-services/scheduler/scheduler.js'
@@ -783,6 +784,23 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
 
     schedule: {
       async findNextSlot(platform, clipType, options?: SlotOptions) {
+        // Try queue preview first (Late API queue-based scheduling)
+        const effectiveClipType = clipType || 'short'
+        const queueId = await getQueueId(platform, effectiveClipType)
+        if (queueId) {
+          try {
+            const profileId = await getProfileId()
+            const client = createLateApiClient()
+            const preview = await client.previewQueue(profileId, queueId, 1)
+            if (preview.slots?.length > 0) {
+              return preview.slots[0]
+            }
+          } catch {
+            // Fall through to local calculation
+          }
+        }
+
+        // Fallback to local slot calculation
         return await findNextSlot(platform, clipType, {
           ideaIds: options?.ideaIds?.map((ideaId) => String(ideaId)),
           publishBy: options?.publishBy,

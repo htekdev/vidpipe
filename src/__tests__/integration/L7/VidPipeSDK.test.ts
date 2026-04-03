@@ -32,6 +32,9 @@ const {
   mockGeneratePlatformVariants,
   mockGetFFmpegPath,
   mockGetFFprobePath,
+  mockGetQueueId,
+  mockGetProfileId,
+  mockCreateLateApiClient,
 } = vi.hoisted(() => ({
   mockInitConfig: vi.fn(),
   mockGetConfig: vi.fn(),
@@ -60,6 +63,9 @@ const {
   mockGeneratePlatformVariants: vi.fn(),
   mockGetFFmpegPath: vi.fn(),
   mockGetFFprobePath: vi.fn(),
+  mockGetQueueId: vi.fn(),
+  mockGetProfileId: vi.fn(),
+  mockCreateLateApiClient: vi.fn(),
 }))
 
 vi.mock('../../../L1-infra/config/environment.js', () => ({
@@ -114,6 +120,15 @@ vi.mock('../../../L3-services/videoOperations/videoOperations.js', () => ({
 vi.mock('../../../L3-services/diagnostics/diagnostics.js', () => ({
   getFFmpegPath: mockGetFFmpegPath,
   getFFprobePath: mockGetFFprobePath,
+}))
+
+vi.mock('../../../L3-services/queueMapping/queueMapping.js', () => ({
+  getQueueId: mockGetQueueId,
+  getProfileId: mockGetProfileId,
+}))
+
+vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
+  createLateApiClient: mockCreateLateApiClient,
 }))
 
 const baseEnvironment = {
@@ -233,6 +248,12 @@ describe('VidPipeSDK', () => {
     mockCreateIdea.mockResolvedValue(createIdea())
     mockUpdateIdea.mockResolvedValue(createIdea())
     mockGetIdeasByIds.mockResolvedValue([])
+
+    mockGetQueueId.mockResolvedValue(null)
+    mockGetProfileId.mockResolvedValue(null)
+    mockCreateLateApiClient.mockReturnValue({
+      previewQueue: vi.fn().mockResolvedValue({ slots: [] }),
+    })
 
     mockFindNextSlot.mockResolvedValue('2026-02-20T15:00:00.000Z')
     mockGetScheduleCalendar.mockResolvedValue([])
@@ -586,5 +607,70 @@ describe('VidPipeSDK', () => {
   it('sdk exposes generateAgenda method', () => {
     const sdk = createVidPipe()
     expect(typeof sdk.generateAgenda).toBe('function')
+  })
+
+  describe('schedule.findNextSlot — queue preview path (lines 787-803)', () => {
+    it('returns queue-based slot when preview succeeds', async () => {
+      const sdk = createVidPipe()
+      mockGetQueueId.mockResolvedValue('queue-tiktok-short')
+      mockGetProfileId.mockResolvedValue('profile-abc')
+      mockCreateLateApiClient.mockReturnValue({
+        previewQueue: vi.fn().mockResolvedValue({
+          profileId: 'profile-abc',
+          queueId: 'queue-tiktok-short',
+          count: 1,
+          slots: ['2026-04-01T18:00:00-05:00'],
+        }),
+      })
+
+      const result = await sdk.schedule.findNextSlot('tiktok', 'short')
+
+      expect(result).toBe('2026-04-01T18:00:00-05:00')
+      expect(mockGetQueueId).toHaveBeenCalledWith('tiktok', 'short')
+      expect(mockGetProfileId).toHaveBeenCalled()
+      expect(mockFindNextSlot).not.toHaveBeenCalled()
+    })
+
+    it('falls back to local slot when preview returns empty slots', async () => {
+      const sdk = createVidPipe()
+      mockGetQueueId.mockResolvedValue('queue-empty')
+      mockGetProfileId.mockResolvedValue('profile-xyz')
+      mockCreateLateApiClient.mockReturnValue({
+        previewQueue: vi.fn().mockResolvedValue({ slots: [] }),
+      })
+
+      const result = await sdk.schedule.findNextSlot('tiktok', 'short')
+
+      expect(result).toBe('2026-02-20T15:00:00.000Z')
+      expect(mockFindNextSlot).toHaveBeenCalled()
+    })
+
+    it('falls back to local slot when queue preview throws', async () => {
+      const sdk = createVidPipe()
+      mockGetQueueId.mockResolvedValue('queue-broken')
+      mockGetProfileId.mockRejectedValue(new Error('API error'))
+
+      const result = await sdk.schedule.findNextSlot('tiktok', 'short')
+
+      expect(result).toBe('2026-02-20T15:00:00.000Z')
+      expect(mockFindNextSlot).toHaveBeenCalled()
+    })
+
+    it('uses clipType default of short when clipType is undefined', async () => {
+      const sdk = createVidPipe()
+      mockGetQueueId.mockResolvedValue('queue-default')
+      mockGetProfileId.mockResolvedValue('profile-def')
+      mockCreateLateApiClient.mockReturnValue({
+        previewQueue: vi.fn().mockResolvedValue({
+          count: 1,
+          slots: ['2026-05-01T10:00:00-05:00'],
+        }),
+      })
+
+      const result = await sdk.schedule.findNextSlot('youtube')
+
+      expect(result).toBe('2026-05-01T10:00:00-05:00')
+      expect(mockGetQueueId).toHaveBeenCalledWith('youtube', 'short')
+    })
   })
 })

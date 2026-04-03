@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// Stub fetch globally so queueMapping doesn't hit real Late API
+vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+  ok: true, status: 200,
+  json: () => Promise.resolve({ queues: [], count: 0, profiles: [] }),
+  headers: new Map(),
+}))
+
 // ── Mock setup (L1, L3 only) ─────────────────────────────────────────
 
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({

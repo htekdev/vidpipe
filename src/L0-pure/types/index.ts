@@ -918,6 +918,37 @@ export interface ScheduleSlot {
   label?: string
 }
 
+// ── Late API Queue Types ──
+
+/** Late API queue slot definition */
+export interface LateQueueSlot {
+  /** Day of week: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat */
+  dayOfWeek: number
+  /** Time in HH:MM format (24-hour, in the queue's timezone) */
+  time: string
+}
+
+/** Late API queue definition */
+export interface LateQueue {
+  _id: string
+  profileId: string
+  name: string
+  timezone: string
+  slots: LateQueueSlot[]
+  active: boolean
+  isDefault: boolean
+  createdAt?: string
+  updatedAt?: string
+}
+
+/** Maps a (platform, clipType) pair to a Late API queue */
+export interface QueueMapping {
+  queueId: string
+  queueName: string
+  platform: string
+  clipType: string
+}
+
 // ============================================================================
 // VIDEO FORMAT
 // ============================================================================

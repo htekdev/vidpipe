@@ -4,13 +4,24 @@
 
 ## Overview
 
-The scheduling system (`src/services/scheduler.ts`) finds the next available posting slot for each platform based on configured time slots, existing bookings, and per-day limits.
+The scheduling system (`src/L3-services/scheduler/scheduler.ts`) finds the next available posting slot for each platform based on configured time slots, existing bookings, per-day limits, and Late queue mappings.
 
 ---
 
 ## How It Works
 
 ### Flow: Approve → Schedule → Late API
+
+```
+User clicks Approve
+  → approvalQueue.ts sorts idea-linked items first
+  → queueMapping.ts resolves {platform, clipType} → queueId
+  → if queue exists: create post with queuedFromProfile + queueId
+  → else: fallback to findNextSlot() and scheduledFor
+  → postStore.ts moves item to published/
+```
+
+### Fallback Flow (no queue mapping)
 
 ```
 User clicks Approve
@@ -180,6 +191,43 @@ All timezone operations use `Intl.DateTimeFormat` which handles DST correctly.
 
 2. **Late API downtime**: If the Late API is unreachable, `fetchScheduledPostsSafe()` returns `[]`. The scheduler will only use local data, potentially double-booking slots that exist in Late but not locally.
 
-3. **Queue race condition**: Late has a built-in queue system (`queuedFromProfile`). Our manual slot selection could conflict with Late's queue if both are used simultaneously.
+3. **Queue race condition**: Late has a built-in queue system (`queuedFromProfile`). Queue-based scheduling eliminates this race condition via server-side locking — Late assigns the slot atomically when `queuedFromProfile` + `queueId` are provided. Our manual `scheduledFor` fallback could still conflict if both paths are used simultaneously, but this only applies when no queue mapping exists.
 
 4. **730-day limit**: If all slots in the next 730 days (~2 years) are booked, `findNextSlot()` returns `null` and the approve fails with 409.
+
+---
+
+## Queue-Aware Debugging
+
+When scheduling uses the queue-first path, follow this checklist:
+
+### 1. Verify queue definitions
+
+```bash
+vidpipe sync-queues --dry-run
+```
+
+This shows what queues would be created/updated in Late without making changes. Confirm each `{platform}-{clipType}` pair maps correctly.
+
+### 2. Check queue-mapping cache
+
+Inspect `.vidpipe-queue-cache.json` for stale mappings. Delete the file to force a refresh on next approval:
+
+```powershell
+Remove-Item .vidpipe-queue-cache.json -ErrorAction SilentlyContinue
+```
+
+### 3. Preview upcoming queue slots
+
+```bash
+curl -s "https://getlate.dev/api/v1/queue/preview?profileId=YOUR_PROFILE_ID&queueId=YOUR_QUEUE_ID&count=5" \
+  -H "Authorization: Bearer $LATE_API_KEY" | jq
+```
+
+### 4. Check next-slot source
+
+```bash
+curl -s http://localhost:3847/api/schedule/next-slot/tiktok?clipType=short | jq
+```
+
+The response `source` field shows `queue` (server-side queue slot) or `local` (manual `findNextSlot()` calculation).

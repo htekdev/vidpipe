@@ -51,6 +51,17 @@ API keys are generated from the [Late Dashboard](https://getlate.dev/dashboard).
 | `POST` | `/v1/media/presign` | Get presigned upload URL (up to 5GB) |
 | `GET` | `/v1/queue/next-slot` | Get next queue slot |
 
+### Queue Management
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/v1/queue/slots` | List queues for a profile (`profileId`, optional `all=true`) |
+| `POST` | `/v1/queue/slots` | Create a new queue |
+| `PUT` | `/v1/queue/slots` | Update queue (supports `reshuffleExisting`) |
+| `DELETE` | `/v1/queue/slots` | Delete queue (`profileId`, `queueId`) |
+| `GET` | `/v1/queue/preview` | Preview upcoming queue slot times |
+| `GET` | `/v1/queue/next-slot` | Get single next available slot |
+
 ---
 
 ## Create Post (POST /v1/posts)
@@ -548,3 +559,13 @@ Late has a built-in queue system (`queuedFromProfile`). Using `scheduledFor` wit
 - [Instagram Guide](https://docs.getlate.dev/platforms/instagram)
 - [OpenAPI Spec](https://docs.getlate.dev/openapi)
 - [LLMs.txt](https://docs.getlate.dev/llms.txt)
+
+---
+
+## VidPipe Queue Integration
+
+1. `vidpipe sync-queues` creates/updates Late queues from `schedule.json`
+2. Queue names follow `{platform}-{clipType}` convention (e.g. `youtube-short`, `x-medium-clip`)
+3. Review approval resolves `queueId` from the queue-mapping cache
+4. Post creation uses `queuedFromProfile` + `queueId` (Late assigns the slot server-side)
+5. Falls back to manual `scheduledFor` only when no queue mapping exists

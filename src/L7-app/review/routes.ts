@@ -13,6 +13,7 @@ import { findNextSlot, getScheduleCalendar } from '../../L3-services/scheduler/s
 import { createLateApiClient, type LateApiClient, type LateAccount, type LateProfile } from '../../L3-services/lateApi/lateApiService.js'
 import { normalizePlatformString } from '../../L0-pure/types/index.js'
 import logger from '../../L1-infra/logger/configLogger.js'
+import { getQueueId, getProfileId } from '../../L3-services/queueMapping/queueMapping.js'
 import { enqueueApproval } from './approvalQueue.js'
 
 // ── Simple in-memory cache (avoids repeated Late API calls) ────────────
@@ -246,6 +247,23 @@ export function createRouter(): Router {
     try {
       const normalized = normalizePlatformString(req.params.platform)
       const clipType = typeof req.query.clipType === 'string' ? req.query.clipType : undefined
+
+      // Try queue preview first (Late API queue-based scheduling)
+      const queueId = await getQueueId(normalized, clipType ?? 'short')
+      if (queueId) {
+        try {
+          const profileId = await getProfileId()
+          const client = createLateApiClient()
+          const preview = await client.previewQueue(profileId, queueId, 1)
+          if (preview.slots?.length > 0) {
+            return res.json({ platform: normalized, nextSlot: preview.slots[0], source: 'queue' })
+          }
+        } catch {
+          // Fall through to local calculation
+        }
+      }
+
+      // Fallback to local slot calculation
       const slot = await findNextSlot(normalized, clipType)
       res.json({ platform: normalized, nextSlot: slot })
     } catch (err) {

@@ -5,6 +5,7 @@ import logger from '../../L1-infra/logger/configLogger.js'
 
 export interface RescheduleCommandOptions {
   dryRun?: boolean
+  queue?: boolean
 }
 
 function formatDate(iso: string, timezone: string): string {
@@ -32,6 +33,14 @@ const PLATFORM_ICON: Record<string, string> = {
 
 export async function runReschedule(options: RescheduleCommandOptions = {}): Promise<void> {
   initConfig()
+
+  if (options.queue) {
+    const { syncQueuesToLate } = await import('../../L3-services/queueSync/queueSync.js')
+    logger.info('Using Late API queue reshuffle for rescheduling...')
+    const result = await syncQueuesToLate({ reshuffle: true, dryRun: options.dryRun })
+    logger.info(`Queue reshuffle complete: ${result.updated.length} queues reshuffled`)
+    return
+  }
 
   const scheduleConfig = await loadScheduleConfig()
   const { timezone } = scheduleConfig

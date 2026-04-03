@@ -5,6 +5,7 @@ import { findNextSlot } from '../../L3-services/scheduler/scheduler.js'
 import { loadScheduleConfig } from '../../L3-services/scheduler/scheduleConfig.js'
 import { getAccountId } from '../../L3-services/socialPosting/accountMapping.js'
 import { createLateApiClient } from '../../L3-services/lateApi/lateApiService.js'
+import { getQueueId, getProfileId } from '../../L3-services/queueMapping/queueMapping.js'
 import { fromLatePlatform, normalizePlatformString } from '../../L0-pure/types/index.js'
 import logger from '../../L1-infra/logger/configLogger.js'
 
@@ -162,12 +163,29 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
 
       const ideaIds = item.metadata.ideaIds
       const publishBy = publishByMap.get(itemId)
-      const slot = ideaIds?.length
-        ? await findNextSlot(latePlatform, item.metadata.clipType, { ideaIds, publishBy })
-        : await findNextSlot(latePlatform, item.metadata.clipType)
-      if (!slot) {
-        results.push({ itemId, success: false, error: `No available slot for ${latePlatform}` })
-        continue
+
+      // Try queue-based scheduling first, fall back to manual slot calculation
+      const clipType = item.metadata.clipType || 'short'
+      const queueId = await getQueueId(latePlatform, clipType)
+      let slot: string | undefined
+      let useQueue = false
+
+      if (queueId) {
+        useQueue = true
+        // Queue-based scheduling: idea priority is preserved by the batch sort order above
+        // (idea-linked items processed first → get earlier queue slots via FIFO)
+        logger.debug(`Using Late queue ${queueId} for ${latePlatform}/${clipType} (idea priority via batch order)`)
+      } else {
+        // Fallback: no queue configured, use manual slot calculation with idea-aware scheduling
+        logger.debug(`No queue for ${latePlatform}/${clipType}, using local slot calculation`)
+        const foundSlot = ideaIds?.length
+          ? await findNextSlot(latePlatform, clipType, { ideaIds, publishBy })
+          : await findNextSlot(latePlatform, clipType)
+        slot = foundSlot ?? undefined
+        if (!slot) {
+          results.push({ itemId, success: false, error: `No available slot for ${latePlatform}` })
+          continue
+        }
       }
 
       const platform = fromLatePlatform(latePlatform)
@@ -224,24 +242,31 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
         express_consent_given: true,
       } : undefined
 
-      const latePost = await client.createPost({
+      const profileId = useQueue ? await getProfileId() : undefined
+      const createParams: Parameters<typeof client.createPost>[0] = {
         content: item.postContent,
         platforms: [{ platform: latePlatform, accountId }],
-        scheduledFor: slot,
         timezone: schedConfig.timezone,
         isDraft: false,
         mediaItems,
         platformSpecificData,
         tiktokSettings,
-      })
+      }
+      if (useQueue) {
+        createParams.queuedFromProfile = profileId
+        createParams.queueId = queueId ?? undefined
+      } else {
+        createParams.scheduledFor = slot
+      }
+      const latePost = await client.createPost(createParams)
 
       publishDataMap.set(itemId, {
         latePostId: latePost._id,
-        scheduledFor: slot,
+        scheduledFor: latePost.scheduledFor ?? slot ?? '',
         publishedUrl: undefined,
         accountId,
       })
-      results.push({ itemId, success: true, scheduledFor: slot, latePostId: latePost._id })
+      results.push({ itemId, success: true, scheduledFor: latePost.scheduledFor ?? slot, latePostId: latePost._id })
     } catch (itemErr) {
       const itemMsg = itemErr instanceof Error ? itemErr.message : String(itemErr)
       if (itemMsg.includes('429') || itemMsg.includes('Daily post limit')) {

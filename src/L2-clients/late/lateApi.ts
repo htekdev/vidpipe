@@ -65,6 +65,10 @@ export interface CreatePostParams {
   timezone?: string
   isDraft?: boolean
   mediaItems?: Array<{ type: 'image' | 'video'; url: string; thumbnail?: string }>
+  /** Profile ID — posts to the queue's next available slot (mutually exclusive with scheduledFor) */
+  queuedFromProfile?: string
+  /** Specific queue ID to post to (used with queuedFromProfile) */
+  queueId?: string
   platformSpecificData?: Record<string, unknown>
   tiktokSettings?: {
     privacy_level: string
@@ -75,6 +79,26 @@ export interface CreatePostParams {
     express_consent_given: boolean
     [key: string]: unknown
   }
+}
+
+export interface CreateQueueParams {
+  profileId: string
+  name: string
+  timezone: string
+  slots: Array<{ dayOfWeek: number; time: string }>
+  active?: boolean
+  setAsDefault?: boolean
+}
+
+export interface UpdateQueueParams {
+  profileId: string
+  queueId?: string
+  name?: string
+  timezone: string
+  slots: Array<{ dayOfWeek: number; time: string }>
+  active?: boolean
+  setAsDefault?: boolean
+  reshuffleExisting?: boolean
 }
 
 // ── Client ─────────────────────────────────────────────────────────────
@@ -266,6 +290,38 @@ export class LateApiClient {
     }
 
     return allPosts
+  }
+
+  // ── Queue management ─────────────────────────────────────────────────
+
+  async listQueues(profileId: string, all = false): Promise<{ queues: Array<{ _id: string; profileId: string; name: string; timezone: string; slots: Array<{ dayOfWeek: number; time: string }>; active: boolean; isDefault: boolean }>; count: number }> {
+    const params = new URLSearchParams({ profileId })
+    if (all) params.set('all', 'true')
+    return this.request(`/queue/slots?${params}`)
+  }
+
+  async createQueue(params: CreateQueueParams): Promise<{ success: boolean; schedule: { _id: string; profileId: string; name: string; timezone: string; slots: Array<{ dayOfWeek: number; time: string }>; active: boolean; isDefault: boolean } }> {
+    return this.request('/queue/slots', { method: 'POST', body: JSON.stringify(params) })
+  }
+
+  async updateQueue(params: UpdateQueueParams): Promise<{ success: boolean; schedule: { _id: string; name: string; slots: Array<{ dayOfWeek: number; time: string }> } }> {
+    return this.request('/queue/slots', { method: 'PUT', body: JSON.stringify(params) })
+  }
+
+  async deleteQueue(profileId: string, queueId: string): Promise<{ success: boolean }> {
+    return this.request(`/queue/slots?profileId=${profileId}&queueId=${queueId}`, { method: 'DELETE' })
+  }
+
+  async previewQueue(profileId: string, queueId?: string, count = 20): Promise<{ profileId: string; queueId?: string; queueName?: string; count: number; slots: string[] }> {
+    const params = new URLSearchParams({ profileId, count: String(count) })
+    if (queueId) params.set('queueId', queueId)
+    return this.request(`/queue/preview?${params}`)
+  }
+
+  async getNextQueueSlot(profileId: string, queueId?: string): Promise<{ profileId: string; nextSlot: string; timezone: string; queueId?: string; queueName?: string }> {
+    const params = new URLSearchParams({ profileId })
+    if (queueId) params.set('queueId', queueId)
+    return this.request(`/queue/next-slot?${params}`)
   }
 
   // ── Helper ───────────────────────────────────────────────────────────

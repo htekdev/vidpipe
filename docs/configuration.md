@@ -296,7 +296,7 @@ OPENAI_API_KEY=sk-... vidpipe \
 
 ## Schedule Configuration
 
-The `schedule.json` file defines when social media posts are published. It is generated automatically by the pipeline and can be managed via `vidpipe schedule`. For full details on scheduling and the review workflow, see the [Social Publishing Guide](./social-publishing.md).
+The `schedule.json` file defines when social media posts are published. It supports `byClipType` sub-schedules per platform (e.g. separate slots for `short` vs `medium-clip`). Run `vidpipe sync-queues` to push definitions to Late API — queue IDs are written back to `schedule.json` after sync. It is generated automatically by the pipeline and can be managed via `vidpipe schedule`. For full details on scheduling and the review workflow, see the [Social Publishing Guide](./social-publishing.md).
 
 ---
 
