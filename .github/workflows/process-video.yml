@@ -1,0 +1,102 @@
+name: Process Video
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: 'URL of the video to process'
+        required: true
+        type: string
+      spec:
+        description: 'Pipeline spec preset (e.g., premium, fast)'
+        required: false
+        type: string
+        default: ''
+      ideas:
+        description: 'Comma-separated idea IDs to link'
+        required: false
+        type: string
+        default: ''
+      publish_by:
+        description: 'Publish-by date (ISO 8601 or +Nd format, e.g., +7d)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Download video
+        run: |
+          ORIGINAL_NAME=$(basename '${{ inputs.video_url }}' | sed 's/[?#].*//')
+          VIDEO_FILE="${{ github.run_id }}-${ORIGINAL_NAME}"
+          node dist/cli.js cloud download '${{ inputs.video_url }}' "${VIDEO_FILE}"
+          echo "VIDEO_FILE=${VIDEO_FILE}" >> $GITHUB_ENV
+        env:
+          AZURE_STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
+          AZURE_STORAGE_ACCOUNT_KEY: ${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}
+
+      - name: Pull config from Azure
+        run: node dist/cli.js cloud pull-config || echo "No Azure config to pull (skipping)"
+        env:
+          AZURE_STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
+          AZURE_STORAGE_ACCOUNT_KEY: ${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}
+
+      - name: Process video
+        run: |
+          ARGS="${VIDEO_FILE} --once"
+          if [ -n "${{ inputs.spec }}" ]; then
+            ARGS="${ARGS} --spec ${{ inputs.spec }}"
+          fi
+          if [ -n "${{ inputs.ideas }}" ]; then
+            ARGS="${ARGS} --ideas ${{ inputs.ideas }}"
+          fi
+          if [ -n "${{ inputs.publish_by }}" ]; then
+            ARGS="${ARGS} --publish-by ${{ inputs.publish_by }}"
+          fi
+          echo "Running: node dist/cli.js process ${ARGS}"
+          node dist/cli.js process ${ARGS}
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          EXA_API_KEY: ${{ secrets.EXA_API_KEY }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          PERPLEXITY_API_KEY: ${{ secrets.PERPLEXITY_API_KEY }}
+          LATE_API_KEY: ${{ secrets.LATE_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          COPILOT_GITHUB_TOKEN: ${{ secrets.COPILOT_GITHUB_TOKEN }}
+          AZURE_STORAGE_ACCOUNT_NAME: ${{ secrets.AZURE_STORAGE_ACCOUNT_NAME }}
+          AZURE_STORAGE_ACCOUNT_KEY: ${{ secrets.AZURE_STORAGE_ACCOUNT_KEY }}
+          LLM_PROVIDER: copilot
+
+      - name: Upload pipeline artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-output-${{ github.run_id }}
+          path: recordings/
+          retention-days: 7

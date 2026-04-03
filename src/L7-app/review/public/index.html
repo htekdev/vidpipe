@@ -150,8 +150,8 @@
 
     function getGroupPlatforms(group) {
       return [...new Set(group.items.map(item => {
-        const platform = normalizePlatform(item.metadata.platform)
-        return PLATFORMS[platform]?.name || item.metadata.platform
+        const platform = normalizePlatform(item.platform)
+        return PLATFORMS[platform]?.name || item.platform
       }))]
     }
 
@@ -348,7 +348,7 @@
 
       const mediaType = group.mediaType || 'video'
       const mediaExt = mediaType === 'image' ? 'png' : 'mp4'
-      const mediaUrl = `/media/queue/${encodeURIComponent(firstItem.id)}/media.${mediaExt}`
+      const mediaUrl = firstItem.mediaUrl || `/api/media/${encodeURIComponent(firstItem.id)}/media.${mediaExt}`
 
       if (mediaType === 'image') {
         return html`
@@ -382,7 +382,7 @@
     function ThumbnailPreview({ group }) {
       const firstItem = group.items[0]
       if (!firstItem) return null
-      const thumbnailUrl = '/media/queue/' + encodeURIComponent(firstItem.id) + '/thumbnail.png'
+      const thumbnailUrl = firstItem.thumbnailUrl || '/api/media/' + encodeURIComponent(firstItem.id) + '/thumbnail.png'
       const [loaded, setLoaded] = useState(false)
       const [error, setError] = useState(false)
 
@@ -411,7 +411,7 @@
           <div class="text-xs font-semibold text-gray-400 mb-2">Select platforms to publish:</div>
           <div class="flex flex-wrap gap-2">
             ${group.items.map(item => {
-              const platform = normalizePlatform(item.metadata.platform)
+              const platform = normalizePlatform(item.platform)
               const cfg = PLATFORMS[platform] || { icon: '❓', color: '#888', name: platform }
               const isSelected = selectedPlatforms.includes(item.id)
               const connAcct = accounts[platform]
@@ -454,7 +454,7 @@
           <div class="text-xs font-semibold text-gray-400 mb-2">📝 Posts per platform:</div>
           <div class="space-y-3">
             ${group.items.map(item => {
-              const platform = normalizePlatform(item.metadata.platform)
+              const platform = normalizePlatform(item.platform)
               const cfg = PLATFORMS[platform] || { icon: '❓', color: '#888', name: platform }
               const content = item.postContent || ''
               return html`
@@ -624,7 +624,7 @@
         if (currentGroup) {
           const availableIds = currentGroup.items
             .filter(item => {
-              const platform = normalizePlatform(item.metadata.platform)
+              const platform = normalizePlatform(item.platform)
               return !!accounts[platform]
             })
             .map(item => item.id)
