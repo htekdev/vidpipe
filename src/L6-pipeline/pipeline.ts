@@ -470,7 +470,7 @@ export async function processVideo(videoPath: string, ideas?: Idea[], publishBy?
         return
       }
 
-      const publishQueueDir = join(video.videoDir, 'publish-queue')
+      const publishQueueDir = join(cfg.OUTPUT_DIR, 'publish-queue')
       const result = await uploadToCloud(videoPath, publishQueueDir, video.slug, {
         originalFilename: video.filename,
         duration: video.duration,

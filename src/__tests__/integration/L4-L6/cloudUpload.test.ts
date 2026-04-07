@@ -72,4 +72,24 @@ describe('Integration L4-L6: Cloud Upload Pipeline', () => {
     expect(result.contentUploaded).toBe(0)
     expect(result.errors).toContain('Publish queue directory not found')
   })
+
+  test('cloud upload passes metadata to table record', async () => {
+    const { uploadToCloud } = await import('../../../L5-assets/bridges/cloudStorageBridge.js')
+    await uploadToCloud('/nonexistent/video.mp4', '/nonexistent/queue', 'my-video', {
+      originalFilename: 'recording.mp4',
+      duration: 300,
+      size: 2048,
+    })
+
+    expect(mockUpsertEntity).toHaveBeenCalledWith(
+      'Videos',
+      expect.any(String),
+      expect.any(String),
+      expect.objectContaining({
+        originalFilename: 'recording.mp4',
+        duration: 300,
+        size: 2048,
+      }),
+    )
+  })
 })

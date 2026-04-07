@@ -114,6 +114,32 @@ program
   })
 
 program
+  .command('reorder-queue')
+  .description('Reorder Late queue so newest content gets earliest slots (temp queue swap)')
+  .option('--platform <name>', 'Filter to a single platform (tiktok, youtube, instagram, linkedin, x)')
+  .option('--clip-type <type>', 'Filter to a clip type (short, medium-clip, video)')
+  .option('--dry-run', 'Preview the reorder plan without making changes')
+  .option('--all', 'Reorder all queues')
+  .action(async (opts: { platform?: string; clipType?: string; dryRun?: boolean; all?: boolean }) => {
+    initConfig({})
+    const { reorderQueue, reorderAllQueues } = await import('../L3-services/lateApi/lateApiService.js')
+
+    if (opts.all) {
+      logger.info('Reordering ALL queues (newest-first)...')
+      const result = await reorderAllQueues({ dryRun: opts.dryRun })
+      logger.info(`\nTotal: ${result.total} posts reordered, ${result.errors} errors`)
+    } else if (opts.platform && opts.clipType) {
+      const result = await reorderQueue(opts.platform, opts.clipType, { dryRun: opts.dryRun })
+      logger.info(`Reordered: ${result.moved} posts, ${result.errors} errors`)
+    } else {
+      logger.error('Specify --platform + --clip-type, or use --all to reorder everything')
+      process.exit(1)
+    }
+
+    process.exit(0)
+  })
+
+program
   .command('reschedule')
   .description('Reschedule idea-linked posts for optimal slot placement, displacing non-idea content')
   .option('--dry-run', 'Preview changes without updating posts')

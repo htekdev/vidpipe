@@ -164,7 +164,7 @@ export async function uploadContentItem(
   }
 
   await tableClient.upsertEntity(CONTENT_TABLE, videoSlug, itemId, record)
-  logger.info(`Uploaded content item: ${itemId} (${record.platform}/${record.clipType})`)
+  logger.info(`Uploaded content item: ${itemId} (${record.platform}/${record.clipType}) — blob + table record created`)
 
   return blobBasePath
 }

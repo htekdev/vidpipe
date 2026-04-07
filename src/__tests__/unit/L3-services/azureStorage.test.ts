@@ -224,6 +224,9 @@ describe('L3 Unit: Azure Storage Service', () => {
         hashtags: 'dev,coding',
         ideaIds: 'idea-1',
       }))
+      // Log message confirms blob + table record
+      const { default: logger } = await import('../../../L1-infra/logger/configLogger.js')
+      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('blob + table record'))
     })
 
     test('handles missing metadata.json and post.md', async () => {

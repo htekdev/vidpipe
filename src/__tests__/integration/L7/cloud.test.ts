@@ -17,6 +17,8 @@ const mockUploadVideoFile = vi.hoisted(() => vi.fn().mockResolvedValue('https://
 const mockGetRunId = vi.hoisted(() => vi.fn().mockReturnValue('test-run-id'))
 const mockDownloadBlobToFile = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const mockFileStat = vi.hoisted(() => vi.fn().mockResolvedValue({ size: 1024 * 1024 }))
+const mockReaddir = vi.hoisted(() => vi.fn().mockResolvedValue([]))
+const mockReadFile = vi.hoisted(() => vi.fn().mockResolvedValue('{}'))
 const mockExecFile = vi.hoisted(() => vi.fn())
 
 // ── L1 mocks ────────────────────────────────────────────────────────────
@@ -43,6 +45,8 @@ vi.mock('../../../L3-services/azureStorage/azureConfigService.js', () => ({
   listConfigFiles: mockListConfigFiles,
 }))
 
+const mockUploadContentItem = vi.hoisted(() => vi.fn().mockResolvedValue('content/item/'))
+
 vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
   migrateLocalContent: mockMigrateLocalContent,
   isAzureConfigured: mockIsAzureConfigured,
@@ -51,10 +55,13 @@ vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
   uploadVideoFile: mockUploadVideoFile,
   getRunId: mockGetRunId,
   downloadBlobToFile: mockDownloadBlobToFile,
+  uploadContentItem: mockUploadContentItem,
 }))
 
 vi.mock('node:fs/promises', () => ({
   stat: mockFileStat,
+  readdir: mockReaddir,
+  readFile: mockReadFile,
 }))
 
 vi.mock('node:child_process', () => ({
@@ -69,6 +76,11 @@ describe('L7 Unit: Cloud command', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
+    // Re-establish default mock implementations after clearAllMocks
+    mockIsAzureConfigured.mockReturnValue(true)
+    mockGetConfig.mockReturnValue({ OUTPUT_DIR: 'C:\\VidPipe\\output' })
+    mockReaddir.mockResolvedValue([])
+    mockReadFile.mockResolvedValue('{}')
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never)
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
     process.exitCode = undefined
@@ -115,22 +127,6 @@ describe('L7 Unit: Cloud command', () => {
       await cloud.parseAsync(['pull-config'], { from: 'user' })
 
       expect(process.exitCode).toBe(1)
-    })
-  })
-
-  describe('push-output', () => {
-    test('prints not yet implemented', async () => {
-      const cloud = createCloudCommand()
-      await cloud.parseAsync(['push-output'], { from: 'user' })
-
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Not yet implemented'))
-    })
-
-    test('includes slug in message when provided', async () => {
-      const cloud = createCloudCommand()
-      await cloud.parseAsync(['push-output', 'my-video'], { from: 'user' })
-
-      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('my-video'))
     })
   })
 
@@ -312,6 +308,27 @@ describe('L7 Unit: Cloud command', () => {
       await cloud.parseAsync(['download', 'https://example.com/video.mp4', 'C:\\output\\out.mp4'], { from: 'user' })
 
       expect(process.exitCode).toBe(1)
+    })
+  })
+
+  describe('upload', () => {
+    test('exits with error when Azure not configured', async () => {
+      mockIsAzureConfigured.mockReturnValueOnce(false)
+      mockReaddir.mockResolvedValueOnce(['video.mp4'])
+
+      const cloud = createCloudCommand()
+      await cloud.parseAsync(['upload', 'C:\\VidPipe\\recordings\\my-video'], { from: 'user' })
+
+      expect(exitSpy).toHaveBeenCalledWith(1)
+    })
+
+    test('exits with error when no mp4 found', async () => {
+      mockReaddir.mockResolvedValueOnce(['README.md', 'notes.txt'])
+
+      const cloud = createCloudCommand()
+      await cloud.parseAsync(['upload', 'C:\\VidPipe\\recordings\\no-video'], { from: 'user' })
+
+      expect(exitSpy).toHaveBeenCalledWith(1)
     })
   })
 })

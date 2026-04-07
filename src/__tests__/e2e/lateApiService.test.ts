@@ -22,6 +22,21 @@ describe('E2E: lateApiService wrappers', () => {
     expect(typeof client.getDraftPosts).toBe('function')
     expect(typeof client.listPosts).toBe('function')
   })
+
+  test('client exposes queue management methods', () => {
+    const client = createLateApiClient('e2e-test-key')
+    expect(typeof client.createQueue).toBe('function')
+    expect(typeof client.deleteQueue).toBe('function')
+    expect(typeof client.listQueues).toBe('function')
+    expect(typeof client.previewQueue).toBe('function')
+  })
+
+  test('reorderQueue and priorityShiftQueue are exported', async () => {
+    const mod = await import('../../L3-services/lateApi/lateApiService.js')
+    expect(typeof mod.reorderQueue).toBe('function')
+    expect(typeof mod.reorderAllQueues).toBe('function')
+    expect(typeof mod.priorityShiftQueue).toBe('function')
+  })
 })
 
 describe.skipIf(!process.env.LATE_API_KEY)('E2E: Late API pagination (live)', () => {

@@ -29,6 +29,7 @@ export interface ReviewItem {
 
 export interface ReviewGroup {
   videoSlug: string
+  clipType: string
   items: ReviewItem[]
 }
 
@@ -88,19 +89,39 @@ export async function listPendingItems(): Promise<ReviewItem[]> {
 export async function getGroupedItems(): Promise<ReviewGroup[]> {
   const items = await listPendingItems()
 
+  // Group by clip slug — strip the platform suffix from item ID so platform
+  // variants of the same clip (e.g. "my-clip-youtube", "my-clip-instagram")
+  // land in the same group.
   const groupMap = new Map<string, ReviewItem[]>()
   for (const item of items) {
-    const slug = item.videoSlug
-    if (!groupMap.has(slug)) {
-      groupMap.set(slug, [])
+    const platform = item.platform.toLowerCase()
+    const clipSlug = item.id.endsWith(`-${platform}`)
+      ? item.id.slice(0, -(platform.length + 1))
+      : item.id
+    const groupKey = `${item.videoSlug}::${clipSlug}`
+    if (!groupMap.has(groupKey)) {
+      groupMap.set(groupKey, [])
     }
-    groupMap.get(slug)!.push(item)
+    groupMap.get(groupKey)!.push(item)
   }
 
   const groups: ReviewGroup[] = []
-  for (const [videoSlug, groupItems] of groupMap) {
-    groups.push({ videoSlug, items: groupItems })
+  for (const [groupKey, groupItems] of groupMap) {
+    const first = groupItems[0]
+    groups.push({
+      videoSlug: groupKey,
+      clipType: first.clipType,
+      items: groupItems,
+    })
   }
+
+  // Sort: media items first (shorts/clips), then text-only, then by date
+  groups.sort((a, b) => {
+    const aHasMedia = a.items.some(i => Boolean(i.mediaFilename))
+    const bHasMedia = b.items.some(i => Boolean(i.mediaFilename))
+    if (aHasMedia !== bHasMedia) return aHasMedia ? -1 : 1
+    return a.items[0].createdAt.localeCompare(b.items[0].createdAt)
+  })
 
   return groups
 }

@@ -79,6 +79,21 @@ describe('queueMapping', () => {
       const id = await getQueueId('tiktok', 'shorts')
       expect(id).toBeNull()
     })
+
+    test('normalizes medium-clip to medium for queue name lookup', async () => {
+      setupDefaultMocks()
+      // Override with a queue that uses the normalized 'medium' name
+      mockListQueues.mockResolvedValue({
+        queues: [
+          { _id: 'q-med', name: 'linkedin-medium', profileId: 'profile-123', timezone: 'America/Chicago', slots: [], active: true, isDefault: false },
+        ],
+        count: 1,
+      })
+      await clearQueueCache()
+
+      const id = await getQueueId('linkedin', 'medium-clip')
+      expect(id).toBe('q-med')
+    })
   })
 
   describe('getProfileId', () => {

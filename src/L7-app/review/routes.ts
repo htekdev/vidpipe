@@ -188,12 +188,14 @@ export function createRouter(): Router {
   })
 
   // POST /api/posts/:id/approve — enqueue for sequential processing, return 202
+  // Query param ?priority=true to shift existing queue posts and schedule first
   router.post('/api/posts/:id/approve', (req, res) => {
     const itemId = req.params.id
+    const priority = req.query.priority === 'true' || req.body?.priority === true
 
     res.status(202).json({ accepted: true })
 
-    enqueueApproval([itemId]).then(result => {
+    enqueueApproval([itemId], { priority }).then(result => {
       if (result.scheduled > 0) {
         logger.info(`Single approve completed: ${String(itemId).replace(/[\r\n]/g, '')} → ${result.results[0]?.scheduledFor}`)
       } else {
@@ -203,15 +205,16 @@ export function createRouter(): Router {
   })
 
   // POST /api/posts/bulk-approve — fire-and-forget: returns 202 immediately, processes sequentially in queue
+  // Body: { itemIds: string[], priority?: boolean }
   router.post('/api/posts/bulk-approve', (req, res) => {
-    const { itemIds } = req.body
+    const { itemIds, priority } = req.body
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
       return res.status(400).json({ error: 'itemIds must be a non-empty array' })
     }
 
     res.status(202).json({ accepted: true, count: itemIds.length })
 
-    enqueueApproval(itemIds).catch(err => {
+    enqueueApproval(itemIds, { priority: priority === true }).catch(err => {
       const msg = err instanceof Error ? err.message : String(err)
       logger.error(`Bulk approve background failed: ${String(msg).replace(/[\r\n]/g, '')}`)
     })

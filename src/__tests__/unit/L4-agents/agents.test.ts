@@ -228,6 +228,11 @@ describe('BaseAgent construction', () => {
     await expect(agent.destroy()).resolves.toBeUndefined();
   });
 
+  it('has no timeout by default (getTimeoutMs returns 0)', () => {
+    const agent = new MinimalAgent();
+    expect((agent as any).getTimeoutMs()).toBe(0);
+  });
+
   it('retries on "CLI server exited" errors', async () => {
     const agent = new MinimalAgent();
     let callCount = 0;

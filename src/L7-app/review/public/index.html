@@ -238,6 +238,7 @@
             <div class="flex items-center gap-2 text-xs text-gray-500" aria-label="Keyboard shortcuts">
               <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">←</kbd> Reject
               <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">→</kbd> Approve
+              <kbd class="px-1.5 py-0.5 bg-yellow-500/10 rounded border border-yellow-500/30 text-yellow-400">↑</kbd> <span class="text-yellow-400">Priority</span>
               <kbd class="px-1.5 py-0.5 bg-white/5 rounded border border-white/10">Space</kbd> Skip
             </div>
           </div>
@@ -482,7 +483,7 @@
         </div>`
     }
 
-    function ActionButtons({ onReject, onSkip, onApprove, selectedCount }) {
+    function ActionButtons({ onReject, onSkip, onApprove, onPriority, selectedCount }) {
       const approveDisabled = selectedCount === 0
       return html`
         <div class="px-5 py-4 flex items-center justify-center gap-3">
@@ -512,10 +513,22 @@
           >
             <span>✅</span> Approve ${selectedCount > 0 ? `(${selectedCount})` : ''}
           </button>
+          <button 
+            onClick=${onPriority} 
+            class="action-btn flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-medium border ${
+              approveDisabled 
+                ? 'bg-gray-500/10 text-gray-500 border-gray-500/20 cursor-not-allowed opacity-50' 
+                : 'bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border-yellow-500/30'
+            }" 
+            title="Priority approve — jumps to front of queue (↑)"
+            disabled=${approveDisabled}
+          >
+            <span>⚡</span> Priority
+          </button>
         </div>`
     }
 
-    function GroupedPostCard({ group, accounts, selectedPlatforms, onTogglePlatform, animClass, onReject, onSkip, onApprove }) {
+    function GroupedPostCard({ group, accounts, selectedPlatforms, onTogglePlatform, animClass, onReject, onSkip, onApprove, onPriority }) {
       const selectedCount = selectedPlatforms.length
       const groupTitle = getGroupTitle(group)
       const groupPlatforms = getGroupPlatforms(group)
@@ -553,6 +566,7 @@
                 onReject=${onReject} 
                 onSkip=${onSkip} 
                 onApprove=${onApprove}
+                onPriority=${onPriority}
                 selectedCount=${selectedCount}
               />
             </div>
@@ -648,7 +662,7 @@
         }, 250)
       }, [])
 
-      const approveGroup = useCallback(async () => {
+      const approveGroup = useCallback(async (priority = false) => {
         if (busy || !currentGroup || selectedPlatforms.length === 0) return
         
         const count = selectedPlatforms.length
@@ -658,11 +672,11 @@
         fetch('/api/posts/bulk-approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ itemIds: selectedPlatforms }),
+          body: JSON.stringify({ itemIds: selectedPlatforms, priority }),
         }).catch(err => showToast(`Approve failed: ${err.message}`, 'error'))
         
         setStats(s => ({ ...s, approved: s.approved + count }))
-        showToast(`Scheduling ${count} post(s)…`, 'success')
+        showToast(priority ? `⚡ Priority scheduling ${count} post(s)…` : `Scheduling ${count} post(s)…`, 'success')
         
         animateOut(() => {
           setAllGroups(prev => prev.filter(g => g.groupKey !== groupKey))
@@ -706,7 +720,8 @@
           if (busy) return
           switch (e.key) {
             case 'ArrowLeft':  e.preventDefault(); rejectGroup(); break
-            case 'ArrowRight': e.preventDefault(); approveGroup(); break
+            case 'ArrowRight': e.preventDefault(); approveGroup(false); break
+            case 'ArrowUp':    e.preventDefault(); approveGroup(true); break
             case ' ':          e.preventDefault(); skipGroup(); break
           }
         }
@@ -732,7 +747,8 @@
             animClass=${animClass}
             onReject=${rejectGroup}
             onSkip=${skipGroup}
-            onApprove=${approveGroup}
+            onApprove=${() => approveGroup(false)}
+            onPriority=${() => approveGroup(true)}
           />`
       }
 

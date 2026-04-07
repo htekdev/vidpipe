@@ -21,6 +21,8 @@ vi.mock('../../../L1-infra/config/environment.js', () => ({
   initConfig: () => ({ OUTPUT_DIR: 'C:\\test-output', LATE_API_KEY: 'test-key' }),
 }))
 
+const mockPriorityShiftQueue = vi.hoisted(() => vi.fn().mockResolvedValue(null))
+
 vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
   createLateApiClient: () => ({
     async uploadMedia() { return { url: 'https://test.com/media.mp4', type: 'video' } },
@@ -30,6 +32,7 @@ vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
     async listProfiles() { return [{ id: 'profile-1', name: 'Test Profile' }] },
     previewQueue: mockPreviewQueue,
   }),
+  priorityShiftQueue: mockPriorityShiftQueue,
 }))
 
 vi.mock('../../../L3-services/scheduler/scheduler.js', () => ({
@@ -232,5 +235,61 @@ describe('GET /api/schedule/next-slot/:platform — queue preview branch', () =>
     expect(res.body.nextSlot).toBe('2026-02-15T19:00:00-06:00')
     expect(res.body.platform).toBe('instagram')
     expect(mockFindNextSlot).toHaveBeenCalledWith('instagram', undefined)
+  })
+})
+
+describe('POST /api/posts/:id/approve — priority param', () => {
+  let app: ReturnType<typeof express>
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetIdeasByIds.mockResolvedValue([])
+    app = buildApp()
+  })
+
+  it('returns 202 when approving with priority query param', async () => {
+    const res = await request(app).post('/api/posts/item-1/approve?priority=true')
+    expect(res.status).toBe(202)
+    expect(res.body.accepted).toBe(true)
+  })
+
+  it('returns 202 for standard approve without priority', async () => {
+    const res = await request(app).post('/api/posts/item-1/approve')
+    expect(res.status).toBe(202)
+    expect(res.body.accepted).toBe(true)
+  })
+})
+
+describe('POST /api/posts/bulk-approve — priority param', () => {
+  let app: ReturnType<typeof express>
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetIdeasByIds.mockResolvedValue([])
+    app = buildApp()
+  })
+
+  it('accepts bulk approve with priority flag', async () => {
+    const res = await request(app)
+      .post('/api/posts/bulk-approve')
+      .send({ itemIds: ['item-1', 'item-2'], priority: true })
+    expect(res.status).toBe(202)
+    expect(res.body.accepted).toBe(true)
+    expect(res.body.count).toBe(2)
+  })
+
+  it('accepts bulk approve without priority flag', async () => {
+    const res = await request(app)
+      .post('/api/posts/bulk-approve')
+      .send({ itemIds: ['item-1'] })
+    expect(res.status).toBe(202)
+    expect(res.body.count).toBe(1)
+  })
+
+  it('rejects empty itemIds array', async () => {
+    const res = await request(app)
+      .post('/api/posts/bulk-approve')
+      .send({ itemIds: [] })
+    expect(res.status).toBe(400)
   })
 })

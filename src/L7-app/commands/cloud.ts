@@ -1,6 +1,6 @@
 import { Command } from '../../L1-infra/cli/cli.js'
 import { initConfig, getConfig } from '../../L1-infra/config/environment.js'
-import { basename, dirname } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 import { stat as fileStat } from 'node:fs/promises'
 import { execFile } from 'node:child_process'
 import logger from '../../L1-infra/logger/configLogger.js'
@@ -58,11 +58,92 @@ export function createCloudCommand(): Command {
     })
 
   cloud
-    .command('push-output [slug]')
-    .description('Upload recording output to Azure Storage')
-    .action(async (slug: string | undefined) => {
-      console.log(`push-output${slug ? ` ${slug}` : ''}: Not yet implemented`)
-      process.exit(0)
+    .command('upload <recording-folder>')
+    .description('Upload a recording folder (video + publish-queue) to Azure Storage')
+    .option('--slug <slug>', 'Video slug (auto-derived from folder name if omitted)')
+    .action(async (recordingFolder: string, opts: { slug?: string }) => {
+      initConfig({})
+      const config = getConfig()
+
+      try {
+        const { uploadVideoFile, uploadPublishQueue, isAzureConfigured, getRunId } =
+          await import('../../L3-services/azureStorage/azureStorageService.js')
+        const { readdir, stat: getFileStat } = await import('node:fs/promises')
+
+        if (!isAzureConfigured()) {
+          logger.error('Azure Storage not configured')
+          process.exit(1)
+          return
+        }
+
+        // Find the mp4 file in the recording folder
+        const files = await readdir(recordingFolder)
+        const mp4File = files.find(f => f.endsWith('.mp4'))
+        if (!mp4File) {
+          logger.error(`No .mp4 file found in ${recordingFolder}`)
+          process.exit(1)
+          return
+        }
+
+        const videoPath = join(recordingFolder, mp4File)
+        const folderName = basename(recordingFolder)
+        const slug = opts.slug || folderName.replace(/[^a-z0-9-]/gi, '-').toLowerCase()
+        const runId = getRunId()
+        const blobPath = `raw/${runId}-${mp4File}`
+
+        // Upload raw video
+        const stats = await getFileStat(videoPath)
+        logger.info(`Uploading ${mp4File} (${(stats.size / 1024 / 1024).toFixed(1)} MB) to Azure...`)
+        await uploadVideoFile(videoPath, blobPath)
+        logger.info(`✅ Raw video uploaded: ${blobPath}`)
+
+        // Upload publish-queue items belonging to this recording
+        const publishQueueDir = join(config.OUTPUT_DIR, 'publish-queue')
+        logger.info(`Scanning publish-queue for items from ${folderName}...`)
+
+        let uploaded = 0
+        const errors: string[] = []
+        try {
+          const queueItems = await readdir(publishQueueDir)
+          const { readFile } = await import('node:fs/promises')
+          const { uploadContentItem } = await import('../../L3-services/azureStorage/azureStorageService.js')
+
+          for (const itemId of queueItems) {
+            const itemDir = join(publishQueueDir, itemId)
+            const metadataPath = join(itemDir, 'metadata.json')
+            try {
+              const meta = JSON.parse(await readFile(metadataPath, 'utf8')) as Record<string, unknown>
+              const sourceVideo = String(meta.sourceVideo || '')
+              // Match if sourceVideo ends with this recording folder name
+              if (!sourceVideo.endsWith(folderName)) continue
+
+              await uploadContentItem(itemDir, itemId, slug, runId)
+              uploaded++
+              logger.info(`  ✅ ${itemId}`)
+            } catch (err: unknown) {
+              const msg = err instanceof Error ? err.message : String(err)
+              errors.push(`${itemId}: ${msg}`)
+            }
+          }
+        } catch {
+          logger.warn('No publish-queue directory found')
+        }
+
+        logger.info(`✅ Content uploaded: ${uploaded} item(s)`)
+        if (errors.length > 0) {
+          logger.warn(`   ${errors.length} error(s):`)
+          for (const err of errors) {
+            logger.warn(`     ⚠ ${err}`)
+          }
+        }
+
+        logger.info(`Cloud upload complete (runId: ${runId})`)
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err)
+        logger.error(`Failed to upload: ${msg}`)
+        process.exitCode = 1
+      }
+      process.exit(process.exitCode ?? 0)
     })
 
   cloud

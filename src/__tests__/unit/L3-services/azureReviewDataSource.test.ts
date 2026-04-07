@@ -127,20 +127,45 @@ describe('L3 Unit: Azure Review Data Source', () => {
   })
 
   describe('getGroupedItems', () => {
-    test('groups items by videoSlug', async () => {
+    test('groups platform variants of the same clip into one group', async () => {
       mockGetContentItems.mockResolvedValueOnce([
-        makeContentRecord({ partitionKey: 'video-a', rowKey: 'a-1' }),
-        makeContentRecord({ partitionKey: 'video-a', rowKey: 'a-2' }),
-        makeContentRecord({ partitionKey: 'video-b', rowKey: 'b-1' }),
+        makeContentRecord({ partitionKey: 'video-a', rowKey: 'my-clip-youtube', platform: 'youtube' }),
+        makeContentRecord({ partitionKey: 'video-a', rowKey: 'my-clip-instagram', platform: 'instagram' }),
+        makeContentRecord({ partitionKey: 'video-b', rowKey: 'other-clip-tiktok', platform: 'tiktok' }),
       ])
 
       const groups = await getGroupedItems()
 
       expect(groups).toHaveLength(2)
-      expect(groups[0].videoSlug).toBe('video-a')
-      expect(groups[0].items).toHaveLength(2)
-      expect(groups[1].videoSlug).toBe('video-b')
-      expect(groups[1].items).toHaveLength(1)
+      // First group should have both youtube and instagram variants
+      const clipGroup = groups.find(g => g.items.length === 2)
+      expect(clipGroup).toBeDefined()
+      expect(clipGroup!.items.map(i => i.platform).sort()).toEqual(['instagram', 'youtube'])
+    })
+
+    test('includes clipType in each group', async () => {
+      mockGetContentItems.mockResolvedValueOnce([
+        makeContentRecord({ partitionKey: 'video-a', rowKey: 'clip-youtube', platform: 'youtube', clipType: 'short' }),
+      ])
+
+      const groups = await getGroupedItems()
+
+      expect(groups).toHaveLength(1)
+      expect(groups[0].clipType).toBe('short')
+    })
+
+    test('sorts groups with media before text-only', async () => {
+      mockGetContentItems.mockResolvedValueOnce([
+        makeContentRecord({ partitionKey: 'video-a', rowKey: 'text-only-youtube', platform: 'youtube', mediaFilename: '' }),
+        makeContentRecord({ partitionKey: 'video-a', rowKey: 'has-media-tiktok', platform: 'tiktok', mediaFilename: 'clip.mp4' }),
+      ])
+
+      const groups = await getGroupedItems()
+
+      expect(groups).toHaveLength(2)
+      // Media group should come first
+      const firstGroupHasMedia = groups[0].items.some(i => Boolean(i.mediaFilename))
+      expect(firstGroupHasMedia).toBe(true)
     })
 
     test('returns empty array when no items', async () => {

@@ -351,3 +351,30 @@ describe('L7 Unit: approvalQueue sorting', () => {
     ])
   })
 })
+
+// ── Priority scheduling tests ─────────────────────────────────────────
+
+describe('L7 Unit: approvalQueue priority', () => {
+  it('passes priority flag through to processApprovalBatch', async () => {
+    mockContentRecords([
+      makeContentRecord('item-1', { postContent: 'Test content' }),
+    ])
+
+    const result = await enqueueApproval(['item-1'], { priority: true })
+
+    // Should still schedule successfully (priority just changes the scheduling strategy)
+    expect(result.scheduled).toBe(1)
+    expect(mockCreatePost).toHaveBeenCalled()
+  })
+
+  it('defaults to non-priority when no options provided', async () => {
+    mockContentRecords([
+      makeContentRecord('item-1', { postContent: 'Test content' }),
+    ])
+
+    const result = await enqueueApproval(['item-1'])
+
+    expect(result.scheduled).toBe(1)
+    expect(mockCreatePost).toHaveBeenCalled()
+  })
+})

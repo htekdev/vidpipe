@@ -22,6 +22,7 @@ import logger from '../../L1-infra/logger/configLogger.js'
 
 interface ApprovalJob {
   itemIds: string[]
+  priority: boolean
   resolve: (result: ApprovalResult) => void
 }
 
@@ -45,9 +46,9 @@ export interface ApprovalResult {
 const queue: ApprovalJob[] = []
 let processing = false
 
-export function enqueueApproval(itemIds: string[]): Promise<ApprovalResult> {
+export function enqueueApproval(itemIds: string[], options?: { priority?: boolean }): Promise<ApprovalResult> {
   return new Promise(resolve => {
-    queue.push({ itemIds, resolve })
+    queue.push({ itemIds, priority: options?.priority ?? false, resolve })
     if (!processing) drain()
   })
 }
@@ -57,7 +58,7 @@ async function drain(): Promise<void> {
   while (queue.length > 0) {
     const job = queue.shift()!
     try {
-      const result = await processApprovalBatch(job.itemIds)
+      const result = await processApprovalBatch(job.itemIds, job.priority)
       job.resolve(result)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -73,7 +74,7 @@ async function drain(): Promise<void> {
   processing = false
 }
 
-async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> {
+async function processApprovalBatch(itemIds: string[], priority: boolean): Promise<ApprovalResult> {
   const client = createLateApiClient()
   const schedConfig = await loadScheduleConfig()
   const results: ApprovalResult['results'] = []
@@ -206,7 +207,21 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
         let slot: string | undefined
         let useQueue = false
 
-        if (queueId) {
+        if (priority && queueId) {
+          // Priority mode: shift existing queue posts to free the first slot
+          logger.info(`⚡ Priority scheduling for ${latePlatform}/${clipType}`)
+          const { priorityShiftQueue } = await import('../../L3-services/lateApi/lateApiService.js')
+          const shiftResult = await priorityShiftQueue(latePlatform, clipType)
+          if (shiftResult) {
+            slot = shiftResult.freedSlot
+            useQueue = false // Use scheduledFor with the freed slot, not queue append
+            logger.info(`⚡ Freed slot: ${slot} (shifted ${shiftResult.shiftedCount} posts)`)
+          } else {
+            // Fallback: no posts to shift, just use queue normally
+            useQueue = true
+            logger.info(`⚡ No posts to shift — using queue normally`)
+          }
+        } else if (queueId) {
           useQueue = true
           logger.debug(`Using Late queue ${queueId} for ${latePlatform}/${clipType} (idea priority via batch order)`)
         } else {
