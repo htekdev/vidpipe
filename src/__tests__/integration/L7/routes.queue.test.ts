@@ -68,6 +68,7 @@ vi.mock('../../../L3-services/azureStorage/azureReviewDataSource.js', () => ({
 
 vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
   getContentItems: vi.fn().mockResolvedValue([]),
+  findContentItemByRowKey: vi.fn().mockResolvedValue(null),
 }))
 
 // ── Import after mocks ─────────────────────────────────────────────────

@@ -933,7 +933,10 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
           if (options?.ideas) args.push('-f', `ideas=${options.ideas}`)
           if (options?.publishBy) args.push('-f', `publish_by=${options.publishBy}`)
 
-          await spawnCommand('gh', args)
+          const triggerResult = await spawnCommand('gh', args)
+          if (triggerResult.error || triggerResult.status !== 0) {
+            throw triggerResult.error ?? new Error(`gh workflow run failed with status ${String(triggerResult.status)}`)
+          }
           workflowTriggered = true
         } catch {
           // gh CLI not available or workflow trigger failed — still return success for upload
@@ -970,7 +973,15 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
           const { downloadBlobToFile } = await import('../../L3-services/azureStorage/azureStorageService.js')
           await downloadBlobToFile(blobPath, outputPath)
         } else {
-          await spawnCommand('curl', ['-L', '--fail', '-o', outputPath, videoUrl])
+          const result = await spawnCommand('curl', ['-L', '--fail', '-o', outputPath, videoUrl])
+          if (result.status !== 0) {
+            const stderr = typeof result.stderr === 'string' ? result.stderr.trim() : ''
+            throw new Error(
+              stderr.length > 0
+                ? `curl download failed with exit code ${result.status}: ${stderr}`
+                : `curl download failed with exit code ${result.status}`,
+            )
+          }
         }
       },
 

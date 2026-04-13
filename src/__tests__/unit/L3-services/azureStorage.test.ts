@@ -48,6 +48,7 @@ import {
   uploadPublishQueue,
   migrateLocalContent,
   getContentItem,
+  findContentItemByRowKey,
   listVideos,
   getVideoRecord,
   downloadContentMedia,
@@ -384,7 +385,32 @@ describe('L3 Unit: Azure Storage Service', () => {
       expect(result.errors).toHaveLength(1)
       expect(result.errors[0]).toContain('publish-queue/my-video-youtube')
     })
+  })
 
+  describe('findContentItemByRowKey', () => {
+    test('returns item when found by RowKey query', async () => {
+      mockQueryEntities.mockResolvedValueOnce([
+        { partitionKey: 'my-video', rowKey: 'item-1', platform: 'youtube', clipType: 'short', status: 'pending_review' },
+      ])
+
+      const result = await findContentItemByRowKey('item-1')
+
+      expect(result).not.toBeNull()
+      expect(result!.partitionKey).toBe('my-video')
+      expect(result!.rowKey).toBe('item-1')
+      expect(mockQueryEntities).toHaveBeenCalledWith('Content', "RowKey eq 'item-1'")
+    })
+
+    test('returns null when no item matches', async () => {
+      mockQueryEntities.mockResolvedValueOnce([])
+
+      const result = await findContentItemByRowKey('nonexistent')
+
+      expect(result).toBeNull()
+    })
+  })
+
+  describe('migrateLocalContent — extractVideoSlug', () => {
     test('extractVideoSlug strips known platform suffixes', async () => {
       // Test that extractVideoSlug works by verifying the partition key used
       mockReaddir.mockResolvedValueOnce(['my-cool-video-youtube']) // publish-queue
@@ -467,6 +493,38 @@ describe('L3 Unit: Azure Storage Service', () => {
         'Content',
         'my-video',
         'my-video-instagram-feed',
+        expect.any(Object),
+      )
+    })
+
+    test('extractVideoSlug strips twitter suffix', async () => {
+      mockReaddir.mockResolvedValueOnce(['my-video-twitter'])
+      mockReaddir.mockResolvedValueOnce(['media.mp4'])
+      mockReadFile.mockRejectedValue(new Error('ENOENT'))
+      mockReaddir.mockRejectedValueOnce(new Error('ENOENT'))
+
+      await migrateLocalContent('/output')
+
+      expect(mockUpsertEntity).toHaveBeenCalledWith(
+        'Content',
+        'my-video',
+        'my-video-twitter',
+        expect.any(Object),
+      )
+    })
+
+    test('extractVideoSlug strips youtube-shorts suffix', async () => {
+      mockReaddir.mockResolvedValueOnce(['my-video-youtube-shorts'])
+      mockReaddir.mockResolvedValueOnce(['media.mp4'])
+      mockReadFile.mockRejectedValue(new Error('ENOENT'))
+      mockReaddir.mockRejectedValueOnce(new Error('ENOENT'))
+
+      await migrateLocalContent('/output')
+
+      expect(mockUpsertEntity).toHaveBeenCalledWith(
+        'Content',
+        'my-video',
+        'my-video-youtube-shorts',
         expect.any(Object),
       )
     })

@@ -35,6 +35,7 @@ export async function startReviewServer(options: ReviewServerOptions = {}): Prom
   app.use(express.static(publicDir))
 
   // SPA fallback — serve index.html for non-API routes
+  // Express 5 path-to-regexp requires named splat: /{*splat}
   app.get('/{*splat}', (req, res) => {
     if (!req.path.startsWith('/api/')) {
       res.sendFile(join(publicDir, 'index.html'))

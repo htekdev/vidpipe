@@ -11,6 +11,7 @@ const mockAzureUpdateItem = vi.hoisted(() => vi.fn())
 const mockAzureRejectItem = vi.hoisted(() => vi.fn())
 const mockGetMediaStream = vi.hoisted(() => vi.fn())
 const mockGetContentItems = vi.hoisted(() => vi.fn())
+const mockFindContentItemByRowKey = vi.hoisted(() => vi.fn().mockResolvedValue(null))
 
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -49,6 +50,7 @@ vi.mock('../../../L3-services/azureStorage/azureReviewDataSource.js', () => ({
 
 vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
   getContentItems: mockGetContentItems,
+  findContentItemByRowKey: mockFindContentItemByRowKey,
   isAzureConfigured: () => true,
 }))
 
@@ -155,6 +157,7 @@ beforeEach(() => {
   mockAzureUpdateItem.mockResolvedValue(null)
   mockAzureRejectItem.mockResolvedValue(undefined)
   mockGetContentItems.mockResolvedValue([])
+  mockFindContentItemByRowKey.mockResolvedValue(null)
   mockGetMediaStream.mockRejectedValue(new Error('Not found'))
 })
 
@@ -220,7 +223,7 @@ describe('Review Server API', () => {
 
     it('returns item with full content', async () => {
       const item = makeReviewItem('detail-item')
-      mockGetContentItems.mockResolvedValue([makeContentRecord('detail-item')])
+      mockFindContentItemByRowKey.mockResolvedValue(makeContentRecord('detail-item'))
       mockGetItemById.mockResolvedValue(item)
 
       const res = await request(app).get('/api/posts/detail-item')
@@ -232,7 +235,7 @@ describe('Review Server API', () => {
 
     it('includes earliest idea publishBy when linked ideas are available', async () => {
       const item = makeReviewItem('detail-idea-item', { ideaIds: ['idea-later', 'idea-earlier'] })
-      mockGetContentItems.mockResolvedValue([makeContentRecord('detail-idea-item', { ideaIds: ['idea-later', 'idea-earlier'] })])
+      mockFindContentItemByRowKey.mockResolvedValue(makeContentRecord('detail-idea-item', { ideaIds: ['idea-later', 'idea-earlier'] }))
       mockGetItemById.mockResolvedValue(item)
       mockGetIdeasByIds.mockResolvedValue([
         { id: 'idea-later', publishBy: '2026-03-20' },
@@ -271,7 +274,7 @@ describe('Review Server API', () => {
     })
 
     it('rejects item and returns success', async () => {
-      mockGetContentItems.mockResolvedValue([makeContentRecord('reject-me')])
+      mockFindContentItemByRowKey.mockResolvedValue(makeContentRecord('reject-me'))
 
       const res = await request(app).post('/api/posts/reject-me/reject')
       expect(res.status).toBe(200)
@@ -295,7 +298,7 @@ describe('Review Server API', () => {
 
     it('updates post content', async () => {
       const updatedItem = makeReviewItem('edit-me', { postContent: 'Updated content!' })
-      mockGetContentItems.mockResolvedValue([makeContentRecord('edit-me')])
+      mockFindContentItemByRowKey.mockResolvedValue(makeContentRecord('edit-me'))
       mockAzureUpdateItem.mockResolvedValue(updatedItem)
 
       const res = await request(app)
@@ -467,10 +470,18 @@ describe('Review Server API', () => {
 // ── Server startup test ─────────────────────────────────────────────
 
 describe('startReviewServer', () => {
-  it('starts without path-to-regexp errors (regression: /* wildcard)', async () => {
+  it('starts without path-to-regexp errors (regression: /{*splat} wildcard)', async () => {
     const { startReviewServer } = await import('../../../L7-app/review/server.js')
     const server = await startReviewServer({ port: 0 })
     expect(server.port).toBeGreaterThan(0)
+    await server.close()
+  })
+
+  it('SPA fallback serves index.html for non-API paths', async () => {
+    const { startReviewServer } = await import('../../../L7-app/review/server.js')
+    const server = await startReviewServer({ port: 0 })
+    const res = await request(`http://localhost:${server.port}`).get('/some/deep/route')
+    expect(res.status).toBe(200)
     await server.close()
   })
 })

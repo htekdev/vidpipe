@@ -37,6 +37,11 @@ describe('E2E: lateApiService wrappers', () => {
     expect(typeof mod.reorderAllQueues).toBe('function')
     expect(typeof mod.priorityShiftQueue).toBe('function')
   })
+
+  test('findContentItemByRowKey is exported from azureStorageService', async () => {
+    const mod = await import('../../L3-services/azureStorage/azureStorageService.js')
+    expect(typeof mod.findContentItemByRowKey).toBe('function')
+  })
 })
 
 describe.skipIf(!process.env.LATE_API_KEY)('E2E: Late API pagination (live)', () => {

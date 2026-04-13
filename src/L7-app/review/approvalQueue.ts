@@ -98,15 +98,13 @@ async function processApprovalBatch(itemIds: string[], priority: boolean): Promi
   }
 
   // Also try loading items individually for any IDs not found in pending query
-  for (const id of itemIds) {
-    if (!itemMap.has(id)) {
-      // We don't know the videoSlug — search across all content items
-      const allItems = await getContentItems()
-      for (const record of allItems) {
-        if (record.rowKey === id) {
-          itemMap.set(id, { record, videoSlug: record.partitionKey })
-          break
-        }
+  const missingIds = itemIds.filter(id => !itemMap.has(id))
+  if (missingIds.length > 0) {
+    const allItems = await getContentItems()
+    const missingIdSet = new Set(missingIds)
+    for (const record of allItems) {
+      if (missingIdSet.has(record.rowKey)) {
+        itemMap.set(record.rowKey, { record, videoSlug: record.partitionKey })
       }
     }
   }

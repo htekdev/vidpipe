@@ -47,9 +47,12 @@ describe('Integration L3: Azure Storage Service', () => {
   })
 
   test('uploadContentItem log message includes blob + table confirmation', async () => {
-    // When Azure is not configured, uploadContentItem should throw before logging,
-    // so we just verify the import resolves correctly
     const mod = await import('../../../L3-services/azureStorage/azureStorageService.js')
     expect(typeof mod.uploadContentItem).toBe('function')
+  })
+
+  test('findContentItemByRowKey is exported', async () => {
+    const mod = await import('../../../L3-services/azureStorage/azureStorageService.js')
+    expect(typeof mod.findContentItemByRowKey).toBe('function')
   })
 })

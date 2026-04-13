@@ -377,4 +377,20 @@ describe('L7 Unit: approvalQueue priority', () => {
     expect(result.scheduled).toBe(1)
     expect(mockCreatePost).toHaveBeenCalled()
   })
+
+  it('fetches missing IDs in a single batch instead of per-ID', async () => {
+    // Items not in pending_review should still be found via single getContentItems call
+    mockGetContentItems.mockImplementation(async (filters?: { status?: string }) => {
+      if (filters?.status === 'pending_review') return []
+      return [
+        makeContentRecord('fallback-1', { postContent: 'fallback' }),
+      ]
+    })
+
+    const result = await enqueueApproval(['fallback-1'])
+
+    expect(result.scheduled).toBe(1)
+    // getContentItems should be called exactly twice: once for pending, once for fallback
+    expect(mockGetContentItems).toHaveBeenCalledTimes(2)
+  })
 })

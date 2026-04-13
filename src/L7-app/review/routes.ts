@@ -9,7 +9,7 @@ import {
   type ReviewItem,
   type ReviewGroup,
 } from '../../L3-services/azureStorage/azureReviewDataSource.js'
-import { getContentItems } from '../../L3-services/azureStorage/azureStorageService.js'
+import { getContentItems, findContentItemByRowKey } from '../../L3-services/azureStorage/azureStorageService.js'
 import { getIdeasByIds } from '../../L3-services/ideation/ideaService.js'
 import { findNextSlot, getScheduleCalendar } from '../../L3-services/scheduler/scheduler.js'
 import { createLateApiClient, type LateApiClient, type LateAccount, type LateProfile } from '../../L3-services/lateApi/lateApiService.js'
@@ -177,9 +177,8 @@ export function createRouter(): Router {
 
   // GET /api/posts/:id — get single post with full content
   router.get('/api/posts/:id', async (req, res) => {
-    // Look up the item across all video slugs
-    const allItems = await getContentItems()
-    const match = allItems.find(r => r.rowKey === req.params.id)
+    // Look up the item by RowKey (direct query, not full table scan)
+    const match = await findContentItemByRowKey(req.params.id)
     if (!match) return res.status(404).json({ error: 'Item not found' })
 
     const item = await getItemById(match.partitionKey, match.rowKey)
@@ -223,9 +222,7 @@ export function createRouter(): Router {
   // POST /api/posts/:id/reject — mark as rejected in Azure
   router.post('/api/posts/:id/reject', async (req, res) => {
     try {
-      // Look up the item to get the videoSlug
-      const allItems = await getContentItems()
-      const match = allItems.find(r => r.rowKey === req.params.id)
+      const match = await findContentItemByRowKey(req.params.id)
       if (!match) return res.status(404).json({ error: 'Item not found' })
 
       await azureRejectItem(match.partitionKey, match.rowKey)
@@ -272,9 +269,7 @@ export function createRouter(): Router {
     try {
       const { postContent } = req.body
 
-      // Look up the item to get the videoSlug
-      const allItems = await getContentItems()
-      const match = allItems.find(r => r.rowKey === req.params.id)
+      const match = await findContentItemByRowKey(req.params.id)
       if (!match) return res.status(404).json({ error: 'Item not found' })
 
       const updated = await azureUpdateItem(match.partitionKey, match.rowKey, { postContent })

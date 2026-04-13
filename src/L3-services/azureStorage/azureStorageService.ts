@@ -299,6 +299,20 @@ export async function getContentItem(
   return entity
 }
 
+/**
+ * Find a content item by RowKey (itemId) when the partitionKey (videoSlug) is unknown.
+ * Uses a server-side RowKey filter instead of loading all items.
+ */
+export async function findContentItemByRowKey(
+  itemId: string,
+): Promise<(ContentRecord & { partitionKey: string; rowKey: string }) | null> {
+  const results = await tableClient.queryEntities<ContentRecord & { partitionKey: string; rowKey: string }>(
+    CONTENT_TABLE,
+    `RowKey eq '${itemId}'`,
+  )
+  return results[0] ?? null
+}
+
 export async function updateContentStatus(
   videoSlug: string,
   itemId: string,
@@ -352,15 +366,8 @@ function getContentType(filename: string): string {
 function extractVideoSlug(itemId: string): string {
   // Item IDs are typically "{slug}-{platform}" e.g. "my-video-youtube"
   // We need to strip the platform suffix
-  const platforms = ['youtube', 'tiktok', 'instagram', 'linkedin', 'x']
+  const platforms = ['youtube-shorts', 'instagram-reels', 'instagram-feed', 'twitter', 'youtube', 'tiktok', 'instagram', 'linkedin', 'x']
   for (const platform of platforms) {
-    if (itemId.endsWith(`-${platform}`)) {
-      return itemId.slice(0, -(platform.length + 1))
-    }
-  }
-  // Check compound platform names
-  const compoundPlatforms = ['instagram-reels', 'instagram-feed']
-  for (const platform of compoundPlatforms) {
     if (itemId.endsWith(`-${platform}`)) {
       return itemId.slice(0, -(platform.length + 1))
     }
