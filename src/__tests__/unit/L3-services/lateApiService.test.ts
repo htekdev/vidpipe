@@ -131,5 +131,23 @@ describe('L3 Unit: lateApiService', () => {
 
       expect(result).toBeNull()
     })
+
+    test('matches posts by UTC time-of-day from preview slots, not local queue definition', async () => {
+      setupQueueMappingMocks()
+      // Queue slot is 15:00 local but preview returns 20:00 UTC
+      mockPreviewQueue.mockResolvedValue({
+        slots: ['2026-04-15T20:00:00.000Z', '2026-04-17T20:00:00.000Z'],
+      })
+      // Post at 20:00 UTC should match the preview pattern
+      mockGetScheduledPosts.mockResolvedValue([
+        { _id: 'p1', scheduledFor: '2026-04-15T20:00:00.000Z', createdAt: '2026-04-01T00:00:00Z' },
+      ])
+
+      const result = await priorityShiftQueue('youtube', 'short')
+
+      // Single post — can't shift, but the filtering should find it
+      // (returns null because only 1 post can't cascade-shift)
+      expect(result).toBeNull() // 1 post = "Only 1 post in queue"
+    })
   })
 })

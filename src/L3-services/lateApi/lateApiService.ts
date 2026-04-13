@@ -191,25 +191,22 @@ export async function priorityShiftQueue(
   }
 
   // Get all scheduled posts for this platform and filter to posts in this specific queue
-  // Posts created via queue have their scheduledFor matching queue slot times
   const allPosts = await client.getScheduledPosts(platform)
 
-  // Get the queue's slot schedule to identify which posts belong to this queue
+  // Get the queue's preview slots (already in UTC) to extract time-of-day patterns.
+  // Queue slot definitions use local time, but scheduledFor is UTC — so we must
+  // compare UTC time-of-day from preview slots, not from the queue definition.
   const preview = await client.previewQueue(profileId, queueId, 100)
-  const queueSlotTimes = new Set(preview.slots ?? [])
+  const utcTimePatterns = new Set(
+    (preview.slots ?? []).map(s => s.slice(11, 16)), // Extract HH:MM from UTC ISO strings
+  )
 
-  // Also get the queue definition to match by time-of-day pattern
-  const { queues } = await client.listQueues(profileId, true)
-  const queue = queues.find(q => q._id === queueId)
-  const queueTimePatterns = new Set(queue?.slots?.map(s => s.time) ?? [])
-
-  // Filter posts to those whose scheduled time matches this queue's time patterns
+  // Filter posts to those whose scheduled UTC time matches this queue's slot pattern
   const sorted = allPosts
     .filter(p => {
       if (!p.scheduledFor) return false
-      // Match by time-of-day (HH:MM) from the queue slot definition
-      const postTime = p.scheduledFor.slice(11, 16) // Extract HH:MM from ISO
-      return queueTimePatterns.has(postTime)
+      const postTime = p.scheduledFor.slice(11, 16) // HH:MM from UTC ISO
+      return utcTimePatterns.has(postTime)
     })
     .sort((a, b) => a.scheduledFor!.localeCompare(b.scheduledFor!))
 

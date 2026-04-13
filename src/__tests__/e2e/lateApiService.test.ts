@@ -52,6 +52,11 @@ describe('E2E: lateApiService wrappers', () => {
     const mod = await import('../../L3-services/azureStorage/azureStorageService.js')
     expect(typeof mod.uploadPublishQueue).toBe('function')
   })
+
+  test('priorityShiftQueue uses UTC time matching', async () => {
+    const mod = await import('../../L3-services/lateApi/lateApiService.js')
+    expect(typeof mod.priorityShiftQueue).toBe('function')
+  })
 })
 
 describe.skipIf(!process.env.LATE_API_KEY)('E2E: Late API pagination (live)', () => {

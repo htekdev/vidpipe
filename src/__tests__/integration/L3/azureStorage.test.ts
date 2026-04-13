@@ -65,4 +65,9 @@ describe('Integration L3: Azure Storage Service', () => {
     const mod = await import('../../../L3-services/azureStorage/azureStorageService.js')
     expect(typeof mod.uploadPublishQueue).toBe('function')
   })
+
+  test('priorityShiftQueue is exported from lateApiService', async () => {
+    const mod = await import('../../../L3-services/lateApi/lateApiService.js')
+    expect(typeof mod.priorityShiftQueue).toBe('function')
+  })
 })
