@@ -289,18 +289,36 @@ describe('L3 Unit: Azure Storage Service', () => {
 
   // uploadPublishQueue
   describe('uploadPublishQueue', () => {
-    test('uploads all items and updates video record', async () => {
-      mockReaddir.mockResolvedValueOnce(['item-a', 'item-b'])
-      // For each uploadContentItem call, readdir/readFile will be called again
-      mockReaddir.mockResolvedValueOnce(['media.mp4'])
-      mockReadFile.mockRejectedValue(new Error('ENOENT'))
-      mockReaddir.mockResolvedValueOnce(['media.mp4'])
+    test('uploads only items matching the videoSlug and updates video record', async () => {
+      mockReaddir.mockResolvedValueOnce(['item-a', 'item-b', 'item-other'])
+      // metadata.json for each item — item-a and item-b match, item-other does not
+      mockReadFile.mockImplementation((path: string) => {
+        if (path.includes('item-a') && path.includes('metadata.json'))
+          return Promise.resolve(JSON.stringify({ sourceVideo: '/output/my-video', platform: 'tiktok' }))
+        if (path.includes('item-b') && path.includes('metadata.json'))
+          return Promise.resolve(JSON.stringify({ sourceVideo: '/output/my-video', platform: 'youtube' }))
+        if (path.includes('item-other') && path.includes('metadata.json'))
+          return Promise.resolve(JSON.stringify({ sourceVideo: '/output/different-video', platform: 'tiktok' }))
+        return Promise.reject(new Error('ENOENT'))
+      })
+      // readdir for each uploadContentItem call (item-a and item-b only)
+      mockReaddir.mockResolvedValueOnce(['media.mp4', 'metadata.json'])
+      mockReaddir.mockResolvedValueOnce(['media.mp4', 'metadata.json'])
 
       const result = await uploadPublishQueue('/queue', 'my-video', 'run-1')
 
-      expect(result.uploaded).toBe(2)
+      expect(result.uploaded).toBe(2) // item-other skipped
       expect(result.errors).toHaveLength(0)
       expect(mockUpdateEntity).toHaveBeenCalledWith('Videos', 'video', 'run-1', { contentCount: 2 })
+    })
+
+    test('skips items with no metadata.json', async () => {
+      mockReaddir.mockResolvedValueOnce(['item-no-meta'])
+      mockReadFile.mockRejectedValue(new Error('ENOENT'))
+
+      const result = await uploadPublishQueue('/queue', 'my-video', 'run-1')
+
+      expect(result.uploaded).toBe(0)
     })
 
     test('handles missing publish queue directory', async () => {
@@ -314,10 +332,15 @@ describe('L3 Unit: Azure Storage Service', () => {
 
     test('captures errors for individual items', async () => {
       mockReaddir.mockResolvedValueOnce(['item-good', 'item-bad'])
-      // item-good succeeds
-      mockReaddir.mockResolvedValueOnce(['media.mp4'])
-      mockReadFile.mockRejectedValue(new Error('ENOENT'))
-      // item-bad fails
+      // metadata.json check for each item — both match
+      mockReadFile.mockImplementation((path: string) => {
+        if (path.includes('metadata.json'))
+          return Promise.resolve(JSON.stringify({ sourceVideo: '/output/my-video', platform: 'tiktok' }))
+        return Promise.reject(new Error('ENOENT'))
+      })
+      // item-good: readdir for uploadContentItem succeeds
+      mockReaddir.mockResolvedValueOnce(['media.mp4', 'metadata.json'])
+      // item-bad: readdir for uploadContentItem fails
       mockReaddir.mockRejectedValueOnce(new Error('Permission denied'))
 
       const result = await uploadPublishQueue('/queue', 'my-video', 'run-1')

@@ -187,6 +187,22 @@ export async function uploadPublishQueue(
 
   for (const itemId of items) {
     const itemDir = join(publishQueueDir, itemId)
+
+    // Only upload items that belong to this video — check metadata.json sourceVideo
+    try {
+      const metaPath = join(itemDir, 'metadata.json')
+      const metaContent = await readFile(metaPath, 'utf8')
+      const meta = JSON.parse(metaContent) as Record<string, unknown>
+      const sourceVideo = String(meta.sourceVideo || '')
+      // Match if sourceVideo path ends with the video slug
+      if (sourceVideo && !sourceVideo.endsWith(videoSlug)) {
+        continue // skip — belongs to a different recording
+      }
+    } catch {
+      // No metadata.json or unreadable — skip to be safe
+      continue
+    }
+
     try {
       await uploadContentItem(itemDir, itemId, videoSlug, runId)
       uploaded++

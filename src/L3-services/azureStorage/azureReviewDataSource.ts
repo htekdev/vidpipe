@@ -96,11 +96,21 @@ export async function getGroupedItems(): Promise<ReviewGroup[]> {
     'twitter', 'youtube', 'tiktok', 'instagram', 'linkedin', 'x',
   ]
 
-  // Group by clip slug — strip the platform suffix from item ID so platform
-  // variants of the same clip (e.g. "my-clip-youtube", "my-clip-instagram")
-  // land in the same group.
-  const groupMap = new Map<string, ReviewItem[]>()
+  // Deduplicate: if the same rowKey exists under multiple partitions (re-processed
+  // recordings), keep only the newest one.
+  const deduped = new Map<string, ReviewItem>()
   for (const item of items) {
+    const existing = deduped.get(item.id)
+    if (!existing || item.createdAt > existing.createdAt) {
+      deduped.set(item.id, item)
+    }
+  }
+
+  // Group by clip slug ONLY (not videoSlug) so the same clip processed from
+  // two different recordings merges into a single review group instead of
+  // showing as two identical-looking cards.
+  const groupMap = new Map<string, ReviewItem[]>()
+  for (const item of deduped.values()) {
     let clipSlug = item.id
     for (const suffix of platformSuffixes) {
       if (item.id.endsWith(`-${suffix}`)) {
@@ -108,18 +118,17 @@ export async function getGroupedItems(): Promise<ReviewGroup[]> {
         break
       }
     }
-    const groupKey = `${item.videoSlug}::${clipSlug}`
-    if (!groupMap.has(groupKey)) {
-      groupMap.set(groupKey, [])
+    if (!groupMap.has(clipSlug)) {
+      groupMap.set(clipSlug, [])
     }
-    groupMap.get(groupKey)!.push(item)
+    groupMap.get(clipSlug)!.push(item)
   }
 
   const groups: ReviewGroup[] = []
-  for (const [groupKey, groupItems] of groupMap) {
+  for (const [clipSlug, groupItems] of groupMap) {
     const first = groupItems[0]
     groups.push({
-      videoSlug: groupKey,
+      videoSlug: clipSlug,
       clipType: first.clipType,
       items: groupItems,
     })

@@ -47,6 +47,11 @@ describe('E2E: lateApiService wrappers', () => {
     const mod = await import('../../L7-app/review/routes.js')
     expect(typeof mod.createRouter).toBe('function')
   })
+
+  test('uploadPublishQueue is exported from azureStorageService', async () => {
+    const mod = await import('../../L3-services/azureStorage/azureStorageService.js')
+    expect(typeof mod.uploadPublishQueue).toBe('function')
+  })
 })
 
 describe.skipIf(!process.env.LATE_API_KEY)('E2E: Late API pagination (live)', () => {

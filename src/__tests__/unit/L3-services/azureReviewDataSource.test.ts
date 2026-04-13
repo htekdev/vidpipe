@@ -183,6 +183,20 @@ describe('L3 Unit: Azure Review Data Source', () => {
       expect(groups).toHaveLength(1)
       expect(groups[0].items).toHaveLength(2)
     })
+
+    test('merges same clip from different recordings into one group', async () => {
+      mockGetContentItems.mockResolvedValueOnce([
+        makeContentRecord({ partitionKey: 'recording-a', rowKey: 'my-clip-youtube', platform: 'youtube' }),
+        makeContentRecord({ partitionKey: 'recording-b', rowKey: 'my-clip-tiktok', platform: 'tiktok' }),
+      ])
+
+      const groups = await getGroupedItems()
+
+      // Same clip slug "my-clip" from two different recordings should merge
+      expect(groups).toHaveLength(1)
+      expect(groups[0].items).toHaveLength(2)
+      expect(groups[0].videoSlug).toBe('my-clip')
+    })
   })
 
   describe('getItemById', () => {
