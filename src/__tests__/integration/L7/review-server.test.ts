@@ -188,26 +188,18 @@ describe('Review Server API', () => {
       expect(res.body.total).toBe(2)
     })
 
-    it('batches idea enrichment across pending queue items', async () => {
+    it('listing does not enrich ideas (deferred to per-item fetch)', async () => {
       mockListPendingItems.mockResolvedValue([
         makeReviewItem('idea-a', { ideaIds: ['idea-1', '42'] }),
         makeReviewItem('idea-b', { ideaIds: ['idea-2', 'idea-1'] }),
-      ])
-      mockGetIdeasByIds.mockResolvedValue([
-        { id: 'idea-1', issueNumber: 41, publishBy: '2026-03-20' },
-        { id: 'idea-2', issueNumber: 42, publishBy: '2026-03-01' },
       ])
 
       const res = await request(app).get('/api/posts/pending')
 
       expect(res.status).toBe(200)
-      expect(mockGetIdeasByIds).toHaveBeenCalledTimes(1)
-      expect(mockGetIdeasByIds).toHaveBeenCalledWith(expect.arrayContaining(['idea-1', 'idea-2', '42']))
-      const itemsById = new Map<string, { id: string; ideaPublishBy?: string }>(
-        res.body.items.map((item: { id: string; ideaPublishBy?: string }) => [item.id, item] as const),
-      )
-      expect(itemsById.get('idea-a')?.ideaPublishBy).toBe('2026-03-01')
-      expect(itemsById.get('idea-b')?.ideaPublishBy).toBe('2026-03-01')
+      // No idea enrichment on listing endpoints — saves API calls
+      expect(mockGetIdeasByIds).not.toHaveBeenCalled()
+      expect(res.body.items[0].ideaPublishBy).toBeUndefined()
     })
   })
 
@@ -369,6 +361,8 @@ describe('Review Server API', () => {
       const res = await request(app).get('/api/posts/grouped')
       expect(res.status).toBe(200)
       expect(res.body.total).toBe(1)
+      // Grouped items should NOT have ideaPublishBy (deferred to per-item fetch)
+      expect(res.body.groups[0].items[0].ideaPublishBy).toBeUndefined()
     })
   })
 

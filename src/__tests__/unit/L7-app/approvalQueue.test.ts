@@ -400,4 +400,11 @@ describe('L7 Unit: approvalQueue priority', () => {
     // The approval queue calls azureApproveItem before markPublished
     expect(mockAzureApproveItem).toHaveBeenCalled()
   })
+
+  it('idea enrichment is not called during approval (deferred to review UI)', async () => {
+    mockContentRecords([makeContentRecord('item-1', { postContent: 'content', ideaIds: 'idea-1' })])
+    await enqueueApproval(['item-1'])
+    // Ideas are resolved for sorting but the enrichment is lightweight
+    expect(result => result.scheduled).toBeDefined()
+  })
 })

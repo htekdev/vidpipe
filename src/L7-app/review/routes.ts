@@ -96,8 +96,9 @@ async function enrichReviewItems(items: ReviewItem[]): Promise<ReviewQueueItem[]
   })
 }
 
-async function enrichGroupedItems(groups: ReviewGroup[]): Promise<ReviewGroupedItem[]> {
-  return Promise.all(groups.map(async (group) => {
+function enrichGroupedItems(groups: ReviewGroup[]): ReviewGroupedItem[] {
+  // No idea enrichment on listing — publishBy is fetched on-demand per item
+  return groups.map((group) => {
     const firstItem = group.items[0]
     const hasMedia = group.items.some(item => Boolean(item.mediaFilename))
     return {
@@ -105,9 +106,9 @@ async function enrichGroupedItems(groups: ReviewGroup[]): Promise<ReviewGroupedI
       groupKey: group.videoSlug,
       hasMedia,
       mediaType: firstItem?.mediaType || 'video',
-      items: await enrichReviewItems(group.items),
+      items: group.items.map(item => ({ ...item })),
     }
-  }))
+  })
 }
 
 export function createRouter(): Router {
@@ -134,15 +135,15 @@ export function createRouter(): Router {
     }
   })
 
-  // GET /api/posts/pending — list all pending review items
+  // GET /api/posts/pending — list all pending review items (no idea enrichment)
   router.get('/api/posts/pending', async (req, res) => {
-    const items = await enrichReviewItems(await listPendingItems())
+    const items = await listPendingItems()
     res.json({ items, total: items.length })
   })
 
-  // GET /api/posts/grouped — list pending items grouped by video/clip
+  // GET /api/posts/grouped — list pending items grouped by video/clip (no idea enrichment)
   router.get('/api/posts/grouped', async (req, res) => {
-    const groups = await enrichGroupedItems(await getGroupedItems())
+    const groups = enrichGroupedItems(await getGroupedItems())
     res.json({ groups, total: groups.length })
   })
 
