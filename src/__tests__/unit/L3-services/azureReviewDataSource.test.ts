@@ -173,6 +173,16 @@ describe('L3 Unit: Azure Review Data Source', () => {
       const groups = await getGroupedItems()
       expect(groups).toEqual([])
     })
+
+    test('groups items with twitter platform suffix correctly', async () => {
+      mockGetContentItems.mockResolvedValueOnce([
+        makeContentRecord({ partitionKey: 'video-a', rowKey: 'clip-twitter', platform: 'twitter' }),
+        makeContentRecord({ partitionKey: 'video-a', rowKey: 'clip-youtube', platform: 'youtube' }),
+      ])
+      const groups = await getGroupedItems()
+      expect(groups).toHaveLength(1)
+      expect(groups[0].items).toHaveLength(2)
+    })
   })
 
   describe('getItemById', () => {

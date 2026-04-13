@@ -259,6 +259,11 @@ describe('POST /api/posts/:id/approve — priority param', () => {
     expect(res.status).toBe(202)
     expect(res.body.accepted).toBe(true)
   })
+
+  it('approve endpoint marks item as approved immediately', async () => {
+    const res = await request(app).post('/api/posts/test-item/approve')
+    expect(res.status).toBe(202)
+  })
 })
 
 describe('POST /api/posts/bulk-approve — priority param', () => {

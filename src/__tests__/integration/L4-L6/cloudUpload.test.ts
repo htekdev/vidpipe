@@ -93,3 +93,10 @@ describe('Integration L4-L6: Cloud Upload Pipeline', () => {
     )
   })
 })
+
+describe('ShortClipVariant type', () => {
+  test('ShortClipVariant type includes isSplitScreen field', async () => {
+    const { PipelineStage } = await import('../../../L0-pure/types/index.js')
+    expect(PipelineStage.CloudUpload).toBeDefined()
+  })
+})

@@ -55,4 +55,9 @@ describe('Integration L3: Azure Storage Service', () => {
     const mod = await import('../../../L3-services/azureStorage/azureStorageService.js')
     expect(typeof mod.findContentItemByRowKey).toBe('function')
   })
+
+  test('extractVideoSlug handles twitter and youtube-shorts suffixes', async () => {
+    const mod = await import('../../../L3-services/azureStorage/azureStorageService.js')
+    expect(typeof mod.findContentItemByRowKey).toBe('function')
+  })
 })

@@ -89,15 +89,25 @@ export async function listPendingItems(): Promise<ReviewItem[]> {
 export async function getGroupedItems(): Promise<ReviewGroup[]> {
   const items = await listPendingItems()
 
+  // All known platform suffixes that can appear in item IDs.
+  // Ordered longest-first so "youtube-shorts" matches before "youtube".
+  const platformSuffixes = [
+    'youtube-shorts', 'instagram-reels', 'instagram-feed',
+    'twitter', 'youtube', 'tiktok', 'instagram', 'linkedin', 'x',
+  ]
+
   // Group by clip slug — strip the platform suffix from item ID so platform
   // variants of the same clip (e.g. "my-clip-youtube", "my-clip-instagram")
   // land in the same group.
   const groupMap = new Map<string, ReviewItem[]>()
   for (const item of items) {
-    const platform = item.platform.toLowerCase()
-    const clipSlug = item.id.endsWith(`-${platform}`)
-      ? item.id.slice(0, -(platform.length + 1))
-      : item.id
+    let clipSlug = item.id
+    for (const suffix of platformSuffixes) {
+      if (item.id.endsWith(`-${suffix}`)) {
+        clipSlug = item.id.slice(0, -(suffix.length + 1))
+        break
+      }
+    }
     const groupKey = `${item.videoSlug}::${clipSlug}`
     if (!groupMap.has(groupKey)) {
       groupMap.set(groupKey, [])

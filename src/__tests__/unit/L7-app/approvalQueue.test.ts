@@ -393,4 +393,11 @@ describe('L7 Unit: approvalQueue priority', () => {
     // getContentItems should be called exactly twice: once for pending, once for fallback
     expect(mockGetContentItems).toHaveBeenCalledTimes(2)
   })
+
+  it('approval flow marks items as approved before scheduling', async () => {
+    mockContentRecords([makeContentRecord('item-1', { postContent: 'content' })])
+    await enqueueApproval(['item-1'])
+    // The approval queue calls azureApproveItem before markPublished
+    expect(mockAzureApproveItem).toHaveBeenCalled()
+  })
 })

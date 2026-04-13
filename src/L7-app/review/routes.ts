@@ -5,6 +5,7 @@ import {
   getItemById,
   updateItem as azureUpdateItem,
   rejectItem as azureRejectItem,
+  approveItem as azureApproveItem,
   getMediaStream,
   type ReviewItem,
   type ReviewGroup,
@@ -186,11 +187,21 @@ export function createRouter(): Router {
     res.json(await enrichReviewItem(item))
   })
 
-  // POST /api/posts/:id/approve — enqueue for sequential processing, return 202
+  // POST /api/posts/:id/approve — mark approved immediately, then enqueue Late API scheduling
   // Query param ?priority=true to shift existing queue posts and schedule first
-  router.post('/api/posts/:id/approve', (req, res) => {
+  router.post('/api/posts/:id/approve', async (req, res) => {
     const itemId = req.params.id
     const priority = req.query.priority === 'true' || req.body?.priority === true
+
+    // Immediately mark as approved so it disappears from pending review
+    try {
+      const match = await findContentItemByRowKey(itemId)
+      if (match) {
+        await azureApproveItem(match.partitionKey, match.rowKey)
+      }
+    } catch {
+      // Non-fatal — approval queue will also try to update status
+    }
 
     res.status(202).json({ accepted: true })
 
@@ -203,12 +214,24 @@ export function createRouter(): Router {
     }).catch(() => {})
   })
 
-  // POST /api/posts/bulk-approve — fire-and-forget: returns 202 immediately, processes sequentially in queue
+  // POST /api/posts/bulk-approve — mark approved immediately, then process Late API scheduling in background
   // Body: { itemIds: string[], priority?: boolean }
-  router.post('/api/posts/bulk-approve', (req, res) => {
+  router.post('/api/posts/bulk-approve', async (req, res) => {
     const { itemIds, priority } = req.body
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
       return res.status(400).json({ error: 'itemIds must be a non-empty array' })
+    }
+
+    // Immediately mark all items as approved so they disappear from pending review
+    for (const itemId of itemIds) {
+      try {
+        const match = await findContentItemByRowKey(itemId)
+        if (match) {
+          await azureApproveItem(match.partitionKey, match.rowKey)
+        }
+      } catch {
+        // Non-fatal — approval queue will also try to update status
+      }
     }
 
     res.status(202).json({ accepted: true, count: itemIds.length })
