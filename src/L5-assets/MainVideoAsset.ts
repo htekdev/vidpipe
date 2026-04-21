@@ -32,7 +32,7 @@ import {
 } from '../L1-infra/fileSystem/fileSystem.js'
 import { slugify } from '../L0-pure/text/text.js'
 import { generateSRT, generateVTT, generateStyledASS } from '../L0-pure/captions/captionGenerator.js'
-import { ffprobe, burnCaptions } from '../L4-agents/videoServiceBridge.js'
+import { ffprobe, burnCaptions, transcodeToMp4, applyIntroOutro } from '../L4-agents/videoServiceBridge.js'
 import { transcribeVideo, analyzeVideoClipDirection } from '../L4-agents/analysisServiceBridge.js'
 import { removeDeadSilence } from '../L4-agents/SilenceRemovalAgent.js'
 import { generateShorts } from '../L4-agents/ShortsAgent.js'
@@ -42,8 +42,11 @@ import { ProducerAgent } from '../L4-agents/ProducerAgent.js'
 import { generateSummary } from '../L4-agents/SummaryAgent.js'
 import { generateSocialPosts, generateShortPosts } from '../L4-agents/SocialMediaAgent.js'
 import { generateBlogPost } from '../L4-agents/BlogAgent.js'
-import { buildPublishQueue, commitAndPush } from '../L4-agents/pipelineServiceBridge.js'
+import { buildPublishQueue } from '../L4-agents/pipelineServiceBridge.js'
+import { IdeaDiscoveryAgent } from '../L4-agents/IdeaDiscoveryAgent.js'
+import type { IdeaDiscoveryResult } from '../L4-agents/IdeaDiscoveryAgent.js'
 import { enhanceVideo } from './visualEnhancement.js'
+import { generateThumbnailForClip } from './thumbnailGeneration.js'
 import { getConfig } from '../L1-infra/config/environment.js'
 import logger from '../L1-infra/logger/configLogger.js'
 import type { ProduceResult } from '../L4-agents/ProducerAgent.js'
@@ -52,6 +55,7 @@ import {
   Platform,
 } from '../L0-pure/types/index.js'
 import type {
+  Idea,
   ShortClip,
   MediumClip,
   Chapter,
@@ -62,6 +66,7 @@ import type {
   VideoSummary,
   SocialPost,
   WebcamRegion,
+  PipelineSpec,
 } from '../L0-pure/types/index.js'
 
 /**
@@ -72,6 +77,40 @@ export class MainVideoAsset extends VideoAsset {
   readonly sourcePath: string
   readonly videoDir: string
   readonly slug: string
+
+  /** Content ideas linked to this video for editorial direction */
+  private _ideas: Idea[] = []
+
+  /** Per-clip idea assignments from idea discovery (clipId → ideaIssueNumber) */
+  private _clipIdeaMap = new Map<string, number>()
+
+  /** Pipeline spec controlling clip and platform configuration */
+  private _spec?: PipelineSpec
+
+  /** Set the pipeline spec for configuring agent behavior */
+  setSpec(spec: PipelineSpec): void {
+    this._spec = spec
+  }
+
+  /** Get the pipeline spec */
+  get spec(): PipelineSpec | undefined {
+    return this._spec
+  }
+
+  /** Set ideas for editorial direction */
+  setIdeas(ideas: Idea[]): void {
+    this._ideas = ideas
+  }
+
+  /** Get linked ideas */
+  get ideas(): Idea[] {
+    return this._ideas
+  }
+
+  /** Get per-clip idea assignments */
+  get clipIdeaMap(): ReadonlyMap<string, number> {
+    return this._clipIdeaMap
+  }
 
   private constructor(sourcePath: string, videoDir: string, slug: string) {
     super()
@@ -105,6 +144,11 @@ export class MainVideoAsset extends VideoAsset {
   /** Path to the fully produced video: videoDir/{slug}-produced.mp4 */
   get producedVideoPath(): string {
     return join(this.videoDir, `${this.slug}-produced.mp4`)
+  }
+
+  /** Path to the video with intro/outro applied: videoDir/{slug}-intro-outro.mp4 */
+  get introOutroVideoPath(): string {
+    return join(this.videoDir, `${this.slug}-intro-outro.mp4`)
   }
 
   /** Path to a produced video for a specific aspect ratio: videoDir/{slug}-produced-{ar}.mp4 */
@@ -236,30 +280,45 @@ export class MainVideoAsset extends VideoAsset {
 
     const destFilename = `${slug}.mp4`
     const destPath = join(videoDir, destFilename)
+    const sourceExt = extname(sourcePath).toLowerCase()
+    const needsTranscode = sourceExt !== '.mp4'
 
-    // Copy video if needed
-    let needsCopy = true
+    // Check if destination already exists (skip copy/transcode if so)
+    let needsIngest = true
     try {
       const destStats = await getFileStats(destPath)
-      const srcStats = await getFileStats(sourcePath)
-      if (destStats.size === srcStats.size) {
-        logger.info(`Video already copied (same size), skipping copy`)
-        needsCopy = false
+      if (needsTranscode) {
+        // For transcoded files, sizes will differ — just check dest exists and is non-trivial
+        if (destStats.size > 1024) {
+          logger.info(`Transcoded MP4 already exists (${(destStats.size / 1024 / 1024).toFixed(1)} MB), skipping transcode`)
+          needsIngest = false
+        }
+      } else {
+        const srcStats = await getFileStats(sourcePath)
+        if (destStats.size === srcStats.size) {
+          logger.info(`Video already copied (same size), skipping copy`)
+          needsIngest = false
+        }
       }
     } catch {
-      // Dest doesn't exist, need to copy
+      // Dest doesn't exist, need to ingest
     }
 
-    if (needsCopy) {
-      await new Promise<void>((resolve, reject) => {
-        const readStream = openReadStream(sourcePath)
-        const writeStream = openWriteStream(destPath)
-        readStream.on('error', reject)
-        writeStream.on('error', reject)
-        writeStream.on('finish', resolve)
-        readStream.pipe(writeStream)
-      })
-      logger.info(`Copied video to ${destPath}`)
+    if (needsIngest) {
+      if (needsTranscode) {
+        await transcodeToMp4(sourcePath, destPath)
+        logger.info(`Transcoded video to ${destPath}`)
+      } else {
+        await new Promise<void>((resolve, reject) => {
+          const readStream = openReadStream(sourcePath)
+          const writeStream = openWriteStream(destPath)
+          readStream.on('error', reject)
+          writeStream.on('error', reject)
+          writeStream.on('finish', resolve)
+          readStream.pipe(writeStream)
+        })
+        logger.info(`Copied video to ${destPath}`)
+      }
     }
 
     // Create the asset instance
@@ -440,6 +499,23 @@ export class MainVideoAsset extends VideoAsset {
     await burnCaptions(enhancedPath, captions.ass, this.captionedVideoPath)
     logger.info(`Captions burned into video: ${this.captionedVideoPath}`)
     return this.captionedVideoPath
+  }
+
+  /**
+   * Get the video with intro/outro applied.
+   * Concatenates intro (if configured) + captioned video + outro (if configured).
+   *
+   * @param opts - Options controlling generation
+   * @returns Path to the intro/outro video, or captioned video if skipped
+   */
+  async getIntroOutroVideo(opts?: AssetOptions): Promise<string> {
+    if (!opts?.force && (await fileExists(this.introOutroVideoPath))) {
+      return this.introOutroVideoPath
+    }
+
+    const captionedPath = await this.getCaptionedVideo(opts)
+    const result = await applyIntroOutro(captionedPath, 'main', this.introOutroVideoPath)
+    return result
   }
 
   /**
@@ -707,7 +783,13 @@ export class MainVideoAsset extends VideoAsset {
   private async generateShortsInternal(): Promise<ShortClip[]> {
     const transcript = await this.getTranscript()
     const videoFile = await this.toVideoFile()
-    const shorts = await generateShorts(videoFile, transcript)
+    const shortsConfig = this._spec?.clips.shorts
+    const shouldGenerateVariants = this._spec?.distribution.platforms.variants
+    const shorts = await generateShorts(
+      videoFile, transcript,
+      undefined, undefined, undefined, undefined,
+      shortsConfig, shouldGenerateVariants,
+    )
     logger.info(`Generated ${shorts.length} short clips`)
     return shorts
   }
@@ -743,7 +825,12 @@ export class MainVideoAsset extends VideoAsset {
   private async generateMediumClipsInternal(): Promise<MediumClip[]> {
     const transcript = await this.getTranscript()
     const videoFile = await this.toVideoFile()
-    const clips = await generateMediumClips(videoFile, transcript)
+    const mediumConfig = this._spec?.clips.medium
+    const clips = await generateMediumClips(
+      videoFile, transcript,
+      undefined, undefined, undefined,
+      mediumConfig,
+    )
     logger.info(`Generated ${clips.length} medium clips for ${this.slug}`)
     return clips
   }
@@ -770,7 +857,12 @@ export class MainVideoAsset extends VideoAsset {
     const summary = await this.getSummary()
     const video = await this.toVideoFile()
     await ensureDirectory(this.socialPostsDir)
-    const posts = await generateSocialPosts(video, transcript, summary, this.socialPostsDir)
+    const toneStrategy = this._spec?.distribution.platforms.toneStrategy
+    const posts = await generateSocialPosts(
+      video, transcript, summary, this.socialPostsDir,
+      undefined, undefined,
+      toneStrategy,
+    )
 
     await this.markSocialPostsComplete()
     return posts
@@ -856,6 +948,44 @@ export class MainVideoAsset extends VideoAsset {
     await writeJsonFile(this.summaryJsonPath, summary)
     logger.info(`Generated summary for ${this.slug}`)
     return summary
+  }
+
+  /**
+   * Generate a thumbnail for the main video.
+   *
+   * Uses the ThumbnailAgent to plan and generate a click-worthy thumbnail
+   * based on the video's summary, title, and key topics. Skips if thumbnails
+   * are disabled or a thumbnail already exists (idempotent).
+   *
+   * @param opts - Asset options (force to regenerate)
+   * @returns Path to the generated thumbnail, or null if skipped
+   */
+  async generateThumbnail(opts?: AssetOptions): Promise<string | null> {
+    const summary = await this.getSummary().catch(() => null)
+    const transcript = await this.getTranscript().catch(() => null)
+    const videoPath = await this.getCaptionedVideo().catch(
+      () => this.getEditedVideo().catch(() => this.sourcePath),
+    )
+    const thumbnailDir = join(this.videoDir, 'thumbnails')
+
+    const title = summary?.title ?? this.slug
+    const description = summary?.overview ?? transcript?.text?.substring(0, 500) ?? this.slug
+    const topics = summary?.keyTopics ?? []
+
+    const result = await generateThumbnailForClip({
+      title,
+      description,
+      topics,
+      videoPath,
+      outputDir: thumbnailDir,
+      contentType: 'main',
+    }, opts?.force)
+
+    if (result) {
+      logger.info(`[MainVideoAsset] Generated main video thumbnail: ${result}`)
+    }
+
+    return result
   }
 
   /**
@@ -1135,6 +1265,63 @@ export class MainVideoAsset extends VideoAsset {
   }
 
   /**
+   * Run idea discovery: match clips to existing ideas, create new ones for unmatched.
+   * Updates clip objects with ideaIssueNumber and adds newly created ideas to _ideas.
+   */
+  async discoverIdeas(
+    shorts: ShortClip[],
+    mediumClips: MediumClip[],
+    publishBy: string,
+  ): Promise<IdeaDiscoveryResult> {
+    const transcript = await this.getTranscript()
+    const summary = await this.getSummary()
+    const brand = (await import('../L1-infra/config/brand.js')).getBrandConfig()
+
+    const defaultPlatforms = brand.hashtags?.platforms
+      ? Object.keys(brand.hashtags.platforms).map(p => p as Platform)
+      : [Platform.YouTube, Platform.TikTok, Platform.Instagram, Platform.LinkedIn, Platform.X]
+
+    const agent = new IdeaDiscoveryAgent({
+      shorts,
+      mediumClips,
+      transcript: transcript.segments,
+      summary: typeof summary === 'string' ? summary : summary?.overview ?? '',
+      providedIdeas: this._ideas.length > 0 ? this._ideas : undefined,
+      publishBy,
+      defaultPlatforms,
+    })
+
+    const result = await agent.discover()
+
+    // Apply per-clip assignments to clip objects and the map
+    for (const assignment of result.assignments) {
+      this._clipIdeaMap.set(assignment.clipId, assignment.ideaIssueNumber)
+
+      const short = shorts.find(s => s.id === assignment.clipId)
+      if (short) {
+        short.ideaIssueNumber = assignment.ideaIssueNumber
+        continue
+      }
+      const medium = mediumClips.find(m => m.id === assignment.clipId)
+      if (medium) {
+        medium.ideaIssueNumber = assignment.ideaIssueNumber
+      }
+    }
+
+    // Add newly created ideas to the asset's idea list
+    if (result.newIdeas.length > 0) {
+      const existingIds = new Set(this._ideas.map(i => i.issueNumber))
+      for (const idea of result.newIdeas) {
+        if (!existingIds.has(idea.issueNumber)) {
+          this._ideas.push(idea)
+        }
+      }
+    }
+
+    return result
+  }
+
+  /**
    * Build the publish queue via the queue builder service.
    */
   private async buildPublishQueueData(
@@ -1144,7 +1331,9 @@ export class MainVideoAsset extends VideoAsset {
     captionedVideoPath: string | undefined,
   ): Promise<QueueBuildResult> {
     const video = await this.toVideoFile()
-    return buildPublishQueue(video, shorts, mediumClips, socialPosts, captionedVideoPath)
+    const ideaIds = this._ideas.length > 0 ? this._ideas.map((idea) => String(idea.issueNumber)) : undefined
+    const variantsEnabled = this._spec?.distribution.platforms.variants
+    return buildPublishQueue(video, shorts, mediumClips, socialPosts, captionedVideoPath, ideaIds, variantsEnabled)
   }
 
   /**
@@ -1160,10 +1349,4 @@ export class MainVideoAsset extends VideoAsset {
     await this.buildPublishQueueData(shorts, mediumClips, socialPosts, captionedVideoPath)
   }
 
-  /**
-   * Commit and push all generated assets via git.
-   */
-  async commitAndPushChanges(message?: string): Promise<void> {
-    return commitAndPush(this.slug, message)
-  }
 }

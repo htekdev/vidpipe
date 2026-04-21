@@ -47,7 +47,7 @@ All LLM interactions go through a provider abstraction layer. `BaseAgent` accept
 | `ClaudeProvider.ts` | Direct Anthropic API backend |
 | `index.ts` | Factory — `getProvider()` reads `LLM_PROVIDER` env var, caches singleton, falls back to copilot |
 
-**Cost tracking** (`src/services/costTracker.ts`): Singleton `CostTracker` records every LLM call's token usage and cost. At pipeline end, `formatReport()` logs totals and breakdowns by provider, agent, and model. Cost is in USD for OpenAI/Claude and premium requests (PRUs) for Copilot.
+**Cost tracking** (`src/L3-services/costTracking/costTracker.ts`): Singleton `CostTracker` records every LLM call's token usage and cost. At pipeline end, `formatReport()` logs totals and breakdowns by provider, agent, and model. Cost is in USD for OpenAI/Claude and premium requests (PRUs) for Copilot.
 
 ### Agent Pattern (@github/copilot-sdk)
 
@@ -170,7 +170,7 @@ Two-phase webcam detection:
 
 **Montserrat Bold** is bundled in `assets/fonts/`. Fonts are copied alongside the ASS file at render time; FFmpeg's `ass` filter is invoked with `fontsdir=.` so libass finds them.
 
-### Service Layer (src/services/)
+### Service Layer (src/L3-services/)
 
 | Service | Purpose |
 |---------|---------|
@@ -205,21 +205,23 @@ vidpipe publishes social media posts via [Late API](https://getlate.dev). Posts 
 - Stage 13 (`queue-build`) maps posts + video variants into `publish-queue/{slug}-{platform}/` folders
 - Each folder contains: `media.mp4`, `metadata.json`, `post.md`
 - `vidpipe review` opens a localhost web app for approve/reject/edit
-- On approve: upload media via presigned URL → create scheduled post in Late API → move to `published/`
+- On approve: upload media via presigned URL → resolve queue mapping → create Late post with queuedFromProfile + queueId (or fall back to scheduledFor) → move to `published/`
 - On reject: delete folder. On skip: leave for next session.
 
 **Key services:**
 | File | Purpose |
 |------|---------|
-| `src/services/lateApi.ts` | Late API HTTP client (presigned upload, CRUD) |
-| `src/services/postStore.ts` | Read/write/query publish-queue/ and published/ folders |
-| `src/services/queueBuilder.ts` | Pipeline stage that populates publish-queue/ |
-| `src/services/scheduler.ts` | Smart scheduling with per-platform time slots |
-| `src/services/scheduleConfig.ts` | Load/validate schedule.json |
-| `src/services/accountMapping.ts` | Platform → Late account ID mapping |
-| `src/review/server.ts` | Express.js review server |
-| `src/review/routes.ts` | REST API routes |
-| `src/review/public/index.html` | Tinder-style review UI |
+| `src/L2-clients/late/lateApi.ts` | Late API HTTP client (presigned upload, CRUD) |
+| `src/L3-services/postStore/postStore.ts` | Read/write/query publish-queue/ and published/ folders |
+| `src/L3-services/queueBuilder/queueBuilder.ts` | Pipeline stage that populates publish-queue/ |
+| `src/L3-services/scheduler/scheduler.ts` | Smart scheduling with per-platform time slots |
+| `src/L3-services/scheduleConfig/scheduleConfig.ts` | Load/validate schedule.json |
+| `src/L3-services/accountMapping/accountMapping.ts` | Platform → Late account ID mapping |
+| `src/L3-services/queueMapping/queueMapping.ts` | Resolve (platform, clipType) → queueId with 24hr cache |
+| `src/L3-services/queueSync/queueSync.ts` | Sync schedule.json queue definitions to Late API |
+| `src/L7-app/review/server.ts` | Express.js review server |
+| `src/L7-app/review/routes.ts` | REST API routes |
+| `src/L7-app/review/public/index.html` | Tinder-style review UI |
 
 **Platform mapping:** `Platform.X` = `'x'` but Late uses `'twitter'`. Use `toLateplatform()` / `fromLatePlatform()` from types.
 
@@ -403,6 +405,9 @@ npx tsx src/index.ts --no-git --no-social --no-shorts video.mp4
 - `vidpipe review --port 3847` — Custom port for review server
 - `vidpipe schedule` — View current posting schedule across platforms
 - `vidpipe schedule --platform linkedin` — Filter schedule by platform
+- `vidpipe sync-queues` — Sync schedule.json queues to Late API (`--reshuffle`, `--dry-run`, `--delete-orphans`)
+- `vidpipe reschedule` — Reschedule idea-linked posts (`--queue`, `--dry-run`)
+- `vidpipe realign` — Realign scheduled posts (`--queue`, `--platform`, `--dry-run`)
 
 ## File Structure
 

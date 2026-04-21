@@ -128,7 +128,7 @@ The project's `schedule.json` (repo root) defines local posting time slots:
 }
 ```
 
-### Existing LateApiClient (src/services/lateApi.ts)
+### Existing LateApiClient (src/L2-clients/late/lateApi.ts)
 
 The project has a TypeScript client with these methods:
 - `listProfiles()` → `LateProfile[]`
@@ -140,6 +140,14 @@ The project has a TypeScript client with these methods:
 - `deletePost(postId)` → `void`
 - `uploadMedia(filePath)` → `{url, type}`
 - `validateConnection()` → `{valid, profileName?, error?}`
+- `listQueues(profileId, all?)` — List all queues for a profile
+- `createQueue(params)` — Create a new queue
+- `updateQueue(params)` — Update queue (supports reshuffleExisting)
+- `deleteQueue(profileId, queueId)` — Delete a queue
+- `previewQueue(profileId, queueId?, count?)` — Preview upcoming slot times
+- `getNextQueueSlot(profileId, queueId?)` — Get next available slot
+
+Approved posts use queue-first scheduling: VidPipe resolves queueId via {platform}-{clipType} naming, sends queuedFromProfile + queueId, and relies on Late FIFO order. Manual scheduledFor is fallback-only.
 
 ### Local Queue (src/services/postStore.ts)
 
@@ -196,6 +204,8 @@ When `schedule.json` changes, use this workflow:
 5. **Report** what changed (old time → new time for each post)
 
 **Important**: Always confirm with the user before executing bulk reschedule. Show them the proposed changes first.
+
+**Recommended:** Use `vidpipe sync-queues --reshuffle` for automated bulk reschedule via Late queue system. Use `vidpipe realign --queue` or `vidpipe reschedule --queue` for queue-based alternatives.
 
 ### 4. Bulk Delete Scheduled Posts
 

@@ -1,0 +1,29 @@
+{
+  "id": "copilot-instructions-md-deep-dive",
+  "topic": "How to Write the Perfect copilot-instructions.md File",
+  "hook": "One file can make your Copilot coding agent 10x more effective.",
+  "audience": "Teams adopting Copilot coding agent",
+  "keyTakeaway": "A well-crafted copilot-instructions.md gives agents context to pass CI on first try.",
+  "talkingPoints": [
+    "Explain three types: copilot-instructions.md, path-specific files, AGENTS.md",
+    "Secret: you can ask Copilot to GENERATE its own instructions",
+    "Walk through recommended structure: summary, build commands, validation",
+    "Demo: before and after comparison of agent PR quality",
+    "Pro tip: include validated bootstrap, build, test, lint commands"
+  ],
+  "platforms": [
+    "youtube",
+    "linkedin",
+    "x"
+  ],
+  "status": "draft",
+  "tags": [
+    "github-copilot",
+    "tutorial",
+    "best-practices"
+  ],
+  "createdAt": "2026-03-13T18:11:01.633Z",
+  "updatedAt": "2026-03-13T18:11:01.633Z",
+  "publishBy": "2026-06-13",
+  "trendContext": "GitHub Docs now detail three types of custom instructions plus a prompt for Copilot to generate its own instructions."
+}

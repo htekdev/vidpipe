@@ -2,10 +2,11 @@ import { BaseAgent } from './BaseAgent.js'
 import { createLateApiClient } from '../L3-services/lateApi/lateApiService.js'
 import { findNextSlot, getScheduleCalendar } from '../L3-services/scheduler/scheduler.js'
 import { loadScheduleConfig } from '../L3-services/scheduler/scheduleConfig.js'
-import { buildRealignPlan, executeRealignPlan, buildPrioritizedRealignPlan } from '../L3-services/scheduler/realign.js'
+import { buildRealignPlan, executeRealignPlan } from '../L3-services/scheduler/realign.js'
+import { getQueueId, getProfileId } from '../L3-services/queueMapping/queueMapping.js'
 import logger from '../L1-infra/logger/configLogger.js'
 import type { LatePost } from '../L3-services/lateApi/lateApiService.js'
-import type { RealignPlan, PriorityRule } from '../L3-services/scheduler/realign.js'
+import type { RealignPlan } from '../L3-services/scheduler/realign.js'
 import type { ToolWithHandler, UserInputHandler, LLMSession } from '../L3-services/llm/providerFactory.js'
 
 /** Friendly labels for tool calls shown in chat mode */
@@ -152,14 +153,16 @@ export class ScheduleAgent extends BaseAgent {
       },
       {
         name: 'reschedule_post',
-        description: 'Move a post to a new scheduled time.',
+        description: 'Move a post to a new scheduled time, or re-queue it to get the next available queue slot. If scheduledFor is provided, the post is moved to that exact time. If omitted, the post is re-queued using the Late API queue for its platform/clipType.',
         parameters: {
           type: 'object',
           properties: {
             postId: { type: 'string', description: 'The Late post ID' },
-            scheduledFor: { type: 'string', description: 'New scheduled datetime (ISO 8601)' },
+            scheduledFor: { type: 'string', description: 'New scheduled datetime (ISO 8601). Omit to re-queue using the platform queue.' },
+            platform: { type: 'string', description: 'Platform for queue lookup when re-queuing without scheduledFor' },
+            clipType: { type: 'string', description: 'Clip type for queue lookup: short, medium-clip, video' },
           },
-          required: ['postId', 'scheduledFor'],
+          required: ['postId'],
         },
         handler: async (args) => this.handleToolCall('reschedule_post', args as Record<string, unknown>),
       },
@@ -352,10 +355,29 @@ export class ScheduleAgent extends BaseAgent {
   private async reschedulePost(args: Record<string, unknown>): Promise<unknown> {
     try {
       const postId = args.postId as string
-      const scheduledFor = args.scheduledFor as string
+      const scheduledFor = args.scheduledFor as string | undefined
+      const platform = args.platform as string | undefined
+      const clipType = args.clipType as string | undefined
       const client = createLateApiClient()
-      const updated = await client.schedulePost(postId, scheduledFor)
-      return { success: true, postId, scheduledFor: updated.scheduledFor }
+
+      // If a specific time is provided, use it directly (manual override)
+      if (scheduledFor) {
+        const updated = await client.schedulePost(postId, scheduledFor)
+        return { success: true, postId, scheduledFor: updated.scheduledFor, source: 'manual' }
+      }
+
+      // Otherwise, re-queue the post using the Late API queue
+      if (platform) {
+        const normalized = platform === 'twitter' ? 'x' : platform
+        const queueId = await getQueueId(normalized, clipType ?? 'short')
+        if (queueId) {
+          const profileId = await getProfileId()
+          const updated = await client.updatePost(postId, { queuedFromProfile: profileId, queueId })
+          return { success: true, postId, scheduledFor: updated.scheduledFor, source: 'queue', queueId }
+        }
+      }
+
+      return { error: 'Either scheduledFor or platform must be provided. Provide scheduledFor for a specific time, or platform to re-queue.' }
     } catch (err) {
       logger.error('reschedule_post failed', { error: err })
       return { error: `Failed to reschedule post: ${(err as Error).message}` }
@@ -379,9 +401,26 @@ export class ScheduleAgent extends BaseAgent {
       const platform = args.platform as string
       const clipType = args.clipType as string | undefined
       const normalized = platform === 'twitter' ? 'x' : platform
+
+      // Try Late API queue preview first
+      const queueId = await getQueueId(normalized, clipType ?? 'short')
+      if (queueId) {
+        try {
+          const profileId = await getProfileId()
+          const client = createLateApiClient()
+          const preview = await client.previewQueue(profileId, queueId, 1)
+          if (preview.slots?.length > 0) {
+            return { platform: normalized, clipType: clipType ?? 'any', nextSlot: preview.slots[0], source: 'queue', queueId }
+          }
+        } catch (err) {
+          logger.warn('Queue preview failed, falling back to local calculation', { queueId, error: err })
+        }
+      }
+
+      // Fallback to local calculation
       const slot = await findNextSlot(normalized, clipType)
       if (!slot) return { error: `No available slot found for ${normalized}` }
-      return { platform: normalized, clipType: clipType ?? 'any', nextSlot: slot }
+      return { platform: normalized, clipType: clipType ?? 'any', nextSlot: slot, source: 'local' }
     } catch (err) {
       logger.error('find_next_slot failed', { error: err })
       return { error: `Failed to find next slot: ${(err as Error).message}` }
@@ -420,7 +459,6 @@ export class ScheduleAgent extends BaseAgent {
 
   private async startPrioritizeRealign(args: Record<string, unknown>): Promise<unknown> {
     try {
-      const priorities = (args.priorities as PriorityRule[]) ?? []
       const platform = args.platform as string | undefined
       const dryRun = (args.dryRun as boolean) ?? true
 
@@ -434,7 +472,7 @@ export class ScheduleAgent extends BaseAgent {
       this.realignJobs.set(jobId, job)
 
       // Fire-and-forget — runs in background
-      this.runRealignJob(job, priorities, platform, dryRun).catch((err) => {
+      this.runRealignJob(job, platform, dryRun).catch((err) => {
         job.status = 'failed'
         job.error = err instanceof Error ? err.message : String(err)
         job.completedAt = new Date().toISOString()
@@ -445,7 +483,7 @@ export class ScheduleAgent extends BaseAgent {
         started: true,
         jobId,
         dryRun,
-        message: `Prioritized realignment started. Use check_realign_status with jobId "${jobId}" to monitor progress.`,
+        message: `Realignment started. Use check_realign_status with jobId "${jobId}" to monitor progress.`,
       }
     } catch (err) {
       logger.error('start_prioritize_realign failed', { error: err })
@@ -455,12 +493,11 @@ export class ScheduleAgent extends BaseAgent {
 
   private async runRealignJob(
     job: RealignJob,
-    priorities: PriorityRule[],
     platform: string | undefined,
     dryRun: boolean,
   ): Promise<void> {
-    // Phase 1: Build plan
-    const plan: RealignPlan = await buildPrioritizedRealignPlan({ priorities, platform })
+    // Phase 1: Build plan (schedulePost handles idea priority + displacement)
+    const plan: RealignPlan = await buildRealignPlan({ platform })
     job.plan = {
       totalFetched: plan.totalFetched,
       toReschedule: plan.posts.length,
@@ -468,6 +505,8 @@ export class ScheduleAgent extends BaseAgent {
       skipped: plan.skipped,
       unmatched: plan.unmatched,
     }
+
+    logger.info('Queue-based reshuffle is also available via `vidpipe sync-queues --reshuffle`')
 
     if (dryRun) {
       job.status = 'completed'

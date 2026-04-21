@@ -13,7 +13,8 @@ import { fileExists, ensureDirectory } from '../L1-infra/fileSystem/fileSystem.j
 import type { MediumClip, Platform } from '../L0-pure/types/index.js'
 import { Platform as PlatformEnum } from '../L0-pure/types/index.js'
 import type { AssetOptions } from './Asset.js'
-import { extractCompositeClip } from '../L4-agents/videoServiceBridge.js'
+import { extractCompositeClip, applyIntroOutro } from '../L4-agents/videoServiceBridge.js'
+import { generateThumbnailForClip } from './thumbnailGeneration.js'
 import type { MainVideoAsset } from './MainVideoAsset.js'
 
 /**
@@ -58,6 +59,11 @@ export class MediumClipAsset extends VideoAsset {
    */
   get videoPath(): string {
     return join(this.videoDir, 'media.mp4')
+  }
+
+  /** Path to the clip with intro/outro applied */
+  get introOutroVideoPath(): string {
+    return join(this.videoDir, 'media-intro-outro.mp4')
   }
 
   /**
@@ -118,5 +124,62 @@ export class MediumClipAsset extends VideoAsset {
     await extractCompositeClip(parentVideo, this.clip.segments, this.videoPath)
 
     return this.videoPath
+  }
+
+  /**
+   * Apply intro/outro to the medium clip.
+   * Uses brand config rules for 'medium-clips' video type.
+   *
+   * @returns Path to the intro/outro'd video, or the original path if skipped
+   */
+  async getIntroOutroVideo(): Promise<string> {
+    if (await fileExists(this.introOutroVideoPath)) {
+      return this.introOutroVideoPath
+    }
+
+    // Prefer the captioned version (has burned-in captions), then the raw clip
+    const candidates = [this.clip.captionedPath, this.clip.outputPath]
+    let clipPath: string | undefined
+    for (const candidate of candidates) {
+      if (candidate && await fileExists(candidate)) {
+        clipPath = candidate
+        break
+      }
+    }
+    if (!clipPath) {
+      clipPath = await this.getResult()
+    }
+    return applyIntroOutro(clipPath, 'medium-clips', this.introOutroVideoPath)
+  }
+
+  /**
+   * Generate a thumbnail for this medium clip.
+   *
+   * Uses the ThumbnailAgent to plan and generate a click-worthy thumbnail
+   * based on the clip's content. Skips if thumbnails are disabled or
+   * a thumbnail already exists (idempotent).
+   *
+   * @param opts - Asset options (force to regenerate)
+   * @returns Path to the generated thumbnail, or null if skipped
+   */
+  async generateThumbnail(opts?: AssetOptions): Promise<string | null> {
+    const videoPath = this.clip.captionedPath ?? this.clip.outputPath
+    const thumbnailDir = join(this.videoDir, 'thumbnails')
+
+    const result = await generateThumbnailForClip({
+      title: this.clip.title,
+      description: this.clip.description,
+      hook: this.clip.hook,
+      topics: this.clip.tags,
+      videoPath,
+      outputDir: thumbnailDir,
+      contentType: 'medium-clips',
+    }, opts?.force)
+
+    if (result) {
+      this.clip.thumbnailPath = result
+    }
+
+    return result
   }
 }

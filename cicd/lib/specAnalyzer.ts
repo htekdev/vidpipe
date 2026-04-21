@@ -40,8 +40,8 @@ export function parseSpecReqs(content: string): string[] {
  * Looks for patterns like "CLI.REQ-001" in test names/descriptions.
  */
 export function parseTestSpecRefs(content: string): SpecTestMapping[] {
-  // Match patterns like: 'CLI.REQ-001', "CLI.REQ-001", CLI.REQ-001
-  const refPattern = /['"`]?([A-Z][A-Za-z]+)\.REQ-(\d+)['"`]?/g;
+  // Match patterns like: 'CLI.REQ-001', "CLI.REQ-001", CLI.REQ-001, ideaService.REQ-008, ideaStore.REQ-008
+  const refPattern = /['"`]?([A-Za-z][A-Za-z]+)\.REQ-(\d+)['"`]?/g;
   const refs: SpecTestMapping[] = [];
   const seen = new Set<string>();
 

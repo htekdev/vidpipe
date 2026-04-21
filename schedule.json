@@ -1,5 +1,13 @@
 {
   "timezone": "America/Chicago",
+  "ideaSpacing": {
+    "samePlatformHours": 6,
+    "crossPlatformHours": 0
+  },
+  "displacement": {
+    "enabled": true,
+    "canDisplace": "non-idea-only"
+  },
   "platforms": {
     "linkedin": {
       "slots": [],

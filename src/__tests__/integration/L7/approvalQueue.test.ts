@@ -1,5 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
+// Stub fetch globally so queueMapping doesn't hit real Late API
+vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+  ok: true, status: 200,
+  json: () => Promise.resolve({ queues: [], count: 0, profiles: [] }),
+  headers: new Map(),
+}))
+
 // ── Mock setup (L1, L3 only) ─────────────────────────────────────────
 
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
@@ -7,8 +14,10 @@ vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
 }))
 
 const mockFileExists = vi.hoisted(() => vi.fn())
+const mockFileExistsSync = vi.hoisted(() => vi.fn().mockReturnValue(false))
 vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   fileExists: mockFileExists,
+  fileExistsSync: mockFileExistsSync,
 }))
 
 const mockGetItem = vi.hoisted(() => vi.fn())
@@ -42,6 +51,11 @@ vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
     uploadMedia: mockUploadMedia,
     createPost: mockCreatePost,
   }),
+}))
+
+const mockGetIdeasByIds = vi.hoisted(() => vi.fn())
+vi.mock('../../../L3-services/ideation/ideaService.js', () => ({
+  getIdeasByIds: mockGetIdeasByIds,
 }))
 
 // ── Import after mocks ──────────────────────────────────────────────────
@@ -81,6 +95,7 @@ function makeQueueItem(overrides: Partial<Omit<QueueItem, 'metadata'>> & { metad
     postContent: 'Test post content #test',
     hasMedia: true,
     mediaPath: '/test/media.mp4',
+    thumbnailPath: null,
     folderPath: '/test/publish-queue/item-1',
     ...restOverrides,
   }
@@ -98,6 +113,7 @@ beforeEach(() => {
   mockCreatePost.mockResolvedValue({ _id: 'late-post-001', status: 'scheduled' })
   mockApproveItem.mockResolvedValue(undefined)
   mockApproveBulk.mockResolvedValue(undefined)
+  mockGetIdeasByIds.mockResolvedValue([])
 })
 
 // ── Tests ───────────────────────────────────────────────────────────────
@@ -389,6 +405,73 @@ describe('enqueueApproval', () => {
 
       expect(result.failed).toBe(1)
       expect(result.results[0].error).toBe('Network timeout')
+    })
+  })
+
+  describe('publishBy sorting', () => {
+    it('processes idea-linked items before non-idea items', async () => {
+      const ideaItem = makeQueueItem({
+        id: 'idea-first',
+        metadata: { ideaIds: ['42'], createdAt: '2026-03-10T00:00:00Z' },
+      })
+      const plainItem = makeQueueItem({
+        id: 'plain-last',
+        metadata: { createdAt: '2026-03-01T00:00:00Z' },
+      })
+
+      const itemMap: Record<string, QueueItem> = {
+        'idea-first': ideaItem,
+        'plain-last': plainItem,
+      }
+      mockGetItem.mockImplementation(async (id: string) => itemMap[id] ?? null)
+      mockGetIdeasByIds.mockResolvedValue([
+        { issueNumber: 42, publishBy: '2026-03-15' },
+      ])
+
+      // Input order: plain-last first, but idea-first should be processed first
+      const result = await enqueueApproval(['plain-last', 'idea-first'])
+
+      expect(result.scheduled).toBe(2)
+      expect(result.results[0].itemId).toBe('idea-first')
+      expect(result.results[1].itemId).toBe('plain-last')
+    })
+  })
+
+  describe('thumbnail handling', () => {
+    it('passes thumbnail as string URL to createPost mediaItems', async () => {
+      mockGetItem.mockResolvedValue(makeQueueItem({ thumbnailPath: '/test/thumb.png', metadata: { thumbnailPath: '/test/thumb.png' } }))
+      mockFileExists.mockResolvedValue(true)
+      mockUploadMedia
+        .mockResolvedValueOnce({ url: 'https://cdn/media.mp4', type: 'video' })
+        .mockResolvedValueOnce({ url: 'https://cdn/thumb.png', type: 'image' })
+      mockCreatePost.mockResolvedValue({ _id: 'late-1' })
+
+      await enqueueApproval(['item-1'])
+
+      const createPostCall = mockCreatePost.mock.calls[0]?.[0]
+      if (createPostCall?.mediaItems?.[0]?.thumbnail) {
+        expect(typeof createPostCall.mediaItems[0].thumbnail).toBe('string')
+        expect(createPostCall.mediaItems[0].thumbnail).toBe('https://cdn/thumb.png')
+      }
+    })
+
+    it('sets instagramThumbnail in platformSpecificData for instagram', async () => {
+      mockGetItem.mockResolvedValue(makeQueueItem({
+        thumbnailPath: '/test/thumb.png',
+        metadata: { platform: 'instagram', thumbnailPath: '/test/thumb.png' },
+      }))
+      mockFileExists.mockResolvedValue(true)
+      mockUploadMedia
+        .mockResolvedValueOnce({ url: 'https://cdn/media.mp4', type: 'video' })
+        .mockResolvedValueOnce({ url: 'https://cdn/ig-thumb.png', type: 'image' })
+      mockCreatePost.mockResolvedValue({ _id: 'late-ig' })
+
+      await enqueueApproval(['item-1'])
+
+      const call = mockCreatePost.mock.calls[0]?.[0]
+      if (call?.platformSpecificData) {
+        expect(call.platformSpecificData.instagramThumbnail).toBe('https://cdn/ig-thumb.png')
+      }
     })
   })
 })

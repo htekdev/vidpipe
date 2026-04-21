@@ -1,0 +1,43 @@
+# Clean pipeline — substance over virality
+#
+# No shorts (no hook-first reordering), longer medium clips (up to 10 min),
+# unified tone across platforms, no aspect-ratio variants.
+
+name: clean
+description: Simple cleanup with longer clips and unified platform handling
+
+processing:
+  silenceRemoval: true
+  visualEnhancement: false
+  captions: true
+  introOutro: true
+
+clips:
+  shorts:
+    enabled: false
+  medium:
+    enabled: true
+    strategy: chronological
+    duration:
+      min: 60
+      max: 600
+    minViralScore: 6
+    maxClips: 5
+
+content:
+  chapters: true
+  summary: true
+  blog: true
+
+distribution:
+  enabled: true
+  publish: true
+  platforms:
+    targets:
+      - youtube
+      - linkedin
+      - instagram
+      - x
+      - tiktok
+    toneStrategy: unified
+    variants: false

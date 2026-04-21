@@ -27,6 +27,8 @@ vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
     }
     return schedule
   },
+  getDisplacementConfig: () => ({ enabled: true, canDisplace: 'non-idea-only' }),
+  getIdeaSpacingConfig: () => ({ samePlatformHours: 24, crossPlatformHours: 6 }),
   clearScheduleCache: vi.fn(),
 }))
 
@@ -34,6 +36,7 @@ vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
 const mockGetPublishedItems = vi.fn()
 vi.mock('../../../L3-services/postStore/postStore.js', () => ({
   getPublishedItems: () => mockGetPublishedItems(),
+  getScheduledItemsByIdeaIds: vi.fn().mockResolvedValue([]),
 }))
 
 // Mock LateApiClient
@@ -564,10 +567,11 @@ describe('getScheduleCalendar', () => {
   })
 
   it('includes local published items with scheduledFor', async () => {
+    const futureDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
     mockGetPublishedItems.mockResolvedValue([
       {
         id: 'local-1',
-        metadata: { platform: 'tiktok', scheduledFor: '2025-06-15T10:00:00+00:00' },
+        metadata: { platform: 'tiktok', scheduledFor: futureDate },
       },
     ])
 

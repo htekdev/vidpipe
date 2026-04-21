@@ -24,7 +24,7 @@ import {
   markCompleted,
   markFailed,
   buildPublishQueue,
-  commitAndPush,
+  generateIdeas,
   createScheduleAgent,
 } from '../../../L5-assets/pipelineServices.js'
 
@@ -49,8 +49,8 @@ describe('L4-L6 Integration: pipelineServices re-export chain', () => {
     expect(typeof buildPublishQueue).toBe('function')
   })
 
-  it('re-exports commitAndPush', () => {
-    expect(typeof commitAndPush).toBe('function')
+  it('re-exports generateIdeas', () => {
+    expect(typeof generateIdeas).toBe('function')
   })
 
   it('exports createScheduleAgent factory', () => {

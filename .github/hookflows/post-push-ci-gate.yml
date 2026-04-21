@@ -1,0 +1,44 @@
+name: Post-Push CI Gate
+description: After pushing, watches GitHub PR check runs and fails if any CI job fails.
+on:
+  push:
+    lifecycle: post
+blocking: true
+steps:
+  - name: Wait for CI checks to complete
+    timeout: 600
+    run: |
+      $branch = git rev-parse --abbrev-ref HEAD 2>$null
+      if (-not $branch) {
+        Write-Host "⚠️ Could not determine branch — skipping CI check"
+        exit 0
+      }
+      
+      $prNumber = gh pr list --head $branch --json number --jq '.[0].number' 2>$null
+      if (-not $prNumber) {
+        Write-Host "ℹ️ No open PR found for branch '$branch' — skipping CI check"
+        exit 0
+      }
+      
+      # Wait for checks to appear (GitHub needs a few seconds after push)
+      Write-Host "⏳ Waiting for CI checks to start for PR #$prNumber..."
+      for ($i = 0; $i -lt 12; $i++) {
+        Start-Sleep -Seconds 5
+        $checkCount = gh pr checks $prNumber --json name --jq 'length' 2>$null
+        if ($checkCount -and [int]$checkCount -gt 0) {
+          Write-Host "  Found $checkCount check(s) — watching..."
+          break
+        }
+        Write-Host "  ⏳ No checks yet... (waited $((($i + 1) * 5))s)"
+      }
+      
+      gh pr checks $prNumber --watch --fail-fast
+      $exitCode = $LASTEXITCODE
+      
+      if ($exitCode -eq 0) {
+        Write-Host "✅ All CI checks passed!"
+      } else {
+        Write-Host "❌ CI checks failed!"
+      }
+      
+      exit $exitCode

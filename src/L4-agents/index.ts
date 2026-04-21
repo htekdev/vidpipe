@@ -8,6 +8,7 @@
 export { BaseAgent } from './BaseAgent.js'
 export { generateBlogPost } from './BlogAgent.js'
 export { generateChapters } from './ChapterAgent.js'
+export { generateIdeas } from './IdeationAgent.js'
 export { generateMediumClips } from './MediumVideoAgent.js'
 export { ProducerAgent } from './ProducerAgent.js'
 export { generateShorts } from './ShortsAgent.js'

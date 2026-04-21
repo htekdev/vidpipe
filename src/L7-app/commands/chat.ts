@@ -1,34 +1,34 @@
 import { initConfig } from '../../L1-infra/config/environment.js'
 import { setChatMode } from '../../L1-infra/logger/configLogger.js'
-import { createChatInterface } from '../../L1-infra/readline/readline.js'
+import { AltScreenChat } from '../../L1-infra/terminal/altScreenChat.js'
 import { createScheduleAgent } from '../../L6-pipeline/scheduleChat.js'
 import type { UserInputRequest, UserInputResponse } from '../../L3-services/llm/providerFactory.js'
 
 export async function runChat(): Promise<void> {
   initConfig()
-
-  // Suppress Winston console transport so it doesn't corrupt readline
   setChatMode(true)
 
-  const rl = createChatInterface()
+  const chat = new AltScreenChat({
+    title: '💬 VidPipe Chat',
+    subtitle: 'Schedule management assistant. Type exit or quit to leave.',
+    inputPrompt: 'vidpipe> ',
+  })
 
-  // CLI-based user input handler for ask_user tool
+  // Wire user input handler for agent ask_user tool
   const handleUserInput = (request: UserInputRequest): Promise<UserInputResponse> => {
+    chat.addMessage('agent', request.question)
+
+    if (request.choices && request.choices.length > 0) {
+      const choiceText = request.choices
+        .map((c, i) => `  ${i + 1}. ${c}`)
+        .join('\n')
+      chat.addMessage('system', choiceText + (request.allowFreeform !== false ? '\n  (or type a custom answer)' : ''))
+    }
+
     return new Promise((resolve) => {
-      console.log()
-      console.log(`\x1b[33m🤖 Agent asks:\x1b[0m ${request.question}`)
-
-      if (request.choices && request.choices.length > 0) {
-        for (let i = 0; i < request.choices.length; i++) {
-          console.log(`  ${i + 1}. ${request.choices[i]}`)
-        }
-        if (request.allowFreeform !== false) {
-          console.log(`  (or type a custom answer)`)
-        }
-      }
-
-      rl.question('\x1b[33m> \x1b[0m', (answer) => {
+      chat.promptInput('> ').then((answer) => {
         const trimmed = answer.trim()
+        chat.addMessage('user', trimmed)
 
         if (request.choices && request.choices.length > 0) {
           const num = parseInt(trimmed, 10)
@@ -37,7 +37,6 @@ export async function runChat(): Promise<void> {
             return
           }
         }
-
         resolve({ answer: trimmed, wasFreeform: true })
       })
     })
@@ -45,66 +44,41 @@ export async function runChat(): Promise<void> {
 
   const agent = createScheduleAgent(handleUserInput)
 
-  // Wire clean chat output for tool progress
   agent.setChatOutput((message: string) => {
-    process.stderr.write(`${message}\n`)
+    chat.setStatus(message)
   })
 
-  console.log(`
-\x1b[36m╔══════════════════════════════════════╗
-║   VidPipe Chat                       ║
-╚══════════════════════════════════════╝\x1b[0m
-
-Schedule management assistant. Ask me about your posting schedule,
-reschedule posts, check what's coming up, or reprioritize content.
-
-Type \x1b[33mexit\x1b[0m or \x1b[33mquit\x1b[0m to leave. Press Ctrl+C to stop.
-`)
-
-  let closeRejector: ((err: Error) => void) | null = null
-  const closePromise = new Promise<never>((_, reject) => {
-    closeRejector = reject
-    rl.once('close', () => reject(new Error('readline closed')))
-  })
-
-  const prompt = (): Promise<string> => {
-    return Promise.race([
-      new Promise<string>((resolve) => {
-        rl.question('\x1b[32mvidpipe>\x1b[0m ', (answer) => {
-          resolve(answer)
-        })
-      }),
-      closePromise
-    ])
-  }
+  chat.enter()
+  chat.addMessage('system', 'Ask me about your posting schedule, reschedule posts, check what\'s coming up, or reprioritize content.')
 
   try {
     while (true) {
-      let input: string
-      try {
-        input = await prompt()
-      } catch {
-        break
-      }
-
+      const input = await chat.promptInput()
       const trimmed = input.trim()
       if (!trimmed) continue
       if (trimmed === 'exit' || trimmed === 'quit') {
-        console.log('\nGoodbye! 👋')
+        chat.addMessage('system', 'Goodbye! 👋')
         break
       }
 
+      chat.addMessage('user', trimmed)
+      chat.setStatus('🤔 Thinking...')
+
       try {
-        await agent.run(trimmed)
-        console.log('\n') // newline after streamed response
+        const response = await agent.run(trimmed)
+        chat.clearStatus()
+        if (response) {
+          chat.addMessage('agent', response)
+        }
       } catch (err) {
+        chat.clearStatus()
         const message = err instanceof Error ? err.message : String(err)
-        console.error(`\n\x1b[31mError: ${message}\x1b[0m\n`)
+        chat.addMessage('error', message)
       }
     }
   } finally {
     await agent.destroy()
-    rl.close()
+    chat.destroy()
     setChatMode(false)
   }
 }

@@ -4,12 +4,25 @@ import type { CLIOptions } from '../L1-infra/config/environment'
 import { FileWatcher } from './fileWatcher'
 import { processVideoSafe } from '../L6-pipeline/pipeline'
 import logger, { setVerbose } from '../L1-infra/logger/configLogger'
+import { progressEmitter } from '../L1-infra/progress/progressEmitter.js'
 import { runDoctor } from './commands/doctor'
 import { runInit } from './commands/init'
 import { runSchedule } from './commands/schedule'
 import { runRealign } from './commands/realign'
 import { runChat } from './commands/chat'
+import { runIdeate } from './commands/ideate'
+import { runIdeateStart } from './commands/ideateStart'
+import type { IdeateStartOptions } from './commands/ideateStart'
+import { runAgenda } from './commands/agenda'
+import type { AgendaCommandOptions } from './commands/agenda'
+import { runDiscoverIdeas } from './commands/discoverIdeas'
+import type { DiscoverIdeasCommandOptions } from './commands/discoverIdeas'
+import { runConfigure } from './commands/configure'
+import { runIntroOutro } from './commands/introOutro'
+import { runThumbnail } from './commands/thumbnail'
+import { runIdeaUpdate, runIdeaGet, runIdeaSearch } from './commands/ideaUpdate'
 import { startReviewServer } from './review/server'
+import { parsePublishBy } from './parsePublishBy'
 import { openUrl } from '../L1-infra/cli/cli.js'
 import { readTextFileSync, listDirectorySync } from '../L1-infra/fileSystem/fileSystem.js'
 import { projectRoot, join, resolve, extname } from '../L1-infra/paths/paths.js'
@@ -93,8 +106,36 @@ program
   .description('Realign all Late scheduled, cancelled, and failed posts to match schedule.json slots')
   .option('--platform <name>', 'Filter by platform (tiktok, youtube, instagram, linkedin, twitter)')
   .option('--dry-run', 'Preview changes without updating posts')
+  .option('--queue', 'Use Late API queue reshuffle instead of per-post reschedule')
   .action(async (opts) => {
-    await runRealign({ platform: opts.platform, dryRun: opts.dryRun })
+    await runRealign({ platform: opts.platform, dryRun: opts.dryRun, queue: opts.queue })
+    process.exit(0)
+  })
+
+program
+  .command('reschedule')
+  .description('Reschedule idea-linked posts for optimal slot placement, displacing non-idea content')
+  .option('--dry-run', 'Preview changes without updating posts')
+  .option('--queue', 'Use Late API queue reshuffle instead of per-post reschedule')
+  .action(async (opts) => {
+    const { runReschedule } = await import('./commands/reschedule.js')
+    await runReschedule({ dryRun: opts.dryRun, queue: opts.queue })
+    process.exit(0)
+  })
+
+program
+  .command('sync-queues')
+  .description('Sync schedule.json queue definitions to Late API queues')
+  .option('--reshuffle', 'Reschedule existing queued posts to match new slot times')
+  .option('--dry-run', 'Preview changes without making API calls')
+  .option('--delete-orphans', 'Delete Late queues not in schedule.json')
+  .action(async (opts) => {
+    const { runSyncQueues } = await import('./commands/syncQueues.js')
+    await runSyncQueues({
+      reshuffle: opts.reshuffle,
+      dryRun: opts.dryRun,
+      deleteOrphans: opts.deleteOrphans,
+    })
     process.exit(0)
   })
 
@@ -113,6 +154,180 @@ program
     await runDoctor()
   })
 
+program
+  .command('ideate-start <issue-number>')
+  .description('Start an interactive session to develop a content idea')
+  .option('--mode <mode>', 'Session mode: interview (default)', 'interview')
+  .option('--progress', 'Emit structured JSON interview events to stderr')
+  .action(async (issueNumber: string, opts: IdeateStartOptions) => {
+    await runIdeateStart(issueNumber, opts)
+    process.exit(0)
+  })
+
+program
+  .command('agenda <issue-numbers...>')
+  .description('Generate a structured recording agenda from multiple ideas')
+  .option('--output <path>', 'Output file path for the agenda markdown')
+  .action(async (issueNumbers: string[], opts: AgendaCommandOptions) => {
+    initConfig({})
+    await runAgenda(issueNumbers, opts)
+    process.exit(0)
+  })
+
+program
+  .command('discover-ideas')
+  .description('Retroactively run idea discovery on pending publish queue items that have no ideas assigned')
+  .option('--publish-by <date>', 'Publish-by deadline for new ideas (ISO date or +Nd, default: +7d)')
+  .option('--dry-run', 'Preview what would be updated without making changes')
+  .action(async (opts: DiscoverIdeasCommandOptions) => {
+    initConfig({})
+    if (opts.publishBy) {
+      try {
+        opts.publishBy = parsePublishBy(String(opts.publishBy))
+      } catch (err) {
+        logger.error((err as Error).message)
+        process.exit(1)
+      }
+    }
+    await runDiscoverIdeas(opts)
+    process.exit(0)
+  })
+
+program
+  .command('ideate')
+  .description('Generate AI-powered content ideas using trend research')
+  .option('--topics <topics>', 'Comma-separated seed topics')
+  .option('--count <n>', 'Number of ideas to generate (default: 5)', '5')
+  .option('--output <dir>', 'Ideas directory (default: ./ideas)')
+  .option('--brand <path>', 'Brand config path (default: ./brand.json)')
+  .option('--list', 'List existing ideas instead of generating')
+  .option('--status <status>', 'Filter by status when listing (draft|ready|recorded|published)')
+  .option('--format <format>', 'Output format: table (default) or json')
+  .option('--add', 'Add a single idea (AI-researched by default, or --no-ai for direct)')
+  .option('--topic <topic>', 'Idea topic/title (required with --add)')
+  .option('--hook <hook>', 'Attention-grabbing hook (default: topic, --no-ai only)')
+  .option('--audience <audience>', 'Target audience (default: developers, --no-ai only)')
+  .option('--platforms <platforms>', 'Comma-separated platforms: tiktok,youtube,instagram,linkedin,x (--no-ai only)')
+  .option('--key-takeaway <takeaway>', 'Core message the viewer should remember (--no-ai only)')
+  .option('--talking-points <points>', 'Comma-separated talking points (--no-ai only)')
+  .option('--tags <tags>', 'Comma-separated categorization tags (--no-ai only)')
+  .option('--publish-by <date>', 'Publish deadline (ISO 8601 date, default: 14 days from now, --no-ai only)')
+  .option('--trend-context <context>', 'Why this topic is timely (--no-ai only)')
+  .option('--no-ai', 'Skip AI research agent — create directly from CLI flags + defaults')
+  .option('-p, --prompt <prompt>', 'Free-form prompt to guide idea generation (e.g., "Cover this article: https://...")')
+  .action(async (opts) => {
+    initConfig()
+    await runIdeate(opts)
+    process.exit(0)
+  })
+
+program
+  .command('idea')
+  .description('Manage ideas — view, update, and search existing ideas')
+  .argument('<subcommand>', 'Subcommand: get, update, search')
+  .argument('[arg]', 'Issue number (get/update) or search query (search)')
+  .option('--topic <topic>', 'Update the idea topic/title')
+  .option('--hook <hook>', 'Update the attention-grabbing hook')
+  .option('--audience <audience>', 'Update the target audience')
+  .option('--platforms <platforms>', 'Target platforms (comma-separated)')
+  .option('--key-takeaway <takeaway>', 'Update the core message')
+  .option('--talking-points <points>', 'Update talking points (comma-separated)')
+  .option('--tags <tags>', 'Filter/update tags (comma-separated)')
+  .option('--status <status>', 'Filter/update status (draft|ready|recorded|published)')
+  .option('--publish-by <date>', 'Update publish deadline (ISO 8601 date)')
+  .option('--urgency <level>', 'Set urgency: hot (3d), urgent (7d), soon (14d), flexible (60d)')
+  .option('--trend-context <context>', 'Update trend context')
+  .option('--priority <level>', 'Filter by priority: hot-trend, timely, evergreen')
+  .option('--platform <platform>', 'Filter by platform')
+  .option('--tag <tag>', 'Filter by tag')
+  .option('--format <format>', 'Output format: table (default) or json')
+  .action(async (subcommand: string, arg: string | undefined, opts) => {
+    initConfig()
+    if (subcommand === 'update') {
+      if (!arg) { console.error('Usage: vidpipe idea update <issue-number> [options]'); process.exitCode = 1 }
+      else await runIdeaUpdate(arg, opts)
+    } else if (subcommand === 'get') {
+      if (!arg) { console.error('Usage: vidpipe idea get <issue-number>'); process.exitCode = 1 }
+      else await runIdeaGet(arg)
+    } else if (subcommand === 'search') {
+      await runIdeaSearch(arg, opts)
+    } else {
+      console.error(`Unknown subcommand: ${subcommand}. Use 'get', 'update', or 'search'`)
+      process.exitCode = 1
+    }
+    process.exit(process.exitCode ?? 0)
+  })
+
+program
+  .command('configure [subcommand]')
+  .description('Manage global configuration — API keys, defaults, and preferences')
+  .argument('[args...]', 'Arguments for the subcommand (e.g., key and value for set)')
+  .action(async (subcommand: string | undefined, args: string[]) => {
+    await runConfigure(subcommand, args)
+    process.exit(process.exitCode ?? 0)
+  })
+
+program
+  .command('intro-outro [subcommand]')
+  .description('Manage video intro and outro assets — paths, rules, and platform overrides')
+  .argument('[args...]', 'Arguments for the subcommand')
+  .action(async (subcommand: string | undefined, args: string[]) => {
+    initConfig()
+    await runIntroOutro(subcommand, args)
+    process.exit(process.exitCode ?? 0)
+  })
+
+program
+  .command('thumbnail')
+  .description('Generate a thumbnail for a recording folder or video file')
+  .argument('<path>', 'Path to a recording folder or video file')
+  .option('-p, --platform <platform>', 'Target platform (youtube, tiktok, instagram, linkedin, x)')
+  .option('--prompt <text>', 'Custom thumbnail prompt (overrides AI planning)')
+  .option('-o, --output <path>', 'Output directory for the thumbnail')
+  .option('-t, --type <type>', 'Content type: main, shorts, or medium-clips', 'main')
+  .option('-f, --force', 'Regenerate even if thumbnail exists')
+  .action(async (path: string, opts: Record<string, unknown>) => {
+    await runThumbnail(path, {
+      platform: opts.platform as string | undefined,
+      prompt: opts.prompt as string | undefined,
+      output: opts.output as string | undefined,
+      type: opts.type as string | undefined,
+      force: opts.force as boolean | undefined,
+    })
+    process.exit(0)
+  })
+
+program
+  .command('specs')
+  .description('List available pipeline spec presets and custom specs')
+  .action(async () => {
+    const { PRESETS } = await import('../L0-pure/pipelineSpec/index.js')
+
+    console.log('\nBuilt-in presets:\n')
+    for (const [name, preset] of Object.entries(PRESETS)) {
+      console.log(`  ${name.padEnd(12)} ${preset.description}`)
+    }
+
+    // List custom specs in pipeline-specs/ directory
+    try {
+      const specsDir = join(projectRoot(), 'pipeline-specs')
+      const files = listDirectorySync(specsDir)
+      const specFiles = files.filter(f => f.endsWith('.yaml') || f.endsWith('.yml') || f.endsWith('.json'))
+      if (specFiles.length > 0) {
+        console.log('\nCustom specs (pipeline-specs/):\n')
+        for (const file of specFiles) {
+          const name = file.replace(/\.(yaml|yml|json)$/, '')
+          console.log(`  ${name}`)
+        }
+      }
+    } catch {
+      // pipeline-specs/ directory doesn't exist — that's fine
+    }
+
+    console.log('\nUsage: vidpipe process --spec <name-or-path> video.mp4\n')
+    process.exit(0)
+  })
+
 // --- Default command (process video or watch) ---
 // This must come after subcommands so they take priority
 
@@ -123,19 +338,25 @@ const defaultCmd = program
   .option('--output-dir <path>', 'Output directory for processed videos (default: ./recordings)')
   .option('--openai-key <key>', 'OpenAI API key (default: env OPENAI_API_KEY)')
   .option('--exa-key <key>', 'Exa AI API key for web search (default: env EXA_API_KEY)')
+  .option('--youtube-key <key>', 'YouTube API key (default: env YOUTUBE_API_KEY)')
+  .option('--perplexity-key <key>', 'Perplexity API key (default: env PERPLEXITY_API_KEY)')
   .option('--once', 'Process a single video and exit (no watching)')
   .option('--brand <path>', 'Path to brand.json config (default: ./brand.json)')
-  .option('--no-git', 'Skip git commit/push stage')
   .option('--no-silence-removal', 'Skip silence removal stage')
   .option('--no-shorts', 'Skip shorts generation')
   .option('--no-medium-clips', 'Skip medium clip generation')
   .option('--no-social', 'Skip social media post generation')
   .option('--no-captions', 'Skip caption generation/burning')
   .option('--no-visual-enhancement', 'Skip visual enhancement (AI image overlays)')
+  .option('--no-intro-outro', 'Skip intro/outro concatenation')
   .option('--no-social-publish','Skip social media publishing/queue-build stage')
+  .option('--spec <nameOrPath>', 'Pipeline spec preset name or YAML file path')
   .option('--late-api-key <key>', 'Late API key (default: env LATE_API_KEY)')
   .option('--late-profile-id <id>', 'Late profile ID (default: env LATE_PROFILE_ID)')
+  .option('--ideas <ids>', 'Comma-separated idea IDs to link to this video')
+  .option('--publish-by <date>', 'Publish-by deadline for auto-created ideas (ISO date or +Nd for relative, default: +7d)')
   .option('-v, --verbose', 'Verbose logging')
+  .option('--progress', 'Emit structured JSON progress events to stderr')
   .option('--doctor', 'Check all prerequisites and exit')
   .action(async (videoPath: string | undefined) => {
     const opts = defaultCmd.opts()
@@ -153,15 +374,17 @@ const defaultCmd = program
       outputDir: opts.outputDir,
       openaiKey: opts.openaiKey,
       exaKey: opts.exaKey,
+      youtubeKey: opts.youtubeKey,
+      perplexityKey: opts.perplexityKey,
       brand: opts.brand,
       verbose: opts.verbose,
-      git: opts.git,
       silenceRemoval: opts.silenceRemoval,
       shorts: opts.shorts,
       mediumClips: opts.mediumClips,
       social: opts.social,
       captions: opts.captions,
       visualEnhancement: opts.visualEnhancement,
+      introOutro: opts.introOutro,
       socialPublish: opts.socialPublish,
       lateApiKey: opts.lateApiKey,
       lateProfileId: opts.lateProfileId,
@@ -170,17 +393,80 @@ const defaultCmd = program
     logger.info(BANNER)
     initConfig(cliOptions)
     if (opts.verbose) setVerbose()
+    if (opts.progress) progressEmitter.enable()
     validateRequiredKeys()
 
     const config = getConfig()
     logger.info(`Watch folder: ${config.WATCH_FOLDER}`)
     logger.info(`Output dir:   ${config.OUTPUT_DIR}`)
 
+    // Resolve pipeline spec if --spec flag is provided
+    let pipelineSpec: import('../L0-pure/types/index.js').PipelineSpec | undefined
+    if (opts.spec) {
+      try {
+        const { loadSpec } = await import('../L1-infra/spec/specLoader.js')
+        pipelineSpec = await loadSpec(opts.spec as string, config.REPO_ROOT)
+        logger.info(`Using pipeline spec: ${pipelineSpec.name}`)
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err)
+        logger.error(`Failed to load pipeline spec: ${msg}`)
+        process.exit(1)
+      }
+    }
+
+    // Resolve ideas if --ideas flag is provided
+    let ideas: import('../L0-pure/types/index.js').Idea[] | undefined
+    if (opts.ideas) {
+      const { getIdeasByIds } = await import('../L3-services/ideation/ideaService.js')
+      const ideaIds = (opts.ideas as string).split(',').map((id: string) => id.trim()).filter(Boolean)
+      try {
+        ideas = await getIdeasByIds(ideaIds)
+        logger.info(`Linked ${ideas.length} idea(s): ${ideas.map(i => i.topic).join(', ')}`)
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err)
+        logger.error(`Failed to resolve ideas: ${msg}`)
+        process.exit(1)
+      }
+    }
+
     // Direct file mode
     if (videoPath) {
       const resolvedPath = resolve(videoPath)
       logger.info(`Processing single video: ${resolvedPath}`)
-      await processVideoSafe(resolvedPath)
+
+      // Resolve publishBy: accept ISO date or +Nd relative format
+      let publishBy: string | undefined
+      if (opts.publishBy) {
+        const raw = String(opts.publishBy).trim()
+        const relativeMatch = raw.match(/^\+(\d+)d$/i)
+        if (relativeMatch) {
+          const days = parseInt(relativeMatch[1], 10)
+          publishBy = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+        } else if (!Number.isNaN(new Date(raw).getTime())) {
+          publishBy = raw
+        } else {
+          logger.error(`Invalid --publish-by format: "${raw}". Use ISO date (2026-04-01) or relative (+7d).`)
+          process.exit(1)
+        }
+      }
+
+      await processVideoSafe(resolvedPath, ideas, publishBy, pipelineSpec)
+
+      // Mark ideas as recorded
+      if (ideas && ideas.length > 0) {
+        try {
+          const { markRecorded } = await import('../L3-services/ideaService/ideaService.js')
+          const slug = resolvedPath.replace(/\\/g, '/').split('/').pop()?.replace(/\.(mp4|mov|webm|avi|mkv)$/i, '') || ''
+          for (const idea of ideas) {
+            await markRecorded(idea.issueNumber, slug)
+          }
+          logger.info(`Marked ${ideas.length} idea(s) as recorded`)
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err)
+          logger.warn(`Failed to mark ideas as recorded: ${msg}`)
+        }
+      }
+
       logger.info('Done.')
       process.exit(0)
     }
@@ -198,7 +484,7 @@ const defaultCmd = program
         while (queue.length > 0) {
           const vp = queue.shift()!
           logger.info(`Processing video: ${vp}`)
-          await processVideoSafe(vp)
+          await processVideoSafe(vp, ideas, undefined, pipelineSpec)
           if (onceMode) {
             logger.info('--once flag set, exiting after first video.')
             await shutdown()

@@ -25,6 +25,7 @@ describe('getModelForAgent', () => {
 
   it('env var override takes priority', () => {
     vi.stubEnv('MODEL_SHORTS_AGENT', 'GPT-5 mini')
+    initConfig()
     expect(getModelForAgent('ShortsAgent')).toBe('GPT-5 mini')
   })
 

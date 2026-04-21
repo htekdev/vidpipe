@@ -1,0 +1,32 @@
+# Minimal pipeline — cleanup only
+#
+# Just clean up the video: remove silence, add captions.
+# No clips, no social media, no blog.
+
+name: minimal
+description: Cleanup only — no clips, no social, no blog
+
+processing:
+  silenceRemoval: true
+  visualEnhancement: false
+  captions: true
+  introOutro: false
+
+clips:
+  shorts:
+    enabled: false
+  medium:
+    enabled: false
+
+content:
+  chapters: true
+  summary: true
+  blog: false
+
+distribution:
+  enabled: false
+  publish: false
+  platforms:
+    targets: []
+    toneStrategy: unified
+    variants: false

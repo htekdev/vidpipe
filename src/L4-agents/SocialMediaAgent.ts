@@ -13,6 +13,8 @@ import {
   VideoFile,
   VideoSummary,
 } from '../L0-pure/types/index'
+import type { Idea, ToneStrategy } from '../L0-pure/types/index.js'
+import { buildIdeaContextForPosts } from '../L0-pure/ideaContext/ideaContext.js'
 
 // ── JSON shape the LLM returns via the create_posts tool ────────────────────
 
@@ -30,16 +32,29 @@ interface CreatePostsArgs {
 
 // ── System prompt───────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a viral social-media content strategist.
-Given a video transcript and summary you MUST generate one post for each of the 5 platforms listed below.
-Each post must match the platform's tone, format, and constraints exactly.
-
-Platform guidelines:
+const PER_PLATFORM_GUIDELINES = `Platform guidelines:
 1. **TikTok** – Casual, hook-driven, trending hashtags, 150 chars max, emoji-heavy.
 2. **YouTube** – Descriptive, SEO-optimized title + description, relevant tags.
 3. **Instagram** – Visual storytelling, emoji-rich, 30 hashtags max, engaging caption.
 4. **LinkedIn** – Professional, thought-leadership, industry insights, 1-3 hashtags.
-5. **X (Twitter)** – Concise, punchy, 280 chars max, 2-5 hashtags, thread-ready.
+5. **X (Twitter)** – Concise, punchy, 280 chars max, 2-5 hashtags, thread-ready.`
+
+const UNIFIED_TONE_GUIDELINES = `Platform guidelines:
+For all platforms, use the same professional but approachable tone. Keep posts concise, informative, and authentic. Use the same core message — adapt only for platform-specific formatting constraints (character limits, hashtag placement).
+1. **TikTok** – 150 chars max, include relevant hashtags.
+2. **YouTube** – SEO-optimized title + description, relevant tags.
+3. **Instagram** – 30 hashtags max, engaging caption.
+4. **LinkedIn** – 1-3 hashtags, professional framing.
+5. **X (Twitter)** – 280 chars max, 2-5 hashtags.`
+
+function buildSocialMediaSystemPrompt(toneStrategy?: ToneStrategy): string {
+  const platformGuidelines = toneStrategy === 'unified' ? UNIFIED_TONE_GUIDELINES : PER_PLATFORM_GUIDELINES
+
+  return `You are a viral social-media content strategist.
+Given a video transcript and summary you MUST generate one post for each of the 5 platforms listed below.
+Each post must match the platform's format and constraints exactly.
+
+${platformGuidelines}
 
 IMPORTANT – Content format:
 The "content" field you provide must be the FINAL, ready-to-post text that can be directly copied and pasted onto the platform. Do NOT use markdown headers, bullet points, or any formatting inside the content. Include hashtags inline at the end of the post text where appropriate. The content is saved as-is for direct posting.
@@ -51,14 +66,17 @@ Workflow:
 
 Include relevant links in posts when search results provide them.
 Always call "create_posts" exactly once with all 5 platform posts.`
+}
+
+const SYSTEM_PROMPT = buildSocialMediaSystemPrompt()
 
 // ── Agent ────────────────────────────────────────────────────────────────────
 
 class SocialMediaAgent extends BaseAgent {
   private collectedPosts: PlatformPost[] = []
 
-  constructor(model?: string) {
-    super('SocialMediaAgent', SYSTEM_PROMPT, undefined, model)
+  constructor(systemPrompt: string = SYSTEM_PROMPT, model?: string) {
+    super('SocialMediaAgent', systemPrompt, undefined, model)
   }
 
   protected resetForRetry(): void {
@@ -215,7 +233,7 @@ export async function generateShortPosts(
   model?: string,
   summary?: VideoSummary,
 ): Promise<SocialPost[]> {
-  const agent = new SocialMediaAgent(model)
+  const agent = new SocialMediaAgent(undefined, model)
 
   try {
     // Extract transcript segments that overlap with the short's time ranges
@@ -296,8 +314,12 @@ export async function generateSocialPosts(
   summary: VideoSummary,
   outputDir?: string,
   model?: string,
+  ideas?: Idea[],
+  toneStrategy?: ToneStrategy,
 ): Promise<SocialPost[]> {
-  const agent = new SocialMediaAgent(model)
+  const basePrompt = toneStrategy ? buildSocialMediaSystemPrompt(toneStrategy) : SYSTEM_PROMPT
+  const systemPrompt = basePrompt + (ideas?.length ? buildIdeaContextForPosts(ideas) : '')
+  const agent = new SocialMediaAgent(systemPrompt, model)
 
   try {
     // Build the user prompt with transcript summary and metadata

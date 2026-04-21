@@ -7,6 +7,7 @@ import tmp from 'tmp'
 
 const tmpDirObj = tmp.dirSync({ prefix: 'vidpipe-review-test-', unsafeCleanup: true })
 const tmpDir = tmpDirObj.name
+const mockGetIdeasByIds = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -31,6 +32,10 @@ vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
 vi.mock('../../../L3-services/scheduler/scheduler.js', () => ({
   findNextSlot: async () => '2026-02-15T19:00:00-06:00',
   getScheduleCalendar: async () => [],
+}))
+
+vi.mock('../../../L3-services/ideation/ideaService.js', () => ({
+  getIdeasByIds: mockGetIdeasByIds,
 }))
 
 vi.mock('../../../L3-services/socialPosting/accountMapping.js', () => ({
@@ -119,6 +124,9 @@ afterAll(async () => {
 })
 
 beforeEach(async () => {
+  mockGetIdeasByIds.mockReset()
+  mockGetIdeasByIds.mockResolvedValue([])
+
   // Clean queue between tests
   await fs.rm(path.join(tmpDir, 'publish-queue'), { recursive: true, force: true })
   await fs.rm(path.join(tmpDir, 'published'), { recursive: true, force: true })
@@ -161,6 +169,26 @@ describe('Review Server API', () => {
       const ids = res.body.items.map((i: { id: string }) => i.id)
       expect(ids).toEqual(['oldest', 'older', 'newer'])
     })
+
+    it('batches idea enrichment across pending queue items', async () => {
+      await createTestItem('idea-a', { ideaIds: ['idea-1', '42'] })
+      await createTestItem('idea-b', { ideaIds: ['idea-2', 'idea-1'] })
+      mockGetIdeasByIds.mockResolvedValue([
+        { id: 'idea-1', issueNumber: 41, publishBy: '2026-03-20' },
+        { id: 'idea-2', issueNumber: 42, publishBy: '2026-03-01' },
+      ])
+
+      const res = await request(app).get('/api/posts/pending')
+
+      expect(res.status).toBe(200)
+      expect(mockGetIdeasByIds).toHaveBeenCalledTimes(1)
+      expect(mockGetIdeasByIds).toHaveBeenCalledWith(expect.arrayContaining(['idea-1', 'idea-2', '42']))
+      const itemsById = new Map<string, { id: string; ideaPublishBy?: string }>(
+        res.body.items.map((item: { id: string; ideaPublishBy?: string }) => [item.id, item] as const),
+      )
+      expect(itemsById.get('idea-a')?.ideaPublishBy).toBe('2026-03-01')
+      expect(itemsById.get('idea-b')?.ideaPublishBy).toBe('2026-03-01')
+    })
   })
 
   // ─── GET /api/posts/:id ────────────────────────────────────────────
@@ -180,6 +208,19 @@ describe('Review Server API', () => {
       expect(res.body.id).toBe('detail-item')
       expect(res.body.postContent).toBe('Test post content for detail-item')
       expect(res.body.metadata.platform).toBe('tiktok')
+    })
+
+    it('includes earliest idea publishBy when linked ideas are available', async () => {
+      await createTestItem('detail-idea-item', { ideaIds: ['idea-later', 'idea-earlier'] })
+      mockGetIdeasByIds.mockResolvedValue([
+        { id: 'idea-later', publishBy: '2026-03-20' },
+        { id: 'idea-earlier', publishBy: '2026-03-01' },
+      ])
+
+      const res = await request(app).get('/api/posts/detail-idea-item')
+      expect(res.status).toBe(200)
+      expect(res.body.ideaPublishBy).toBe('2026-03-01')
+      expect(mockGetIdeasByIds).toHaveBeenCalledWith(['idea-later', 'idea-earlier'])
     })
   })
 
@@ -357,6 +398,24 @@ describe('Review Server API', () => {
       const res = await request(app).get('/api/init')
       expect(res.status).toBe(200)
       expect(res.body.total).toBeGreaterThan(0)
+    })
+
+    it('includes idea publishBy on grouped items and fails silently on idea lookup errors', async () => {
+      await createTestItem('init-idea-item', {
+        sourceVideo: '/test/video1',
+        clipType: 'short',
+        ideaIds: ['idea-initial'],
+      })
+      mockGetIdeasByIds.mockResolvedValue([{ id: 'idea-initial', publishBy: '2026-02-01' }])
+
+      const successRes = await request(app).get('/api/init')
+      expect(successRes.status).toBe(200)
+      expect(successRes.body.groups[0].items[0].ideaPublishBy).toBe('2026-02-01')
+
+      mockGetIdeasByIds.mockRejectedValue(new Error('idea bank unavailable'))
+      const failRes = await request(app).get('/api/init')
+      expect(failRes.status).toBe(200)
+      expect(failRes.body.groups[0].items[0]).not.toHaveProperty('ideaPublishBy')
     })
   })
 
