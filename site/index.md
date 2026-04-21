@@ -86,10 +86,9 @@ graph LR
     K --> L[Medium Posts]
     L --> M[Queue Build]
     M --> N[Blog]
-    N --> O[Git Push]
 
     style A fill:#238636,color:#fff
-    style O fill:#a78bfa,color:#fff
+    style N fill:#a78bfa,color:#fff
 ```
 
 ## Review App

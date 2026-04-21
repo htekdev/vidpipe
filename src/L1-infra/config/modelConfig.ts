@@ -18,6 +18,7 @@ export const AGENT_MODEL_MAP: Record<string, string> = {
   SocialMediaAgent: PREMIUM_MODEL,
   BlogAgent: PREMIUM_MODEL,
   SummaryAgent: PREMIUM_MODEL,
+  IdeationAgent: PREMIUM_MODEL,
   ChapterAgent: PREMIUM_MODEL,
   ShortPostsAgent: PREMIUM_MODEL,
   MediumClipPostsAgent: PREMIUM_MODEL,
@@ -26,21 +27,23 @@ export const AGENT_MODEL_MAP: Record<string, string> = {
 
 /**
  * Resolve model for an agent. Priority:
- * 1. MODEL_<AGENT_NAME_UPPER> env var
+ * 1. MODEL_OVERRIDES from resolved config (populated from MODEL_* env vars)
  * 2. AGENT_MODEL_MAP entry
- * 3. Global LLM_MODEL env var
+ * 3. Global LLM_MODEL from config
  * 4. undefined (provider default)
  */
 export function getModelForAgent(agentName: string): string | undefined {
-  // Per-agent env override (dynamic keys like MODEL_SHORTS_AGENT)
+  const config = getConfig();
+
+  // Per-agent override from resolved config (e.g. MODEL_SHORTS_AGENT=gpt-4o)
   const envKey = `MODEL_${agentName.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase()}`;
-  const envOverride = process.env[envKey];
+  const envOverride = config.MODEL_OVERRIDES[envKey];
   if (envOverride) return envOverride;
 
   const mapped = AGENT_MODEL_MAP[agentName];
   if (mapped) return mapped;
 
-  const global = getConfig().LLM_MODEL;
+  const global = config.LLM_MODEL;
   if (global) return global;
 
   return undefined;

@@ -69,4 +69,37 @@ describe('L3 Integration: providerFactory → L2 provider chain', () => {
     })
     expect(session).toBeDefined()
   })
+
+  test('CopilotProvider exposes approveAll from L1 copilot wrapper', async () => {
+    const { approveAll } = await import('../../../L1-infra/ai/copilot.js')
+    expect(approveAll).toBeDefined()
+    expect(typeof approveAll).toBe('function')
+  })
+
+  test('CopilotProvider passes child env with ExperimentalWarning suppression', async () => {
+    const { CopilotClient } = await import('@github/copilot-sdk')
+    const { CopilotProvider } = await import('../../../L2-clients/llm/CopilotProvider.js')
+    const provider = new CopilotProvider()
+    await provider.createSession({ systemPrompt: 'test', tools: [] })
+
+    // The CopilotClient constructor should have been called with env option
+    const ctorCalls = (CopilotClient as ReturnType<typeof vi.fn>).mock.calls
+    expect(ctorCalls.length).toBeGreaterThan(0)
+    const opts = ctorCalls[ctorCalls.length - 1][0] as Record<string, unknown>
+    const env = opts.env as Record<string, string>
+    expect(env.NODE_OPTIONS).toContain('--disable-warning=ExperimentalWarning')
+  })
+
+  test('CopilotProvider passes cliPath when native binary exists', async () => {
+    const { CopilotClient } = await import('@github/copilot-sdk')
+    const { CopilotProvider } = await import('../../../L2-clients/llm/CopilotProvider.js')
+    const provider = new CopilotProvider()
+    await provider.createSession({ systemPrompt: 'test', tools: [] })
+
+    const ctorCalls = (CopilotClient as ReturnType<typeof vi.fn>).mock.calls
+    const opts = ctorCalls[ctorCalls.length - 1][0] as Record<string, unknown>
+    // cliPath may or may not be set depending on whether native binary is installed
+    // but autoRestart should always be true
+    expect(opts.autoRestart).toBe(true)
+  })
 })

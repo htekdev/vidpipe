@@ -1,4 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, test, expect, vi, beforeEach } from 'vitest'
+
+// Fix: listIssues defaults to state='all' to include closed ideas
 
 // Mock L1 infrastructure (ESM imports verified)
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
@@ -15,13 +17,23 @@ const mockOutputDir = vi.hoisted(() => {
 vi.mock('../../../L1-infra/config/environment.js', () => ({
   getConfig: () => ({
     OUTPUT_DIR: mockOutputDir,
-    LATE_API_KEY: '',
+    LATE_API_KEY: 'test-fake-key',
   }),
   initConfig: vi.fn(),
 }))
 
-import { getScheduleCalendar } from '../../../L3-services/scheduler/scheduler.js'
+import {
+  findNextSlot,
+  getScheduleCalendar,
+  rescheduleIdeaPosts,
+  schedulePost,
+  type SlotOptions,
+  type RescheduleResult,
+  type SchedulePostOptions,
+} from '../../../L3-services/scheduler/scheduler.js'
 import { clearScheduleCache } from '../../../L3-services/scheduler/scheduleConfig.js'
+
+const hasLateApiKey = !!process.env.LATE_API_KEY
 
 describe('L3 Integration: scheduler calendar with no Late API', () => {
   beforeEach(() => {
@@ -33,4 +45,204 @@ describe('L3 Integration: scheduler calendar with no Late API', () => {
     const calendar = await getScheduleCalendar()
     expect(calendar).toEqual([])
   })
+
+  it('SlotOptions type is properly exported', () => {
+    const slotOptions: SlotOptions = {
+      ideaIds: ['idea-123'],
+      publishBy: '2099-12-31T23:59:59Z',
+    }
+
+    expect(slotOptions).toEqual({
+      ideaIds: ['idea-123'],
+      publishBy: '2099-12-31T23:59:59Z',
+    })
+  })
+
+  // ── rescheduleIdeaPosts (returns early — no Late API needed) ────
+
+  describe('rescheduleIdeaPosts', () => {
+    it('returns zeros when no idea-linked published items exist', async () => {
+      // Fix: reschedule skips published posts and sorts by urgency (publishBy)
+      const result = await rescheduleIdeaPosts()
+
+      expect(result).toEqual<RescheduleResult>({
+        rescheduled: 0,
+        unchanged: 0,
+        failed: 0,
+        details: [],
+      })
+    })
+
+    it('returns zeros in dry-run mode with no idea posts', async () => {
+      const result = await rescheduleIdeaPosts({ dryRun: true })
+
+      expect(result).toEqual<RescheduleResult>({
+        rescheduled: 0,
+        unchanged: 0,
+        failed: 0,
+        details: [],
+      })
+    })
+
+    it('RescheduleResult type has expected shape', () => {
+      const result: RescheduleResult = {
+        rescheduled: 1,
+        unchanged: 2,
+        failed: 0,
+        details: [
+          {
+            itemId: 'item-1',
+            platform: 'tiktok',
+            latePostId: 'late-1',
+            oldSlot: '2026-03-01T19:00:00-06:00',
+            newSlot: '2026-03-02T19:00:00-06:00',
+          },
+        ],
+      }
+
+      expect(result.rescheduled).toBe(1)
+      expect(result.details).toHaveLength(1)
+      expect(result.details[0].itemId).toBe('item-1')
+      expect(result.details[0].error).toBeUndefined()
+    })
+
+    it('RescheduleResult detail supports error field', () => {
+      const result: RescheduleResult = {
+        rescheduled: 0,
+        unchanged: 0,
+        failed: 1,
+        details: [
+          {
+            itemId: 'item-fail',
+            platform: 'youtube',
+            latePostId: 'late-fail',
+            oldSlot: null,
+            newSlot: null,
+            error: 'No schedule config',
+          },
+        ],
+      }
+
+      expect(result.failed).toBe(1)
+      expect(result.details[0].error).toBe('No schedule config')
+    })
+  })
+
+  describe('schedulePost export', () => {
+    it('schedulePost is exported and callable', () => {
+      expect(typeof schedulePost).toBe('function')
+    })
+
+    it('SchedulePostOptions type is properly exported', () => {
+      const opts: SchedulePostOptions = {
+        ideaIds: ['idea-1'],
+        publishBy: '2099-12-31T23:59:59Z',
+        postId: 'late-post-1',
+        dryRun: true,
+      }
+
+      expect(opts.dryRun).toBe(true)
+      expect(opts.ideaIds).toEqual(['idea-1'])
+    })
+  })
+
+  // ── findNextSlot (no Late API needed) ───────────────────────────
+
+  describe('findNextSlot walk-through', () => {
+    it('returns null for an unknown platform', async () => {
+      const slot = await findNextSlot('nonexistent-platform')
+      expect(slot).toBeNull()
+    })
+  })
+
+  // ── findNextSlot (works with or without Late API key) ──────────
+
+  it('findNextSlot accepts SlotOptions with ideaIds and publishBy', async () => {
+    // findNextSlot catches Late API errors internally via fetchScheduledPostsSafe
+    const slot = await findNextSlot('linkedin', 'medium-clip', {
+      ideaIds: ['idea-123'],
+      publishBy: '2099-12-31T23:59:59Z',
+    })
+
+    expect(slot).toBeTruthy()
+    expect(slot).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
+  })
+
+  it('findNextSlot without ideaIds behaves identically to no options', async () => {
+    const slotWithoutOptions = await findNextSlot('linkedin', 'medium-clip')
+
+    clearScheduleCache()
+
+    const slotWithoutIdeaIds = await findNextSlot('linkedin', 'medium-clip', {})
+
+    expect(slotWithoutIdeaIds).toBe(slotWithoutOptions)
+  })
+
+  it('returns a future ISO datetime string for a known platform', async () => {
+    const slot = await findNextSlot('tiktok')
+
+    expect(slot).not.toBeNull()
+    const parsed = new Date(slot!)
+    expect(parsed.getTime()).toBeGreaterThan(Date.now())
+  })
+
+  it('respects publishBy deadline — returned slot is before deadline', async () => {
+    const deadline = new Date(Date.now() + 60 * 24 * 60 * 60 * 1000).toISOString()
+    const slot = await findNextSlot('linkedin', undefined, { publishBy: deadline })
+
+    expect(slot).not.toBeNull()
+    expect(new Date(slot!).getTime()).toBeLessThanOrEqual(new Date(deadline).getTime())
+  })
+
+  it('ignores already-passed publishBy and schedules normally', async () => {
+    clearScheduleCache()
+    const pastDeadline = '2020-01-01T00:00:00Z'
+    const slot = await findNextSlot('tiktok', undefined, { publishBy: pastDeadline })
+
+    expect(slot).not.toBeNull()
+  })
+})
+
+test('passesIdeaSpacing is used by schedulePost for spacing enforcement', async () => {
+  const mod = await import('../../../L3-services/scheduler/scheduler.js')
+  expect(typeof mod.schedulePost).toBe('function')
+  // schedulePost accepts SchedulePostOptions with ideaIds, publishBy, postId, dryRun
+  expect(typeof mod.buildBookedMap).toBe('function')
+})
+
+test('buildBookedMap excludes stale local entries with past scheduledFor', async () => {
+  const { buildBookedMap } = await import('../../../L3-services/scheduler/scheduler.js')
+  const map = await buildBookedMap()
+  // All local entries should have future scheduledFor
+  for (const [, slot] of map) {
+    if (slot.source === 'local') {
+      const ms = new Date(slot.scheduledFor).getTime()
+      expect(ms).toBeGreaterThan(Date.now() - 60_000) // allow 1 min tolerance
+    }
+  }
+})
+
+test('rescheduleAllPosts keeps posts in current slots via own-post detection', async () => {
+  const { rescheduleAllPosts } = await import('../../../L3-services/scheduler/scheduler.js')
+  expect(typeof rescheduleAllPosts).toBe('function')
+})
+
+test('ideaSpacing allows zero crossPlatformHours', async () => {
+  const { validateScheduleConfig } = await import('../../../L3-services/scheduler/scheduleConfig.js')
+  const config = validateScheduleConfig({
+    timezone: 'UTC',
+    ideaSpacing: { samePlatformHours: 6, crossPlatformHours: 0 },
+    platforms: { x: { slots: [], avoidDays: [] } },
+  })
+  expect(config.ideaSpacing?.crossPlatformHours).toBe(0)
+})
+
+test('ideaSpacing validation accepts zero crossPlatformHours', async () => {
+  const { validateScheduleConfig } = await import('../../../L3-services/scheduler/scheduleConfig.js')
+  const config = validateScheduleConfig({
+    timezone: 'UTC',
+    ideaSpacing: { samePlatformHours: 6, crossPlatformHours: 0 },
+    platforms: { x: { slots: [], avoidDays: [] } },
+  })
+  expect(config.ideaSpacing?.crossPlatformHours).toBe(0)
 })

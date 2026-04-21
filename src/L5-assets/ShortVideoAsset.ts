@@ -11,7 +11,8 @@ import { fileExists, listDirectory, readTextFile, ensureDirectory } from '../L1-
 import type { AssetOptions } from './Asset.js'
 import type { ShortClip, Platform, Transcript, Segment, Word } from '../L0-pure/types/index.js'
 import { Platform as PlatformEnum } from '../L0-pure/types/index.js'
-import { extractCompositeClip } from '../L4-agents/videoServiceBridge.js'
+import { extractCompositeClip, applyIntroOutro } from '../L4-agents/videoServiceBridge.js'
+import { generateThumbnailForClip } from './thumbnailGeneration.js'
 import type { MainVideoAsset } from './MainVideoAsset.js'
 
 /**
@@ -54,6 +55,11 @@ export class ShortVideoAsset extends VideoAsset {
   /** Path to the main short video file */
   get videoPath(): string {
     return join(this.videoDir, 'media.mp4')
+  }
+
+  /** Path to the short with intro/outro applied */
+  get introOutroVideoPath(): string {
+    return join(this.videoDir, 'media-intro-outro.mp4')
   }
 
   /** Directory containing social posts for this short */
@@ -139,6 +145,64 @@ export class ShortVideoAsset extends VideoAsset {
     return this.videoPath
   }
 
+  /**
+   * Apply intro/outro to the short clip.
+   * Uses brand config rules for 'shorts' video type.
+   *
+   * @returns Path to the intro/outro'd video, or the original path if skipped
+   */
+  async getIntroOutroVideo(): Promise<string> {
+    if (await fileExists(this.introOutroVideoPath)) {
+      return this.introOutroVideoPath
+    }
+
+    // Prefer the captioned version (has burned-in captions), then the raw clip
+    const candidates = [this.clip.captionedPath, this.clip.outputPath]
+    let clipPath: string | undefined
+    for (const candidate of candidates) {
+      if (candidate && await fileExists(candidate)) {
+        clipPath = candidate
+        break
+      }
+    }
+    if (!clipPath) {
+      clipPath = await this.getResult()
+    }
+    return applyIntroOutro(clipPath, 'shorts', this.introOutroVideoPath)
+  }
+
+  /**
+   * Apply intro/outro to all platform variants of this short.
+   * Resolves the correct intro/outro file per aspect ratio, auto-cropping
+   * from the default file when no ratio-specific file is configured.
+   *
+   * @returns Map of platform to intro/outro'd variant path
+   */
+  async getIntroOutroVariants(): Promise<Map<Platform, string>> {
+    const results = new Map<Platform, string>()
+    if (!this.clip.variants || this.clip.variants.length === 0) return results
+
+    for (const variant of this.clip.variants) {
+      const outputPath = join(this.videoDir, `media-${variant.platform}-intro-outro.mp4`)
+      if (await fileExists(outputPath)) {
+        results.set(variant.platform as Platform, outputPath)
+        continue
+      }
+      if (!(await fileExists(variant.path))) continue
+
+      const result = await applyIntroOutro(
+        variant.path,
+        'shorts',
+        outputPath,
+        variant.platform,
+        variant.aspectRatio,
+      )
+      results.set(variant.platform as Platform, result)
+    }
+
+    return results
+  }
+
   // ── Transcript ───────────────────────────────────────────────────────────────
 
   /**
@@ -181,5 +245,36 @@ export class ShortVideoAsset extends VideoAsset {
       language: parentTranscript.language,
       duration: this.clip.totalDuration,
     }
+  }
+
+  /**
+   * Generate a thumbnail for this short clip.
+   *
+   * Uses the ThumbnailAgent to plan and generate a click-worthy thumbnail
+   * based on the clip's content. Skips if thumbnails are disabled or
+   * a thumbnail already exists (idempotent).
+   *
+   * @param opts - Asset options (force to regenerate)
+   * @returns Path to the generated thumbnail, or null if skipped
+   */
+  async generateThumbnail(opts?: AssetOptions): Promise<string | null> {
+    const videoPath = this.clip.captionedPath ?? this.clip.outputPath
+    const thumbnailDir = join(this.videoDir, 'thumbnails')
+
+    const result = await generateThumbnailForClip({
+      title: this.clip.title,
+      description: this.clip.description,
+      hook: this.clip.hook,
+      topics: this.clip.tags,
+      videoPath,
+      outputDir: thumbnailDir,
+      contentType: 'shorts',
+    }, opts?.force)
+
+    if (result) {
+      this.clip.thumbnailPath = result
+    }
+
+    return result
   }
 }

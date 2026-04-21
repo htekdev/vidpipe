@@ -66,6 +66,7 @@ import {
   updateItem,
   itemExists,
   getPublishedItems,
+  updatePublishedItemSchedule,
 } from '../../../L3-services/postStore/postStore.js'
 import type { QueueItemMetadata } from '../../../L3-services/postStore/postStore.js'
 
@@ -156,6 +157,38 @@ describe('L3 Integration: postStore', () => {
       expect(item.mediaPath).toContain('media.png')
     })
 
+    it('copies thumbnail file when thumbnailSourcePath is provided', async () => {
+      const metadata = makeMetadata()
+      const item = await createItem(
+        'my-short-youtube',
+        metadata,
+        'Content',
+        '/source/video.mp4',
+        '/source/thumbnails/thumb.png',
+      )
+
+      // Should copy both media and thumbnail
+      expect(mockCopyFile).toHaveBeenCalledWith(
+        '/source/video.mp4',
+        expect.stringContaining('media.mp4'),
+      )
+      expect(mockCopyFile).toHaveBeenCalledWith(
+        '/source/thumbnails/thumb.png',
+        expect.stringContaining('thumbnail.png'),
+      )
+      expect(item.thumbnailPath).toContain('thumbnail.png')
+      expect(item.hasMedia).toBe(true)
+    })
+
+    it('returns null thumbnailPath when no thumbnailSourcePath provided', async () => {
+      const metadata = makeMetadata()
+      const item = await createItem('my-short-youtube', metadata, 'Content', '/source/video.mp4')
+
+      expect(item.thumbnailPath).toBeNull()
+      // copyFile only called once for media, not for thumbnail
+      expect(mockCopyFile).toHaveBeenCalledTimes(1)
+    })
+
     it('rejects invalid ID with path traversal characters', async () => {
       const metadata = makeMetadata()
       await expect(createItem('../evil', metadata, 'x')).rejects.toThrow('Invalid ID format')
@@ -206,6 +239,7 @@ describe('L3 Integration: postStore', () => {
       mockFileExists
         .mockResolvedValueOnce(false)  // media.mp4 not found
         .mockResolvedValueOnce(true)   // media.png found
+        .mockResolvedValueOnce(false)  // thumbnail.png
 
       const item = await getItem('img-item')
 
@@ -220,6 +254,7 @@ describe('L3 Integration: postStore', () => {
         .mockResolvedValueOnce(JSON.stringify(metadata))
         .mockResolvedValueOnce('Both media')
       mockFileExists.mockResolvedValueOnce(true)  // media.mp4 found (stops checking)
+        .mockResolvedValueOnce(false)  // thumbnail.png
 
       const item = await getItem('both-item')
 
@@ -284,13 +319,15 @@ describe('L3 Integration: postStore', () => {
         .mockResolvedValueOnce('text post')
         .mockResolvedValueOnce(JSON.stringify(metaHasMedia))
         .mockResolvedValueOnce('media post')
-      // readQueueItem checks media.mp4 then media.png for each item
-      // no-media: mp4=false, png=false
-      // has-media: mp4=true
+      // readQueueItem checks media.mp4 then media.png then thumbnail.png for each item
+      // no-media: mp4=false, png=false, thumbnail=false
+      // has-media: mp4=true, thumbnail=false
       mockFileExists
         .mockResolvedValueOnce(false)  // no-media: media.mp4
         .mockResolvedValueOnce(false)  // no-media: media.png
+        .mockResolvedValueOnce(false)  // no-media: thumbnail.png
         .mockResolvedValueOnce(true)   // has-media: media.mp4
+        .mockResolvedValueOnce(false)  // has-media: thumbnail.png
 
       const items = await getPendingItems()
       expect(items[0].id).toBe('has-media')
@@ -634,6 +671,57 @@ describe('L3 Integration: postStore', () => {
       const items = await getPublishedItems()
       expect(items[0].id).toBe('earlier')
       expect(items[1].id).toBe('later')
+    })
+  })
+
+  // ── updatePublishedItemSchedule ─────────────────────────────────
+
+  describe('updatePublishedItemSchedule', () => {
+    it('reads metadata, updates scheduledFor, and writes back', async () => {
+      const existingMeta = makeMetadata({
+        id: 'item-resched',
+        status: 'published',
+        scheduledFor: '2026-03-01T19:00:00-06:00',
+        latePostId: 'late-123',
+      })
+      mockReadTextFile.mockResolvedValueOnce(JSON.stringify(existingMeta))
+      mockWriteTextFile.mockResolvedValueOnce(undefined)
+
+      await updatePublishedItemSchedule('item-resched', '2026-03-05T20:00:00-06:00')
+
+      expect(mockReadTextFile).toHaveBeenCalledWith(
+        expect.stringContaining('item-resched'),
+      )
+      expect(mockWriteTextFile).toHaveBeenCalledWith(
+        expect.stringContaining('item-resched'),
+        expect.any(String),
+      )
+
+      const writtenJson = JSON.parse(mockWriteTextFile.mock.calls[0][1])
+      expect(writtenJson.scheduledFor).toBe('2026-03-05T20:00:00-06:00')
+      // Other metadata fields should be preserved
+      expect(writtenJson.id).toBe('item-resched')
+      expect(writtenJson.latePostId).toBe('late-123')
+    })
+
+    it('rejects invalid ID format to prevent path traversal', async () => {
+      await expect(
+        updatePublishedItemSchedule('../etc/passwd', '2026-03-01T19:00:00Z'),
+      ).rejects.toThrow('Invalid ID format')
+    })
+
+    it('rejects empty ID', async () => {
+      await expect(
+        updatePublishedItemSchedule('', '2026-03-01T19:00:00Z'),
+      ).rejects.toThrow('Invalid ID format')
+    })
+
+    it('throws when metadata file does not exist', async () => {
+      mockReadTextFile.mockRejectedValueOnce(new Error('ENOENT: no such file'))
+
+      await expect(
+        updatePublishedItemSchedule('nonexistent-item', '2026-03-01T19:00:00Z'),
+      ).rejects.toThrow()
     })
   })
 })

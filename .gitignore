@@ -4,6 +4,8 @@ dist/
 *.log
 cache/
 coverage/
+coverage-out.tmp
+coverage-output.txt
 
 # Social publishing queue (transient — reviewed via vidpipe review)
 publish-queue/
@@ -35,3 +37,14 @@ review.ico
 *.png
 !assets/**/*.png
 !docs/**/*.png
+# One-off migration/analysis scripts
+_add-metadata-to-posts.mjs
+_extract-late-posts.mjs
+_migrate-mediums.cjs
+_migrate-to-queues.cjs
+_query-posts.cjs
+_reorder-all-queues.cjs
+_reorder-queue.cjs
+_repair-drafts.mjs
+late-posts-report.csv
+PATTERN_SEARCH_RESULTS.txt

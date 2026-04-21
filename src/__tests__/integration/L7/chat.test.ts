@@ -27,6 +27,27 @@ vi.mock('../../../L3-services/llm/providerFactory.js', () => ({
   getProvider: vi.fn(),
 }))
 
+const MockAltScreenChat = vi.hoisted(() => vi.fn().mockImplementation(function () {
+  return {
+    enter: vi.fn(),
+    leave: vi.fn(),
+    destroy: vi.fn(),
+    showQuestion: vi.fn(),
+    showInsight: vi.fn(),
+    addMessage: vi.fn(),
+    setStatus: vi.fn(),
+    clearStatus: vi.fn(),
+    promptInput: vi.fn().mockResolvedValue('exit'),
+    interrupted: false,
+    title: 'Test',
+    subtitle: 'Test',
+    inputPrompt: '> ',
+  }
+}))
+vi.mock('../../../L1-infra/terminal/altScreenChat.js', () => ({
+  AltScreenChat: MockAltScreenChat,
+}))
+
 describe('L7 Integration: chat module', () => {
   it('chat module is importable and exports runChat', async () => {
     const mod = await import('../../../L7-app/commands/chat.js')
@@ -40,16 +61,15 @@ describe('L7 Integration: chat module', () => {
     expect(typeof createScheduleAgent).toBe('function')
   })
 
-  it('runChat creates readline interface and exits on quit', async () => {
-    // Mock question to immediately return "exit"
-    mockQuestion.mockImplementation((_prompt: string, cb: (answer: string) => void) => {
-      cb('exit')
-    })
-
+  it('runChat enters alt-screen and exits on quit command', async () => {
     const { runChat } = await import('../../../L7-app/commands/chat.js')
     await runChat()
 
-    expect(mockQuestion).toHaveBeenCalled()
-    expect(mockClose).toHaveBeenCalled()
+    // AltScreenChat was constructed and entered
+    expect(MockAltScreenChat).toHaveBeenCalled()
+    const instance = MockAltScreenChat.mock.results[0]?.value
+    expect(instance.enter).toHaveBeenCalled()
+    // promptInput returned 'exit', so the loop ended and destroy was called
+    expect(instance.destroy).toHaveBeenCalled()
   })
 })

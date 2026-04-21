@@ -167,6 +167,14 @@ publish-queue/
 
 Approved posts move to `published/`. Rejected posts are deleted.
 
+## Queue-First Scheduling
+
+VidPipe uses Late's built-in queue system as the primary scheduling mechanism:
+- `vidpipe sync-queues` creates/updates Late queues from `schedule.json`
+- Queue names follow `{platform}-{clipType}` (e.g. `youtube-short`, `linkedin-medium-clip`)
+- Approvals use `queuedFromProfile` + `queueId` — Late assigns slots server-side
+- Falls back to local `scheduledFor` calculation only when no queue exists
+
 ## Troubleshooting
 
 ### "No Late API key configured"
@@ -194,4 +202,7 @@ Some platforms (e.g., TikTok) have short-lived tokens. Late handles refresh auto
 | `vidpipe schedule` | View posting schedule |
 | `vidpipe schedule --platform X` | Filter by platform |
 | `vidpipe doctor` | Verify setup |
+| `vidpipe sync-queues` | Sync schedule.json queue definitions to Late API |
+| `vidpipe reschedule` | Reschedule idea-linked posts for optimal placement |
+| `vidpipe realign --queue` | Queue-based realignment (reshuffleExisting) |
 | `--no-social-publish` | Skip queue-build stage |

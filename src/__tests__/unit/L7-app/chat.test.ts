@@ -15,6 +15,36 @@ vi.mock('../../../L6-pipeline/scheduleChat.js', () => ({
   }),
 }))
 
+const MockAltScreenChat = vi.hoisted(() => vi.fn().mockImplementation(function () {
+  return {
+    enter: vi.fn(),
+    leave: vi.fn(),
+    destroy: vi.fn(),
+    showQuestion: vi.fn(),
+    showInsight: vi.fn(),
+    addMessage: vi.fn(),
+    setStatus: vi.fn(),
+    clearStatus: vi.fn(),
+    promptInput: vi.fn().mockResolvedValue('exit'),
+    interrupted: false,
+    title: 'Test',
+    subtitle: 'Test',
+    inputPrompt: '> ',
+  }
+}))
+vi.mock('../../../L1-infra/terminal/altScreenChat.js', () => ({
+  AltScreenChat: MockAltScreenChat,
+}))
+
+vi.mock('../../../L1-infra/config/environment.js', () => ({
+  initConfig: vi.fn(),
+}))
+
+vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
+  setChatMode: vi.fn(),
+  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+}))
+
 describe('L7 Unit: chat command', () => {
   const originalStdin = process.stdin
 

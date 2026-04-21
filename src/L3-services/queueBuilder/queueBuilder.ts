@@ -27,13 +27,16 @@ export interface QueueBuildResult {
  * Resolve the media file path for a short clip on a given platform.
  * Uses the content strategy's variantKey to find the right variant,
  * then falls back to captionedPath → outputPath.
+ *
+ * When variantsEnabled is false, variant lookup is skipped entirely
+ * and the fallback path (captioned → original) is always used.
  */
-function resolveShortMedia(clip: ShortClip, platform: Platform): string | null {
+function resolveShortMedia(clip: ShortClip, platform: Platform, variantsEnabled?: boolean): string | null {
   const rule = getMediaRule(platform, 'short')
   if (!rule) return null // platform doesn't accept short media
 
-  // If the rule specifies a variant key, look it up
-  if (rule.variantKey && clip.variants?.length) {
+  // If the rule specifies a variant key, look it up (unless variants are disabled)
+  if (variantsEnabled !== false && rule.variantKey && clip.variants?.length) {
     const match = clip.variants.find(v => v.platform === rule.variantKey)
     if (match) return match.path
 
@@ -140,6 +143,8 @@ export async function buildPublishQueue(
   mediumClips: MediumClip[],
   socialPosts: SocialPost[],
   captionedVideoPath: string | undefined,
+  ideaIds?: string[],
+  variantsEnabled?: boolean,
 ): Promise<QueueBuildResult> {
   const result: QueueBuildResult = { itemsCreated: 0, itemsSkipped: 0, errors: [] }
 
@@ -152,6 +157,8 @@ export async function buildPublishQueue(
       let clipType: ClipType
       let mediaPath: string | null = null
       let sourceClip: string | null = null
+      let thumbnailPath: string | null = null
+      let clipIdeaIssueNumber: number | undefined
 
       if (frontmatter.shortSlug) {
         // Short or medium clip post
@@ -162,12 +169,16 @@ export async function buildPublishQueue(
           clipSlug = short.slug
           clipType = 'short'
           sourceClip = dirname(short.outputPath)
-          mediaPath = resolveShortMedia(short, post.platform)
+          mediaPath = resolveShortMedia(short, post.platform, variantsEnabled)
+          thumbnailPath = short.thumbnailPath ?? null
+          clipIdeaIssueNumber = short.ideaIssueNumber
         } else if (medium) {
           clipSlug = medium.slug
           clipType = 'medium-clip'
           sourceClip = dirname(medium.outputPath)
           mediaPath = resolveMediumMedia(medium, post.platform)
+          thumbnailPath = medium.thumbnailPath ?? null
+          clipIdeaIssueNumber = medium.ideaIssueNumber
         } else {
           clipSlug = frontmatter.shortSlug
           clipType = 'short'
@@ -178,6 +189,7 @@ export async function buildPublishQueue(
         clipSlug = video.slug
         clipType = 'video'
         mediaPath = resolveVideoMedia(video, post.platform, captionedVideoPath)
+        thumbnailPath = video.thumbnailPath ?? null
       }
 
       // Generate a cover image for platform+clipType combos that are text-only
@@ -233,6 +245,10 @@ export async function buildPublishQueue(
         createdAt: new Date().toISOString(),
         reviewedAt: null,
         publishedAt: null,
+        ideaIds: clipIdeaIssueNumber
+          ? [String(clipIdeaIssueNumber)]
+          : ideaIds && ideaIds.length > 0 ? ideaIds : undefined,
+        thumbnailPath,
       }
 
       // Use raw post content (strip frontmatter if the content includes it)
@@ -244,7 +260,7 @@ export async function buildPublishQueue(
         throw new Error('Post content is empty after stripping frontmatter')
       }
 
-      await createItem(itemId, metadata, postContent, mediaPath ?? undefined)
+      await createItem(itemId, metadata, postContent, mediaPath ?? undefined, thumbnailPath ?? undefined)
       result.itemsCreated++
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)

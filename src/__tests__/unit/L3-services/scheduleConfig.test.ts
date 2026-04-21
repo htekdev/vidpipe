@@ -471,6 +471,40 @@ describe('scheduleConfig', () => {
       expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('falling back'))
     })
 
+    it('aggregates byClipType slots when called with no clipType and top-level slots empty', async () => {
+      clearScheduleCache()
+      const customConfig = {
+        timezone: 'UTC',
+        platforms: {
+          linkedin: {
+            slots: [],
+            avoidDays: [],
+            byClipType: {
+              short: {
+                slots: [{ days: ['tue'], time: '10:00', label: 'Short morning' }],
+                avoidDays: ['sun'],
+              },
+              'medium-clip': {
+                slots: [{ days: ['wed'], time: '14:00', label: 'Medium afternoon' }],
+                avoidDays: [],
+              },
+            },
+          },
+        },
+      }
+      const tmpFile = tmp.fileSync({ dir: tmpDir, postfix: '.json', mode: 0o600 })
+      await fs.writeFile(tmpFile.name, JSON.stringify(customConfig), 'utf-8')
+      await loadScheduleConfig(tmpFile.name)
+
+      // No clipType argument — triggers the fallback aggregation
+      const schedule = getPlatformSchedule('linkedin')
+      expect(schedule).toBeDefined()
+      expect(schedule!.slots).toHaveLength(2)
+      expect(schedule!.slots.map(s => s.time).sort()).toEqual(['10:00', '14:00'])
+      expect(schedule!.avoidDays).toEqual(expect.arrayContaining(['sun']))
+      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('falling back'))
+    })
+
     it('returns empty-slot schedule when no byClipType exists at all', async () => {
       clearScheduleCache()
       const customConfig = {

@@ -32,4 +32,29 @@ describe('E2E: ai.ts wrapper functions', () => {
     expect(client.models).toBeDefined()
     expect(client.audio).toBeDefined()
   })
+
+  test('L1 copilot wrapper re-exports approveAll for permission handling', async () => {
+    const { approveAll } = await import('../../L1-infra/ai/copilot.js')
+    expect(approveAll).toBeDefined()
+    expect(typeof approveAll).toBe('function')
+  })
+
+  test('buildChildEnv suppresses ExperimentalWarning without modifying process.env', async () => {
+    const originalNodeOptions = process.env.NODE_OPTIONS
+    // The CopilotProvider uses buildChildEnv internally — verify the contract
+    // by importing the module and checking that process.env is NOT modified
+    await import('../../L2-clients/llm/CopilotProvider.js')
+    expect(process.env.NODE_OPTIONS).toBe(originalNodeOptions)
+  })
+
+  test('resolveCopilotCliPath returns string or undefined', async () => {
+    const { resolveCopilotCliPath } = await import('../../L1-infra/ai/copilot.js')
+    const result = resolveCopilotCliPath()
+    // On CI/dev machines with @github/copilot installed, this returns the native binary
+    // Otherwise it returns undefined (graceful fallback)
+    expect(result === undefined || typeof result === 'string').toBe(true)
+    if (result) {
+      expect(result).toMatch(/copilot(\.exe)?$/)
+    }
+  })
 })

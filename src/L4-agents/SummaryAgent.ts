@@ -8,6 +8,8 @@ import logger from '../L1-infra/logger/configLogger'
 import { getBrandConfig } from '../L1-infra/config/brand'
 import { getConfig } from '../L1-infra/config/environment'
 import type { VideoFile, Transcript, VideoSummary, VideoSnapshot, ShortClip, Chapter } from '../L0-pure/types/index'
+import type { Idea } from '../L0-pure/types/index.js'
+import { buildIdeaContextForSummary } from '../L0-pure/ideaContext/ideaContext.js'
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -27,13 +29,19 @@ function buildTranscriptBlock(transcript: Transcript): string {
 
 // ── System prompt ────────────────────────────────────────────────────────────
 
-function buildSystemPrompt(shortsInfo: string, socialPostsInfo: string, captionsInfo: string, chaptersInfo: string): string {
+function buildSystemPrompt(
+  shortsInfo: string,
+  socialPostsInfo: string,
+  captionsInfo: string,
+  chaptersInfo: string,
+  ideaContext = '',
+): string {
   const brand = getBrandConfig()
 
   return `You are a Video Summary Agent writing from the perspective of ${brand.name} (${brand.handle}).
 Brand voice: ${brand.voice.tone}. ${brand.voice.personality} ${brand.voice.style}
 
-Your job is to analyse a video transcript and produce a beautiful, narrative-style Markdown README.
+Your job is to analyse a video transcript and produce a beautiful, narrative-style Markdown README.${ideaContext}
 
 **Workflow**
 1. Read the transcript carefully.
@@ -344,6 +352,7 @@ export async function generateSummary(
   shorts?: ShortClip[],
   chapters?: Chapter[],
   model?: string,
+  ideas?: Idea[],
 ): Promise<VideoSummary> {
   const config = getConfig()
   const outputDir = join(config.OUTPUT_DIR, video.slug)
@@ -354,7 +363,13 @@ export async function generateSummary(
   const captionsInfo = buildCaptionsSection()
   const chaptersInfo = buildChaptersSection(chapters)
 
-  const systemPrompt = buildSystemPrompt(shortsInfo, socialPostsInfo, captionsInfo, chaptersInfo)
+  const systemPrompt = buildSystemPrompt(
+    shortsInfo,
+    socialPostsInfo,
+    captionsInfo,
+    chaptersInfo,
+    ideas?.length ? buildIdeaContextForSummary(ideas) : '',
+  )
   const agent = new SummaryAgent(video.repoPath, outputDir, systemPrompt, model)
 
   const transcriptBlock = buildTranscriptBlock(transcript)

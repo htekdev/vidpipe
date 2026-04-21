@@ -42,7 +42,6 @@ Disable individual pipeline stages:
 
 | Flag | Skips |
 |------|-------|
-| `--no-git` | Git commit/push after processing |
 | `--no-silence-removal` | Dead-silence detection and removal |
 | `--no-shorts` | Short clip extraction |
 | `--no-social` | Social media post generation |
@@ -62,16 +61,12 @@ Disable individual pipeline stages:
 # Process without generating shorts or social posts
 vidpipe --no-shorts --no-social /path/to/video.mp4
 
-# Skip git (useful during testing)
-vidpipe --no-git --watch-dir ./watch
-
 # Transcription + summary only (skip everything optional)
 vidpipe \
   --no-silence-removal \
   --no-shorts \
   --no-social \
   --no-captions \
-  --no-git \
   /path/to/video.mp4
 ```
 
@@ -89,7 +84,6 @@ Set these in your shell or in a `.env` file in the working directory.
 | `ANTHROPIC_API_KEY` | ❌ | Anthropic API key (required when `LLM_PROVIDER=claude`) | — |
 | `WATCH_FOLDER` | ❌ | Directory to monitor for new video files | `./watch` |
 | `OUTPUT_DIR` | ❌ | Base output directory for processed videos | `./recordings` |
-| `REPO_ROOT` | ❌ | Repository root for git operations | Current working directory |
 | `FFMPEG_PATH` | ❌ | Absolute path to `ffmpeg` binary | `ffmpeg` (from PATH) |
 | `FFPROBE_PATH` | ❌ | Absolute path to `ffprobe` binary | `ffprobe` (from PATH) |
 | `EXA_API_KEY` | ❌ | Exa AI API key for web search in social posts | — |
@@ -132,7 +126,6 @@ The pipeline automatically tracks token usage and estimated cost for every LLM c
 OPENAI_API_KEY=sk-your-api-key-here
 WATCH_FOLDER=/home/you/Videos/Recordings
 OUTPUT_DIR=/home/you/Content/processed
-REPO_ROOT=/home/you/repos/vidpipe
 
 # Optional: explicit FFmpeg paths
 # FFMPEG_PATH=/usr/local/bin/ffmpeg
@@ -287,16 +280,14 @@ vidpipe \
   --no-shorts \
   --no-social \
   --no-captions \
-  --no-git \
   /path/to/meeting.mp4
 ```
 
-### CI/CD or automation (no interactive, no git)
+### CI/CD or automation
 
 ```bash
 OPENAI_API_KEY=sk-... vidpipe \
   --once \
-  --no-git \
   --output-dir /tmp/output \
   /path/to/video.mp4
 ```
@@ -305,7 +296,7 @@ OPENAI_API_KEY=sk-... vidpipe \
 
 ## Schedule Configuration
 
-The `schedule.json` file defines when social media posts are published. It is generated automatically by the pipeline and can be managed via `vidpipe schedule`. For full details on scheduling and the review workflow, see the [Social Publishing Guide](./social-publishing.md).
+The `schedule.json` file defines when social media posts are published. It supports `byClipType` sub-schedules per platform (e.g. separate slots for `short` vs `medium-clip`). Run `vidpipe sync-queues` to push definitions to Late API — queue IDs are written back to `schedule.json` after sync. It is generated automatically by the pipeline and can be managed via `vidpipe schedule`. For full details on scheduling and the review workflow, see the [Social Publishing Guide](./social-publishing.md).
 
 ---
 

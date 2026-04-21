@@ -18,8 +18,11 @@ vi.mock('../../../L1-infra/config/environment.js', () => ({
 }))
 
 // Allow spying on renameFile from core/fileSystem for the EPERM fallback test
-const { mockRenameFile } = vi.hoisted(() => ({
+const { mockRenameFile, mockGetIdea, mockListIdeas, mockMarkPublished } = vi.hoisted(() => ({
   mockRenameFile: vi.fn() as ReturnType<typeof vi.fn>,
+  mockGetIdea: vi.fn() as ReturnType<typeof vi.fn>,
+  mockListIdeas: vi.fn() as ReturnType<typeof vi.fn>,
+  mockMarkPublished: vi.fn() as ReturnType<typeof vi.fn>,
 }))
 
 vi.mock('../../../L1-infra/fileSystem/fileSystem.js', async (importOriginal) => {
@@ -27,6 +30,12 @@ vi.mock('../../../L1-infra/fileSystem/fileSystem.js', async (importOriginal) => 
   mockRenameFile.mockImplementation(mod.renameFile)
   return { ...mod, renameFile: mockRenameFile }
 })
+
+vi.mock('../../../L3-services/ideaService/ideaService.js', () => ({
+  getIdea: mockGetIdea,
+  listIdeas: mockListIdeas,
+  markPublished: mockMarkPublished,
+}))
 
 // ── Import after mocks ────────────────────────────────────────────────
 
@@ -72,6 +81,20 @@ function makeMetadata(overrides: Partial<QueueItemMetadata> = {}): QueueItemMeta
 
 describe('postStore', () => {
   beforeEach(async () => {
+    vi.clearAllMocks()
+    mockListIdeas.mockResolvedValue([
+      { issueNumber: 1, id: 'idea-1' },
+      { issueNumber: 2, id: 'idea-2' },
+      { issueNumber: 99, id: 'idea-x' },
+    ])
+    mockGetIdea.mockImplementation(async (issueNumber: number) => {
+      const lookup = new Map([
+        [1, { issueNumber: 1, id: 'idea-1' }],
+        [2, { issueNumber: 2, id: 'idea-2' }],
+        [99, { issueNumber: 99, id: 'idea-x' }],
+      ])
+      return lookup.get(issueNumber) ?? null
+    })
     await fs.mkdir(tmpDir, { recursive: true })
   })
 
@@ -225,6 +248,71 @@ describe('postStore', () => {
       expect(publishedMeta.status).toBe('published')
       expect(publishedMeta.latePostId).toBe('late-abc')
       expect(publishedMeta.publishedAt).toBeTruthy()
+    })
+
+    it('marks linked ideas as published when idea IDs are present', async () => {
+      const meta = makeMetadata({ id: 'approve-ideas', ideaIds: ['idea-1', 'idea-2'], clipType: 'short', platform: 'youtube' })
+      await createItem('approve-ideas', meta, 'Approve with ideas')
+
+      await approveItem('approve-ideas', {
+        latePostId: 'late-ideas',
+        scheduledFor: '2025-06-01T12:00:00Z',
+        publishedUrl: 'https://youtube.com/watch?v=ideas',
+      })
+
+      expect(mockMarkPublished).toHaveBeenCalledTimes(2)
+      expect(mockMarkPublished).toHaveBeenNthCalledWith(1, 1, expect.objectContaining({
+        clipType: 'short',
+        platform: 'youtube',
+        queueItemId: 'approve-ideas',
+        lateUrl: 'https://youtube.com/watch?v=ideas',
+      }))
+      expect(mockMarkPublished).toHaveBeenNthCalledWith(2, 2, expect.objectContaining({
+        clipType: 'short',
+        platform: 'youtube',
+        queueItemId: 'approve-ideas',
+        lateUrl: 'https://youtube.com/watch?v=ideas',
+      }))
+
+      const publishedMeta = JSON.parse(
+        await fs.readFile(
+          path.join(tmpDir, 'published', 'approve-ideas', 'metadata.json'),
+          'utf-8',
+        ),
+      )
+      expect(publishedMeta.ideaIds).toEqual(['idea-1', 'idea-2'])
+    })
+
+    it('derives a Late dashboard URL when publishedUrl is missing', async () => {
+      const meta = makeMetadata({ id: 'approve-dashboard-url', ideaIds: ['idea-1'], clipType: 'video', platform: 'linkedin' })
+      await createItem('approve-dashboard-url', meta, 'Dashboard URL fallback')
+
+      await approveItem('approve-dashboard-url', {
+        latePostId: 'late-dashboard',
+        scheduledFor: '2025-06-01T12:00:00Z',
+      })
+
+      expect(mockMarkPublished).toHaveBeenCalledTimes(1)
+      expect(mockMarkPublished).toHaveBeenCalledWith(1, expect.objectContaining({
+        latePostId: 'late-dashboard',
+        lateUrl: 'https://app.late.co/dashboard/post/late-dashboard',
+      }))
+    })
+
+    it('normalizes twitter platform to x when writing idea publish records', async () => {
+      const meta = makeMetadata({ id: 'approve-twitter', ideaIds: ['idea-x'], clipType: 'video', platform: 'twitter' })
+      await createItem('approve-twitter', meta, 'Twitter normalization test')
+
+      await approveItem('approve-twitter', {
+        latePostId: 'late-twitter',
+        scheduledFor: '2025-06-01T12:00:00Z',
+      })
+
+      expect(mockMarkPublished).toHaveBeenCalledTimes(1)
+      expect(mockMarkPublished).toHaveBeenCalledWith(99, expect.objectContaining({
+        platform: 'x',
+        queueItemId: 'approve-twitter',
+      }))
     })
 
     it('falls back to copy+delete when rename fails with EPERM', async () => {

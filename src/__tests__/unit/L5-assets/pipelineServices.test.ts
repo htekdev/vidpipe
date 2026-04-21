@@ -15,9 +15,15 @@ const mockMarkProcessing = vi.hoisted(() => vi.fn())
 const mockMarkCompleted = vi.hoisted(() => vi.fn())
 const mockMarkFailed = vi.hoisted(() => vi.fn())
 const mockBuildPublishQueue = vi.hoisted(() => vi.fn())
-const mockCommitAndPush = vi.hoisted(() => vi.fn())
+const mockGenerateIdeas = vi.hoisted(() => vi.fn())
 const mockScheduleAgent = vi.hoisted(() => vi.fn().mockImplementation(function(this: Record<string, unknown>) {
   this.run = vi.fn()
+}))
+const mockAgendaAgent = vi.hoisted(() => vi.fn().mockImplementation(function(this: Record<string, unknown>) {
+  this.generate = vi.fn()
+}))
+const mockIdeaDiscoveryAgent = vi.hoisted(() => vi.fn().mockImplementation(function(this: Record<string, unknown>) {
+  this.discover = vi.fn()
 }))
 
 vi.mock('../../../L4-agents/pipelineServiceBridge.js', () => ({
@@ -34,16 +40,28 @@ vi.mock('../../../L4-agents/pipelineServiceBridge.js', () => ({
   markCompleted: mockMarkCompleted,
   markFailed: mockMarkFailed,
   buildPublishQueue: mockBuildPublishQueue,
-  commitAndPush: mockCommitAndPush,
+}))
+
+vi.mock('../../../L4-agents/IdeationAgent.js', () => ({
+  generateIdeas: mockGenerateIdeas,
 }))
 
 vi.mock('../../../L4-agents/ScheduleAgent.js', () => ({
   ScheduleAgent: mockScheduleAgent,
 }))
 
+vi.mock('../../../L4-agents/AgendaAgent.js', () => ({
+  AgendaAgent: mockAgendaAgent,
+}))
+
+vi.mock('../../../L4-agents/IdeaDiscoveryAgent.js', () => ({
+  IdeaDiscoveryAgent: mockIdeaDiscoveryAgent,
+}))
+
 import {
   costTracker, markPending, markProcessing, markCompleted, markFailed,
-  buildPublishQueue, commitAndPush, createScheduleAgent,
+  buildPublishQueue, generateIdeas, createScheduleAgent,
+  createAgendaAgent, createIdeaDiscoveryAgent,
 } from '../../../L5-assets/pipelineServices.js'
 
 describe('L5 Unit: pipelineServices wrappers', () => {
@@ -90,15 +108,31 @@ describe('L5 Unit: pipelineServices wrappers', () => {
     expect(result).toEqual({ items: [] })
   })
 
-  it('commitAndPush delegates to L4', async () => {
-    mockCommitAndPush.mockResolvedValue(undefined)
-    await commitAndPush('/dir', 'msg')
-    expect(mockCommitAndPush).toHaveBeenCalledWith('/dir', 'msg')
+  it('generateIdeas delegates to L4 IdeationAgent module', async () => {
+    const ideas = [{ id: 'idea-1', title: 'Ship an ideation CLI' }]
+    mockGenerateIdeas.mockResolvedValue(ideas)
+
+    await expect(generateIdeas({ count: 2 })).resolves.toEqual(ideas)
+    expect(mockGenerateIdeas).toHaveBeenCalledWith({ count: 2 })
   })
 
   it('createScheduleAgent delegates to L4 ScheduleAgent constructor', () => {
     const agent = createScheduleAgent()
     expect(mockScheduleAgent).toHaveBeenCalledOnce()
+    expect(agent).toBeDefined()
+  })
+
+  it('createAgendaAgent delegates to L4 AgendaAgent constructor', () => {
+    const ideas = [{ issueNumber: 42 }, { issueNumber: 43 }] as never[]
+    const agent = createAgendaAgent(ideas)
+    expect(mockAgendaAgent).toHaveBeenCalledWith(ideas)
+    expect(agent).toBeDefined()
+  })
+
+  it('createIdeaDiscoveryAgent delegates to L4 IdeaDiscoveryAgent constructor', () => {
+    const opts = { shorts: [], mediumClips: [], transcript: [], summary: '', publishBy: '2026-04-01' }
+    const agent = createIdeaDiscoveryAgent(opts as never)
+    expect(mockIdeaDiscoveryAgent).toHaveBeenCalledWith(opts)
     expect(agent).toBeDefined()
   })
 })

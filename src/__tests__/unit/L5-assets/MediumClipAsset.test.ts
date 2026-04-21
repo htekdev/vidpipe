@@ -15,8 +15,14 @@ vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   readTextFile: vi.fn().mockResolvedValue(''),
 }))
 
-vi.mock('../../../L3-services/videoOperations/videoOperations.js', () => ({
+vi.mock('../../../L4-agents/videoServiceBridge.js', () => ({
   extractCompositeClip: (...args: unknown[]) => mockExtractCompositeClip(...args),
+  applyIntroOutro: vi.fn().mockImplementation(async (clipPath: string) => clipPath),
+}))
+
+const mockGenerateThumbnailForClip = vi.fn<(...args: unknown[]) => Promise<string | null>>()
+vi.mock('../../../L5-assets/thumbnailGeneration.js', () => ({
+  generateThumbnailForClip: (...args: unknown[]) => mockGenerateThumbnailForClip(...args),
 }))
 
 vi.mock('../../../L1-infra/paths/paths.js', () => ({
@@ -122,6 +128,72 @@ describe('MediumClipAsset', () => {
       const asset = new MediumClipAsset(makeParent(), makeClip(), '/medium-clips')
       const posts = await asset.getSocialPosts()
       expect(posts).toHaveLength(5)
+    })
+  })
+
+  describe('generateThumbnail', () => {
+    it('calls generateThumbnailForClip with clip context', async () => {
+      mockGenerateThumbnailForClip.mockResolvedValue('/medium-clips/test-medium/thumbnails/thumbnail.png')
+      const clip = makeClip({
+        captionedPath: '/medium-clips/test-medium/media-captioned.mp4',
+        tags: ['#test', '#medium'],
+      })
+      const asset = new MediumClipAsset(makeParent(), clip, '/medium-clips')
+
+      const result = await asset.generateThumbnail()
+
+      expect(mockGenerateThumbnailForClip).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Test Medium Clip',
+          description: 'A medium clip',
+          hook: 'Watch this!',
+          topics: ['#test', '#medium'],
+          videoPath: '/medium-clips/test-medium/media-captioned.mp4',
+          outputDir: '/medium-clips/test-medium/thumbnails',
+          contentType: 'medium-clips',
+        }),
+        undefined,
+      )
+      expect(result).toBe('/medium-clips/test-medium/thumbnails/thumbnail.png')
+      expect(clip.thumbnailPath).toBe('/medium-clips/test-medium/thumbnails/thumbnail.png')
+    })
+
+    it('uses outputPath as videoPath when captionedPath is undefined', async () => {
+      mockGenerateThumbnailForClip.mockResolvedValue('/medium-clips/test-medium/thumbnails/thumbnail.png')
+      const clip = makeClip({ captionedPath: undefined })
+      const asset = new MediumClipAsset(makeParent(), clip, '/medium-clips')
+
+      await asset.generateThumbnail()
+
+      expect(mockGenerateThumbnailForClip).toHaveBeenCalledWith(
+        expect.objectContaining({
+          videoPath: '/out/test-medium/media.mp4',
+        }),
+        undefined,
+      )
+    })
+
+    it('returns null when bridge returns null', async () => {
+      mockGenerateThumbnailForClip.mockResolvedValue(null)
+      const clip = makeClip()
+      const asset = new MediumClipAsset(makeParent(), clip, '/medium-clips')
+
+      const result = await asset.generateThumbnail()
+
+      expect(result).toBeNull()
+      expect(clip.thumbnailPath).toBeUndefined()
+    })
+
+    it('passes force flag from opts', async () => {
+      mockGenerateThumbnailForClip.mockResolvedValue('/out/thumbnail.png')
+      const asset = new MediumClipAsset(makeParent(), makeClip(), '/medium-clips')
+
+      await asset.generateThumbnail({ force: true })
+
+      expect(mockGenerateThumbnailForClip).toHaveBeenCalledWith(
+        expect.any(Object),
+        true,
+      )
     })
   })
 })

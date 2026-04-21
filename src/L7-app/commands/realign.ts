@@ -1,9 +1,11 @@
 import { initConfig } from '../../L1-infra/config/environment.js'
 import { buildRealignPlan, executeRealignPlan } from '../../L3-services/scheduler/realign.js'
+import logger from '../../L1-infra/logger/configLogger.js'
 
 export interface RealignCommandOptions {
   platform?: string
   dryRun?: boolean
+  queue?: boolean
 }
 
 function formatDate(iso: string): string {
@@ -39,6 +41,25 @@ export async function runRealign(options: RealignCommandOptions = {}): Promise<v
   initConfig()
 
   console.log('\n🔄 Realign Late Posts\n')
+
+  if (options.queue) {
+    // Queue-based reshuffle: update each queue with reshuffleExisting=true
+    console.log('  Using Late API queue reshuffle mode')
+    if (options.dryRun) {
+      console.log('  Mode: DRY RUN (no changes will be made)\n')
+    }
+    const { syncQueuesToLate } = await import('../../L3-services/queueSync/queueSync.js')
+    const result = await syncQueuesToLate({ reshuffle: true, dryRun: options.dryRun })
+    logger.info(`Queue reshuffle complete: ${result.updated.length} queues reshuffled`)
+    console.log(`  ✅ Queue reshuffle complete: ${result.updated.length} queues reshuffled`)
+    if (result.errors.length > 0) {
+      for (const err of result.errors) {
+        console.log(`  ❌ ${err.queueName}: ${err.error}`)
+      }
+    }
+    console.log()
+    return
+  }
 
   if (options.platform) {
     console.log(`  Platform filter: ${options.platform}`)

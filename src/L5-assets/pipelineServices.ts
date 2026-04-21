@@ -10,9 +10,12 @@ import {
   markCompleted as _markCompleted,
   markFailed as _markFailed,
   buildPublishQueue as _buildPublishQueue,
-  commitAndPush as _commitAndPush,
 } from '../L4-agents/pipelineServiceBridge.js'
 import { ScheduleAgent as _ScheduleAgent } from '../L4-agents/ScheduleAgent.js'
+import { generateIdeas as _generateIdeas } from '../L4-agents/IdeationAgent.js'
+import { InterviewAgent as _InterviewAgent } from '../L4-agents/InterviewAgent.js'
+import { AgendaAgent as _AgendaAgent } from '../L4-agents/AgendaAgent.js'
+import { IdeaDiscoveryAgent as _IdeaDiscoveryAgent } from '../L4-agents/IdeaDiscoveryAgent.js'
 
 // Re-export types (exempt from layer rules)
 export type { CostReport, QueueBuildResult } from '../L4-agents/pipelineServiceBridge.js'
@@ -48,9 +51,16 @@ export function buildPublishQueue(...args: Parameters<typeof _buildPublishQueue>
   return _buildPublishQueue(...args)
 }
 
-// Git operations
-export function commitAndPush(...args: Parameters<typeof _commitAndPush>): ReturnType<typeof _commitAndPush> {
-  return _commitAndPush(...args)
+// Ideation
+export function generateIdeas(...args: Parameters<typeof _generateIdeas>): ReturnType<typeof _generateIdeas> {
+  return _generateIdeas(...args)
+}
+
+// Interview agent factory
+export function createInterviewAgent(
+  ...args: ConstructorParameters<typeof _InterviewAgent>
+): InstanceType<typeof _InterviewAgent> {
+  return new _InterviewAgent(...args)
 }
 
 // Schedule agent factory
@@ -58,4 +68,18 @@ export function createScheduleAgent(
   ...args: ConstructorParameters<typeof _ScheduleAgent>
 ): InstanceType<typeof _ScheduleAgent> {
   return new _ScheduleAgent(...args)
+}
+
+// Agenda agent factory
+export function createAgendaAgent(
+  ...args: ConstructorParameters<typeof _AgendaAgent>
+): InstanceType<typeof _AgendaAgent> {
+  return new _AgendaAgent(...args)
+}
+
+// Idea discovery agent factory
+export function createIdeaDiscoveryAgent(
+  ...args: ConstructorParameters<typeof _IdeaDiscoveryAgent>
+): InstanceType<typeof _IdeaDiscoveryAgent> {
+  return new _IdeaDiscoveryAgent(...args)
 }

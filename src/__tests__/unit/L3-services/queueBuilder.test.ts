@@ -116,6 +116,22 @@ describe('queueBuilder', () => {
     expect(mockCreateItem).toHaveBeenCalledTimes(1);
   });
 
+  it('stamps idea IDs onto queue metadata when provided', async () => {
+    const { buildPublishQueue } = await getModule();
+    const post = createPost(Platform.YouTube);
+    mockReadTextFile.mockResolvedValue('---\nplatform: youtube\n---\nPost content here');
+
+    await buildPublishQueue(mockVideo, [], [], [post], '/captioned.mp4', ['idea-1', 'idea-2']);
+
+    expect(mockCreateItem).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ ideaIds: ['idea-1', 'idea-2'] }),
+      expect.any(String),
+      expect.any(String),
+      undefined,
+    );
+  });
+
   it('skips already published items', async () => {
     const { buildPublishQueue } = await getModule();
     mockItemExists.mockResolvedValue('published');
@@ -202,6 +218,7 @@ describe('queueBuilder', () => {
       expect.objectContaining({ mediaType: 'image' }),
       expect.any(String),
       expect.stringContaining('cover.png'),
+      undefined,
     );
   });
 
@@ -223,6 +240,7 @@ describe('queueBuilder', () => {
       expect.objectContaining({ mediaType: 'image' }),
       expect.any(String),
       expect.stringContaining('cover.png'),
+      undefined,
     );
   });
 
@@ -240,6 +258,7 @@ describe('queueBuilder', () => {
       expect.any(String),
       expect.objectContaining({ sourceMediaPath: null }),
       expect.any(String),
+      undefined,
       undefined,
     );
   });
@@ -289,6 +308,58 @@ describe('queueBuilder', () => {
 
     // No shortSlug in frontmatter → video-level post
     expect(result.itemsCreated).toBe(1);
+  });
+
+  describe('per-clip ideaIssueNumber', () => {
+    it('uses clip ideaIssueNumber when set on ShortClip', async () => {
+      const { buildPublishQueue } = await getModule();
+      mockReadTextFile.mockResolvedValue('---\nplatform: tiktok\nshortSlug: short-1\n---\nShort post');
+
+      const shortWithIdea: ShortClip = { ...mockShort, ideaIssueNumber: 42 };
+      const post = createPost(Platform.TikTok, 'short-1');
+
+      await buildPublishQueue(mockVideo, [shortWithIdea], [], [post], undefined, ['global-idea']);
+
+      const metadataArg = mockCreateItem.mock.calls[0][1];
+      expect(metadataArg.ideaIds).toEqual(['42']);
+    });
+
+    it('uses clip ideaIssueNumber when set on MediumClip', async () => {
+      const { buildPublishQueue } = await getModule();
+      mockReadTextFile.mockResolvedValue('---\nplatform: youtube\nshortSlug: medium-1\n---\nMedium post');
+
+      const mediumWithIdea: MediumClip = { ...mockMediumClip, ideaIssueNumber: 99 };
+      const post = createPost(Platform.YouTube, 'medium-1');
+
+      await buildPublishQueue(mockVideo, [], [mediumWithIdea], [post], undefined, ['global-idea']);
+
+      const metadataArg = mockCreateItem.mock.calls[0][1];
+      expect(metadataArg.ideaIds).toEqual(['99']);
+    });
+
+    it('falls back to global ideaIds when clip has no ideaIssueNumber', async () => {
+      const { buildPublishQueue } = await getModule();
+      mockReadTextFile.mockResolvedValue('---\nplatform: tiktok\nshortSlug: short-1\n---\nShort post');
+
+      const post = createPost(Platform.TikTok, 'short-1');
+
+      await buildPublishQueue(mockVideo, [mockShort], [], [post], undefined, ['global-idea']);
+
+      const metadataArg = mockCreateItem.mock.calls[0][1];
+      expect(metadataArg.ideaIds).toEqual(['global-idea']);
+    });
+
+    it('has undefined ideaIds when neither clip nor global ideaIds are set', async () => {
+      const { buildPublishQueue } = await getModule();
+      mockReadTextFile.mockResolvedValue('---\nplatform: tiktok\nshortSlug: short-1\n---\nShort post');
+
+      const post = createPost(Platform.TikTok, 'short-1');
+
+      await buildPublishQueue(mockVideo, [mockShort], [], [post], undefined);
+
+      const metadataArg = mockCreateItem.mock.calls[0][1];
+      expect(metadataArg.ideaIds).toBeUndefined();
+    });
   });
 
   it('resolves Instagram short with feed variant fallback', async () => {

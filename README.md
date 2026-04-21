@@ -9,16 +9,16 @@
    ╚═══╝  ╚═╝╚═════╝ ╚═╝     ╚═╝╚═╝     ╚══════╝
 ```
 
-**Your AI video editor — turn raw recordings into shorts, reels, captions, social posts, and blog posts. Record once, publish everywhere.**
+**Your AI video editor and content ideation engine — turn raw recordings into shorts, reels, captions, social posts, and blog posts. Ideate, record, edit, publish.**
 
-An agentic video editor that watches for new recordings and edits them into social-media-ready content — shorts, reels, captions, blog posts, and platform-tailored social posts — using [GitHub Copilot SDK](https://github.com/github/copilot-sdk) AI agents and OpenAI Whisper.
+An agentic video editor and content ideation platform that watches for new recordings and edits them into social-media-ready content — shorts, reels, captions, blog posts, and platform-tailored social posts — using [GitHub Copilot SDK](https://github.com/github/copilot-sdk) AI agents, OpenAI Whisper, and Google Gemini.
 
 [![CI](https://github.com/htekdev/vidpipe/actions/workflows/ci.yml/badge.svg)](https://github.com/htekdev/vidpipe/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/vidpipe)](https://www.npmjs.com/package/vidpipe)
 [![Node.js 20+](https://img.shields.io/badge/node-20%2B-brightgreen)](https://nodejs.org/)
 [![License: ISC](https://img.shields.io/badge/license-ISC-blue)](./LICENSE)
 [![Docs](https://img.shields.io/badge/docs-vidpipe-a78bfa)](https://htekdev.github.io/vidpipe/)
-[![Last Updated](https://img.shields.io/badge/last_updated-February_2026-informational)](.)
+[![Last Updated](https://img.shields.io/badge/last_updated-March_2026-informational)](.)
 
 </div>
 
@@ -38,28 +38,32 @@ npm install -g vidpipe
 
 <table>
   <tr>
+    <td>💡 <b>Content Ideation (ID8)</b> — AI-generated, trend-backed video ideas</td>
     <td>🎙️ <b>Whisper Transcription</b> — Word-level timestamps</td>
+  </tr>
+  <tr>
     <td>📐 <b>Split-Screen Layouts</b> — Portrait, square, and feed</td>
-  </tr>
-  <tr>
     <td>🔇 <b>AI Silence Removal</b> — Context-aware, capped at 20%</td>
+  </tr>
+  <tr>
     <td>💬 <b>Karaoke Captions</b> — Word-by-word highlighting</td>
+    <td>✂️ <b>Short Clips</b> — Best 15–60s moments, hook-first ordering</td>
   </tr>
   <tr>
-    <td>✂️ <b>Short Clips</b> — Best 15–60s moments, multi-segment</td>
     <td>🎞️ <b>Medium Clips</b> — 1–3 min with crossfade transitions</td>
-  </tr>
-  <tr>
     <td>📑 <b>Chapter Detection</b> — JSON, Markdown, YouTube, FFmeta</td>
+  </tr>
+  <tr>
     <td>📱 <b>Social Posts</b> — TikTok, YouTube, Instagram, LinkedIn, X</td>
-  </tr>
-  <tr>
     <td>📰 <b>Blog Post</b> — Dev.to style with web-sourced links</td>
-    <td>🎨 <b>Brand Voice</b> — Custom tone, hashtags via brand.json</td>
   </tr>
   <tr>
+    <td>🎨 <b>Brand Voice</b> — Custom tone, hashtags via brand.json</td>
     <td>🔍 <b>Face Detection</b> — ONNX-based webcam cropping</td>
-    <td>🚀 <b>Auto-Publish</b> — Scheduled posting to TikTok, YouTube, Instagram, LinkedIn, X</td>
+  </tr>
+  <tr>
+    <td>🚀 <b>Auto-Publish</b> — Scheduled posting via Late API</td>
+    <td>👁️ <b>Gemini Vision</b> — AI video analysis and scene detection</td>
   </tr>
 </table>
 
@@ -89,6 +93,12 @@ vidpipe /path/to/video.mp4
 # Watch a folder for new recordings
 vidpipe --watch-dir ~/Videos/Recordings
 
+# Generate a saved idea bank for future recordings
+vidpipe ideate --topics "GitHub Copilot, Azure, TypeScript" --count 4
+
+# Add a single idea with AI enrichment
+vidpipe ideate --add --topic "Building CI/CD with GitHub Actions"
+
 # Full example with options
 vidpipe \
   --watch-dir ~/Videos/Recordings \
@@ -115,27 +125,60 @@ vidpipe [options] [video-path]
 vidpipe init              # Interactive setup wizard
 vidpipe review            # Open post review web app
 vidpipe schedule          # View posting schedule
+vidpipe realign           # Realign scheduled posts to match schedule.json
+vidpipe realign --queue   # Queue-based realignment (reshuffleExisting)
+vidpipe sync-queues       # Sync schedule.json queue definitions to Late API
+vidpipe reschedule        # Reschedule idea-linked posts for optimal placement
+vidpipe ideate            # Generate or list saved content ideas
+vidpipe chat              # Interactive schedule management agent
+vidpipe doctor            # Check all prerequisites
 ```
+
+### Process Options
 
 | Option | Description |
 |--------|-------------|
-| `--doctor` | Check that all prerequisites (FFmpeg, API keys, etc.) are installed and configured |
 | `[video-path]` | Process a specific video file (implies `--once`) |
 | `--watch-dir <path>` | Folder to watch for new recordings |
 | `--output-dir <path>` | Output directory (default: `./recordings`) |
 | `--openai-key <key>` | OpenAI API key |
 | `--exa-key <key>` | Exa AI key for web search in social posts |
 | `--brand <path>` | Path to `brand.json` (default: `./brand.json`) |
+| `--ideas <ids>` | Comma-separated idea IDs to link to this video |
 | `--once` | Process next video and exit |
 | `--no-silence-removal` | Skip silence removal |
 | `--no-shorts` | Skip short clip extraction |
 | `--no-medium-clips` | Skip medium clip generation |
 | `--no-social` | Skip social media posts |
 | `--no-social-publish` | Skip social media queue-build stage |
-| `--late-api-key <key>` | Override Late API key |
 | `--no-captions` | Skip caption generation/burning |
-| `--no-git` | Skip git commit/push |
+| `--late-api-key <key>` | Override Late API key |
 | `-v, --verbose` | Debug-level logging |
+| `--progress` | Emit structured JSON progress events to stderr |
+| `--doctor` | Check that all prerequisites are installed |
+
+### Ideate Options
+
+| Option | Description |
+|--------|-------------|
+| `--topics <topics>` | Comma-separated seed topics for trend research |
+| `--count <n>` | Number of ideas to generate (default: 5) |
+| `--list` | List existing ideas instead of generating |
+| `--status <status>` | Filter by status: `draft`, `ready`, `recorded`, `published` |
+| `--format <format>` | Output format: `table` (default) or `json` |
+| `--output <dir>` | Ideas directory (default: `./ideas`) |
+| `--brand <path>` | Brand config path (default: `./brand.json`) |
+| `--add` | Create a single idea (AI-enriched by default) |
+| `--topic <topic>` | Topic for the idea (required with `--add`) |
+| `--hook <hook>` | Opening hook (AI-generated if omitted) |
+| `--audience <audience>` | Target audience (default: `"developers"`) |
+| `--platforms <list>` | Comma-separated platforms: `youtube,tiktok,instagram,linkedin,x` |
+| `--key-takeaway <msg>` | Core message (AI-generated if omitted) |
+| `--talking-points <list>` | Comma-separated talking points |
+| `--tags <list>` | Comma-separated categorization tags |
+| `--publish-by <date>` | Publish-by date (default: 14 days from now) |
+| `--trend-context <text>` | Trend research context |
+| `--no-ai` | Skip AI research agent, use CLI values + defaults |
 
 ---
 
@@ -186,6 +229,69 @@ recordings/
 
 ---
 
+## 💡 Content Ideation (ID8)
+
+VidPipe includes a research-backed content ideation engine that generates video ideas before you record. Ideas are stored as GitHub Issues for full lifecycle tracking.
+
+```bash
+# Generate ideas backed by trend research
+vidpipe ideate --topics "GitHub Copilot, TypeScript" --count 4
+
+# List all saved ideas
+vidpipe ideate --list
+
+# Filter by status
+vidpipe ideate --list --status ready
+
+# JSON output for programmatic access (e.g., VidRecord integration)
+vidpipe ideate --list --format json
+
+# Link ideas to a recording
+vidpipe process video.mp4 --ideas 12,15
+```
+
+### Manual Idea Creation
+
+Add a single idea with AI enrichment or direct CLI values:
+
+```bash
+# AI-researched — full IdeationAgent with MCP research tools
+vidpipe ideate --add --topic "Building CI/CD with GitHub Actions"
+
+# Direct — skip AI, use CLI flags + defaults
+vidpipe ideate --add --topic "Quick Demo" --no-ai --hook "Ship it live" --audience "developers"
+
+# JSON output for programmatic consumers (e.g., VidRecord Electron app)
+vidpipe ideate --add --topic "My Topic" --format json
+```
+
+### How It Works
+
+The **IdeationAgent** uses MCP tools (Exa web search, YouTube, Perplexity) to research trending topics in your niche before generating ideas. Each idea includes:
+
+- **Topic & hook** — The angle that makes it compelling
+- **Audience & key takeaway** — Who it's for and what they'll learn
+- **Talking points** — Structured bullet points to guide your recording
+- **Publish-by date** — Based on timeliness (3–5 days for hot trends, months for evergreen)
+- **Trend context** — The research findings that back the idea
+
+### Idea Lifecycle
+
+```
+draft → ready → recorded → published
+```
+
+| Status | Meaning |
+|--------|---------|
+| `draft` | Generated by AI, awaiting your review |
+| `ready` | Approved — ready to record |
+| `recorded` | Linked to a video via `--ideas` flag |
+| `published` | Content from this idea has been published |
+
+Ideas automatically influence downstream content — when you link ideas to a recording with `--ideas`, the pipeline's agents (shorts, social posts, summaries, blog) reference your intended topic and hook for more focused output.
+
+---
+
 ## 📺 Review App
 
 VidPipe includes a built-in web app for reviewing, editing, and scheduling social media posts before publishing.
@@ -225,13 +331,12 @@ graph LR
     K --> L[📱 Medium Posts]
     L --> M[📰 Blog]
     M --> N[📦 Queue Build]
-    N --> O[🔄 Git Push]
 
     style A fill:#2d5a27,stroke:#4ade80
     style B fill:#1e3a5f,stroke:#60a5fa
     style E fill:#5a2d27,stroke:#f87171
     style F fill:#5a4d27,stroke:#fbbf24
-    style O fill:#2d5a27,stroke:#4ade80
+    style N fill:#2d5a27,stroke:#4ade80
 ```
 
 | # | Stage | Description |
@@ -250,9 +355,30 @@ graph LR
 | 12 | **Medium Clip Posts** | Per-medium-clip social media posts for all 5 platforms |
 | 13 | **Blog** | Dev.to blog post with frontmatter, web-sourced links via Exa |
 | 14 | **Queue Build** | Builds publish queue from social posts with scheduled slots |
-| 15 | **Git Push** | Auto-commits and pushes to `origin main` |
 
 Each stage can be independently skipped with `--no-*` flags. A stage failure does not abort the pipeline — subsequent stages proceed with whatever data is available.
+
+### Progress Events
+
+Pass `--progress` to emit structured JSONL progress events to stderr while normal logs continue on stdout:
+
+```bash
+vidpipe process video.mp4 --progress 2>progress.jsonl
+```
+
+Each line is a self-contained JSON object:
+
+```jsonl
+{"event":"pipeline:start","videoPath":"video.mp4","totalStages":16,"timestamp":"..."}
+{"event":"stage:start","stage":"ingestion","stageNumber":1,"totalStages":16,"name":"Ingestion","timestamp":"..."}
+{"event":"stage:complete","stage":"ingestion","stageNumber":1,"totalStages":16,"name":"Ingestion","duration":423,"success":true,"timestamp":"..."}
+{"event":"stage:skip","stage":"shorts","stageNumber":7,"totalStages":16,"name":"Shorts","reason":"SKIP_SHORTS","timestamp":"..."}
+{"event":"pipeline:complete","totalDuration":45000,"stagesCompleted":14,"stagesFailed":0,"stagesSkipped":2,"timestamp":"..."}
+```
+
+Event types: `pipeline:start`, `stage:start`, `stage:complete`, `stage:error`, `stage:skip`, `pipeline:complete`.
+
+Integrating tools can read stderr line-by-line to display a live progress UI (e.g., "Stage 3/16: Silence Removal").
 
 ---
 
@@ -286,6 +412,8 @@ OUTPUT_DIR=/path/to/output
 # FFMPEG_PATH=/usr/local/bin/ffmpeg
 # FFPROBE_PATH=/usr/local/bin/ffprobe
 # LATE_API_KEY=sk_your_key_here   # Optional: Late API for social publishing
+# GITHUB_TOKEN=ghp_...            # Optional: GitHub token for ID8 idea storage
+# IDEAS_REPO=owner/repo           # Optional: GitHub repo for storing ideas as Issues
 ```
 
 Social media publishing is configured via `schedule.json` and the Late API. See [Social Publishing Guide](./docs/social-publishing.md) for details.
@@ -301,12 +429,29 @@ Social media publishing is configured via `schedule.json` and the Late API. See 
 | [FFmpeg Setup](./docs/ffmpeg-setup.md) | Platform-specific install (Windows, macOS, Linux, ARM64) |
 | [Brand Customization](./docs/brand-customization.md) | Customize AI voice, vocabulary, hashtags, and content style |
 | [Social Publishing](./docs/social-publishing.md) | Review, schedule, and publish social posts via Late API |
+| [Architecture (L0–L7)](./docs/architecture/layers.md) | Layer hierarchy, import rules, and testing strategy |
+| [Platform Content Strategy](./docs/platform-content-strategy.md) | Research-backed recommendations per social platform |
+
+Full reference docs are available at [htekdev.github.io/vidpipe](https://htekdev.github.io/vidpipe/).
 
 ---
 
 ## 🏗️ Architecture
 
-Agentic architecture built on the [GitHub Copilot SDK](https://github.com/github/copilot-sdk) — each editing task is handled by a specialized AI agent:
+VidPipe uses a strict **L0–L7 layered architecture** where each layer can only import from specific lower layers. This enforces clean separation of concerns and makes every layer independently testable.
+
+```
+L7-app         CLI, servers, watchers          → L0, L1, L3, L6
+L6-pipeline    Stage orchestration             → L0, L1, L5
+L5-assets      Lazy-loaded asset + bridges     → L0, L1, L4
+L4-agents      LLM agents (BaseAgent)          → L0, L1, L3
+L3-services    Business logic + cost tracking  → L0, L1, L2
+L2-clients     External API/process wrappers   → L0, L1
+L1-infra       Infrastructure (config, logger) → L0
+L0-pure        Pure functions, zero I/O        → (nothing)
+```
+
+Each editing task is handled by a specialized AI agent built on the [GitHub Copilot SDK](https://github.com/github/copilot-sdk):
 
 ```mermaid
 graph TD
@@ -317,6 +462,7 @@ graph TD
     BP --> CA[ChapterAgent]
     BP --> SMA[SocialMediaAgent]
     BP --> BA[BlogAgent]
+    BP --> IA[IdeationAgent]
 
     SRA -->|tools| T1[detect_silence, decide_removals]
     SHA -->|tools| T2[plan_shorts]
@@ -325,11 +471,13 @@ graph TD
     SA -->|tools| T5[capture_frame, write_summary]
     SMA -->|tools| T6[search_links, create_posts]
     BA -->|tools| T7[search_web, write_blog]
+    IA -->|tools| T8[web_search, youtube_search, generate_ideas]
 
     style BP fill:#1e3a5f,stroke:#60a5fa,color:#fff
+    style IA fill:#5a4d27,stroke:#fbbf24,color:#fff
 ```
 
-Each agent communicates with the LLM through structured tool calls, ensuring reliable, parseable outputs.
+Each agent communicates with the LLM through structured tool calls, ensuring reliable, parseable outputs. See the [Architecture Guide](./docs/architecture/layers.md) for full details on layer rules and import enforcement.
 
 ---
 
@@ -340,23 +488,28 @@ Each agent communicates with the LLM through structured tool calls, ensuring rel
 | [TypeScript](https://www.typescriptlang.org/) | Language (ES2022, ESM) |
 | [GitHub Copilot SDK](https://github.com/github/copilot-sdk) | AI agent framework |
 | [OpenAI Whisper](https://platform.openai.com/docs/guides/speech-to-text) | Speech-to-text |
+| [Google Gemini](https://ai.google.dev/) | Vision-based video analysis |
 | [FFmpeg](https://ffmpeg.org/) | Video/audio processing |
 | [Sharp](https://sharp.pixelplumbing.com/) | Image analysis (webcam detection) |
+| [Octokit](https://github.com/octokit/octokit.js) | GitHub API (idea storage as Issues) |
 | [Commander.js](https://github.com/tj/commander.js) | CLI framework |
 | [Chokidar](https://github.com/paulmillr/chokidar) | File system watching |
 | [Winston](https://github.com/winstonjs/winston) | Logging |
-| [Exa AI](https://exa.ai/) | Web search for social posts and blog |
+| [Exa AI](https://exa.ai/) | Web search for social posts, blog, and ideation |
 
 ---
 
 ## 🗺️ Roadmap
 
 - [x] **Automated social posting** — Publish directly to platforms via Late API
+- [x] **Content ideation (ID8)** — AI-generated, trend-backed video ideas with lifecycle tracking
+- [x] **Gemini Vision integration** — AI-powered video analysis and scene detection
+- [x] **L0–L7 layered architecture** — Strict separation of concerns with import enforcement
+- [x] **GitHub agentic workflows** — Automated issue and PR triage via GitHub Actions
+- [x] **Hook-first clip ordering** — Most engaging moment plays first in shorts
 - [ ] **Multi-language support** — Transcription and summaries in multiple languages
 - [ ] **Custom templates** — User-defined Markdown & social post templates
-- [ ] **Web dashboard** — Browser UI for reviewing and editing outputs
 - [ ] **Batch processing** — Process an entire folder of existing videos
-- [ ] **Custom short criteria** — Configure what makes a "good" short for your content
 - [ ] **Thumbnail generation** — Auto-generate branded thumbnails for shorts
 
 ---
@@ -381,4 +534,37 @@ Run `vidpipe doctor` to verify your setup.
 ## 📄 License
 
 ISC © [htekdev](https://github.com/htekdev)
+
+---
+
+## 🧩 SDK Usage
+
+VidPipe also ships as a Node.js ESM SDK for programmatic use:
+
+```ts
+import { createVidPipe } from 'vidpipe'
+
+const vidpipe = createVidPipe({
+  openaiApiKey: process.env.OPENAI_API_KEY,
+  outputDir: './recordings',
+})
+
+const result = await vidpipe.processVideo('./videos/demo.mp4', {
+  skipGit: true,
+})
+
+console.log(result.video.videoDir)
+console.log(result.shorts.length)
+```
+
+SDK features include:
+
+- `processVideo()` for the full pipeline
+- `ideate()` plus `ideas.*` CRUD helpers
+- `schedule.*` helpers for slots, calendar, and realignment
+- `video.*` helpers for clips, captions, silence detection, variants, and frames
+- `social.generatePosts()` for quick platform-specific drafts
+- `doctor()` and `config.*` for diagnostics and configuration access
+
+See [docs/sdk.md](./docs/sdk.md) for the full SDK guide.
 

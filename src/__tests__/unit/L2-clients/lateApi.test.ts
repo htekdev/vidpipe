@@ -39,6 +39,22 @@ function errorResponse(status: number, body = 'error') {
   }
 }
 
+function makeFakePost(overrides: Partial<{ status: string; isDraft: boolean }> = {}, index = 0) {
+  return {
+    _id: `post-${index}`,
+    content: `Post ${index}`,
+    status: overrides.status ?? 'scheduled',
+    platforms: [{ platform: 'tiktok', accountId: 'acct-1' }],
+    isDraft: overrides.isDraft,
+    createdAt: '2025-01-01T00:00:00Z',
+    updatedAt: '2025-01-01T00:00:00Z',
+  }
+}
+
+function makeFakePosts(count: number, overrides: Partial<{ status: string }> = {}, startIndex = 0) {
+  return Array.from({ length: count }, (_, i) => makeFakePost(overrides, startIndex + i))
+}
+
 // ── Tests ──────────────────────────────────────────────────────────────
 
 describe('LateApiClient', () => {
@@ -97,6 +113,30 @@ describe('LateApiClient', () => {
         scheduledFor: '2025-06-01T12:00:00Z',
       })
     })
+
+    it('passes thumbnail as string URL in mediaItems', async () => {
+      const newPost = {
+        _id: 'post-2',
+        content: 'Video post',
+        status: 'scheduled',
+        platforms: [{ platform: 'youtube', accountId: 'acct-1' }],
+        scheduledFor: '2025-06-01T12:00:00Z',
+        createdAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z',
+      }
+      mockFetch.mockResolvedValueOnce(jsonResponse({ post: newPost }))
+
+      await client.createPost({
+        content: 'Video post',
+        platforms: [{ platform: 'youtube', accountId: 'acct-1' }],
+        mediaItems: [{ type: 'video', url: 'https://cdn/video.mp4', thumbnail: 'https://cdn/thumb.jpg' }],
+      })
+
+      const [, opts] = mockFetch.mock.calls[0]
+      const body = JSON.parse(opts.body)
+      expect(body.mediaItems[0].thumbnail).toBe('https://cdn/thumb.jpg')
+      expect(typeof body.mediaItems[0].thumbnail).toBe('string')
+    })
   })
 
   describe('deletePost', () => {
@@ -114,6 +154,109 @@ describe('LateApiClient', () => {
       const [url, opts] = mockFetch.mock.calls[0]
       expect(url).toContain('/posts/post-abc')
       expect(opts.method).toBe('DELETE')
+    })
+  })
+
+  describe('getScheduledPosts', () => {
+    it('delegates to listPosts with status=scheduled', async () => {
+      const posts = [makeFakePost({ status: 'scheduled' })]
+      mockFetch.mockResolvedValueOnce(jsonResponse({ posts }))
+
+      const result = await client.getScheduledPosts()
+      expect(result).toEqual(posts)
+
+      const [url] = mockFetch.mock.calls[0]
+      expect(url).toContain('status=scheduled')
+    })
+
+    it('passes platform filter', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ posts: [] }))
+
+      await client.getScheduledPosts('tiktok')
+
+      const [url] = mockFetch.mock.calls[0]
+      expect(url).toContain('status=scheduled')
+      expect(url).toContain('platform=tiktok')
+    })
+
+    it('paginates across multiple pages', async () => {
+      const fullPage = makeFakePosts(100, { status: 'scheduled' })
+      const partialPage = makeFakePosts(37, { status: 'scheduled' }, 100)
+
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({ posts: fullPage }))
+        .mockResolvedValueOnce(jsonResponse({ posts: partialPage }))
+
+      const result = await client.getScheduledPosts('tiktok')
+      expect(result).toHaveLength(137)
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+
+      const [url1] = mockFetch.mock.calls[0]
+      const [url2] = mockFetch.mock.calls[1]
+      expect(url1).toContain('page=1')
+      expect(url2).toContain('page=2')
+    })
+  })
+
+  describe('getDraftPosts', () => {
+    it('delegates to listPosts with status=draft', async () => {
+      const posts = [makeFakePost({ status: 'draft', isDraft: true })]
+      mockFetch.mockResolvedValueOnce(jsonResponse({ posts }))
+
+      const result = await client.getDraftPosts()
+      expect(result).toEqual(posts)
+
+      const [url] = mockFetch.mock.calls[0]
+      expect(url).toContain('status=draft')
+    })
+
+    it('paginates across multiple pages', async () => {
+      const fullPage = makeFakePosts(100, { status: 'draft' })
+      const partialPage = makeFakePosts(23, { status: 'draft' }, 100)
+
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({ posts: fullPage }))
+        .mockResolvedValueOnce(jsonResponse({ posts: partialPage }))
+
+      const result = await client.getDraftPosts('youtube')
+      expect(result).toHaveLength(123)
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+
+      const [url1] = mockFetch.mock.calls[0]
+      expect(url1).toContain('platform=youtube')
+    })
+  })
+
+  describe('listPosts', () => {
+    it('stops after a single page when results < limit', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ posts: makeFakePosts(5) }))
+
+      const result = await client.listPosts({ status: 'scheduled' })
+      expect(result).toHaveLength(5)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+    })
+
+    it('accepts data field as alternative to posts', async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ data: makeFakePosts(3) }))
+
+      const result = await client.listPosts()
+      expect(result).toHaveLength(3)
+    })
+
+    it('includes limit and page params in each request', async () => {
+      const fullPage = makeFakePosts(100)
+
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({ posts: fullPage }))
+        .mockResolvedValueOnce(jsonResponse({ posts: [] }))
+
+      await client.listPosts({ status: 'scheduled', platform: 'tiktok' })
+
+      const [url1] = mockFetch.mock.calls[0]
+      const [url2] = mockFetch.mock.calls[1]
+      expect(url1).toContain('limit=100')
+      expect(url1).toContain('page=1')
+      expect(url2).toContain('page=2')
     })
   })
 

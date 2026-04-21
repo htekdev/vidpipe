@@ -1,9 +1,11 @@
 import { fileExists } from '../../L1-infra/fileSystem/fileSystem.js'
 import { getItem, approveItem, approveBulk } from '../../L3-services/postStore/postStore.js'
+import { getIdeasByIds } from '../../L3-services/ideation/ideaService.js'
 import { findNextSlot } from '../../L3-services/scheduler/scheduler.js'
 import { loadScheduleConfig } from '../../L3-services/scheduler/scheduleConfig.js'
 import { getAccountId } from '../../L3-services/socialPosting/accountMapping.js'
 import { createLateApiClient } from '../../L3-services/lateApi/lateApiService.js'
+import { getQueueId, getProfileId } from '../../L3-services/queueMapping/queueMapping.js'
 import { fromLatePlatform, normalizePlatformString } from '../../L0-pure/types/index.js'
 import logger from '../../L1-infra/logger/configLogger.js'
 
@@ -69,9 +71,84 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
   const results: ApprovalResult['results'] = []
   const rateLimitedPlatforms = new Set<string>()
 
-  for (const itemId of itemIds) {
+  interface EnrichedItem {
+    id: string
+    publishBy: string | null
+    hasIdeas: boolean
+    createdAt: string | null
+  }
+
+  const loadedItems = await Promise.all(
+    itemIds.map(async (id) => ({ id, item: await getItem(id) })),
+  )
+  const itemMap = new Map(loadedItems.map(({ id, item }) => [id, item]))
+
+  const allIdeaIds = new Set<string>()
+  for (const { item } of loadedItems) {
+    if (item?.metadata.ideaIds?.length) {
+      for (const ideaId of item.metadata.ideaIds) {
+        allIdeaIds.add(ideaId)
+      }
+    }
+  }
+
+  let ideaMap = new Map<string, { publishBy?: string }>()
+  if (allIdeaIds.size > 0) {
     try {
-      const item = await getItem(itemId)
+      const allIdeas = await getIdeasByIds([...allIdeaIds])
+      for (const idea of allIdeas) {
+        ideaMap.set(idea.id, idea)
+        ideaMap.set(String(idea.issueNumber), idea)
+      }
+    } catch {
+      // Fall through — enriched items will have no publishBy
+    }
+  }
+
+  const enriched: EnrichedItem[] = loadedItems.map(({ id, item }) => {
+    const createdAt = item?.metadata.createdAt ?? null
+    if (!item?.metadata.ideaIds?.length) {
+      return { id, publishBy: null, hasIdeas: false, createdAt }
+    }
+
+    const dates = item.metadata.ideaIds
+      .map((ideaId) => ideaMap.get(ideaId)?.publishBy)
+      .filter((publishBy): publishBy is string => Boolean(publishBy))
+      .sort()
+    return { id, publishBy: dates[0] ?? null, hasIdeas: true, createdAt }
+  })
+
+  enriched.sort((a, b) => {
+    // Tier 1: idea-linked items before non-idea items
+    if (a.hasIdeas && !b.hasIdeas) return -1
+    if (!a.hasIdeas && b.hasIdeas) return 1
+
+    // Tier 2: within idea items, soonest publishBy first
+    if (a.hasIdeas && b.hasIdeas) {
+      const aTime = a.publishBy ? new Date(a.publishBy).getTime() : Infinity
+      const bTime = b.publishBy ? new Date(b.publishBy).getTime() : Infinity
+      if (aTime !== bTime) return aTime - bTime
+
+      // Tier 3: same publishBy — earliest createdAt wins
+      if (a.createdAt && b.createdAt) {
+        const aCreated = new Date(a.createdAt).getTime()
+        const bCreated = new Date(b.createdAt).getTime()
+        if (aCreated !== bCreated) return aCreated - bCreated
+      }
+    }
+
+    return 0
+  })
+
+  const sortedIds = enriched.map((entry) => entry.id)
+  const publishByMap = new Map(
+    enriched.flatMap((entry) => (entry.publishBy ? [[entry.id, entry.publishBy] as const] : [])),
+  )
+
+  for (const itemId of sortedIds) {
+    const item = itemMap.get(itemId) ?? null
+
+    try {
       if (!item) {
         results.push({ itemId, success: false, error: 'Item not found' })
         continue
@@ -84,10 +161,31 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
         continue
       }
 
-      const slot = await findNextSlot(latePlatform, item.metadata.clipType)
-      if (!slot) {
-        results.push({ itemId, success: false, error: `No available slot for ${latePlatform}` })
-        continue
+      const ideaIds = item.metadata.ideaIds
+      const publishBy = publishByMap.get(itemId)
+
+      // Try queue-based scheduling first, fall back to manual slot calculation
+      const clipType = item.metadata.clipType || 'short'
+      const queueId = await getQueueId(latePlatform, clipType)
+      let slot: string | undefined
+      let useQueue = false
+
+      if (queueId) {
+        useQueue = true
+        // Queue-based scheduling: idea priority is preserved by the batch sort order above
+        // (idea-linked items processed first → get earlier queue slots via FIFO)
+        logger.debug(`Using Late queue ${queueId} for ${latePlatform}/${clipType} (idea priority via batch order)`)
+      } else {
+        // Fallback: no queue configured, use manual slot calculation with idea-aware scheduling
+        logger.debug(`No queue for ${latePlatform}/${clipType}, using local slot calculation`)
+        const foundSlot = ideaIds?.length
+          ? await findNextSlot(latePlatform, clipType, { ideaIds, publishBy })
+          : await findNextSlot(latePlatform, clipType)
+        slot = foundSlot ?? undefined
+        if (!slot) {
+          results.push({ itemId, success: false, error: `No available slot for ${latePlatform}` })
+          continue
+        }
       }
 
       const platform = fromLatePlatform(latePlatform)
@@ -97,7 +195,8 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
         continue
       }
 
-      let mediaItems: Array<{ type: 'image' | 'video'; url: string }> | undefined
+      let mediaItems: Array<{ type: 'image' | 'video'; url: string; thumbnail?: string }> | undefined
+      let platformSpecificData: Record<string, unknown> | undefined = item.metadata.platformSpecificData
       const effectiveMediaPath = item.mediaPath ?? item.metadata.sourceMediaPath
       if (effectiveMediaPath) {
         const mediaExists = await fileExists(effectiveMediaPath)
@@ -106,7 +205,30 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
             logger.info(`Using source media fallback for ${String(item.id).replace(/[\r\n]/g, '')}: ${String(item.metadata.sourceMediaPath).replace(/[\r\n]/g, '')}`)
           }
           const upload = await client.uploadMedia(effectiveMediaPath)
-          mediaItems = [{ type: upload.type, url: upload.url }]
+          const mediaItem: { type: 'image' | 'video'; url: string; thumbnail?: string } = { type: upload.type, url: upload.url }
+
+          // Upload thumbnail if available and attach to media item
+          const effectiveThumbnailPath = item.thumbnailPath ?? item.metadata.thumbnailPath
+          if (effectiveThumbnailPath && await fileExists(effectiveThumbnailPath)) {
+            try {
+              const thumbUpload = await client.uploadMedia(effectiveThumbnailPath)
+              const thumbUrl = thumbUpload.url
+
+              // YouTube: thumbnail field on mediaItems
+              mediaItem.thumbnail = thumbUrl
+
+              // Instagram: instagramThumbnail in platformSpecificData
+              if (latePlatform === 'instagram') {
+                platformSpecificData = { ...platformSpecificData, instagramThumbnail: thumbUrl }
+              }
+
+              logger.info(`Uploaded thumbnail for ${String(item.id).replace(/[\r\n]/g, '')}`)
+            } catch (thumbErr) {
+              logger.warn(`Failed to upload thumbnail for ${String(item.id).replace(/[\r\n]/g, '')}: ${thumbErr instanceof Error ? thumbErr.message : String(thumbErr)}`)
+            }
+          }
+
+          mediaItems = [mediaItem]
         }
       }
 
@@ -120,28 +242,35 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
         express_consent_given: true,
       } : undefined
 
-      const latePost = await client.createPost({
+      const profileId = useQueue ? await getProfileId() : undefined
+      const createParams: Parameters<typeof client.createPost>[0] = {
         content: item.postContent,
         platforms: [{ platform: latePlatform, accountId }],
-        scheduledFor: slot,
         timezone: schedConfig.timezone,
         isDraft: false,
         mediaItems,
-        platformSpecificData: item.metadata.platformSpecificData,
+        platformSpecificData,
         tiktokSettings,
-      })
+      }
+      if (useQueue) {
+        createParams.queuedFromProfile = profileId
+        createParams.queueId = queueId ?? undefined
+      } else {
+        createParams.scheduledFor = slot
+      }
+      const latePost = await client.createPost(createParams)
 
       publishDataMap.set(itemId, {
         latePostId: latePost._id,
-        scheduledFor: slot,
+        scheduledFor: latePost.scheduledFor ?? slot ?? '',
         publishedUrl: undefined,
         accountId,
       })
-      results.push({ itemId, success: true, scheduledFor: slot, latePostId: latePost._id })
+      results.push({ itemId, success: true, scheduledFor: latePost.scheduledFor ?? slot, latePostId: latePost._id })
     } catch (itemErr) {
       const itemMsg = itemErr instanceof Error ? itemErr.message : String(itemErr)
       if (itemMsg.includes('429') || itemMsg.includes('Daily post limit')) {
-        const latePlatform = normalizePlatformString((await getItem(itemId))?.metadata.platform ?? '')
+        const latePlatform = normalizePlatformString(item?.metadata.platform ?? '')
         rateLimitedPlatforms.add(latePlatform)
         logger.warn(`Approval queue: ${latePlatform} hit daily post limit, skipping remaining ${latePlatform} items`)
         results.push({ itemId, success: false, error: `${latePlatform} rate-limited` })

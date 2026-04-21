@@ -2,6 +2,8 @@ import type { ToolWithHandler } from '../L3-services/llm/providerFactory.js'
 import { BaseAgent } from './BaseAgent'
 import { VideoFile, Transcript, ShortClip, ShortSegment, ShortClipVariant, WebcamRegion } from '../L0-pure/types/index'
 import type { HookType, EmotionalTrigger, ShortNarrativeStructure } from '../L0-pure/types/index'
+import type { Idea, ClipConfig } from '../L0-pure/types/index.js'
+import { buildIdeaContext } from '../L0-pure/ideaContext/ideaContext.js'
 import { extractClip, extractCompositeClip, burnCaptions, generatePlatformVariants, type Platform } from '../L3-services/videoOperations/videoOperations.js'
 import { generateStyledASSForSegment, generateStyledASSForComposite, generatePortraitASSWithHook, generatePortraitASSWithHookComposite } from '../L0-pure/captions/captionGenerator'
 
@@ -35,7 +37,41 @@ interface PlannedShort {
 
 // ── System prompt ───────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT = `You are a viral short-form video strategist. Your job is to analyze a video transcript with word-level timestamps and extract the **most compelling, shareable moments** as shorts (15–60 seconds each).
+function buildShortsSystemPrompt(clipConfig?: ClipConfig): string {
+  const minDuration = clipConfig?.duration?.min ?? 15
+  const maxDuration = clipConfig?.duration?.max ?? 60
+  const minViralScore = clipConfig?.minViralScore ?? 8
+  const maxClips = clipConfig?.maxClips ?? 5
+  const strategy = clipConfig?.strategy ?? 'hook-first'
+  const isHookFirst = strategy === 'hook-first'
+
+  const hookFirstSection = isHookFirst ? `
+### Hook-First Video Ordering
+
+If a short's natural content flows A→B→C→D, the final short should play as D→A→B→C — the **payoff moment (D) is moved to the front as the hook**, then the content plays from the beginning up to that point. The hook does NOT repeat.
+
+**How to implement:**
+1. Plan the content as normal (full story A→D)
+2. Identify the single most arresting 2-5 second moment — usually the payoff, punchline, or emotional peak
+3. That moment becomes the FIRST segment in the segments array
+4. The remaining content plays chronologically from start to just before the hook
+5. Example: content [120s–150s], best moment [145s–150s] → segments: [{start: 145, end: 150}, {start: 120, end: 145}]
+
+**Hook quality rules (NEVER violate):**
+- The hook segment MUST start and end on a **complete sentence or clause boundary**
+- The hook MUST be a **self-contained, complete thought** — understandable without prior context
+- If no moment qualifies as a clean hook, **keep segments chronological** and use hook text only` : `
+### Chronological Video Ordering
+
+Segments MUST be ordered chronologically — preserve the original video timeline. Do NOT reorder segments for hook-first ordering. Instead, rely on a strong verbal hook (the \`hook\` text field) as a text overlay to capture attention in the first 3 seconds while the content plays in its natural order.
+
+**How to implement:**
+1. Plan the content as normal — segments play in order from the video
+2. Identify the most compelling hook text that teases the payoff
+3. All segments in the segments array must be in ascending time order
+4. The hook text overlay provides the attention-grab, not segment reordering`
+
+  return `You are a viral short-form video strategist. Your job is to analyze a video transcript with word-level timestamps and extract the **most compelling, shareable moments** as shorts (${minDuration}–${maxDuration} seconds each).
 
 ## Core Philosophy: Quality Over Quantity
 
@@ -52,7 +88,7 @@ Design every clip to maximize rewatches and shares, not passive likes.
 ## Your workflow
 1. Read the transcript and note the total duration.
 2. Work through the transcript **section by section**. For each chunk, identify moments with genuine viral potential.
-3. For each potential short, score it using the Viral Score Framework (see below). **Only extract clips scoring 8 or higher.**
+3. For each potential short, score it using the Viral Score Framework (see below). **Only extract clips scoring ${minViralScore} or higher.**
 4. Call **add_shorts** for each batch of qualifying shorts. You can call it as many times as needed.
 5. After your first pass, call **review_shorts** to see everything you've planned so far.
 6. Review critically: Would YOU share each of these? Could any be combined into stronger composites? Are there moments you underscored?
@@ -67,7 +103,7 @@ Viral Score = (Hook Strength × 3) + (Emotional Intensity × 2) +
               (Replay Potential × 2)
 
 Maximum score: 60  →  Normalized to 1-20 scale (divide by 3)
-Minimum to extract: 8/20
+Minimum to extract: ${minViralScore}/20
 \`\`\`
 
 | Factor | 1 (Weak) | 3 (Moderate) | 5 (Strong) |
@@ -103,22 +139,7 @@ Minimum to extract: 8/20
 | **result-first** | Show the outcome immediately, then explain how | Tutorials, before/after |
 | **bold-claim** | Make a specific, surprising statement of fact | Data-driven, authority content |
 | **question** | "Want to know why X?" — engage curiosity directly | Engagement-focused, relatable |
-
-### Hook-First Video Ordering
-
-If a short's natural content flows A→B→C→D, the final short should play as D→A→B→C — the **payoff moment (D) is moved to the front as the hook**, then the content plays from the beginning up to that point. The hook does NOT repeat.
-
-**How to implement:**
-1. Plan the content as normal (full story A→D)
-2. Identify the single most arresting 2-5 second moment — usually the payoff, punchline, or emotional peak
-3. That moment becomes the FIRST segment in the segments array
-4. The remaining content plays chronologically from start to just before the hook
-5. Example: content [120s–150s], best moment [145s–150s] → segments: [{start: 145, end: 150}, {start: 120, end: 145}]
-
-**Hook quality rules (NEVER violate):**
-- The hook segment MUST start and end on a **complete sentence or clause boundary**
-- The hook MUST be a **self-contained, complete thought** — understandable without prior context
-- If no moment qualifies as a clean hook, **keep segments chronological** and use hook text only
+${hookFirstSection}
 
 ## Narrative structures (classify every short)
 
@@ -169,14 +190,14 @@ Composites (multi-segment shorts) often make the **best** shorts:
 
 ## Rules
 
-1. Each short must be 15-60 seconds total duration.
+1. Each short must be ${minDuration}-${maxDuration} seconds total duration.
 2. Timestamps must align to word boundaries from the transcript.
 3. Prefer natural sentence boundaries for clean cuts.
 4. Every short needs a catchy, descriptive title (5-10 words).
 5. Tags should be lowercase, no hashes, 3-6 per short.
 6. A 1-second buffer is automatically added around each segment boundary.
 7. Avoid significant timestamp overlap between shorts.
-8. **Minimum viral score of 8/20 to extract.** Be ruthless about quality.
+8. **Minimum viral score of ${minViralScore}/20 to extract.** Be ruthless about quality.
 9. Every short MUST have a hook, hookType, emotionalTrigger, viralScore, narrativeStructure, and shareReason.
 
 ## Using Clip Direction
@@ -189,8 +210,11 @@ You may receive AI-generated clip direction with suggested shorts. Use these as 
 
 Before adding a short, ask yourself: **"Would I interrupt someone to show them this?"**
 - If YES → strong clip, add it
-- If "maybe, it's interesting" → score it honestly and only keep if ≥8
+- If "maybe, it's interesting" → score it honestly and only keep if ≥${minViralScore}
 - If NO → drop it, no matter how "complete" the topic coverage feels`
+}
+
+const SYSTEM_PROMPT = buildShortsSystemPrompt()
 
 // ── JSON Schema for the add_shorts tool ──────────────────────────────────────
 
@@ -265,8 +289,8 @@ class ShortsAgent extends BaseAgent {
   private plannedShorts: PlannedShort[] = []
   private isFinalized = false
 
-  constructor(model?: string) {
-    super('ShortsAgent', SYSTEM_PROMPT, undefined, model)
+  constructor(systemPrompt: string = SYSTEM_PROMPT, model?: string) {
+    super('ShortsAgent', systemPrompt, undefined, model)
   }
 
   protected resetForRetry(): void {
@@ -363,8 +387,13 @@ export async function generateShorts(
   model?: string,
   clipDirection?: string,
   webcamOverride?: WebcamRegion | null,
+  ideas?: Idea[],
+  clipConfig?: ClipConfig,
+  generateVariants?: boolean,
 ): Promise<ShortClip[]> {
-  const agent = new ShortsAgent(model)
+  const basePrompt = clipConfig ? buildShortsSystemPrompt(clipConfig) : SYSTEM_PROMPT
+  const systemPrompt = basePrompt + (ideas?.length ? buildIdeaContext(ideas) : '')
+  const agent = new ShortsAgent(systemPrompt, model)
 
   // Build prompt with full transcript including word-level timestamps
   const transcriptLines = transcript.segments.map((seg) => {
@@ -374,11 +403,13 @@ export async function generateShorts(
     return `[${seg.start.toFixed(2)}s – ${seg.end.toFixed(2)}s] ${seg.text}\nWords: ${words}`
   })
 
+  const minViralScore = clipConfig?.minViralScore ?? 8
+
   const promptParts = [
     `Analyze the following transcript (${transcript.duration.toFixed(0)}s total) and find the most viral-worthy moments for shorts.\n`,
     `Video: ${video.filename}`,
     `Duration: ${transcript.duration.toFixed(1)}s`,
-    `Focus on quality over quantity — only extract clips scoring 8+ on the viral score framework. Every clip must have a hook, hookType, emotionalTrigger, viralScore, narrativeStructure, and shareReason.\n`,
+    `Focus on quality over quantity — only extract clips scoring ${minViralScore}+ on the viral score framework. Every clip must have a hook, hookType, emotionalTrigger, viralScore, narrativeStructure, and shareReason.\n`,
     '--- TRANSCRIPT ---\n',
     transcriptLines.join('\n\n'),
     '\n--- END TRANSCRIPT ---',
@@ -450,24 +481,29 @@ export async function generateShorts(
       }
 
       // Generate platform-specific aspect ratio variants from UNCAPTIONED video
-      // so portrait/square crops are clean before captions are burned per-variant
-      let variants: ShortClipVariant[] | undefined
-      try {
-        const defaultPlatforms: Platform[] = ['tiktok', 'youtube-shorts', 'instagram-reels', 'instagram-feed', 'linkedin']
-        const results = await generatePlatformVariants(outputPath, shortsDir, shortSlug, defaultPlatforms, { webcamOverride })
-        if (results.length > 0) {
-          variants = results.map((v) => ({
-            path: v.path,
-            aspectRatio: v.aspectRatio,
-            platform: v.platform as ShortClipVariant['platform'],
-            width: v.width,
-            height: v.height,
-          }))
-          logger.info(`[ShortsAgent] Generated ${variants.length} platform variants for: ${plan.title}`)
+      // so portrait/square crops are clean before captions are burned per-variant.
+      // When variants === false (spec disables variant generation), skip entirely.
+      let clipVariants: ShortClipVariant[] | undefined
+      if (generateVariants !== false) {
+        try {
+          const defaultPlatforms: Platform[] = ['tiktok', 'youtube-shorts', 'instagram-reels', 'instagram-feed', 'linkedin']
+          const results = await generatePlatformVariants(outputPath, shortsDir, shortSlug, defaultPlatforms, { webcamOverride })
+          if (results.length > 0) {
+            clipVariants = results.map((v) => ({
+              path: v.path,
+              aspectRatio: v.aspectRatio,
+              platform: v.platform as ShortClipVariant['platform'],
+              width: v.width,
+              height: v.height,
+            }))
+            logger.info(`[ShortsAgent] Generated ${clipVariants.length} platform variants for: ${plan.title}`)
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          logger.warn(`[ShortsAgent] Platform variant generation failed for ${plan.title}: ${message}`)
         }
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        logger.warn(`[ShortsAgent] Platform variant generation failed for ${plan.title}: ${message}`)
+      } else {
+        logger.info(`[ShortsAgent] Skipping variant generation for: ${plan.title} (disabled by spec)`)
       }
 
       // Generate ASS captions for the landscape short and burn them in
@@ -490,9 +526,9 @@ export async function generateShorts(
       }
 
       // Burn portrait-style captions (green highlight, centered, hook overlay) onto portrait variant
-      if (variants) {
+      if (clipVariants) {
         // Burn captions for 9:16 portrait variants (tiktok, youtube-shorts, instagram-reels)
-        const portraitVariants = variants.filter(v => v.aspectRatio === '9:16')
+        const portraitVariants = clipVariants.filter(v => v.aspectRatio === '9:16')
         if (portraitVariants.length > 0) {
           try {
             const hookText = plan.hook ?? plan.title
@@ -515,7 +551,7 @@ export async function generateShorts(
         }
 
         // Burn captions for non-portrait variants (4:5 feed, 1:1 square)
-        const nonPortraitVariants = variants.filter(v => v.aspectRatio !== '9:16')
+        const nonPortraitVariants = clipVariants.filter(v => v.aspectRatio !== '9:16')
         for (const variant of nonPortraitVariants) {
           try {
             const variantAssContent = segments.length === 1
@@ -570,7 +606,7 @@ export async function generateShorts(
         description: plan.description,
         tags: plan.tags,
         hook: plan.hook,
-        variants,
+        variants: clipVariants,
         hookType: plan.hookType as HookType,
         emotionalTrigger: plan.emotionalTrigger as EmotionalTrigger,
         viralScore: plan.viralScore,

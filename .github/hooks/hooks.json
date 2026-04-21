@@ -1,89 +1,110 @@
 {
-  "version": 1,
   "hooks": {
-    "preToolUse": [
-      {
-        "type": "command",
-        "bash": ".github/hooks/pre-commit-block.sh",
-        "powershell": ".github/hooks/pre-commit-block.ps1",
-        "cwd": ".",
-        "timeoutSec": 5,
-        "comment": "Block git commit -- must use npm run commit instead"
-      },
-      {
-        "type": "command",
-        "bash": ".github/hooks/pre-push-block.sh",
-        "powershell": ".github/hooks/pre-push-block.ps1",
-        "cwd": ".",
-        "timeoutSec": 5,
-        "comment": "Block git push — must use npm run push instead"
-      },
-      {
-        "type": "command",
-        "bash": ".github/hooks/pre-amend-block.sh",
-        "powershell": ".github/hooks/pre-amend-block.ps1",
-        "cwd": ".",
-        "timeoutSec": 5,
-        "comment": "Block git commit --amend when HEAD is already pushed to remote"
-      },
-      {
-        "type": "command",
-        "bash": ".github/hooks/pre-force-push-block.sh",
-        "powershell": ".github/hooks/pre-force-push-block.ps1",
-        "cwd": ".",
-        "timeoutSec": 5,
-        "comment": "Block git push --force / --force-with-lease"
-      },
-      {
-        "type": "command",
-        "bash": ".github/hooks/pre-layer-import.sh",
-        "powershell": ".github/hooks/pre-layer-import.ps1",
-        "cwd": ".",
-        "timeoutSec": 5,
-        "comment": "Enforce layer import boundaries — layer N cannot import from layer N+1+"
-      },
-      {
-        "type": "command",
-        "bash": ".github/hooks/pre-layer-mock.sh",
-        "powershell": ".github/hooks/pre-layer-mock.ps1",
-        "cwd": ".",
-        "timeoutSec": 5,
-        "comment": "Enforce layer-based mocking rules for L0-L7 test architecture"
-      },
-      {
-        "type": "command",
-        "bash": ".github/hooks/pre-reexport-block.sh",
-        "powershell": ".github/hooks/pre-reexport-block.ps1",
-        "cwd": ".",
-        "timeoutSec": 5,
-        "comment": "Block cross-layer re-exports -- must use wrapper functions instead"
-      },
-      {
-        "type": "command",
-        "bash": ".github/hooks/pre-spec-test-coverage.sh",
-        "powershell": ".github/hooks/pre-spec-test-coverage.ps1",
-        "cwd": ".",
-        "timeoutSec": 10,
-        "comment": "Enforce spec requirements have corresponding test cases (specs/{name}.md → specs/__tests__/{name}.test.ts)"
-      }
-    ],
     "postToolUse": [
       {
-        "type": "command",
         "bash": ".github/hooks/post-edit-invalidate.sh",
-        "powershell": ".github/hooks/post-edit-invalidate.ps1",
+        "comment": "Delete .github/reviewed.md when code is edited/created (invalidates review)",
         "cwd": ".",
+        "powershell": ".github/hooks/post-edit-invalidate.ps1",
         "timeoutSec": 5,
-        "comment": "Delete .github/reviewed.md when code is edited/created (invalidates review)"
+        "type": "command"
       },
       {
-        "type": "command",
         "bash": ".github/hooks/post-spec-change.sh",
-        "powershell": ".github/hooks/post-spec-change.ps1",
+        "comment": "Output context reminder when files in specs/ folder are changed",
         "cwd": ".",
+        "powershell": ".github/hooks/post-spec-change.ps1",
         "timeoutSec": 5,
-        "comment": "Output context reminder when files in specs/ folder are changed"
+        "type": "command"
+      },
+      {
+        "bash": "gh hookflow run --raw --event-type postToolUse",
+        "powershell": "gh hookflow run --raw --event-type postToolUse",
+        "timeoutSec": 1800,
+        "type": "command"
+      }
+    ],
+    "preToolUse": [
+      {
+        "bash": ".github/hooks/pre-commit-block.sh",
+        "comment": "Block git commit -- must use npm run commit instead",
+        "cwd": ".",
+        "powershell": ".github/hooks/pre-commit-block.ps1",
+        "timeoutSec": 5,
+        "type": "command"
+      },
+      {
+        "bash": ".github/hooks/pre-push-block.sh",
+        "comment": "Block git push — must use npm run push instead",
+        "cwd": ".",
+        "powershell": ".github/hooks/pre-push-block.ps1",
+        "timeoutSec": 5,
+        "type": "command"
+      },
+      {
+        "bash": ".github/hooks/pre-amend-block.sh",
+        "comment": "Block git commit --amend when HEAD is already pushed to remote",
+        "cwd": ".",
+        "powershell": ".github/hooks/pre-amend-block.ps1",
+        "timeoutSec": 5,
+        "type": "command"
+      },
+      {
+        "bash": ".github/hooks/pre-force-push-block.sh",
+        "comment": "Block git push --force / --force-with-lease",
+        "cwd": ".",
+        "powershell": ".github/hooks/pre-force-push-block.ps1",
+        "timeoutSec": 5,
+        "type": "command"
+      },
+      {
+        "bash": ".github/hooks/pre-layer-import.sh",
+        "comment": "Enforce layer import boundaries — layer N cannot import from layer N+1+",
+        "cwd": ".",
+        "powershell": ".github/hooks/pre-layer-import.ps1",
+        "timeoutSec": 5,
+        "type": "command"
+      },
+      {
+        "bash": ".github/hooks/pre-layer-mock.sh",
+        "comment": "Enforce layer-based mocking rules for L0-L7 test architecture",
+        "cwd": ".",
+        "powershell": ".github/hooks/pre-layer-mock.ps1",
+        "timeoutSec": 5,
+        "type": "command"
+      },
+      {
+        "bash": ".github/hooks/pre-reexport-block.sh",
+        "comment": "Block cross-layer re-exports -- must use wrapper functions instead",
+        "cwd": ".",
+        "powershell": ".github/hooks/pre-reexport-block.ps1",
+        "timeoutSec": 5,
+        "type": "command"
+      },
+      {
+        "bash": ".github/hooks/pre-spec-test-coverage.sh",
+        "comment": "Enforce spec requirements have corresponding test cases (specs/{name}.md → specs/__tests__/{name}.test.ts)",
+        "cwd": ".",
+        "powershell": ".github/hooks/pre-spec-test-coverage.ps1",
+        "timeoutSec": 10,
+        "type": "command"
+      },
+      {
+        "bash": "gh hookflow run --raw --event-type preToolUse",
+        "powershell": "gh hookflow run --raw --event-type preToolUse",
+        "timeoutSec": 1800,
+        "type": "command"
+      }
+    ],
+    "sessionStart": [
+      {
+        "bash": "gh hookflow check-setup || { gh extension install htekdev/gh-hookflow \u0026\u0026 gh hookflow init; }",
+        "comment": "Run setup check; if it fails, install the extension and init global settings",
+        "powershell": "gh hookflow check-setup; if ($LASTEXITCODE -ne 0) { gh extension install htekdev/gh-hookflow; gh hookflow init }",
+        "timeoutSec": 1800,
+        "type": "command"
       }
     ]
-  }
+  },
+  "version": 1
 }

@@ -12,6 +12,7 @@ import * as captionGenerator from '../../../L0-pure/captions/captionGenerator.js
 
 vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   fileExists: vi.fn(),
+  fileExistsSync: vi.fn().mockReturnValue(false),
   readJsonFile: vi.fn(),
   writeJsonFile: vi.fn(),
   readTextFile: vi.fn(),
@@ -31,6 +32,7 @@ vi.mock('../../../L4-agents/videoServiceBridge.js', () => ({
   getFFmpegPath: vi.fn().mockReturnValue('/usr/bin/ffmpeg'),
   getFFprobePath: vi.fn().mockReturnValue('/usr/bin/ffprobe'),
   burnCaptions: vi.fn().mockResolvedValue('/recordings/test/test-captioned.mp4'),
+  transcodeToMp4: vi.fn().mockResolvedValue('/recordings/test/test.mp4'),
   singlePassEditAndCaption: vi.fn().mockResolvedValue('/recordings/test/test-captioned.mp4'),
   extractCompositeClip: vi.fn(),
   compositeOverlays: vi.fn(),
@@ -52,6 +54,13 @@ vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
     error: vi.fn(),
     debug: vi.fn(),
   },
+}))
+
+vi.mock('../../../L1-infra/config/brand.js', () => ({
+  getBrandConfig: vi.fn().mockReturnValue({
+    name: 'TestBrand',
+    hashtags: { platforms: { youtube: [], tiktok: [], instagram: [], linkedin: [], x: [] } },
+  }),
 }))
 
 
@@ -115,7 +124,13 @@ vi.mock('../../../L4-agents/BlogAgent.js', () => ({
 
 vi.mock('../../../L4-agents/pipelineServiceBridge.js', () => ({
   buildPublishQueue: vi.fn().mockResolvedValue({ itemsCreated: 0, itemsSkipped: 0, errors: [] }),
-  commitAndPush: vi.fn().mockResolvedValue(undefined),
+}))
+
+const mockIdeaDiscoveryDiscover = vi.hoisted(() => vi.fn())
+vi.mock('../../../L4-agents/IdeaDiscoveryAgent.js', () => ({
+  IdeaDiscoveryAgent: class MockIdeaDiscoveryAgent {
+    discover = mockIdeaDiscoveryDiscover
+  },
 }))
 
 vi.mock('../../../L5-assets/visualEnhancement.js', () => ({
@@ -124,6 +139,11 @@ vi.mock('../../../L5-assets/visualEnhancement.js', () => ({
     overlays: [{ imagePath: '/tmp/test.png', width: 1024, height: 1024, opportunity: {} }],
     report: 'test report',
   }),
+}))
+
+const mockGenerateThumbnailForClip = vi.fn()
+vi.mock('../../../L5-assets/thumbnailGeneration.js', () => ({
+  generateThumbnailForClip: (...args: unknown[]) => mockGenerateThumbnailForClip(...args),
 }))
 
 describe('MainVideoAsset', () => {
@@ -162,6 +182,91 @@ describe('MainVideoAsset', () => {
       await expect(MainVideoAsset.load('/recordings/my-video')).rejects.toThrow(
         'Video file not found',
       )
+    })
+  })
+
+  describe('ingest() — webm transcoding', () => {
+    const mockProbeData = {
+      format: { duration: 120, size: 5_000_000 },
+      streams: [{ codec_type: 'video', width: 1920, height: 1080 }],
+    }
+
+    const setupIngestMocks = (): void => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(false)
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue(mockProbeData as any)
+    }
+
+    it('transcodes .webm files to MP4 instead of copying', async () => {
+      setupIngestMocks()
+      vi.mocked(fileSystem.getFileStats)
+        .mockRejectedValueOnce(new Error('missing destination'))
+        .mockResolvedValueOnce({ size: 5_000_000 } as any)
+
+      const asset = await MainVideoAsset.ingest('/watch/recording.webm')
+
+      expect(videoServiceBridge.transcodeToMp4).toHaveBeenCalledWith(
+        '/watch/recording.webm',
+        expect.stringMatching(/recordings[/\\]recording[/\\]recording\.mp4$/),
+      )
+      expect(fileSystem.openReadStream).not.toHaveBeenCalled()
+      expect(fileSystem.openWriteStream).not.toHaveBeenCalled()
+      expect(asset.slug).toBe('recording')
+    })
+
+    it('copies .mp4 files without transcoding', async () => {
+      setupIngestMocks()
+      vi.mocked(fileSystem.getFileStats)
+        .mockRejectedValueOnce(new Error('missing destination'))
+        .mockResolvedValueOnce({ size: 5_000_000 } as any)
+
+      const mockReadStream = {
+        on: vi.fn().mockReturnThis(),
+        pipe: vi.fn().mockReturnThis(),
+      }
+      const mockWriteStream = {
+        on: vi.fn().mockImplementation((event: string, cb: () => void) => {
+          if (event === 'finish') {
+            setTimeout(() => cb(), 0)
+          }
+          return mockWriteStream
+        }),
+      }
+
+      vi.mocked(fileSystem.openReadStream).mockReturnValue(mockReadStream as any)
+      vi.mocked(fileSystem.openWriteStream).mockReturnValue(mockWriteStream as any)
+
+      await MainVideoAsset.ingest('/watch/recording.mp4')
+
+      expect(videoServiceBridge.transcodeToMp4).not.toHaveBeenCalled()
+      expect(fileSystem.openReadStream).toHaveBeenCalledWith('/watch/recording.mp4')
+      expect(fileSystem.openWriteStream).toHaveBeenCalledWith(
+        expect.stringMatching(/recordings[/\\]recording[/\\]recording\.mp4$/),
+      )
+      expect(mockReadStream.pipe).toHaveBeenCalledWith(mockWriteStream)
+    })
+
+    it('skips transcode when transcoded MP4 already exists', async () => {
+      setupIngestMocks()
+      vi.mocked(fileSystem.getFileStats).mockResolvedValue({ size: 5_000_000 } as any)
+
+      await MainVideoAsset.ingest('/watch/recording.webm')
+
+      expect(videoServiceBridge.transcodeToMp4).not.toHaveBeenCalled()
+    })
+
+    it('generates correct slug from .webm filename', async () => {
+      setupIngestMocks()
+      vi.mocked(fileSystem.getFileStats)
+        .mockRejectedValueOnce(new Error('missing destination'))
+        .mockResolvedValueOnce({ size: 5_000_000 } as any)
+
+      const asset = await MainVideoAsset.ingest('/watch/my-screen-recording.webm')
+
+      expect(videoServiceBridge.transcodeToMp4).toHaveBeenCalledWith(
+        '/watch/my-screen-recording.webm',
+        expect.stringMatching(/recordings[/\\]my-screen-recording[/\\]my-screen-recording\.mp4$/),
+      )
+      expect(asset.slug).toBe('my-screen-recording')
     })
   })
 
@@ -758,6 +863,52 @@ describe('MainVideoAsset', () => {
       expect(captionGenerator.generateSRT).toHaveBeenCalledWith(originalTranscript)
     })
   })
+  describe('buildQueue()', () => {
+    it('passes linked idea IDs to buildPublishQueue', async () => {
+      const pipelineBridge = await import('../../../L4-agents/pipelineServiceBridge.js')
+      const mockBuildPublishQueue = vi.mocked(pipelineBridge.buildPublishQueue)
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.getFileStats).mockResolvedValue({ size: 1000, mtime: Date.now() } as any)
+      vi.mocked(videoServiceBridge.ffprobe).mockResolvedValue({
+        format: { duration: 120, size: 1000 },
+        streams: [{ codec_type: 'video', width: 1920, height: 1080 }],
+      } as any)
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+      asset.setIdeas([
+        {
+          issueNumber: 1,
+          issueUrl: 'https://github.com/htekdev/content-management/issues/1',
+          repoFullName: 'htekdev/content-management',
+          id: 'idea-1',
+          topic: 'Topic 1',
+          hook: 'Hook 1',
+          audience: 'Developers',
+          keyTakeaway: 'Takeaway 1',
+          talkingPoints: ['Point 1'],
+          platforms: [],
+          status: 'recorded',
+          tags: ['tag-1'],
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          publishBy: '2026-02-01',
+        },
+      ])
+
+      await asset.buildQueue([], [], [], '/recordings/test/test-captioned.mp4')
+
+      expect(mockBuildPublishQueue).toHaveBeenCalledWith(
+        expect.any(Object),
+        [],
+        [],
+        [],
+        '/recordings/test/test-captioned.mp4',
+        ['1'],
+        undefined,
+      )
+    })
+  })
+
   describe('generateShortPostsData() summary context', () => {
     it('passes summary to generateShortPosts when provided', async () => {
       const SocialMedia = await import('../../../L4-agents/SocialMediaAgent.js')
@@ -838,6 +989,239 @@ describe('MainVideoAsset', () => {
         expect.any(Object), expect.objectContaining({ title: 'Medium Clip' }),
         expect.any(Object), undefined, mockSummary,
       )
+    })
+  })
+
+  describe('generateThumbnail', () => {
+    it('calls generateThumbnailForClip with summary context', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
+        title: 'My Great Video',
+        overview: 'An overview of the video content',
+        keyTopics: ['testing', 'typescript'],
+        snapshots: [],
+        markdownPath: '/recordings/test/README.md',
+      })
+      vi.mocked(fileSystem.readTextFile).mockResolvedValue('SRT content')
+      mockGenerateThumbnailForClip.mockResolvedValue('/recordings/test/thumbnails/thumbnail.png')
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+      const result = await asset.generateThumbnail()
+
+      expect(mockGenerateThumbnailForClip).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'My Great Video',
+          description: 'An overview of the video content',
+          topics: ['testing', 'typescript'],
+          outputDir: expect.stringContaining('thumbnails'),
+          contentType: 'main',
+        }),
+        undefined,
+      )
+      expect(result).toBe('/recordings/test/thumbnails/thumbnail.png')
+    })
+
+    it('falls back to slug when summary is unavailable', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockRejectedValue(new Error('not found'))
+      vi.mocked(fileSystem.readTextFile).mockRejectedValue(new Error('not found'))
+      mockGenerateThumbnailForClip.mockResolvedValue('/recordings/test/thumbnails/thumbnail.png')
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+      const result = await asset.generateThumbnail()
+
+      expect(mockGenerateThumbnailForClip).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'test',
+          description: 'test',
+          topics: [],
+          contentType: 'main',
+        }),
+        undefined,
+      )
+      expect(result).toBe('/recordings/test/thumbnails/thumbnail.png')
+    })
+
+    it('returns null when bridge returns null', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockRejectedValue(new Error('not found'))
+      vi.mocked(fileSystem.readTextFile).mockRejectedValue(new Error('not found'))
+      mockGenerateThumbnailForClip.mockResolvedValue(null)
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+      const result = await asset.generateThumbnail()
+
+      expect(result).toBeNull()
+    })
+
+    it('passes force flag from opts', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockRejectedValue(new Error('not found'))
+      vi.mocked(fileSystem.readTextFile).mockRejectedValue(new Error('not found'))
+      mockGenerateThumbnailForClip.mockResolvedValue('/out/thumb.png')
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+      await asset.generateThumbnail({ force: true })
+
+      expect(mockGenerateThumbnailForClip).toHaveBeenCalledWith(
+        expect.any(Object),
+        true,
+      )
+    })
+  })
+
+  describe('discoverIdeas()', () => {
+    it('applies assignments to short clips and adds new ideas', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
+        text: 'transcript text',
+        segments: [{ start: 0, end: 10, text: 'Hello' }],
+        words: [],
+        language: 'en',
+        duration: 100,
+      })
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+
+      const shorts = [
+        {
+          id: 'short-1',
+          title: 'Short One',
+          slug: 'short-one',
+          segments: [],
+          totalDuration: 30,
+          outputPath: '/out/short1.mp4',
+          description: 'Desc',
+          tags: [],
+          hook: 'Hook',
+        },
+      ]
+      const mediumClips = [
+        {
+          id: 'medium-1',
+          title: 'Medium One',
+          slug: 'medium-one',
+          segments: [],
+          totalDuration: 120,
+          outputPath: '/out/medium1.mp4',
+          description: 'Desc',
+          tags: [],
+          hook: 'Hook',
+        },
+      ]
+
+      const newIdea = {
+        issueNumber: 42,
+        issueUrl: 'https://github.com/test/repo/issues/42',
+        repoFullName: 'test/repo',
+        id: 'idea-new',
+        topic: 'New Idea',
+        hook: 'Fresh hook',
+        audience: 'Devs',
+        keyTakeaway: 'Key',
+        talkingPoints: ['Point'],
+        platforms: [],
+        status: 'draft' as const,
+        tags: [],
+        createdAt: '2026-01-01',
+        updatedAt: '2026-01-01',
+        publishBy: '2026-03-01',
+      }
+
+      mockIdeaDiscoveryDiscover.mockResolvedValue({
+        assignments: [
+          { clipId: 'short-1', ideaIssueNumber: 42 },
+          { clipId: 'medium-1', ideaIssueNumber: 42 },
+        ],
+        newIdeas: [newIdea],
+        matchedCount: 0,
+        createdCount: 1,
+      })
+
+      const result = await asset.discoverIdeas(shorts as any, mediumClips as any, '2026-03-01')
+
+      expect(result.assignments).toHaveLength(2)
+      expect(result.newIdeas).toHaveLength(1)
+      expect(result.createdCount).toBe(1)
+
+      // Assignments applied to clip objects
+      expect((shorts[0] as Record<string, unknown>).ideaIssueNumber).toBe(42)
+      expect((mediumClips[0] as Record<string, unknown>).ideaIssueNumber).toBe(42)
+
+      // New idea added to asset's ideas list
+      expect(asset.ideas).toContainEqual(expect.objectContaining({ issueNumber: 42 }))
+
+      // Clip-idea map updated
+      expect(asset.clipIdeaMap.get('short-1')).toBe(42)
+      expect(asset.clipIdeaMap.get('medium-1')).toBe(42)
+    })
+
+    it('does not duplicate existing ideas', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
+        text: 'transcript text',
+        segments: [{ start: 0, end: 10, text: 'Hello' }],
+        words: [],
+        language: 'en',
+        duration: 100,
+      })
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+
+      const existingIdea = {
+        issueNumber: 10,
+        issueUrl: 'https://github.com/test/repo/issues/10',
+        repoFullName: 'test/repo',
+        id: 'idea-existing',
+        topic: 'Existing',
+        hook: 'Hook',
+        audience: 'Devs',
+        keyTakeaway: 'Key',
+        talkingPoints: [],
+        platforms: [],
+        status: 'draft' as const,
+        tags: [],
+        createdAt: '2026-01-01',
+        updatedAt: '2026-01-01',
+        publishBy: '2026-03-01',
+      }
+      asset.setIdeas([existingIdea])
+
+      mockIdeaDiscoveryDiscover.mockResolvedValue({
+        assignments: [],
+        newIdeas: [existingIdea],
+        matchedCount: 1,
+        createdCount: 0,
+      })
+
+      await asset.discoverIdeas([], [], '2026-03-01')
+
+      // Should still be only 1 idea, not duplicated
+      expect(asset.ideas).toHaveLength(1)
+    })
+
+    it('returns result with zero assignments when no clips match', async () => {
+      vi.mocked(fileSystem.fileExists).mockResolvedValue(true)
+      vi.mocked(fileSystem.readJsonFile).mockResolvedValue({
+        text: 'transcript text',
+        segments: [],
+        words: [],
+        language: 'en',
+        duration: 100,
+      })
+
+      const asset = await MainVideoAsset.load('/recordings/test')
+
+      mockIdeaDiscoveryDiscover.mockResolvedValue({
+        assignments: [],
+        newIdeas: [],
+        matchedCount: 0,
+        createdCount: 0,
+      })
+
+      const result = await asset.discoverIdeas([], [], '2026-03-01')
+      expect(result.assignments).toHaveLength(0)
+      expect(result.newIdeas).toHaveLength(0)
     })
   })
 })

@@ -1,3 +1,4 @@
+import { fromLatePlatform } from '../../L0-pure/types/index.js'
 import { getConfig } from '../../L1-infra/config/environment'
 import logger from '../../L1-infra/logger/configLogger'
 import { readTextFile, writeTextFile, writeJsonFile, ensureDirectory, copyFile, fileExists, listDirectoryWithTypes, removeDirectory, renameFile, copyDirectory } from '../../L1-infra/fileSystem/fileSystem.js'
@@ -26,7 +27,11 @@ export interface QueueItemMetadata {
   textOnly?: boolean
   /** Type of media attached: video file or generated image */
   mediaType?: 'video' | 'image'
+  /** Content idea IDs that influenced this queue item */
+  ideaIds?: string[]
   platformSpecificData?: Record<string, unknown>
+  /** Path to generated thumbnail image for this queue item */
+  thumbnailPath?: string | null
 }
 
 export interface QueueItem {
@@ -35,6 +40,7 @@ export interface QueueItem {
   postContent: string
   hasMedia: boolean
   mediaPath: string | null
+  thumbnailPath: string | null
   folderPath: string
 }
 
@@ -88,12 +94,17 @@ async function readQueueItem(folderPath: string, id: string): Promise<QueueItem 
       hasMedia = true
     }
 
+    // Check for thumbnail
+    const thumbnailPath = join(folderPath, 'thumbnail.png')
+    const hasThumbnail = await fileExists(thumbnailPath)
+
     return {
       id,
       metadata,
       postContent,
       hasMedia,
       mediaPath,
+      thumbnailPath: hasThumbnail ? thumbnailPath : (metadata.thumbnailPath ?? null),
       folderPath,
     }
   } catch (err) {
@@ -190,6 +201,7 @@ export async function createItem(
   metadata: QueueItemMetadata,
   postContent: string,
   mediaSourcePath?: string,
+  thumbnailSourcePath?: string,
 ): Promise<QueueItem> {
   // Inline validation to prevent path traversal - CodeQL recognizes this pattern
   if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
@@ -211,6 +223,14 @@ export async function createItem(
     hasMedia = true
   }
 
+  // Copy thumbnail if provided
+  let thumbnailPath: string | null = null
+  if (thumbnailSourcePath) {
+    const thumbDest = join(folderPath, 'thumbnail.png')
+    await copyFile(thumbnailSourcePath, thumbDest)
+    thumbnailPath = thumbDest
+  }
+
   logger.debug(`Created queue item: ${String(id).replace(/[\r\n]/g, '')}`)
 
   return {
@@ -219,6 +239,7 @@ export async function createItem(
     postContent,
     hasMedia,
     mediaPath: hasMedia ? mediaPath : null,
+    thumbnailPath,
     folderPath,
   }
 }
@@ -258,6 +279,9 @@ export async function updateItem(
       publishedAt: updates.metadata.publishedAt !== undefined ? (updates.metadata.publishedAt !== null ? String(updates.metadata.publishedAt) : null) : (existing.metadata.publishedAt !== null ? String(existing.metadata.publishedAt) : null),
       textOnly: updates.metadata.textOnly ?? existing.metadata.textOnly,
       mediaType: updates.metadata.mediaType ?? existing.metadata.mediaType,
+      ideaIds: Array.isArray(updates.metadata.ideaIds)
+        ? updates.metadata.ideaIds.map(String)
+        : (Array.isArray(existing.metadata.ideaIds) ? existing.metadata.ideaIds.map(String) : undefined),
       platformSpecificData: updates.metadata.platformSpecificData ?? existing.metadata.platformSpecificData,
     }
     // Use only the sanitized object — do not spread raw HTTP updates (CodeQL js/http-to-file-access)
@@ -312,6 +336,57 @@ export async function approveItem(
   item.metadata.publishedAt = now
   item.metadata.reviewedAt = now
 
+  // Trigger idea status updates when content is published
+  if (item.metadata.ideaIds && item.metadata.ideaIds.length > 0) {
+    try {
+      const { getIdea, listIdeas, markPublished } = await import('../ideaService/ideaService.js')
+      let cachedIdeas: Map<string, number> | undefined
+
+      for (const rawIdeaId of item.metadata.ideaIds) {
+        const normalizedIdeaId = String(rawIdeaId).trim()
+        if (!normalizedIdeaId) {
+          continue
+        }
+
+        const parsedIssueNumber = Number.parseInt(normalizedIdeaId, 10)
+        let issueNumber: number | undefined
+
+        if (Number.isInteger(parsedIssueNumber)) {
+          issueNumber = parsedIssueNumber
+        } else {
+          if (!cachedIdeas) {
+            const ideas = await listIdeas()
+            cachedIdeas = new Map(ideas.flatMap((idea) => [[idea.id, idea.issueNumber], [String(idea.issueNumber), idea.issueNumber]]))
+          }
+          issueNumber = cachedIdeas.get(normalizedIdeaId)
+        }
+
+        if (!issueNumber) {
+          logger.warn(`Skipping publish record for unknown idea identifier: ${normalizedIdeaId}`)
+          continue
+        }
+
+        const idea = await getIdea(issueNumber)
+        if (!idea) {
+          logger.warn(`Skipping publish record for missing idea #${issueNumber}`)
+          continue
+        }
+
+        await markPublished(issueNumber, {
+          clipType: item.metadata.clipType,
+          platform: fromLatePlatform(item.metadata.platform),
+          queueItemId: id,
+          publishedAt: now,
+          latePostId: item.metadata.latePostId ?? '',
+          lateUrl: item.metadata.publishedUrl || (item.metadata.latePostId ? `https://app.late.co/dashboard/post/${item.metadata.latePostId}` : ''),
+        })
+      }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      logger.warn(`Failed to update idea status for ${id}: ${msg}`)
+    }
+  }
+
   // Sanitize metadata before writing - reconstruct with validated fields
   const sanitizedMetadata: QueueItemMetadata = {
     id: String(item.metadata.id),
@@ -335,6 +410,7 @@ export async function approveItem(
     publishedAt: item.metadata.publishedAt !== null ? String(item.metadata.publishedAt) : null,
     textOnly: item.metadata.textOnly,
     mediaType: item.metadata.mediaType,
+    ideaIds: Array.isArray(item.metadata.ideaIds) ? item.metadata.ideaIds.map(String) : undefined,
     platformSpecificData: item.metadata.platformSpecificData,
   }
 
@@ -458,6 +534,47 @@ export async function getPublishedItems(): Promise<QueueItem[]> {
 
   items.sort((a, b) => a.metadata.createdAt.localeCompare(b.metadata.createdAt))
   return items
+}
+
+export async function getScheduledItemsByIdeaIds(ideaIds: string[]): Promise<QueueItem[]> {
+  if (ideaIds.length === 0) return []
+
+  const ideaIdSet = new Set(ideaIds)
+  const [pendingItems, publishedItems] = await Promise.all([
+    getPendingItems(),
+    getPublishedItems(),
+  ])
+
+  return [...pendingItems, ...publishedItems].filter(item =>
+    item.metadata.ideaIds?.some(id => ideaIdSet.has(id)) ?? false,
+  )
+}
+
+export async function getPublishedItemByLatePostId(latePostId: string): Promise<QueueItem | null> {
+  const publishedItems = await getPublishedItems()
+  return publishedItems.find(item => item.metadata.latePostId === latePostId) ?? null
+}
+
+/**
+ * Update the scheduledFor date of an already-published item on disk.
+ * Used when rescheduling existing Late posts without re-uploading.
+ */
+export async function updatePublishedItemSchedule(id: string, scheduledFor: string): Promise<void> {
+  if (!id || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+    throw new Error(`Invalid ID format: ${id}`)
+  }
+  const publishedDir = getPublishedDir()
+  const folderPath = join(publishedDir, basename(id))
+  const metadataPath = join(folderPath, 'metadata.json')
+
+  if (!resolve(metadataPath).startsWith(resolve(publishedDir) + sep)) {
+    throw new Error('Write target outside published directory')
+  }
+
+  const raw = await readTextFile(metadataPath)
+  const metadata = JSON.parse(raw) as QueueItemMetadata
+  metadata.scheduledFor = String(scheduledFor)
+  await writeTextFile(metadataPath, JSON.stringify(metadata, null, 2))
 }
 
 export async function itemExists(id: string): Promise<'pending' | 'published' | null> {
