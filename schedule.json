@@ -33,7 +33,7 @@
           ],
           "avoidDays": []
         },
-        "medium-clip": {
+        "medium": {
           "slots": [
             {
               "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
@@ -103,7 +103,7 @@
           ],
           "avoidDays": []
         },
-        "medium-clip": {
+        "medium": {
           "slots": [
             {
               "days": [
@@ -171,7 +171,7 @@
           ],
           "avoidDays": []
         },
-        "medium-clip": {
+        "medium": {
           "slots": [
             {
               "days": [
@@ -251,7 +251,7 @@
           ],
           "avoidDays": []
         },
-        "medium-clip": {
+        "medium": {
           "slots": [
             {
               "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
@@ -346,7 +346,7 @@
           ],
           "avoidDays": []
         },
-        "medium-clip": {
+        "medium": {
           "slots": [
             {
               "days": [

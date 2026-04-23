@@ -45,7 +45,7 @@ const SYSTEM_PROMPT = `You are a schedule management assistant for Late.co socia
 You help the user view, analyze, and reprioritize their posting schedule across platforms.
 
 Available platforms: x (twitter), youtube, tiktok, instagram, linkedin
-Clip types: short (15-60s vertical clips), medium-clip (60-180s clips), video (full-length)
+Clip types: short (15-60s vertical clips), medium (60-180s clips), video (full-length)
 
 When listing posts, always show content previews (first 60 chars) so the user can identify them.
 Use ask_user when you need clarification on priorities or decisions — never guess at user intent.
@@ -160,7 +160,7 @@ export class ScheduleAgent extends BaseAgent {
             postId: { type: 'string', description: 'The Late post ID' },
             scheduledFor: { type: 'string', description: 'New scheduled datetime (ISO 8601). Omit to re-queue using the platform queue.' },
             platform: { type: 'string', description: 'Platform for queue lookup when re-queuing without scheduledFor' },
-            clipType: { type: 'string', description: 'Clip type for queue lookup: short, medium-clip, video' },
+            clipType: { type: 'string', description: 'Clip type for queue lookup: short, medium, video' },
           },
           required: ['postId'],
         },
@@ -185,7 +185,7 @@ export class ScheduleAgent extends BaseAgent {
           type: 'object',
           properties: {
             platform: { type: 'string', description: 'Platform: x, twitter, youtube, tiktok, instagram, linkedin' },
-            clipType: { type: 'string', description: 'Clip type: short, medium-clip, video' },
+            clipType: { type: 'string', description: 'Clip type: short, medium, video' },
           },
           required: ['platform'],
         },

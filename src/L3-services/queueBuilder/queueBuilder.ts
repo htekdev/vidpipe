@@ -174,7 +174,7 @@ export async function buildPublishQueue(
           clipIdeaIssueNumber = short.ideaIssueNumber
         } else if (medium) {
           clipSlug = medium.slug
-          clipType = 'medium-clip'
+          clipType = 'medium'
           sourceClip = dirname(medium.outputPath)
           mediaPath = resolveMediumMedia(medium, post.platform)
           thumbnailPath = medium.thumbnailPath ?? null
