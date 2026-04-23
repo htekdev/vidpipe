@@ -139,7 +139,7 @@ describe('executeRealignPlan', () => {
       posts: [{
         post: draftPost,
         platform: 'twitter',
-        clipType: 'medium-clip',
+        clipType: 'medium',
         oldScheduledFor: null,
         newScheduledFor: '2026-03-10T08:00:00Z',
       }],
@@ -220,7 +220,7 @@ describe('buildRealignPlan', () => {
     )
 
     const clipTypeMaps: ClipTypeMaps = {
-      byLatePostId: new Map([['p-known', 'medium-clip']]),
+      byLatePostId: new Map([['p-known', 'medium']]),
       byContent: new Map(),
     }
 

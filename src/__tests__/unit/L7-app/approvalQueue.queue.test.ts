@@ -65,7 +65,7 @@ import { enqueueApproval } from '../../../L7-app/review/approvalQueue.js'
 interface QueueItemOverrides {
   platform?: string
   accountId?: string
-  clipType?: 'video' | 'short' | 'medium-clip'
+  clipType?: 'video' | 'short' | 'medium'
   ideaIds?: string[]
   mediaPath?: string | null
   sourceMediaPath?: string | null
@@ -297,14 +297,14 @@ describe('L7 Unit: approvalQueue — queue integration', () => {
     mockCreatePost.mockResolvedValue({ _id: 'late-clip', status: 'scheduled' })
     mockItemsById({
       'mc-item': makeItem('mc-item', {
-        clipType: 'medium-clip',
+        clipType: 'medium',
         postContent: 'Medium clip',
       }),
     })
 
     await enqueueApproval(['mc-item'])
 
-    expect(mockGetQueueId).toHaveBeenCalledWith('youtube', 'medium-clip')
+    expect(mockGetQueueId).toHaveBeenCalledWith('youtube', 'medium')
   })
 
   it('records failure when getProfileId throws but does not crash the batch', async () => {

@@ -804,7 +804,7 @@ export type IdeaStatus = 'draft' | 'ready' | 'recorded' | 'published'
  */
 export interface IdeaPublishRecord {
   /** Content type that was published */
-  clipType: 'video' | 'short' | 'medium-clip'
+  clipType: 'video' | 'short' | 'medium'
   /** Platform where content was published */
   platform: Platform
   /** Links back to QueueItemMetadata.id */

@@ -67,7 +67,7 @@ import logger from '../../../L1-infra/logger/configLogger.js'
 interface QueueItemOverrides {
   platform?: string
   accountId?: string
-  clipType?: 'video' | 'short' | 'medium-clip'
+  clipType?: 'video' | 'short' | 'medium'
   ideaIds?: string[]
   mediaPath?: string | null
   sourceMediaPath?: string | null

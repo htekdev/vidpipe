@@ -5,7 +5,7 @@ import type { VideoPlatform } from '../../L0-pure/types/index'
 // TYPES
 // ============================================================================
 
-export type ClipType = 'video' | 'short' | 'medium-clip'
+export type ClipType = 'video' | 'short' | 'medium'
 
 /** How to resolve media for a specific platform + clip type combination. */
 export interface MediaRule {
@@ -29,7 +29,7 @@ export interface MediaRule {
  * If a platform + clipType combination is NOT listed, that post type is
  * text-only (no media attached).
  *
- * | Platform  | video (main)        | short                | medium-clip         |
+ * | Platform  | video (main)        | short                | medium              |
  * |-----------|---------------------|----------------------|---------------------|
  * | YouTube   | original, captioned | 9:16 portrait        | original, captioned |
  * | LinkedIn  | — (text-only)       | original, captioned  | original, captioned |
@@ -42,26 +42,26 @@ export interface MediaRule {
  */
 const CONTENT_MATRIX: Record<Platform, Partial<Record<ClipType, MediaRule>>> = {
   [Platform.YouTube]: {
-    video:          { captions: true, variantKey: null },
-    short:          { captions: true, variantKey: 'youtube-shorts' },
-    'medium-clip':  { captions: true, variantKey: null },
+    video:    { captions: true, variantKey: null },
+    short:    { captions: true, variantKey: 'youtube-shorts' },
+    medium:   { captions: true, variantKey: null },
   },
   [Platform.LinkedIn]: {
-    short:          { captions: true, variantKey: null },
-    'medium-clip':  { captions: true, variantKey: null },
+    short:    { captions: true, variantKey: null },
+    medium:   { captions: true, variantKey: null },
   },
   [Platform.TikTok]: {
-    short:          { captions: true, variantKey: 'tiktok' },
-    'medium-clip':  { captions: true, variantKey: 'tiktok' },
+    short:    { captions: true, variantKey: 'tiktok' },
+    medium:   { captions: true, variantKey: 'tiktok' },
   },
   [Platform.Instagram]: {
-    video:          { captions: true, variantKey: null },
-    short:          { captions: true, variantKey: 'instagram-reels' },
-    'medium-clip':  { captions: true, variantKey: null },
+    video:    { captions: true, variantKey: null },
+    short:    { captions: true, variantKey: 'instagram-reels' },
+    medium:   { captions: true, variantKey: null },
   },
   [Platform.X]: {
-    short:          { captions: true, variantKey: null },
-    'medium-clip':  { captions: true, variantKey: null },
+    short:    { captions: true, variantKey: null },
+    medium:   { captions: true, variantKey: null },
   },
 }
 

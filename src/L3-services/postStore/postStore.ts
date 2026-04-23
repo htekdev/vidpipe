@@ -10,7 +10,7 @@ export interface QueueItemMetadata {
   accountId: string
   sourceVideo: string
   sourceClip: string | null
-  clipType: 'video' | 'short' | 'medium-clip'
+  clipType: 'video' | 'short' | 'medium'
   sourceMediaPath: string | null
   hashtags: string[]
   links: Array<{ url: string; title?: string }>
@@ -48,7 +48,7 @@ export interface GroupedQueueItem {
   groupKey: string
   sourceVideo: string
   sourceClip: string | null
-  clipType: 'video' | 'short' | 'medium-clip'
+  clipType: 'video' | 'short' | 'medium'
   hasMedia: boolean
   mediaType?: 'video' | 'image'
   items: QueueItem[]
@@ -72,6 +72,11 @@ async function readQueueItem(folderPath: string, id: string): Promise<QueueItem 
     // Read directly without prior existence check to avoid TOCTOU race
     const metadataRaw = await readTextFile(metadataPath)
     const metadata: QueueItemMetadata = JSON.parse(metadataRaw)
+
+    // Normalize legacy 'medium-clip' → 'medium' for backward compatibility
+    if ((metadata.clipType as string) === 'medium-clip') {
+      metadata.clipType = 'medium'
+    }
 
     let postContent = ''
     try {

@@ -39,7 +39,7 @@ function makeQueueItemMetadata(
     accountId: 'acc-1',
     sourceVideo: '/recordings/test-video',
     sourceClip: null,
-    clipType: 'medium-clip',
+    clipType: 'medium',
     sourceMediaPath: null,
     hashtags: [],
     links: [],
@@ -82,7 +82,7 @@ describe('L4-L6 Integration: scheduler → Late API (mocked L2)', () => {
   })
 
   it('findNextSlot returns a datetime string for a known platform + clipType', async () => {
-    const slot = await findNextSlot('linkedin', 'medium-clip')
+    const slot = await findNextSlot('linkedin', 'medium')
 
     expect(slot).toBeTruthy()
     expect(slot).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)
@@ -104,7 +104,7 @@ describe('L4-L6 Integration: scheduler → Late API (mocked L2)', () => {
 
   it('findNextSlot avoids already-booked slots', async () => {
     // First call: no bookings → get first available slot
-    const firstSlot = await findNextSlot('linkedin', 'medium-clip')
+    const firstSlot = await findNextSlot('linkedin', 'medium')
     expect(firstSlot).toBeTruthy()
 
     // Second call: book the first slot via Late API mock
@@ -119,17 +119,17 @@ describe('L4-L6 Integration: scheduler → Late API (mocked L2)', () => {
       updatedAt: '2026-01-01T00:00:00Z',
     }])
 
-    const secondSlot = await findNextSlot('linkedin', 'medium-clip')
+    const secondSlot = await findNextSlot('linkedin', 'medium')
     expect(secondSlot).toBeTruthy()
     expect(secondSlot).not.toBe(firstSlot)
   })
 
   it('findNextSlot with ideaIds and publishBy finds slot respecting spacing', async () => {
-    const baselineSlot = await findNextSlot('linkedin', 'medium-clip')
+    const baselineSlot = await findNextSlot('linkedin', 'medium')
     expect(baselineSlot).toBeTruthy()
 
     const publishBy = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-    const slot = await findNextSlot('linkedin', 'medium-clip', {
+    const slot = await findNextSlot('linkedin', 'medium', {
       ideaIds: ['idea-1'],
       publishBy,
     })
@@ -138,7 +138,7 @@ describe('L4-L6 Integration: scheduler → Late API (mocked L2)', () => {
   })
 
   it('findNextSlot with ideaIds avoids slots near same-idea posts', async () => {
-    const firstSlot = await findNextSlot('linkedin', 'medium-clip')
+    const firstSlot = await findNextSlot('linkedin', 'medium')
     expect(firstSlot).toBeTruthy()
     if (!firstSlot) throw new Error('Expected a first available slot')
 
@@ -155,7 +155,7 @@ describe('L4-L6 Integration: scheduler → Late API (mocked L2)', () => {
     )
     await approveItem(item.id, { latePostId: 'late-idea-1', scheduledFor: firstSlot })
 
-    const nextSlot = await findNextSlot('linkedin', 'medium-clip', {
+    const nextSlot = await findNextSlot('linkedin', 'medium', {
       ideaIds: ['idea-1'],
     })
 
@@ -170,7 +170,7 @@ describe('L4-L6 Integration: scheduler → Late API (mocked L2)', () => {
   })
 
   it('findNextSlot without options still works identically', async () => {
-    const baselineSlot = await findNextSlot('linkedin', 'medium-clip')
+    const baselineSlot = await findNextSlot('linkedin', 'medium')
     expect(baselineSlot).toBeTruthy()
     if (!baselineSlot) throw new Error('Expected a baseline slot')
 
@@ -183,7 +183,7 @@ describe('L4-L6 Integration: scheduler → Late API (mocked L2)', () => {
       'Idea-linked queued post',
     )
 
-    const legacySlot = await findNextSlot('linkedin', 'medium-clip')
+    const legacySlot = await findNextSlot('linkedin', 'medium')
     expect(legacySlot).toBe(baselineSlot)
   })
 
@@ -241,7 +241,7 @@ describe('L4-L6 Integration: scheduler → Late API (mocked L2)', () => {
   it('generateTimeslots early-exits past upper bound', async () => {
     // With no bookings and a valid platform, findNextSlot should return
     // a slot without hanging (early-exit prevents infinite iteration)
-    const slot = await findNextSlot('linkedin', 'medium-clip')
+    const slot = await findNextSlot('linkedin', 'medium')
     expect(slot).toBeTruthy()
     // The slot is a valid ISO datetime
     expect(slot).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)

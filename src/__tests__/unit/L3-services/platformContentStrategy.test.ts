@@ -35,7 +35,7 @@ describe('platformContentStrategy', () => {
     });
 
     it('returns media rule for LinkedIn + medium-clip', () => {
-      const rule = getMediaRule(Platform.LinkedIn, 'medium-clip');
+      const rule = getMediaRule(Platform.LinkedIn, 'medium');
       expect(rule).not.toBeNull();
       expect(rule!.captions).toBe(true);
     });
@@ -76,7 +76,7 @@ describe('platformContentStrategy', () => {
     });
 
     it('returns true for Instagram + medium-clip', () => {
-      expect(platformAcceptsMedia(Platform.Instagram, 'medium-clip')).toBe(true);
+      expect(platformAcceptsMedia(Platform.Instagram, 'medium')).toBe(true);
     });
 
     it('returns false for LinkedIn + video (text-only)', () => {

@@ -64,7 +64,7 @@ import { enqueueApproval } from '../../../L7-app/review/approvalQueue.js'
 interface QueueItemOverrides {
   platform?: string
   accountId?: string
-  clipType?: 'video' | 'short' | 'medium-clip'
+  clipType?: 'video' | 'short' | 'medium'
   ideaIds?: string[]
   mediaPath?: string | null
   sourceMediaPath?: string | null
