@@ -372,7 +372,7 @@ describe('L3 Integration: scheduleConfig', () => {
               ],
               avoidDays: ['sat'],
             },
-            'medium-clip': {
+            'medium': {
               slots: [{ days: ['mon'], time: '12:00', label: 'Noon clip' }],
               avoidDays: ['sun'],
             },

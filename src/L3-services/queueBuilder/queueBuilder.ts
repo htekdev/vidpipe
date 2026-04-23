@@ -57,7 +57,7 @@ function resolveShortMedia(clip: ShortClip, platform: Platform, variantsEnabled?
  * Resolve the media file path for a medium clip on a given platform.
  */
 function resolveMediumMedia(clip: MediumClip, platform: Platform): string | null {
-  const rule = getMediaRule(platform, 'medium-clip')
+  const rule = getMediaRule(platform, 'medium')
   if (!rule) return null // platform doesn't accept medium-clip media
 
   return rule.captions

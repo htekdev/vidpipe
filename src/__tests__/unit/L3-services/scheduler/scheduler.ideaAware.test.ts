@@ -27,7 +27,7 @@ interface MockScheduleConfig {
   }
 }
 
-type ClipType = 'video' | 'short' | 'medium-clip'
+type ClipType = 'video' | 'short' | 'medium'
 
 const mockLogger = vi.hoisted(() => ({
   info: vi.fn(),

@@ -451,7 +451,7 @@ describe('scheduleConfig', () => {
                 ],
                 avoidDays: ['sat'],
               },
-              'medium-clip': {
+              'medium': {
                 slots: [{ days: ['mon'], time: '12:00', label: 'Noon clip' }],
                 avoidDays: ['sun'],
               },
@@ -484,7 +484,7 @@ describe('scheduleConfig', () => {
                 slots: [{ days: ['tue'], time: '10:00', label: 'Short morning' }],
                 avoidDays: ['sun'],
               },
-              'medium-clip': {
+              'medium': {
                 slots: [{ days: ['wed'], time: '14:00', label: 'Medium afternoon' }],
                 avoidDays: [],
               },

@@ -135,7 +135,7 @@ describe('ideaBodyFormatter', () => {
   describe('REQ-007: formatPublishRecordComment emits a readable heading and parseable publish-record payload', () => {
     test('ideaBodyFormatter.REQ-007 - publish record comments round-trip through parseIdeaComment', () => {
       const record: IdeaPublishRecord = {
-        clipType: 'medium-clip',
+        clipType: 'medium',
         platform: Platform.LinkedIn,
         queueItemId: 'bandicam-2026-03-13-medium-1-linkedin',
         latePostId: '65a1b2c3d4e5f6g7h8i9j0',

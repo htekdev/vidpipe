@@ -973,7 +973,7 @@ describe('MainVideoAsset', () => {
       })
       const asset = await MainVideoAsset.load('/recordings/test')
       const mockClip = {
-        id: 'm1', title: 'Medium Clip', slug: 'medium-clip',
+        id: 'm1', title: 'Medium Clip', slug: 'medium',
         segments: [{ start: 0, end: 90, description: 'main' }],
         totalDuration: 90, outputPath: '/tmp/medium.mp4',
         captionedPath: '/tmp/medium-captioned.mp4',

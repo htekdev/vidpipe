@@ -434,7 +434,7 @@ describe('L3 Integration: buildRealignPlan with mocked L1', () => {
 
     const clipTypeMaps: ClipTypeMaps = {
       byLatePostId: new Map([['p-byid', 'short']]),
-      byContent: new Map([['twitter::post matched by content', 'medium-clip']]),
+      byContent: new Map([['twitter::post matched by content', 'medium']]),
     }
 
     const plan = await buildRealignPlan({ clipTypeMaps })
