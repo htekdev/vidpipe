@@ -23,6 +23,7 @@ export interface RealignPost {
   post: LatePost
   platform: string
   clipType: 'short' | 'medium' | 'video'
+  oldScheduledFor: string | null
   newScheduledFor: string
 }
 
@@ -30,6 +31,7 @@ export interface CancelPost {
   post: LatePost
   platform: string
   clipType: 'short' | 'medium' | 'video'
+  reason: string
 }
 
 export interface RealignPlan {

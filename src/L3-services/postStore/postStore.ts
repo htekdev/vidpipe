@@ -11,6 +11,7 @@ export interface QueueItemMetadata {
   sourceVideo: string
   sourceClip: string | null
   clipType: 'video' | 'short' | 'medium'
+  sourceMediaPath: string | null
   hashtags: string[]
   links: Array<{ url: string; title?: string }>
   characterCount: number
@@ -48,6 +49,9 @@ export interface GroupedQueueItem {
   sourceVideo: string
   sourceClip: string | null
   clipType: 'video' | 'short' | 'medium'
+  hasMedia: boolean
+  mediaType?: 'video' | 'image'
+  items: QueueItem[]
 }
 
 function getQueueDir(): string {
