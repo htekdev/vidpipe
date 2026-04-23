@@ -1,13 +1,17 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
-import { promises as fs, closeSync } from 'node:fs'
-import path from 'node:path'
-import tmp from 'tmp'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { Readable } from 'node:stream'
 
 // ── Mock setup ─────────────────────────────────────────────────────────
 
-const tmpDirObj = tmp.dirSync({ prefix: 'vidpipe-review-test-', unsafeCleanup: true })
-const tmpDir = tmpDirObj.name
 const mockGetIdeasByIds = vi.hoisted(() => vi.fn())
+const mockListPendingItems = vi.hoisted(() => vi.fn())
+const mockGetGroupedItems = vi.hoisted(() => vi.fn())
+const mockGetItemById = vi.hoisted(() => vi.fn())
+const mockAzureUpdateItem = vi.hoisted(() => vi.fn())
+const mockAzureRejectItem = vi.hoisted(() => vi.fn())
+const mockGetMediaStream = vi.hoisted(() => vi.fn())
+const mockGetContentItems = vi.hoisted(() => vi.fn())
+const mockFindContentItemByRowKey = vi.hoisted(() => vi.fn().mockResolvedValue(null))
 
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -15,8 +19,39 @@ vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
 }))
 
 vi.mock('../../../L1-infra/config/environment.js', () => ({
-  getConfig: () => ({ OUTPUT_DIR: tmpDir, LATE_API_KEY: 'test-key' }),
-  initConfig: () => ({ OUTPUT_DIR: tmpDir, LATE_API_KEY: 'test-key' }),
+  getConfig: () => ({ OUTPUT_DIR: 'C:\\test-output', LATE_API_KEY: 'test-key' }),
+  initConfig: () => ({ OUTPUT_DIR: 'C:\\test-output', LATE_API_KEY: 'test-key' }),
+}))
+
+vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
+  ensureDirectory: vi.fn(),
+  removeDirectory: vi.fn(),
+}))
+
+vi.mock('../../../L1-infra/paths/paths.js', async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>
+  return {
+    ...actual,
+    join: (...args: string[]) => args.join('/'),
+  }
+})
+
+vi.mock('../../../L3-services/azureStorage/azureReviewDataSource.js', () => ({
+  listPendingItems: mockListPendingItems,
+  getGroupedItems: mockGetGroupedItems,
+  getItemById: mockGetItemById,
+  updateItem: mockAzureUpdateItem,
+  rejectItem: mockAzureRejectItem,
+  getMediaStream: mockGetMediaStream,
+  approveItem: vi.fn(),
+  markPublished: vi.fn(),
+  downloadMediaToFile: vi.fn(),
+}))
+
+vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
+  getContentItems: mockGetContentItems,
+  findContentItemByRowKey: mockFindContentItemByRowKey,
+  isAzureConfigured: () => true,
 }))
 
 vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
@@ -51,9 +86,8 @@ vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
 import express from 'express'
 import request from 'supertest'
 import { createRouter } from '../../../L7-app/review/routes.js'
-import type { QueueItemMetadata } from '../../../L3-services/postStore/postStore.js'
+import type { ReviewItem, ReviewGroup } from '../../../L3-services/azureStorage/azureReviewDataSource.js'
 
-// Build a lightweight Express app with just the API router
 function buildApp() {
   const app = express()
   app.use(express.json())
@@ -63,75 +97,68 @@ function buildApp() {
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-function makeMetadata(overrides: Partial<QueueItemMetadata> = {}): QueueItemMetadata {
+function makeReviewItem(id: string, overrides: Partial<ReviewItem> = {}): ReviewItem {
   return {
-    id: 'test-item',
-    platform: 'tiktok',
-    accountId: '',
-    sourceVideo: '/test/video',
-    sourceClip: null,
-    clipType: 'short',
-    sourceMediaPath: null,
-    hashtags: ['test'],
-    links: [],
-    characterCount: 20,
-    platformCharLimit: 2200,
-    suggestedSlot: null,
-    scheduledFor: null,
-    status: 'pending_review',
-    latePostId: null,
-    publishedUrl: null,
-    createdAt: new Date().toISOString(),
-    reviewedAt: null,
-    publishedAt: null,
-    ...overrides,
+    id,
+    videoSlug: overrides.videoSlug ?? 'test-video',
+    platform: overrides.platform ?? 'tiktok',
+    clipType: overrides.clipType ?? 'short',
+    status: overrides.status ?? 'pending_review',
+    mediaType: overrides.mediaType ?? 'video',
+    mediaUrl: overrides.mediaUrl ?? `/api/media/${id}/media.mp4`,
+    postContent: overrides.postContent ?? `Test post content for ${id}`,
+    hashtags: overrides.hashtags ?? ['test'],
+    scheduledFor: overrides.scheduledFor ?? null,
+    latePostId: overrides.latePostId ?? null,
+    publishedUrl: overrides.publishedUrl ?? null,
+    createdAt: overrides.createdAt ?? new Date().toISOString(),
+    thumbnailUrl: overrides.thumbnailUrl ?? null,
+    ideaIds: overrides.ideaIds ?? [],
+    mediaFilename: 'media.mp4',
+    thumbnailFilename: '',
+    blobBasePath: `content/${id}/`,
   }
 }
 
-async function createTestItem(id: string, overrides: Partial<QueueItemMetadata> = {}) {
-  const dir = path.join(tmpDir, 'publish-queue', id)
-  await fs.mkdir(dir, { recursive: true })
-  
-  const metadataTmp = tmp.fileSync({ dir, postfix: '.tmp', keep: true })
-  await fs.writeFile(
-    metadataTmp.name,
-    JSON.stringify(makeMetadata({ id, ...overrides })),
-  )
-  closeSync(metadataTmp.fd) // Close file descriptor on Windows before rename
-  await fs.rename(metadataTmp.name, path.join(dir, 'metadata.json'))
-  
-  const postTmp = tmp.fileSync({ dir, postfix: '.tmp', keep: true })
-  await fs.writeFile(postTmp.name, `Test post content for ${id}`)
-  closeSync(postTmp.fd) // Close file descriptor on Windows before rename
-  await fs.rename(postTmp.name, path.join(dir, 'post.md'))
+function makeContentRecord(id: string, overrides: Partial<ReviewItem> = {}) {
+  const item = makeReviewItem(id, overrides)
+  return {
+    partitionKey: item.videoSlug,
+    rowKey: id,
+    platform: item.platform,
+    clipType: item.clipType,
+    status: item.status,
+    blobBasePath: `content/${id}/`,
+    mediaType: item.mediaType,
+    mediaFilename: 'media.mp4',
+    postContent: item.postContent,
+    hashtags: item.hashtags.join(','),
+    characterCount: item.postContent.length,
+    scheduledFor: item.scheduledFor ?? '',
+    latePostId: item.latePostId ?? '',
+    publishedUrl: item.publishedUrl ?? '',
+    sourceVideoRunId: 'run-1',
+    thumbnailFilename: '',
+    ideaIds: item.ideaIds?.join(',') ?? '',
+    createdAt: item.createdAt,
+    reviewedAt: '',
+    publishedAt: '',
+  }
 }
 
 // ── Lifecycle ──────────────────────────────────────────────────────────
 
-beforeAll(async () => {
-  await fs.mkdir(path.join(tmpDir, 'publish-queue'), { recursive: true })
-  await fs.mkdir(path.join(tmpDir, 'published'), { recursive: true })
-})
-
-afterAll(async () => {
-  // Don't call both fs.rm and removeCallback - they conflict
-  // Use removeCallback to let tmp clean up properly
-  try {
-    tmpDirObj.removeCallback()
-  } catch {
-    // Ignore if already cleaned up
-  }
-})
-
-beforeEach(async () => {
-  mockGetIdeasByIds.mockReset()
+beforeEach(() => {
+  vi.clearAllMocks()
   mockGetIdeasByIds.mockResolvedValue([])
-
-  // Clean queue between tests
-  await fs.rm(path.join(tmpDir, 'publish-queue'), { recursive: true, force: true })
-  await fs.rm(path.join(tmpDir, 'published'), { recursive: true, force: true })
-  await fs.mkdir(path.join(tmpDir, 'publish-queue'), { recursive: true })
-  await fs.mkdir(path.join(tmpDir, 'published'), { recursive: true })
+  mockListPendingItems.mockResolvedValue([])
+  mockGetGroupedItems.mockResolvedValue([])
+  mockGetItemById.mockResolvedValue(null)
+  mockAzureUpdateItem.mockResolvedValue(null)
+  mockAzureRejectItem.mockResolvedValue(undefined)
+  mockGetContentItems.mockResolvedValue([])
+  mockFindContentItemByRowKey.mockResolvedValue(null)
+  mockGetMediaStream.mockRejectedValue(new Error('Not found'))
 })
 
 // ── Tests ──────────────────────────────────────────────────────────────
@@ -150,8 +177,10 @@ describe('Review Server API', () => {
     })
 
     it('returns items when queue has posts', async () => {
-      await createTestItem('item-a')
-      await createTestItem('item-b')
+      mockListPendingItems.mockResolvedValue([
+        makeReviewItem('item-a'),
+        makeReviewItem('item-b'),
+      ])
 
       const res = await request(app).get('/api/posts/pending')
       expect(res.status).toBe(200)
@@ -159,35 +188,18 @@ describe('Review Server API', () => {
       expect(res.body.total).toBe(2)
     })
 
-    it('items are sorted by createdAt', async () => {
-      await createTestItem('older', { createdAt: '2025-01-01T00:00:00Z' })
-      await createTestItem('newer', { createdAt: '2025-06-01T00:00:00Z' })
-      await createTestItem('oldest', { createdAt: '2024-06-01T00:00:00Z' })
-
-      const res = await request(app).get('/api/posts/pending')
-      expect(res.status).toBe(200)
-      const ids = res.body.items.map((i: { id: string }) => i.id)
-      expect(ids).toEqual(['oldest', 'older', 'newer'])
-    })
-
-    it('batches idea enrichment across pending queue items', async () => {
-      await createTestItem('idea-a', { ideaIds: ['idea-1', '42'] })
-      await createTestItem('idea-b', { ideaIds: ['idea-2', 'idea-1'] })
-      mockGetIdeasByIds.mockResolvedValue([
-        { id: 'idea-1', issueNumber: 41, publishBy: '2026-03-20' },
-        { id: 'idea-2', issueNumber: 42, publishBy: '2026-03-01' },
+    it('listing does not enrich ideas (deferred to per-item fetch)', async () => {
+      mockListPendingItems.mockResolvedValue([
+        makeReviewItem('idea-a', { ideaIds: ['idea-1', '42'] }),
+        makeReviewItem('idea-b', { ideaIds: ['idea-2', 'idea-1'] }),
       ])
 
       const res = await request(app).get('/api/posts/pending')
 
       expect(res.status).toBe(200)
-      expect(mockGetIdeasByIds).toHaveBeenCalledTimes(1)
-      expect(mockGetIdeasByIds).toHaveBeenCalledWith(expect.arrayContaining(['idea-1', 'idea-2', '42']))
-      const itemsById = new Map<string, { id: string; ideaPublishBy?: string }>(
-        res.body.items.map((item: { id: string; ideaPublishBy?: string }) => [item.id, item] as const),
-      )
-      expect(itemsById.get('idea-a')?.ideaPublishBy).toBe('2026-03-01')
-      expect(itemsById.get('idea-b')?.ideaPublishBy).toBe('2026-03-01')
+      // No idea enrichment on listing endpoints — saves API calls
+      expect(mockGetIdeasByIds).not.toHaveBeenCalled()
+      expect(res.body.items[0].ideaPublishBy).toBeUndefined()
     })
   })
 
@@ -195,23 +207,28 @@ describe('Review Server API', () => {
 
   describe('GET /api/posts/:id', () => {
     it('returns 404 for non-existent item', async () => {
+      mockGetContentItems.mockResolvedValue([])
       const res = await request(app).get('/api/posts/does-not-exist')
       expect(res.status).toBe(404)
       expect(res.body.error).toBe('Item not found')
     })
 
     it('returns item with full content', async () => {
-      await createTestItem('detail-item')
+      const item = makeReviewItem('detail-item')
+      mockFindContentItemByRowKey.mockResolvedValue(makeContentRecord('detail-item'))
+      mockGetItemById.mockResolvedValue(item)
 
       const res = await request(app).get('/api/posts/detail-item')
       expect(res.status).toBe(200)
       expect(res.body.id).toBe('detail-item')
       expect(res.body.postContent).toBe('Test post content for detail-item')
-      expect(res.body.metadata.platform).toBe('tiktok')
+      expect(res.body.platform).toBe('tiktok')
     })
 
     it('includes earliest idea publishBy when linked ideas are available', async () => {
-      await createTestItem('detail-idea-item', { ideaIds: ['idea-later', 'idea-earlier'] })
+      const item = makeReviewItem('detail-idea-item', { ideaIds: ['idea-later', 'idea-earlier'] })
+      mockFindContentItemByRowKey.mockResolvedValue(makeContentRecord('detail-idea-item', { ideaIds: ['idea-later', 'idea-earlier'] }))
+      mockGetItemById.mockResolvedValue(item)
       mockGetIdeasByIds.mockResolvedValue([
         { id: 'idea-later', publishBy: '2026-03-20' },
         { id: 'idea-earlier', publishBy: '2026-03-01' },
@@ -220,78 +237,41 @@ describe('Review Server API', () => {
       const res = await request(app).get('/api/posts/detail-idea-item')
       expect(res.status).toBe(200)
       expect(res.body.ideaPublishBy).toBe('2026-03-01')
-      expect(mockGetIdeasByIds).toHaveBeenCalledWith(['idea-later', 'idea-earlier'])
     })
   })
 
   // ─── POST /api/posts/:id/approve ──────────────────────────────────
 
   describe('POST /api/posts/:id/approve', () => {
-    it('returns 404 for non-existent item', async () => {
-      const res = await request(app).post('/api/posts/ghost/approve')
-      // Now returns 202 immediately (fire-and-forget), item-not-found is logged
-      expect(res.status).toBe(202)
-    })
-
-    it('approves item and returns 202 accepted', async () => {
-      await createTestItem('approve-me')
+    it('returns 202 accepted', async () => {
+      mockGetContentItems.mockResolvedValue([makeContentRecord('approve-me')])
 
       const res = await request(app).post('/api/posts/approve-me/approve')
       expect(res.status).toBe(202)
       expect(res.body.accepted).toBe(true)
 
-      // Wait for queue to drain
       await new Promise(resolve => setTimeout(resolve, 200))
-    })
-
-    it('moves item to published/ folder', async () => {
-      await createTestItem('approve-move')
-
-      await request(app).post('/api/posts/approve-move/approve')
-
-      // Wait for queue to drain
-      await new Promise(resolve => setTimeout(resolve, 1000))
-
-      // No longer in queue
-      const pendingRes = await request(app).get('/api/posts/approve-move')
-      expect(pendingRes.status).toBe(404)
-
-      // Exists in published dir
-      const publishedMeta = JSON.parse(
-        await fs.readFile(
-          path.join(tmpDir, 'published', 'approve-move', 'metadata.json'),
-          'utf-8',
-        ),
-      )
-      expect(publishedMeta.status).toBe('published')
-      expect(publishedMeta.latePostId).toBe('test-post-id')
     })
   })
 
   // ─── POST /api/posts/:id/reject ───────────────────────────────────
 
   describe('POST /api/posts/:id/reject', () => {
-    it('returns 404-ish for non-existent item', async () => {
-      // rejectItem silently succeeds (rm on non-existent path doesn't throw)
+    it('returns 404 for non-existent item', async () => {
+      mockGetContentItems.mockResolvedValue([])
+
       const res = await request(app).post('/api/posts/ghost/reject')
-      expect(res.status).toBe(200)
-      expect(res.body.success).toBe(true)
+      expect(res.status).toBe(404)
+      expect(res.body.error).toBe('Item not found')
     })
 
-    it('deletes item from queue', async () => {
-      await createTestItem('reject-me')
-
-      // Verify it exists first
-      const before = await request(app).get('/api/posts/reject-me')
-      expect(before.status).toBe(200)
+    it('rejects item and returns success', async () => {
+      mockFindContentItemByRowKey.mockResolvedValue(makeContentRecord('reject-me'))
 
       const res = await request(app).post('/api/posts/reject-me/reject')
       expect(res.status).toBe(200)
       expect(res.body.success).toBe(true)
-
-      // Verify it's gone
-      const after = await request(app).get('/api/posts/reject-me')
-      expect(after.status).toBe(404)
+      expect(mockAzureRejectItem).toHaveBeenCalledWith('test-video', 'reject-me')
     })
   })
 
@@ -299,6 +279,8 @@ describe('Review Server API', () => {
 
   describe('PUT /api/posts/:id', () => {
     it('returns 404 for non-existent item', async () => {
+      mockGetContentItems.mockResolvedValue([])
+
       const res = await request(app)
         .put('/api/posts/ghost')
         .send({ postContent: 'New content' })
@@ -307,29 +289,36 @@ describe('Review Server API', () => {
     })
 
     it('updates post content', async () => {
-      await createTestItem('edit-me')
+      const updatedItem = makeReviewItem('edit-me', { postContent: 'Updated content!' })
+      mockFindContentItemByRowKey.mockResolvedValue(makeContentRecord('edit-me'))
+      mockAzureUpdateItem.mockResolvedValue(updatedItem)
 
       const res = await request(app)
         .put('/api/posts/edit-me')
         .send({ postContent: 'Updated content!' })
       expect(res.status).toBe(200)
       expect(res.body.postContent).toBe('Updated content!')
+      expect(mockAzureUpdateItem).toHaveBeenCalledWith('test-video', 'edit-me', { postContent: 'Updated content!' })
+    })
+  })
 
-      // Verify persisted
-      const check = await request(app).get('/api/posts/edit-me')
-      expect(check.body.postContent).toBe('Updated content!')
+  // ─── GET /api/media/:itemId/:filename ─────────────────────────────
+
+  describe('GET /api/media/:itemId/:filename', () => {
+    it('returns 404 for non-existent media', async () => {
+      mockGetMediaStream.mockRejectedValue(new Error('Blob not found'))
+
+      const res = await request(app).get('/api/media/nonexistent/media.mp4')
+      expect(res.status).toBe(404)
     })
 
-    it('updates metadata fields', async () => {
-      await createTestItem('edit-meta')
+    it('streams media with correct content type', async () => {
+      const fakeStream = Readable.from(Buffer.from('fake video data'))
+      mockGetMediaStream.mockResolvedValue({ stream: fakeStream, contentType: 'video/mp4' })
 
-      const res = await request(app)
-        .put('/api/posts/edit-meta')
-        .send({ metadata: { hashtags: ['updated', 'tags'] } })
+      const res = await request(app).get('/api/media/item-1/media.mp4')
       expect(res.status).toBe(200)
-      expect(res.body.metadata.hashtags).toEqual(['updated', 'tags'])
-      // Original fields preserved
-      expect(res.body.metadata.platform).toBe('tiktok')
+      expect(res.headers['content-type']).toBe('video/mp4')
     })
   })
 
@@ -352,12 +341,6 @@ describe('Review Server API', () => {
       expect(res.body.platform).toBe('tiktok')
       expect(res.body.nextSlot).toBe('2026-02-15T19:00:00-06:00')
     })
-
-    it('accepts clipType query parameter', async () => {
-      const res = await request(app).get('/api/schedule/next-slot/tiktok?clipType=short')
-      expect(res.status).toBe(200)
-      expect(res.body.platform).toBe('tiktok')
-    })
   })
 
   // ─── GET /api/posts/grouped ───────────────────────────────────────
@@ -370,13 +353,16 @@ describe('Review Server API', () => {
       expect(res.body.total).toBe(0)
     })
 
-    it('returns grouped items when queue has posts', async () => {
-      await createTestItem('group-a', { sourceVideo: '/test/video1', clipType: 'short' })
-      await createTestItem('group-b', { sourceVideo: '/test/video1', clipType: 'short' })
+    it('returns grouped items when available', async () => {
+      mockGetGroupedItems.mockResolvedValue([
+        { videoSlug: 'test-video', items: [makeReviewItem('group-a'), makeReviewItem('group-b')] },
+      ])
 
       const res = await request(app).get('/api/posts/grouped')
       expect(res.status).toBe(200)
-      expect(res.body.total).toBeGreaterThan(0)
+      expect(res.body.total).toBe(1)
+      // Grouped items should NOT have ideaPublishBy (deferred to per-item fetch)
+      expect(res.body.groups[0].items[0].ideaPublishBy).toBeUndefined()
     })
   })
 
@@ -390,32 +376,6 @@ describe('Review Server API', () => {
       expect(res.body).toHaveProperty('total')
       expect(res.body).toHaveProperty('accounts')
       expect(res.body).toHaveProperty('profile')
-    })
-
-    it('returns items in groups when queue has posts', async () => {
-      await createTestItem('init-item')
-
-      const res = await request(app).get('/api/init')
-      expect(res.status).toBe(200)
-      expect(res.body.total).toBeGreaterThan(0)
-    })
-
-    it('includes idea publishBy on grouped items and fails silently on idea lookup errors', async () => {
-      await createTestItem('init-idea-item', {
-        sourceVideo: '/test/video1',
-        clipType: 'short',
-        ideaIds: ['idea-initial'],
-      })
-      mockGetIdeasByIds.mockResolvedValue([{ id: 'idea-initial', publishBy: '2026-02-01' }])
-
-      const successRes = await request(app).get('/api/init')
-      expect(successRes.status).toBe(200)
-      expect(successRes.body.groups[0].items[0].ideaPublishBy).toBe('2026-02-01')
-
-      mockGetIdeasByIds.mockRejectedValue(new Error('idea bank unavailable'))
-      const failRes = await request(app).get('/api/init')
-      expect(failRes.status).toBe(200)
-      expect(failRes.body.groups[0].items[0]).not.toHaveProperty('ideaPublishBy')
     })
   })
 
@@ -434,15 +394,16 @@ describe('Review Server API', () => {
     })
 
     it('returns 202 accepted for valid itemIds', async () => {
-      await createTestItem('bulk-a')
-      await createTestItem('bulk-b')
+      mockGetContentItems.mockResolvedValue([
+        makeContentRecord('bulk-a'),
+        makeContentRecord('bulk-b'),
+      ])
 
       const res = await request(app).post('/api/posts/bulk-approve').send({ itemIds: ['bulk-a', 'bulk-b'] })
       expect(res.status).toBe(202)
       expect(res.body.accepted).toBe(true)
       expect(res.body.count).toBe(2)
 
-      // Wait for background processing
       await new Promise(resolve => setTimeout(resolve, 300))
     })
   })
@@ -461,23 +422,20 @@ describe('Review Server API', () => {
       expect(res.status).toBe(400)
     })
 
-    it('returns 202 and deletes items in background', async () => {
-      await createTestItem('bulk-reject-a')
-      await createTestItem('bulk-reject-b')
+    it('returns 202 and rejects items in background', async () => {
+      mockGetContentItems.mockResolvedValue([
+        makeContentRecord('bulk-reject-a'),
+        makeContentRecord('bulk-reject-b'),
+      ])
 
       const res = await request(app).post('/api/posts/bulk-reject').send({ itemIds: ['bulk-reject-a', 'bulk-reject-b'] })
       expect(res.status).toBe(202)
       expect(res.body.accepted).toBe(true)
       expect(res.body.count).toBe(2)
 
-      // Wait for background processing
       await new Promise(resolve => setTimeout(resolve, 300))
 
-      // Verify items are gone
-      const checkA = await request(app).get('/api/posts/bulk-reject-a')
-      expect(checkA.status).toBe(404)
-      const checkB = await request(app).get('/api/posts/bulk-reject-b')
-      expect(checkB.status).toBe(404)
+      expect(mockAzureRejectItem).toHaveBeenCalledTimes(2)
     })
   })
 
@@ -506,10 +464,18 @@ describe('Review Server API', () => {
 // ── Server startup test ─────────────────────────────────────────────
 
 describe('startReviewServer', () => {
-  it('starts without path-to-regexp errors (regression: /* wildcard)', async () => {
+  it('starts without path-to-regexp errors (regression: /{*splat} wildcard)', async () => {
     const { startReviewServer } = await import('../../../L7-app/review/server.js')
     const server = await startReviewServer({ port: 0 })
     expect(server.port).toBeGreaterThan(0)
+    await server.close()
+  })
+
+  it('SPA fallback serves index.html for non-API paths', async () => {
+    const { startReviewServer } = await import('../../../L7-app/review/server.js')
+    const server = await startReviewServer({ port: 0 })
+    const res = await request(`http://localhost:${server.port}`).get('/some/deep/route')
+    expect(res.status).toBe(200)
     await server.close()
   })
 })

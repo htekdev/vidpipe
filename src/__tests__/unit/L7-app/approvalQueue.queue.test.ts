@@ -6,18 +6,34 @@ vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
-const mockFileExists = vi.hoisted(() => vi.fn())
-vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
-  fileExists: mockFileExists,
+vi.mock('../../../L1-infra/config/environment.js', () => ({
+  getConfig: () => ({ OUTPUT_DIR: 'C:\\test-output' }),
 }))
 
-const mockGetItem = vi.hoisted(() => vi.fn())
-const mockApproveItem = vi.hoisted(() => vi.fn())
-const mockApproveBulk = vi.hoisted(() => vi.fn())
-vi.mock('../../../L3-services/postStore/postStore.js', () => ({
-  getItem: mockGetItem,
-  approveItem: mockApproveItem,
-  approveBulk: mockApproveBulk,
+const mockEnsureDirectory = vi.hoisted(() => vi.fn())
+const mockRemoveDirectory = vi.hoisted(() => vi.fn())
+vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
+  ensureDirectory: mockEnsureDirectory,
+  removeDirectory: mockRemoveDirectory,
+}))
+
+vi.mock('../../../L1-infra/paths/paths.js', () => ({
+  join: (...args: string[]) => args.join('/'),
+}))
+
+const mockGetContentItems = vi.hoisted(() => vi.fn())
+vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
+  getContentItems: mockGetContentItems,
+}))
+
+const mockAzureApproveItem = vi.hoisted(() => vi.fn())
+const mockMarkPublished = vi.hoisted(() => vi.fn())
+const mockDownloadMediaToFile = vi.hoisted(() => vi.fn())
+vi.mock('../../../L3-services/azureStorage/azureReviewDataSource.js', () => ({
+  getItemById: vi.fn(),
+  approveItem: mockAzureApproveItem,
+  markPublished: mockMarkPublished,
+  downloadMediaToFile: mockDownloadMediaToFile,
 }))
 
 const mockGetIdeasByIds = vi.hoisted(() => vi.fn())
@@ -62,51 +78,46 @@ import { enqueueApproval } from '../../../L7-app/review/approvalQueue.js'
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
-interface QueueItemOverrides {
+interface ContentRecordOverrides {
   platform?: string
-  accountId?: string
-  clipType?: 'video' | 'short' | 'medium-clip'
-  ideaIds?: string[]
-  mediaPath?: string | null
-  sourceMediaPath?: string | null
+  clipType?: string
+  ideaIds?: string
+  mediaFilename?: string
   postContent?: string
   createdAt?: string
+  videoSlug?: string
 }
 
-function makeItem(id: string, overrides: QueueItemOverrides = {}) {
+function makeContentRecord(id: string, overrides: ContentRecordOverrides = {}) {
   return {
-    id,
-    metadata: {
-      id,
-      platform: overrides.platform ?? 'youtube',
-      accountId: overrides.accountId ?? 'acc-yt',
-      sourceVideo: '/v.mp4',
-      sourceClip: null,
-      clipType: overrides.clipType ?? 'short',
-      sourceMediaPath: overrides.sourceMediaPath ?? null,
-      hashtags: [],
-      links: [],
-      characterCount: 10,
-      platformCharLimit: 5000,
-      suggestedSlot: null,
-      scheduledFor: null,
-      status: 'pending_review' as const,
-      latePostId: null,
-      publishedUrl: null,
-      createdAt: overrides.createdAt ?? new Date().toISOString(),
-      reviewedAt: null,
-      publishedAt: null,
-      ...(overrides.ideaIds ? { ideaIds: overrides.ideaIds } : {}),
-    },
+    partitionKey: overrides.videoSlug ?? 'test-video',
+    rowKey: id,
+    platform: overrides.platform ?? 'youtube',
+    clipType: overrides.clipType ?? 'short',
+    status: 'pending_review' as const,
+    blobBasePath: `content/${id}/`,
+    mediaType: 'video',
+    mediaFilename: overrides.mediaFilename ?? '',
     postContent: overrides.postContent ?? id,
-    hasMedia: Boolean(overrides.mediaPath ?? overrides.sourceMediaPath),
-    mediaPath: overrides.mediaPath ?? null,
-    folderPath: `/queue/${id}`,
+    hashtags: '',
+    characterCount: 10,
+    scheduledFor: '',
+    latePostId: '',
+    publishedUrl: '',
+    sourceVideoRunId: 'run-1',
+    thumbnailFilename: '',
+    ideaIds: overrides.ideaIds ?? '',
+    createdAt: overrides.createdAt ?? new Date().toISOString(),
+    reviewedAt: '',
+    publishedAt: '',
   }
 }
 
-function mockItemsById(items: Record<string, ReturnType<typeof makeItem>>): void {
-  mockGetItem.mockImplementation(async (id: string) => items[id] ?? null)
+function mockContentRecords(records: ReturnType<typeof makeContentRecord>[]): void {
+  mockGetContentItems.mockImplementation(async (filters?: { status?: string }) => {
+    if (filters?.status) return records.filter(r => r.status === filters.status)
+    return records
+  })
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -117,9 +128,11 @@ beforeEach(() => {
   mockFindNextSlot.mockResolvedValue('2026-04-01T10:00:00-06:00')
   mockGetIdeasByIds.mockResolvedValue([])
   mockGetAccountId.mockResolvedValue('acc-123')
-  mockFileExists.mockResolvedValue(false)
-  mockApproveItem.mockResolvedValue(undefined)
-  mockApproveBulk.mockResolvedValue(undefined)
+  mockDownloadMediaToFile.mockResolvedValue(undefined)
+  mockAzureApproveItem.mockResolvedValue(undefined)
+  mockMarkPublished.mockResolvedValue(undefined)
+  mockEnsureDirectory.mockResolvedValue(undefined)
+  mockRemoveDirectory.mockResolvedValue(undefined)
 
   // Default: no queue configured (fallback path)
   mockGetQueueId.mockResolvedValue(null)
@@ -137,9 +150,9 @@ describe('L7 Unit: approvalQueue — queue integration', () => {
       status: 'scheduled',
       scheduledFor: '2026-04-02T14:00:00-06:00',
     })
-    mockItemsById({
-      'q-item': makeItem('q-item', { postContent: 'Queue post' }),
-    })
+    mockContentRecords([
+      makeContentRecord('q-item', { postContent: 'Queue post' }),
+    ])
 
     const result = await enqueueApproval(['q-item'])
 
@@ -163,9 +176,9 @@ describe('L7 Unit: approvalQueue — queue integration', () => {
       status: 'scheduled',
       scheduledFor: '2026-04-05T09:00:00-06:00',
     })
-    mockItemsById({
-      'fallback-item': makeItem('fallback-item', { postContent: 'Fallback post' }),
-    })
+    mockContentRecords([
+      makeContentRecord('fallback-item', { postContent: 'Fallback post' }),
+    ])
 
     const result = await enqueueApproval(['fallback-item'])
 
@@ -191,20 +204,18 @@ describe('L7 Unit: approvalQueue — queue integration', () => {
       status: 'scheduled',
       scheduledFor: apiAssignedSlot,
     })
-    mockItemsById({
-      'api-slot-item': makeItem('api-slot-item', {
-        platform: 'instagram',
-        postContent: 'IG queue post',
-      }),
-    })
+    mockContentRecords([
+      makeContentRecord('api-slot-item', { platform: 'instagram', postContent: 'IG queue post' }),
+    ])
 
     const result = await enqueueApproval(['api-slot-item'])
 
     expect(result.scheduled).toBe(1)
     // The result should reflect the scheduledFor from the Late API response
     expect(result.results[0].scheduledFor).toBe(apiAssignedSlot)
-    // approveItem should be called with the API-assigned slot
-    expect(mockApproveItem).toHaveBeenCalledWith(
+    // markPublished should be called with the API-assigned slot
+    expect(mockMarkPublished).toHaveBeenCalledWith(
+      'test-video',
       'api-slot-item',
       expect.objectContaining({ scheduledFor: apiAssignedSlot }),
     )
@@ -214,9 +225,9 @@ describe('L7 Unit: approvalQueue — queue integration', () => {
     mockGetQueueId.mockResolvedValue(null)
     mockFindNextSlot.mockResolvedValue('2026-04-01T10:00:00-06:00')
     mockCreatePost.mockResolvedValue({ _id: 'late-no-q', status: 'scheduled' })
-    mockItemsById({
-      'no-q-item': makeItem('no-q-item', { postContent: 'No queue' }),
-    })
+    mockContentRecords([
+      makeContentRecord('no-q-item', { postContent: 'No queue' }),
+    ])
 
     await enqueueApproval(['no-q-item'])
 
@@ -231,9 +242,9 @@ describe('L7 Unit: approvalQueue — queue integration', () => {
       status: 'scheduled',
       scheduledFor: '2026-04-15T12:00:00-06:00',
     })
-    mockItemsById({
-      'q-item-2': makeItem('q-item-2', { postContent: 'With queue' }),
-    })
+    mockContentRecords([
+      makeContentRecord('q-item-2', { postContent: 'With queue' }),
+    ])
 
     await enqueueApproval(['q-item-2'])
 
@@ -248,9 +259,9 @@ describe('L7 Unit: approvalQueue — queue integration', () => {
       status: 'scheduled',
       scheduledFor: '2026-04-20T16:00:00-06:00',
     })
-    mockItemsById({
-      'skip-slot': makeItem('skip-slot', { platform: 'twitter', postContent: 'X post' }),
-    })
+    mockContentRecords([
+      makeContentRecord('skip-slot', { platform: 'twitter', postContent: 'X post' }),
+    ])
 
     await enqueueApproval(['skip-slot'])
 
@@ -258,7 +269,6 @@ describe('L7 Unit: approvalQueue — queue integration', () => {
   })
 
   it('handles mixed batch: some items use queue, others fall back', async () => {
-    // YouTube has a queue, Instagram does not
     mockGetQueueId.mockImplementation(async (platform: string) => {
       if (platform === 'youtube') return 'queue-yt-shorts'
       return null
@@ -270,22 +280,20 @@ describe('L7 Unit: approvalQueue — queue integration', () => {
       status: 'scheduled',
       scheduledFor: params.scheduledFor ?? '2026-04-25T15:00:00-06:00',
     }))
-    mockItemsById({
-      'yt-item': makeItem('yt-item', { platform: 'youtube', postContent: 'YT content' }),
-      'ig-item': makeItem('ig-item', { platform: 'instagram', postContent: 'IG content' }),
-    })
+    mockContentRecords([
+      makeContentRecord('yt-item', { platform: 'youtube', postContent: 'YT content' }),
+      makeContentRecord('ig-item', { platform: 'instagram', postContent: 'IG content' }),
+    ])
 
     const result = await enqueueApproval(['yt-item', 'ig-item'])
 
     expect(result.scheduled).toBe(2)
 
-    // YouTube item should use queue path
     const ytCall = mockCreatePost.mock.calls.find(([args]) => args.content === 'YT content')!
     expect(ytCall[0]).toHaveProperty('queuedFromProfile', 'profile-mix')
     expect(ytCall[0]).toHaveProperty('queueId', 'queue-yt-shorts')
     expect(ytCall[0]).not.toHaveProperty('scheduledFor')
 
-    // Instagram item should use fallback path
     const igCall = mockCreatePost.mock.calls.find(([args]) => args.content === 'IG content')!
     expect(igCall[0]).toHaveProperty('scheduledFor', '2026-04-25T11:00:00-06:00')
     expect(igCall[0]).not.toHaveProperty('queuedFromProfile')
@@ -295,12 +303,9 @@ describe('L7 Unit: approvalQueue — queue integration', () => {
   it('passes correct clipType to getQueueId', async () => {
     mockGetQueueId.mockResolvedValue(null)
     mockCreatePost.mockResolvedValue({ _id: 'late-clip', status: 'scheduled' })
-    mockItemsById({
-      'mc-item': makeItem('mc-item', {
-        clipType: 'medium-clip',
-        postContent: 'Medium clip',
-      }),
-    })
+    mockContentRecords([
+      makeContentRecord('mc-item', { clipType: 'medium-clip', postContent: 'Medium clip' }),
+    ])
 
     await enqueueApproval(['mc-item'])
 
@@ -308,9 +313,7 @@ describe('L7 Unit: approvalQueue — queue integration', () => {
   })
 
   it('records failure when getProfileId throws but does not crash the batch', async () => {
-    // Both items use queue path
     mockGetQueueId.mockResolvedValue('queue-yt-shorts')
-    // First call throws, second succeeds
     mockGetProfileId
       .mockRejectedValueOnce(new Error('Profile fetch failed'))
       .mockResolvedValueOnce('profile-ok')
@@ -319,20 +322,18 @@ describe('L7 Unit: approvalQueue — queue integration', () => {
       status: 'scheduled',
       scheduledFor: '2026-04-10T12:00:00-06:00',
     })
-    mockItemsById({
-      'fail-item': makeItem('fail-item', { postContent: 'Will fail' }),
-      'ok-item': makeItem('ok-item', { postContent: 'Will succeed' }),
-    })
+    mockContentRecords([
+      makeContentRecord('fail-item', { postContent: 'Will fail' }),
+      makeContentRecord('ok-item', { postContent: 'Will succeed' }),
+    ])
 
     const result = await enqueueApproval(['fail-item', 'ok-item'])
 
-    // First item should be recorded as failure
     const failEntry = result.results.find(r => r.itemId === 'fail-item')
     expect(failEntry).toBeDefined()
     expect(failEntry!.success).toBe(false)
     expect(failEntry!.error).toContain('Profile fetch failed')
 
-    // Second item should still be processed successfully
     const okEntry = result.results.find(r => r.itemId === 'ok-item')
     expect(okEntry).toBeDefined()
     expect(okEntry!.success).toBe(true)

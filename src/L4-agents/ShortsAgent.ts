@@ -1,6 +1,6 @@
 import type { ToolWithHandler } from '../L3-services/llm/providerFactory.js'
 import { BaseAgent } from './BaseAgent'
-import { VideoFile, Transcript, ShortClip, ShortSegment, ShortClipVariant, WebcamRegion } from '../L0-pure/types/index'
+import { VideoFile, Transcript, ShortClip, ShortSegment, ShortClipVariant, WebcamRegion, AspectRatio } from '../L0-pure/types/index'
 import type { HookType, EmotionalTrigger, ShortNarrativeStructure } from '../L0-pure/types/index'
 import type { Idea, ClipConfig } from '../L0-pure/types/index.js'
 import { buildIdeaContext } from '../L0-pure/ideaContext/ideaContext.js'
@@ -12,6 +12,47 @@ import { slugify } from '../L0-pure/text/text.js'
 import { writeTextFile, writeJsonFile, ensureDirectory } from '../L1-infra/fileSystem/fileSystem.js'
 import { join, dirname } from '../L1-infra/paths/paths.js'
 import logger from '../L1-infra/logger/configLogger'
+import type { CaptionStyle } from '../L0-pure/types/index.js'
+
+/**
+ * Resolve the caption style for portrait variants.
+ * Split-screen layouts (webcam + screen panels) use middle positioning (MarginV: 770).
+ * Non-split-screen layouts (center-crop) use lower-third positioning (MarginV: 280).
+ */
+export function resolvePortraitCaptionStyle(isSplitScreen: boolean | undefined): CaptionStyle {
+  return isSplitScreen ? 'portrait' : 'portrait-lower'
+}
+
+/**
+ * Map platform variant results to ShortClipVariant array, preserving isSplitScreen.
+ */
+export function mapVariantResults(
+  results: Array<{ path: string; aspectRatio: string; platform: string; width: number; height: number; isSplitScreen?: boolean }>,
+): ShortClipVariant[] {
+  return results.map((v) => ({
+    path: v.path,
+    aspectRatio: v.aspectRatio as AspectRatio,
+    platform: v.platform as ShortClipVariant['platform'],
+    width: v.width,
+    height: v.height,
+    isSplitScreen: v.isSplitScreen,
+  }))
+}
+
+/**
+ * Build portrait ASS caption content with split-screen awareness.
+ * Returns the ASS file content string for burning onto portrait variants.
+ */
+export function buildPortraitCaptionASS(
+  transcript: Transcript,
+  segments: { start: number; end: number }[],
+  hookText: string,
+  isSplitScreen: boolean,
+): string {
+  return segments.length === 1
+    ? generatePortraitASSWithHook(transcript, hookText, segments[0].start, segments[0].end, undefined, isSplitScreen)
+    : generatePortraitASSWithHookComposite(transcript, segments, hookText, undefined, isSplitScreen)
+}
 
 // ── Types for the LLM's plan_shorts tool call ──────────────────────────────
 
@@ -489,13 +530,7 @@ export async function generateShorts(
           const defaultPlatforms: Platform[] = ['tiktok', 'youtube-shorts', 'instagram-reels', 'instagram-feed', 'linkedin']
           const results = await generatePlatformVariants(outputPath, shortsDir, shortSlug, defaultPlatforms, { webcamOverride })
           if (results.length > 0) {
-            clipVariants = results.map((v) => ({
-              path: v.path,
-              aspectRatio: v.aspectRatio,
-              platform: v.platform as ShortClipVariant['platform'],
-              width: v.width,
-              height: v.height,
-            }))
+            clipVariants = mapVariantResults(results)
             logger.info(`[ShortsAgent] Generated ${clipVariants.length} platform variants for: ${plan.title}`)
           }
         } catch (err) {
@@ -532,9 +567,8 @@ export async function generateShorts(
         if (portraitVariants.length > 0) {
           try {
             const hookText = plan.hook ?? plan.title
-            const portraitAssContent = segments.length === 1
-              ? generatePortraitASSWithHook(transcript, hookText, segments[0].start, segments[0].end)
-              : generatePortraitASSWithHookComposite(transcript, segments, hookText)
+            const isSplitScreen = portraitVariants[0].isSplitScreen ?? false
+            const portraitAssContent = buildPortraitCaptionASS(transcript, segments, hookText, isSplitScreen)
             const portraitAssPath = join(shortsDir, `${shortSlug}-portrait.ass`)
             await writeTextFile(portraitAssPath, portraitAssContent)
             // All 9:16 variants share the same source file — burn once, update all paths

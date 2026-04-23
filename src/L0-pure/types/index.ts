@@ -180,7 +180,7 @@ export type VideoPlatform =
  * - `'portrait'` — Opus Clips style for 9:16 vertical video (green highlight,
  *   scale-pop animation, larger fonts for small-screen viewing)
  */
-export type CaptionStyle = 'shorts' | 'medium' | 'portrait';
+export type CaptionStyle = 'shorts' | 'medium' | 'portrait' | 'portrait-lower';
 
 export interface ShortClipVariant {
   path: string;
@@ -188,6 +188,8 @@ export interface ShortClipVariant {
   platform: VideoPlatform;
   width: number;
   height: number;
+  /** Whether a split-screen layout (screen + webcam panels) was used. */
+  isSplitScreen?: boolean;
 }
 
 // ============================================================================
@@ -429,6 +431,7 @@ export enum PipelineStage {
   MediumClipPosts = 'medium-clip-posts',
   Blog = 'blog',
   QueueBuild = 'queue-build',
+  CloudUpload = 'cloud-upload',
 }
 
 // ============================================================================
@@ -604,6 +607,7 @@ export const PIPELINE_STAGES: readonly StageInfo[] = [
   { stage: PipelineStage.MediumClipPosts, name: 'Medium Clip Posts', stageNumber: 15 },
   { stage: PipelineStage.QueueBuild, name: 'Queue Build', stageNumber: 16 },
   { stage: PipelineStage.Blog, name: 'Blog', stageNumber: 17 },
+  { stage: PipelineStage.CloudUpload, name: 'Cloud Upload', stageNumber: 18 },
 ] as const
 
 /** Total number of pipeline stages. Derived from PIPELINE_STAGES, not hardcoded. */

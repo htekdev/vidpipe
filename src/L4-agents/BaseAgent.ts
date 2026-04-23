@@ -23,7 +23,7 @@ import logger from '../L1-infra/logger/configLogger.js'
  * 1. `run(userMessage)` lazily creates an LLMSession via the configured
  *    provider (Copilot, OpenAI, or Claude).
  * 2. The user message is sent via `sendAndWait()`, which blocks until the
- *    LLM produces a final response (with a 5-minute timeout).
+ *    LLM produces a final response (no timeout by default).
  * 3. During processing, the LLM may invoke tools multiple times — each call
  *    is logged via session event handlers.
  * 4. The final assistant message text is returned to the caller.
@@ -63,9 +63,9 @@ export abstract class BaseAgent {
     return undefined
   }
 
-  /** Timeout for sendAndWait calls. Override in interactive agents that need longer timeouts. */
+  /** Timeout for sendAndWait calls. 0 = no timeout. Override in subclasses if needed. */
   protected getTimeoutMs(): number {
-    return 300_000 // 5 minutes
+    return 0 // No timeout — let agents run to completion
   }
 
   /** Dispatch a tool call to the concrete agent. Override in subclasses. */

@@ -77,6 +77,8 @@ const credentialKeys = [
   'lateApiKey',
   'githubToken',
   'geminiApiKey',
+  'azureStorageAccountName',
+  'azureStorageAccountKey',
 ] as const satisfies readonly CredentialKey[]
 
 const defaultKeys = [
@@ -901,6 +903,110 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
       },
       path() {
         return getConfigPath()
+      },
+    },
+
+    cloud: {
+      async process(videoPath, options) {
+        const { uploadVideoFile, isAzureConfigured, getRunId } =
+          await import('../../L3-services/azureStorage/azureStorageService.js')
+
+        if (!isAzureConfigured()) {
+          throw new Error('Azure Storage not configured')
+        }
+
+        const { basename: getBasename } = await import('node:path')
+        const { stat: getFileStat } = await import('node:fs/promises')
+
+        const filename = getBasename(videoPath)
+        const runId = getRunId()
+        const blobPath = `raw/${runId}-${filename}`
+
+        await getFileStat(videoPath) // verify file exists
+        await uploadVideoFile(videoPath, blobPath)
+
+        let workflowTriggered = false
+        try {
+          const repo = options?.repo || 'htekdev/vidpipe'
+          const args = ['workflow', 'run', 'process-video.yml', '--repo', repo, '-f', `video_url=blob://${blobPath}`]
+          if (options?.spec) args.push('-f', `spec=${options.spec}`)
+          if (options?.ideas) args.push('-f', `ideas=${options.ideas}`)
+          if (options?.publishBy) args.push('-f', `publish_by=${options.publishBy}`)
+
+          const triggerResult = await spawnCommand('gh', args)
+          if (triggerResult.error || triggerResult.status !== 0) {
+            throw triggerResult.error ?? new Error(`gh workflow run failed with status ${String(triggerResult.status)}`)
+          }
+          workflowTriggered = true
+        } catch {
+          // gh CLI not available or workflow trigger failed — still return success for upload
+        }
+
+        return { runId, blobPath, workflowTriggered }
+      },
+
+      async pushConfig() {
+        const { dirname: getDirname } = await import('node:path')
+        const config = getConfig()
+        const vidpipeDir = getDirname(config.OUTPUT_DIR)
+        const { pushConfig: push } = await import('../../L3-services/azureStorage/azureConfigService.js')
+        return push(vidpipeDir)
+      },
+
+      async pullConfig() {
+        const { dirname: getDirname } = await import('node:path')
+        const config = getConfig()
+        const vidpipeDir = getDirname(config.OUTPUT_DIR)
+        const { pullConfig: pull } = await import('../../L3-services/azureStorage/azureConfigService.js')
+        return pull(vidpipeDir)
+      },
+
+      async migrate() {
+        const config = getConfig()
+        const { migrateLocalContent } = await import('../../L3-services/azureStorage/azureStorageService.js')
+        return migrateLocalContent(config.OUTPUT_DIR)
+      },
+
+      async download(videoUrl, outputPath) {
+        if (videoUrl.startsWith('blob://')) {
+          const blobPath = videoUrl.slice('blob://'.length)
+          const { downloadBlobToFile } = await import('../../L3-services/azureStorage/azureStorageService.js')
+          await downloadBlobToFile(blobPath, outputPath)
+        } else {
+          const result = await spawnCommand('curl', ['-L', '--fail', '-o', outputPath, videoUrl])
+          if (result.status !== 0) {
+            const stderr = typeof result.stderr === 'string' ? result.stderr.trim() : ''
+            throw new Error(
+              stderr.length > 0
+                ? `curl download failed with exit code ${result.status}: ${stderr}`
+                : `curl download failed with exit code ${result.status}`,
+            )
+          }
+        }
+      },
+
+      async status() {
+        const { isAzureConfigured, getContentItems, listVideos } =
+          await import('../../L3-services/azureStorage/azureStorageService.js')
+        const { listConfigFiles } = await import('../../L3-services/azureStorage/azureConfigService.js')
+
+        const configured = isAzureConfigured()
+        if (!configured) {
+          return { configured, configFiles: 0, contentItems: 0, videos: 0 }
+        }
+
+        const [configFiles, contentItems, videos] = await Promise.all([
+          listConfigFiles(),
+          getContentItems(),
+          listVideos(),
+        ])
+
+        return { configured, configFiles: configFiles.length, contentItems: contentItems.length, videos: videos.length }
+      },
+
+      isConfigured() {
+        const config = getConfig()
+        return Boolean(config.AZURE_STORAGE_ACCOUNT_NAME && config.AZURE_STORAGE_ACCOUNT_KEY)
       },
     },
   }

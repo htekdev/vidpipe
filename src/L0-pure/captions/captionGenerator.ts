@@ -196,6 +196,27 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `
 
 /**
+ * ASS header for portrait captions when there's NO split-screen layout.
+ * Positions captions in the lower third (MarginV: 280) instead of the middle.
+ * Used when the video is a simple center-crop without webcam split-screen.
+ */
+const ASS_HEADER_PORTRAIT_LOWER = `[Script Info]
+Title: Auto-generated captions
+ScriptType: v4.00+
+PlayResX: 1080
+PlayResY: 1920
+WrapStyle: 0
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Montserrat,120,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,1,0,0,0,100,100,0,0,1,3,1,2,30,30,280,1
+Style: Hook,Montserrat,56,&H00333333,&H00333333,&H60D0D0D0,&H60E0E0E0,1,0,0,0,100,100,2,0,3,18,2,8,80,80,250,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+`
+
+/**
  * ASS header for medium-style captions (1920×1080 but smaller font).
  *
  * Used for longer clips where large captions would be distracting.
@@ -319,6 +340,15 @@ function buildPremiumDialogueLines(words: Word[], style: CaptionStyle = 'shorts'
   return dialogues
 }
 
+function getASSHeader(style: CaptionStyle): string {
+  switch (style) {
+    case 'portrait': return ASS_HEADER_PORTRAIT
+    case 'portrait-lower': return ASS_HEADER_PORTRAIT_LOWER
+    case 'medium': return ASS_HEADER_MEDIUM
+    default: return ASS_HEADER
+  }
+}
+
 /**
  * Generate premium ASS captions with active-word-pop highlighting.
  *
@@ -334,7 +364,7 @@ function buildPremiumDialogueLines(words: Word[], style: CaptionStyle = 'shorts'
  * @returns Complete ASS file content (header + dialogue lines)
  */
 export function generateStyledASS(transcript: Transcript, style: CaptionStyle = 'shorts'): string {
-  const header = style === 'portrait' ? ASS_HEADER_PORTRAIT : style === 'medium' ? ASS_HEADER_MEDIUM : ASS_HEADER
+  const header = getASSHeader(style)
   const allWords = transcript.words
   if (allWords.length === 0) return header
 
@@ -353,7 +383,7 @@ export function generateStyledASSForSegment(
   buffer: number = 1.0,
   style: CaptionStyle = 'shorts',
 ): string {
-  const header = style === 'portrait' ? ASS_HEADER_PORTRAIT : style === 'medium' ? ASS_HEADER_MEDIUM : ASS_HEADER
+  const header = getASSHeader(style)
   const bufferedStart = Math.max(0, startTime - buffer)
   const bufferedEnd = endTime + buffer
 
@@ -382,7 +412,7 @@ export function generateStyledASSForComposite(
   buffer: number = 1.0,
   style: CaptionStyle = 'shorts',
 ): string {
-  const header = style === 'portrait' ? ASS_HEADER_PORTRAIT : style === 'medium' ? ASS_HEADER_MEDIUM : ASS_HEADER
+  const header = getASSHeader(style)
   const allAdjusted: Word[] = []
   let runningOffset = 0
 
@@ -451,6 +481,7 @@ export function generateHookOverlay(
 
 /**
  * Generate a complete portrait ASS file with captions AND hook text overlay.
+ * When isSplitScreen is false, uses lower-third positioning instead of middle.
  */
 export function generatePortraitASSWithHook(
   transcript: Transcript,
@@ -458,23 +489,28 @@ export function generatePortraitASSWithHook(
   startTime: number,
   endTime: number,
   buffer?: number,
+  isSplitScreen: boolean = true,
 ): string {
-  const baseASS = generateStyledASSForSegment(transcript, startTime, endTime, buffer, 'portrait')
-  const hookLine = generateHookOverlay(hookText, 4.0, 'portrait')
+  const style: CaptionStyle = isSplitScreen ? 'portrait' : 'portrait-lower'
+  const baseASS = generateStyledASSForSegment(transcript, startTime, endTime, buffer, style)
+  const hookLine = generateHookOverlay(hookText, 4.0, style)
   return baseASS + hookLine + '\n'
 }
 
 /**
  * Generate a complete portrait ASS file for a composite clip with captions AND hook text overlay.
+ * When isSplitScreen is false, uses lower-third positioning instead of middle.
  */
 export function generatePortraitASSWithHookComposite(
   transcript: Transcript,
   segments: { start: number; end: number }[],
   hookText: string,
   buffer?: number,
+  isSplitScreen: boolean = true,
 ): string {
-  const baseASS = generateStyledASSForComposite(transcript, segments, buffer, 'portrait')
-  const hookLine = generateHookOverlay(hookText, 4.0, 'portrait')
+  const style: CaptionStyle = isSplitScreen ? 'portrait' : 'portrait-lower'
+  const baseASS = generateStyledASSForComposite(transcript, segments, buffer, style)
+  const hookLine = generateHookOverlay(hookText, 4.0, style)
   return baseASS + hookLine + '\n'
 }
 
