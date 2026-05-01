@@ -1,11 +1,14 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest'
+import { dirname, join } from 'node:path'
 
 // ── Hoisted mocks ───────────────────────────────────────────────────────
 
+// Use forward-slash paths that work cross-platform with path.dirname()
+const OUTPUT_DIR = '/VidPipe/output'
+const VIDPIPE_DIR = dirname(OUTPUT_DIR)
+
 const mockInitConfig = vi.hoisted(() => vi.fn())
-const mockGetConfig = vi.hoisted(() => vi.fn().mockReturnValue({
-  OUTPUT_DIR: 'C:\\VidPipe\\output',
-}))
+const mockGetConfig = vi.hoisted(() => vi.fn())
 const mockPushConfig = vi.hoisted(() => vi.fn().mockResolvedValue({ uploaded: 2 }))
 const mockPullConfig = vi.hoisted(() => vi.fn().mockResolvedValue({ downloaded: 3 }))
 const mockMigrateLocalContent = vi.hoisted(() => vi.fn().mockResolvedValue({ uploaded: 5, errors: [] }))
@@ -78,7 +81,7 @@ describe('L7 Unit: Cloud command', () => {
     vi.clearAllMocks()
     // Re-establish default mock implementations after clearAllMocks
     mockIsAzureConfigured.mockReturnValue(true)
-    mockGetConfig.mockReturnValue({ OUTPUT_DIR: 'C:\\VidPipe\\output' })
+    mockGetConfig.mockReturnValue({ OUTPUT_DIR })
     mockReaddir.mockResolvedValue([])
     mockReadFile.mockResolvedValue('{}')
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never)
@@ -98,7 +101,7 @@ describe('L7 Unit: Cloud command', () => {
       await cloud.parseAsync(['push-config'], { from: 'user' })
 
       expect(mockInitConfig).toHaveBeenCalled()
-      expect(mockPushConfig).toHaveBeenCalledWith('C:\\VidPipe')
+      expect(mockPushConfig).toHaveBeenCalledWith(VIDPIPE_DIR)
     })
 
     test('handles push-config error gracefully', async () => {
@@ -117,7 +120,7 @@ describe('L7 Unit: Cloud command', () => {
       await cloud.parseAsync(['pull-config'], { from: 'user' })
 
       expect(mockInitConfig).toHaveBeenCalled()
-      expect(mockPullConfig).toHaveBeenCalledWith('C:\\VidPipe')
+      expect(mockPullConfig).toHaveBeenCalledWith(VIDPIPE_DIR)
     })
 
     test('handles pull-config error gracefully', async () => {
@@ -136,7 +139,7 @@ describe('L7 Unit: Cloud command', () => {
       await cloud.parseAsync(['migrate'], { from: 'user' })
 
       expect(mockInitConfig).toHaveBeenCalled()
-      expect(mockMigrateLocalContent).toHaveBeenCalledWith('C:\\VidPipe\\output')
+      expect(mockMigrateLocalContent).toHaveBeenCalledWith(OUTPUT_DIR)
     })
 
     test('logs warnings when migration has errors', async () => {
@@ -317,7 +320,7 @@ describe('L7 Unit: Cloud command', () => {
       mockReaddir.mockResolvedValueOnce(['video.mp4'])
 
       const cloud = createCloudCommand()
-      await cloud.parseAsync(['upload', 'C:\\VidPipe\\recordings\\my-video'], { from: 'user' })
+      await cloud.parseAsync(['upload', join('/VidPipe', 'recordings', 'my-video')], { from: 'user' })
 
       expect(exitSpy).toHaveBeenCalledWith(1)
     })
@@ -326,7 +329,7 @@ describe('L7 Unit: Cloud command', () => {
       mockReaddir.mockResolvedValueOnce(['README.md', 'notes.txt'])
 
       const cloud = createCloudCommand()
-      await cloud.parseAsync(['upload', 'C:\\VidPipe\\recordings\\no-video'], { from: 'user' })
+      await cloud.parseAsync(['upload', join('/VidPipe', 'recordings', 'no-video')], { from: 'user' })
 
       expect(exitSpy).toHaveBeenCalledWith(1)
     })
