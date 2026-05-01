@@ -4,6 +4,7 @@ import { vi, describe, test, expect, beforeEach, afterEach } from 'vitest'
 
 const mockGetScheduledPosts = vi.hoisted(() => vi.fn().mockResolvedValue([]))
 const mockUpdatePost = vi.hoisted(() => vi.fn().mockResolvedValue({}))
+const mockSchedulePost = vi.hoisted(() => vi.fn().mockResolvedValue({}))
 const mockCreateQueue = vi.hoisted(() => vi.fn().mockResolvedValue({ schedule: { _id: 'temp-q-1' } }))
 const mockDeleteQueue = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 const mockPreviewQueue = vi.hoisted(() => vi.fn().mockResolvedValue({ slots: [] }))
@@ -14,6 +15,7 @@ vi.mock('../../../L2-clients/late/lateApi.js', () => ({
   LateApiClient: vi.fn().mockImplementation(function (this: Record<string, unknown>) {
     this.getScheduledPosts = mockGetScheduledPosts
     this.updatePost = mockUpdatePost
+    this.schedulePost = mockSchedulePost
     this.createQueue = mockCreateQueue
     this.deleteQueue = mockDeleteQueue
     this.previewQueue = mockPreviewQueue
@@ -145,9 +147,11 @@ describe('L3 Unit: lateApiService', () => {
 
       const result = await priorityShiftQueue('youtube', 'short')
 
-      // Single post — can't shift, but the filtering should find it
-      // (returns null because only 1 post can't cascade-shift)
-      expect(result).toBeNull() // 1 post = "Only 1 post in queue"
+      // Single post with a valid next slot — it gets rescheduled to free the first slot
+      expect(result).toEqual({
+        freedSlot: '2026-04-15T20:00:00.000Z',
+        shiftedCount: 1,
+      })
     })
   })
 })

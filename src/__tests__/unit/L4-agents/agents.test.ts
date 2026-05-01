@@ -9,7 +9,14 @@ const mockState = vi.hoisted(() => {
     capturedSystemPrompt: '' as string,
     mockSession: {
       sendAndWait: async () => ({ data: { content: '' } }),
-      on: () => {},
+      on: (event: string, handler: (...args: any[]) => void) => {
+        // Fire session.idle after send() has a chance to reject/resolve
+        if (event === 'session.idle') {
+          setTimeout(() => handler(), 0)
+        }
+        return () => {} // unsubscribe function
+      },
+      send: async () => {},
       destroy: async () => {},
     },
   };
@@ -236,20 +243,20 @@ describe('BaseAgent construction', () => {
   it('retries on "CLI server exited" errors', async () => {
     const agent = new MinimalAgent();
     let callCount = 0;
-    mockState.mockSession.sendAndWait = vi.fn(async () => {
+    // Override send to simulate first-call failure (send is used when timeoutMs=0)
+    mockState.mockSession.send = vi.fn(async () => {
       callCount++;
       if (callCount === 1) {
         throw new Error('CLI server exited unexpectedly with code 0');
       }
-      return { data: { content: 'ok' } };
     });
 
     const result = await agent.run('test');
-    expect(result).toBe('ok');
+    expect(result).toBe('');
     expect(callCount).toBe(2); // first call failed, second succeeded
 
     // Restore default mock
-    mockState.mockSession.sendAndWait = async () => ({ data: { content: '' } });
+    mockState.mockSession.send = async () => {};
     await agent.destroy();
   });
 
