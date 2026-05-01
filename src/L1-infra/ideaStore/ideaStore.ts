@@ -13,7 +13,7 @@ import { join, resolve } from '../paths/paths.js'
 const DEFAULT_IDEAS_DIR = join(resolve('.'), 'ideas')
 const IDEA_FILE_EXTENSION = '.json'
 const ideaStatuses = new Set(['draft', 'ready', 'recorded', 'published'])
-const ideaClipTypes = new Set(['video', 'short', 'medium-clip'])
+const ideaClipTypes = new Set(['video', 'short', 'medium', 'medium-clip'])
 const ideaPlatforms = new Set(['tiktok', 'youtube', 'instagram', 'linkedin', 'x'])
 
 function resolveIdeasDir(dir?: string): string {
@@ -145,6 +145,15 @@ export async function readIdea(id: string, dir?: string): Promise<Idea | null> {
   const idea = await readJsonFile<unknown>(ideaPath)
   if (!isIdea(idea)) {
     throw new Error(`File does not contain a valid idea: ${ideaPath}`)
+  }
+
+  // Normalize legacy 'medium-clip' → 'medium' for backward compatibility
+  if (idea.publishedContent) {
+    for (const record of idea.publishedContent) {
+      if ((record.clipType as string) === 'medium-clip') {
+        record.clipType = 'medium'
+      }
+    }
   }
 
   return idea

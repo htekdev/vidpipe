@@ -24,7 +24,7 @@ describe('L3 Integration: platformContentStrategy', () => {
     })
 
     it('accepts medium-clips with captioned original variant', () => {
-      const rule = getMediaRule(Platform.LinkedIn, 'medium-clip')
+      const rule = getMediaRule(Platform.LinkedIn, 'medium')
       expect(rule).not.toBeNull()
       expect(rule!.captions).toBe(true)
       expect(rule!.variantKey).toBeNull()

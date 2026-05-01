@@ -12,7 +12,7 @@ import type { ClipType } from '../../L3-services/socialPosting/platformContentSt
  * to silently fail with "No available slot."
  */
 
-const ALL_CLIP_TYPES: ClipType[] = ['video', 'short', 'medium-clip']
+const ALL_CLIP_TYPES: ClipType[] = ['video', 'short', 'medium']
 
 const PLATFORM_SCHEDULE_KEYS: Record<Platform, string> = {
   [Platform.YouTube]: 'youtube',

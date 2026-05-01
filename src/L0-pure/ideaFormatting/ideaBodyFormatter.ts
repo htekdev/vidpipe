@@ -7,7 +7,7 @@ import {
 } from '../types/index.js'
 
 const ideaStatuses = ['draft', 'ready', 'recorded', 'published'] as const
-const clipTypes = ['video', 'short', 'medium-clip'] as const
+const clipTypes = ['video', 'short', 'medium'] as const
 const jsonBlockPattern = /```json\s*([\s\S]*?)\s*```/gi
 const millisecondsPerDay = 24 * 60 * 60 * 1000
 
@@ -275,7 +275,7 @@ function formatClipTypeDisplayName(clipType: IdeaPublishRecord['clipType']): str
       return 'Video'
     case 'short':
       return 'Short'
-    case 'medium-clip':
+    case 'medium':
       return 'Medium Clip'
   }
 }

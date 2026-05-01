@@ -2,7 +2,7 @@
  * Queue mapping service — resolves (platform, clipType) → Late API queueId.
  *
  * Queue names follow the convention: {platform}-{clipType}
- * e.g. "youtube-shorts", "x-medium-clips", "instagram-shorts"
+ * e.g. "youtube-shorts", "x-medium", "instagram-shorts"
  *
  * Uses the same memory + file cache pattern as accountMapping.ts with a 24hr TTL.
  */

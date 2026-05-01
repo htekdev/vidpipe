@@ -20,7 +20,7 @@ const statusRank: Readonly<Record<IdeaStatus, number>> = {
 }
 const platformValues = new Set<Platform>(Object.values(Platform))
 const ideaStatuses = new Set<IdeaStatus>(['draft', 'ready', 'recorded', 'published'])
-const clipTypes = new Set<IdeaPublishRecord['clipType']>(['video', 'short', 'medium-clip'])
+const clipTypes = new Set<IdeaPublishRecord['clipType']>(['video', 'short', 'medium'])
 
 export interface MigrateIdeasToGitHubOptions {
   dryRun?: boolean
@@ -147,7 +147,9 @@ function assertIdeaStatus(value: unknown, field: string, filePath: string): Idea
 }
 
 function assertClipType(value: unknown, field: string, filePath: string): IdeaPublishRecord['clipType'] {
-  const clipType = assertNonEmptyString(value, field, filePath)
+  let clipType = assertNonEmptyString(value, field, filePath)
+  // Normalize legacy 'medium-clip' → 'medium' for backward compatibility
+  if (clipType === 'medium-clip') clipType = 'medium'
   if (!clipTypes.has(clipType as IdeaPublishRecord['clipType'])) {
     throw new Error(`${field} must be one of ${Array.from(clipTypes).join(', ')} in ${filePath}`)
   }

@@ -56,7 +56,7 @@ For unmatched clips, create a new idea derived from the video content:
 
 interface ClipInfo {
   id: string
-  type: 'short' | 'medium-clip'
+  type: 'short' | 'medium'
   title: string
   description: string
   tags: string[]
@@ -118,7 +118,7 @@ function clipsToInfo(shorts: readonly ShortClip[], mediumClips: readonly MediumC
     const segments = (medium.segments ?? []).map(s => ({ start: s.start, end: s.end, description: s.description ?? '' }))
     clips.push({
       id: medium.id ?? `medium-${i + 1}`,
-      type: 'medium-clip',
+      type: 'medium',
       title: medium.title ?? '',
       description: medium.description ?? '',
       tags: medium.tags ?? [],

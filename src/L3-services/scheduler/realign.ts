@@ -22,7 +22,7 @@ import {
 export interface RealignPost {
   post: LatePost
   platform: string
-  clipType: 'short' | 'medium-clip' | 'video'
+  clipType: 'short' | 'medium' | 'video'
   oldScheduledFor: string | null
   newScheduledFor: string
 }
@@ -30,7 +30,7 @@ export interface RealignPost {
 export interface CancelPost {
   post: LatePost
   platform: string
-  clipType: 'short' | 'medium-clip' | 'video'
+  clipType: 'short' | 'medium' | 'video'
   reason: string
 }
 
@@ -75,8 +75,8 @@ function normalizeContent(content: string): string {
 }
 
 export interface ClipTypeMaps {
-  byLatePostId: Map<string, 'short' | 'medium-clip' | 'video'>
-  byContent: Map<string, 'short' | 'medium-clip' | 'video'>
+  byLatePostId: Map<string, 'short' | 'medium' | 'video'>
+  byContent: Map<string, 'short' | 'medium' | 'video'>
 }
 
 /**
@@ -86,8 +86,8 @@ export interface ClipTypeMaps {
  */
 async function buildClipTypeMaps(): Promise<ClipTypeMaps> {
   const published = await getPublishedItems()
-  const byLatePostId = new Map<string, 'short' | 'medium-clip' | 'video'>()
-  const byContent = new Map<string, 'short' | 'medium-clip' | 'video'>()
+  const byLatePostId = new Map<string, 'short' | 'medium' | 'video'>()
+  const byContent = new Map<string, 'short' | 'medium' | 'video'>()
 
   for (const item of published) {
     if (item.metadata.latePostId) {
@@ -178,7 +178,7 @@ export async function buildRealignPlan(options: {
 
   // Tag each post with clipType
   let unmatched = 0
-  const tagged: Array<{ post: LatePost; platform: string; clipType: 'short' | 'medium-clip' | 'video' }> = []
+  const tagged: Array<{ post: LatePost; platform: string; clipType: 'short' | 'medium' | 'video' }> = []
 
   for (const post of allPosts) {
     const platform = post.platforms[0]?.platform

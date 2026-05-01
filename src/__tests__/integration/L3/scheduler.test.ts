@@ -159,7 +159,7 @@ describe('L3 Integration: scheduler calendar with no Late API', () => {
 
   it('findNextSlot accepts SlotOptions with ideaIds and publishBy', async () => {
     // findNextSlot catches Late API errors internally via fetchScheduledPostsSafe
-    const slot = await findNextSlot('linkedin', 'medium-clip', {
+    const slot = await findNextSlot('linkedin', 'medium', {
       ideaIds: ['idea-123'],
       publishBy: '2099-12-31T23:59:59Z',
     })
@@ -169,11 +169,11 @@ describe('L3 Integration: scheduler calendar with no Late API', () => {
   })
 
   it('findNextSlot without ideaIds behaves identically to no options', async () => {
-    const slotWithoutOptions = await findNextSlot('linkedin', 'medium-clip')
+    const slotWithoutOptions = await findNextSlot('linkedin', 'medium')
 
     clearScheduleCache()
 
-    const slotWithoutIdeaIds = await findNextSlot('linkedin', 'medium-clip', {})
+    const slotWithoutIdeaIds = await findNextSlot('linkedin', 'medium', {})
 
     expect(slotWithoutIdeaIds).toBe(slotWithoutOptions)
   })

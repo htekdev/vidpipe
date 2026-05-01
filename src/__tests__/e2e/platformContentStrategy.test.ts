@@ -8,7 +8,7 @@ import {
 describe('platformContentStrategy e2e', () => {
   test('LinkedIn accepts shorts and medium-clips but not full video', () => {
     expect(platformAcceptsMedia(Platform.LinkedIn, 'short')).toBe(true)
-    expect(platformAcceptsMedia(Platform.LinkedIn, 'medium-clip')).toBe(true)
+    expect(platformAcceptsMedia(Platform.LinkedIn, 'medium')).toBe(true)
     expect(platformAcceptsMedia(Platform.LinkedIn, 'video')).toBe(false)
   })
 

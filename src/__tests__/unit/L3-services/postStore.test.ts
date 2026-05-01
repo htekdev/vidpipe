@@ -420,6 +420,35 @@ describe('postStore', () => {
     })
   })
 
+  describe('legacy clipType normalization (medium-clip → medium)', () => {
+    it('normalizes clipType medium-clip to medium when reading metadata.json', async () => {
+      // Create item with the new canonical value
+      const meta = makeMetadata({ id: 'legacy-clip', clipType: 'short' })
+      const item = await createItem('legacy-clip', meta, 'Post content')
+
+      // Overwrite metadata.json with legacy 'medium-clip' value to simulate old files
+      const metaWithLegacy = { ...meta, clipType: 'medium-clip' }
+      await fs.writeFile(
+        path.join(item.folderPath, 'metadata.json'),
+        JSON.stringify(metaWithLegacy, null, 2),
+      )
+
+      const read = await getItem('legacy-clip')
+      expect(read).not.toBeNull()
+      // Should be normalized to 'medium'
+      expect(read!.metadata.clipType).toBe('medium')
+    })
+
+    it('does not change clipType medium when reading', async () => {
+      const meta = makeMetadata({ id: 'new-medium-clip', clipType: 'medium' })
+      await createItem('new-medium-clip', meta, 'Post content')
+
+      const read = await getItem('new-medium-clip')
+      expect(read).not.toBeNull()
+      expect(read!.metadata.clipType).toBe('medium')
+    })
+  })
+
   describe('validateId (via exported functions)', () => {
     it('rejects path traversal characters', async () => {
       await expect(getItem('../etc/passwd')).rejects.toThrow('Invalid ID format')
