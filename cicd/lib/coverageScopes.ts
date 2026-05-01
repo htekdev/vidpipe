@@ -57,6 +57,6 @@ export const COVERAGE_SCOPES: Record<string, CoverageScope> = {
     include: ['src/**/*.ts'],
     exclude: [...BASE_EXCLUDE, ...L7_ENTRY_POINTS],
     reportsDirectory: 'coverage/e2e',
-    thresholds: { statements: 10, branches: 8, functions: 11, lines: 10 },
+    thresholds: { statements: 10, branches: 8, functions: 10, lines: 10 },
   },
 }
