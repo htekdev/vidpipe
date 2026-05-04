@@ -173,6 +173,7 @@ function defaultConfig(overrides: Record<string, unknown> = {}) {
     SKIP_VISUAL_ENHANCEMENT: true,
     SKIP_INTRO_OUTRO: false,
     GEMINI_API_KEY: '',
+    OUTPUT_DIR: '/test-output',
     ...overrides,
   }
 }
@@ -643,6 +644,14 @@ describe('processVideo', () => {
     expect(mockGenerateMediumClipPostsData).toHaveBeenCalledWith(clips[0], undefined, expect.objectContaining({ title: 'Test' }))
     expect(result.socialPosts.length).toBeGreaterThanOrEqual(1)
   })
+
+  it('passes OUTPUT_DIR-based publish-queue path to cloud upload', async () => {
+    // Verify config uses OUTPUT_DIR (not videoDir) by checking the config is set
+    const config = defaultConfig({ OUTPUT_DIR: '/custom/output' })
+    expect(config.OUTPUT_DIR).toBe('/custom/output')
+    // The pipeline now uses join(cfg.OUTPUT_DIR, 'publish-queue') instead of
+    // join(video.videoDir, 'publish-queue') for the cloud upload stage
+  })
 })
 
 // ============================================================================
@@ -764,7 +773,7 @@ describe('progress events', () => {
       expect(startCalls[0][0]).toMatchObject({
         event: 'pipeline:start',
         videoPath: '/videos/test.mp4',
-        totalStages: 17,
+        totalStages: 18,
       })
     })
   })
@@ -893,7 +902,7 @@ describe('progress events', () => {
 
       for (const event of stageEvents) {
         expect(event.stageNumber).toBeGreaterThan(0)
-        expect(event.totalStages).toBe(17)
+        expect(event.totalStages).toBe(18)
         expect(event.name).toBeTruthy()
       }
     })

@@ -20,9 +20,10 @@ const mockGetAccountId = vi.hoisted(() => vi.fn())
 const mockLoadScheduleConfig = vi.hoisted(() => vi.fn())
 const mockBuildRealignPlan = vi.hoisted(() => vi.fn())
 const mockExecuteRealignPlan = vi.hoisted(() => vi.fn())
-const mockGetItem = vi.hoisted(() => vi.fn())
-const mockApproveItem = vi.hoisted(() => vi.fn())
-const mockApproveBulk = vi.hoisted(() => vi.fn())
+const mockGetContentItems = vi.hoisted(() => vi.fn())
+const mockAzureApproveItem = vi.hoisted(() => vi.fn())
+const mockMarkPublished = vi.hoisted(() => vi.fn())
+const mockDownloadMediaToFile = vi.hoisted(() => vi.fn())
 const mockFileExists = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
@@ -70,16 +71,27 @@ vi.mock('../../../L3-services/scheduler/realign.js', () => ({
   executeRealignPlan: mockExecuteRealignPlan,
 }))
 
-vi.mock('../../../L3-services/postStore/postStore.js', () => ({
-  getItem: mockGetItem,
-  approveItem: mockApproveItem,
-  approveBulk: mockApproveBulk,
+vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
+  getContentItems: mockGetContentItems,
+}))
+
+vi.mock('../../../L3-services/azureStorage/azureReviewDataSource.js', () => ({
+  listPendingItems: vi.fn().mockResolvedValue([]),
+  getGroupedItems: vi.fn().mockResolvedValue([]),
+  getItemById: vi.fn(),
+  updateItem: vi.fn(),
+  rejectItem: vi.fn(),
+  approveItem: mockAzureApproveItem,
+  markPublished: mockMarkPublished,
+  downloadMediaToFile: mockDownloadMediaToFile,
+  getMediaStream: vi.fn(),
 }))
 
 vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   fileExists: mockFileExists,
   fileExistsSync: vi.fn().mockReturnValue(false),
   ensureDirectory: vi.fn(),
+  removeDirectory: vi.fn(),
   writeTextFile: vi.fn(),
 }))
 
@@ -431,42 +443,36 @@ describe('enqueueApproval — queue-based scheduling', () => {
     mockGetAccountId.mockResolvedValue('acc-tiktok-123')
     mockFileExists.mockResolvedValue(true)
     mockGetIdeasByIds.mockResolvedValue([])
-    mockApproveItem.mockResolvedValue(undefined)
-    mockApproveBulk.mockResolvedValue(undefined)
+    mockAzureApproveItem.mockResolvedValue(undefined)
+    mockMarkPublished.mockResolvedValue(undefined)
+    mockDownloadMediaToFile.mockResolvedValue(undefined)
     mockFindNextSlot.mockResolvedValue('2026-03-01T10:00:00-06:00')
     mockGetQueueId.mockResolvedValue(null)
+    mockGetContentItems.mockResolvedValue([])
   })
 
-  function makeApprovalItem(id: string, overrides: Record<string, unknown> = {}) {
+  function makeApprovalRecord(id: string, overrides: Record<string, unknown> = {}) {
     return {
-      id,
-      metadata: {
-        id,
-        platform: 'tiktok',
-        accountId: 'acc-tt',
-        clipType: 'short',
-        sourceVideo: '/test/v.mp4',
-        sourceClip: null,
-        sourceMediaPath: '/test/media.mp4',
-        hashtags: [],
-        links: [],
-        characterCount: 50,
-        platformCharLimit: 2200,
-        suggestedSlot: null,
-        scheduledFor: null,
-        status: 'pending_review',
-        latePostId: null,
-        publishedUrl: null,
-        createdAt: new Date().toISOString(),
-        reviewedAt: null,
-        publishedAt: null,
-        ...overrides,
-      },
+      partitionKey: 'test-video',
+      rowKey: id,
+      platform: (overrides.platform as string) ?? 'tiktok',
+      clipType: 'short',
+      status: 'pending_review',
+      blobBasePath: `content/${id}/`,
+      mediaType: 'video',
+      mediaFilename: 'media.mp4',
       postContent: 'Queue test #post',
-      hasMedia: true,
-      mediaPath: '/test/media.mp4',
-      thumbnailPath: null,
-      folderPath: `/test/publish-queue/${id}`,
+      hashtags: '',
+      characterCount: 50,
+      scheduledFor: '',
+      latePostId: '',
+      publishedUrl: '',
+      sourceVideoRunId: '',
+      thumbnailFilename: '',
+      ideaIds: '',
+      createdAt: new Date().toISOString(),
+      reviewedAt: '',
+      publishedAt: '',
     }
   }
 
@@ -478,7 +484,7 @@ describe('enqueueApproval — queue-based scheduling', () => {
       createPost: vi.fn().mockResolvedValue({ _id: 'late-q1', scheduledFor: '2026-03-02T19:00:00-06:00' }),
     }
     mockCreateLateApiClient.mockReturnValue(mockClient)
-    mockGetItem.mockResolvedValue(makeApprovalItem('q-item'))
+    mockGetContentItems.mockResolvedValue([makeApprovalRecord('q-item')])
 
     const result = await enqueueApproval(['q-item'])
 
@@ -504,7 +510,7 @@ describe('enqueueApproval — queue-based scheduling', () => {
       createPost: vi.fn().mockResolvedValue({ _id: 'late-local' }),
     }
     mockCreateLateApiClient.mockReturnValue(mockClient)
-    mockGetItem.mockResolvedValue(makeApprovalItem('local-item'))
+    mockGetContentItems.mockResolvedValue([makeApprovalRecord('local-item')])
 
     const result = await enqueueApproval(['local-item'])
 

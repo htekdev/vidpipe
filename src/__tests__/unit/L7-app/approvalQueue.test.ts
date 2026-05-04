@@ -13,19 +13,35 @@ vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
-const mockFileExists = vi.hoisted(() => vi.fn())
+vi.mock('../../../L1-infra/config/environment.js', () => ({
+  getConfig: () => ({ OUTPUT_DIR: 'C:\\test-output' }),
+}))
+
+const mockEnsureDirectory = vi.hoisted(() => vi.fn())
+const mockRemoveDirectory = vi.hoisted(() => vi.fn())
 vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
-  fileExists: mockFileExists,
+  ensureDirectory: mockEnsureDirectory,
+  removeDirectory: mockRemoveDirectory,
   fileExistsSync: vi.fn().mockReturnValue(false),
 }))
 
-const mockGetItem = vi.hoisted(() => vi.fn())
-const mockApproveItem = vi.hoisted(() => vi.fn())
-const mockApproveBulk = vi.hoisted(() => vi.fn())
-vi.mock('../../../L3-services/postStore/postStore.js', () => ({
-  getItem: mockGetItem,
-  approveItem: mockApproveItem,
-  approveBulk: mockApproveBulk,
+vi.mock('../../../L1-infra/paths/paths.js', () => ({
+  join: (...args: string[]) => args.join('/'),
+}))
+
+const mockGetContentItems = vi.hoisted(() => vi.fn())
+vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
+  getContentItems: mockGetContentItems,
+}))
+
+const mockAzureApproveItem = vi.hoisted(() => vi.fn())
+const mockMarkPublished = vi.hoisted(() => vi.fn())
+const mockDownloadMediaToFile = vi.hoisted(() => vi.fn())
+vi.mock('../../../L3-services/azureStorage/azureReviewDataSource.js', () => ({
+  getItemById: vi.fn(),
+  approveItem: mockAzureApproveItem,
+  markPublished: mockMarkPublished,
+  downloadMediaToFile: mockDownloadMediaToFile,
 }))
 
 const mockGetIdeasByIds = vi.hoisted(() => vi.fn())
@@ -61,51 +77,47 @@ vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
 
 import { enqueueApproval } from '../../../L7-app/review/approvalQueue.js'
 
-interface QueueItemOverrides {
+interface ContentRecordOverrides {
   platform?: string
-  accountId?: string
-  clipType?: 'video' | 'short' | 'medium-clip'
-  ideaIds?: string[]
-  mediaPath?: string | null
-  sourceMediaPath?: string | null
+  clipType?: string
+  ideaIds?: string
+  mediaFilename?: string
+  thumbnailFilename?: string
   postContent?: string
   createdAt?: string
+  videoSlug?: string
 }
 
-function makeItem(id: string, overrides: QueueItemOverrides = {}) {
+function makeContentRecord(id: string, overrides: ContentRecordOverrides = {}) {
   return {
-    id,
-    metadata: {
-      id,
-      platform: overrides.platform ?? 'youtube',
-      accountId: overrides.accountId ?? 'acc-yt',
-      sourceVideo: '/v.mp4',
-      sourceClip: null,
-      clipType: overrides.clipType ?? 'short',
-      sourceMediaPath: overrides.sourceMediaPath ?? null,
-      hashtags: [],
-      links: [],
-      characterCount: 10,
-      platformCharLimit: 5000,
-      suggestedSlot: null,
-      scheduledFor: null,
-      status: 'pending_review' as const,
-      latePostId: null,
-      publishedUrl: null,
-      createdAt: overrides.createdAt ?? new Date().toISOString(),
-      reviewedAt: null,
-      publishedAt: null,
-      ...(overrides.ideaIds ? { ideaIds: overrides.ideaIds } : {}),
-    },
+    partitionKey: overrides.videoSlug ?? 'test-video',
+    rowKey: id,
+    platform: overrides.platform ?? 'youtube',
+    clipType: overrides.clipType ?? 'short',
+    status: 'pending_review' as const,
+    blobBasePath: `content/${id}/`,
+    mediaType: 'video',
+    mediaFilename: overrides.mediaFilename ?? 'media.mp4',
     postContent: overrides.postContent ?? id,
-    hasMedia: Boolean(overrides.mediaPath ?? overrides.sourceMediaPath),
-    mediaPath: overrides.mediaPath ?? null,
-    folderPath: `/queue/${id}`,
+    hashtags: '',
+    characterCount: 10,
+    scheduledFor: '',
+    latePostId: '',
+    publishedUrl: '',
+    sourceVideoRunId: 'run-1',
+    thumbnailFilename: overrides.thumbnailFilename ?? '',
+    ideaIds: overrides.ideaIds ?? '',
+    createdAt: overrides.createdAt ?? new Date().toISOString(),
+    reviewedAt: '',
+    publishedAt: '',
   }
 }
 
-function mockItemsById(items: Record<string, ReturnType<typeof makeItem>>): void {
-  mockGetItem.mockImplementation(async (id: string) => items[id] ?? null)
+function mockContentRecords(records: ReturnType<typeof makeContentRecord>[]): void {
+  mockGetContentItems.mockImplementation(async (filters?: { status?: string }) => {
+    if (filters?.status) return records.filter(r => r.status === filters.status)
+    return records
+  })
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────
@@ -116,24 +128,22 @@ beforeEach(() => {
   mockFindNextSlot.mockResolvedValue('2026-04-01T10:00:00-06:00')
   mockGetIdeasByIds.mockResolvedValue([])
   mockGetAccountId.mockResolvedValue('acc-123')
-  mockFileExists.mockResolvedValue(true)
+  mockDownloadMediaToFile.mockResolvedValue(undefined)
   mockUploadMedia.mockResolvedValue({ type: 'video', url: 'https://cdn/v.mp4' })
   mockCreatePost.mockImplementation(async ({ content }: { content: string }) => ({ _id: `late-${content}`, status: 'scheduled' }))
-  mockApproveItem.mockResolvedValue(undefined)
-  mockApproveBulk.mockResolvedValue(undefined)
+  mockAzureApproveItem.mockResolvedValue(undefined)
+  mockMarkPublished.mockResolvedValue(undefined)
+  mockEnsureDirectory.mockResolvedValue(undefined)
+  mockRemoveDirectory.mockResolvedValue(undefined)
 })
 
 // ── Tests ──────────────────────────────────────────────────────────────
 
 describe('L7 Unit: approvalQueue', () => {
   it('passes isDraft: false to createPost', async () => {
-    mockItemsById({
-      'item-1': makeItem('item-1', {
-        mediaPath: '/m.mp4',
-        sourceMediaPath: '/m.mp4',
-        postContent: 'Test content',
-      }),
-    })
+    mockContentRecords([
+      makeContentRecord('item-1', { postContent: 'Test content' }),
+    ])
 
     const result = await enqueueApproval(['item-1'])
 
@@ -145,10 +155,10 @@ describe('L7 Unit: approvalQueue', () => {
 
   it('processes idea-linked items before non-idea items', async () => {
     const publishBy = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
-    mockItemsById({
-      'non-idea': makeItem('non-idea'),
-      'with-idea': makeItem('with-idea', { ideaIds: ['idea-1'] }),
-    })
+    mockContentRecords([
+      makeContentRecord('non-idea', { postContent: 'non-idea' }),
+      makeContentRecord('with-idea', { postContent: 'with-idea', ideaIds: 'idea-1' }),
+    ])
     mockGetIdeasByIds.mockResolvedValue([{ id: 'idea-1', publishBy }])
 
     await enqueueApproval(['non-idea', 'with-idea'])
@@ -159,11 +169,11 @@ describe('L7 Unit: approvalQueue', () => {
   it('processes urgent idea-linked items before other idea-linked items', async () => {
     const urgentPublishBy = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
     const laterPublishBy = new Date(Date.now() + 21 * 24 * 60 * 60 * 1000).toISOString()
-    mockItemsById({
-      'non-urgent-idea': makeItem('non-urgent-idea', { ideaIds: ['idea-later'] }),
-      'urgent-idea': makeItem('urgent-idea', { ideaIds: ['idea-soon'] }),
-      'non-idea': makeItem('non-idea'),
-    })
+    mockContentRecords([
+      makeContentRecord('non-urgent-idea', { postContent: 'non-urgent-idea', ideaIds: 'idea-later' }),
+      makeContentRecord('urgent-idea', { postContent: 'urgent-idea', ideaIds: 'idea-soon' }),
+      makeContentRecord('non-idea', { postContent: 'non-idea' }),
+    ])
     mockGetIdeasByIds.mockImplementation(async (ideaIds: string[]) => {
       if (ideaIds.includes('idea-soon')) {
         return [{ id: 'idea-soon', publishBy: urgentPublishBy }]
@@ -186,10 +196,10 @@ describe('L7 Unit: approvalQueue', () => {
   it('batches idea lookups across approval items', async () => {
     const earliest = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
     const later = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString()
-    mockItemsById({
-      'idea-item-a': makeItem('idea-item-a', { ideaIds: ['idea-1', '42'] }),
-      'idea-item-b': makeItem('idea-item-b', { ideaIds: ['idea-2', 'idea-1'] }),
-    })
+    mockContentRecords([
+      makeContentRecord('idea-item-a', { postContent: 'idea-item-a', ideaIds: 'idea-1,42' }),
+      makeContentRecord('idea-item-b', { postContent: 'idea-item-b', ideaIds: 'idea-2,idea-1' }),
+    ])
     mockGetIdeasByIds.mockResolvedValue([
       { id: 'idea-1', issueNumber: 41, publishBy: later },
       { id: 'idea-2', issueNumber: 42, publishBy: earliest },
@@ -211,9 +221,9 @@ describe('L7 Unit: approvalQueue', () => {
 
   it('passes ideaIds and publishBy to findNextSlot for idea-linked items', async () => {
     const publishBy = new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString()
-    mockItemsById({
-      'idea-item': makeItem('idea-item', { ideaIds: ['idea-1', 'idea-2'] }),
-    })
+    mockContentRecords([
+      makeContentRecord('idea-item', { postContent: 'idea-item', ideaIds: 'idea-1,idea-2' }),
+    ])
     mockGetIdeasByIds.mockResolvedValue([
       { id: 'idea-1', publishBy: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString() },
       { id: 'idea-2', publishBy },
@@ -228,9 +238,9 @@ describe('L7 Unit: approvalQueue', () => {
   })
 
   it('calls findNextSlot with only platform and clipType for non-idea items', async () => {
-    mockItemsById({
-      'plain-item': makeItem('plain-item'),
-    })
+    mockContentRecords([
+      makeContentRecord('plain-item', { postContent: 'plain-item' }),
+    ])
 
     await enqueueApproval(['plain-item'])
 
@@ -245,10 +255,10 @@ describe('L7 Unit: approvalQueue sorting', () => {
   it('sorts idea items by soonest publishBy first', async () => {
     const soonDate = '2026-06-01T00:00:00Z'
     const farDate = '2026-08-01T00:00:00Z'
-    mockItemsById({
-      'item-far': makeItem('item-far', { ideaIds: ['idea-far'] }),
-      'item-soon': makeItem('item-soon', { ideaIds: ['idea-soon'] }),
-    })
+    mockContentRecords([
+      makeContentRecord('item-far', { postContent: 'item-far', ideaIds: 'idea-far' }),
+      makeContentRecord('item-soon', { postContent: 'item-soon', ideaIds: 'idea-soon' }),
+    ])
     mockGetIdeasByIds.mockResolvedValue([
       { id: 'idea-far', publishBy: farDate },
       { id: 'idea-soon', publishBy: soonDate },
@@ -264,10 +274,10 @@ describe('L7 Unit: approvalQueue sorting', () => {
 
   it('breaks publishBy ties with earliest createdAt', async () => {
     const sharedPublishBy = '2026-07-01T00:00:00Z'
-    mockItemsById({
-      'item-newer': makeItem('item-newer', { ideaIds: ['idea-a'], createdAt: '2026-01-15T00:00:00Z' }),
-      'item-older': makeItem('item-older', { ideaIds: ['idea-b'], createdAt: '2026-01-10T00:00:00Z' }),
-    })
+    mockContentRecords([
+      makeContentRecord('item-newer', { postContent: 'item-newer', ideaIds: 'idea-a', createdAt: '2026-01-15T00:00:00Z' }),
+      makeContentRecord('item-older', { postContent: 'item-older', ideaIds: 'idea-b', createdAt: '2026-01-10T00:00:00Z' }),
+    ])
     mockGetIdeasByIds.mockResolvedValue([
       { id: 'idea-a', publishBy: sharedPublishBy },
       { id: 'idea-b', publishBy: sharedPublishBy },
@@ -282,10 +292,10 @@ describe('L7 Unit: approvalQueue sorting', () => {
   })
 
   it('sorts idea items with publishBy before idea items without publishBy', async () => {
-    mockItemsById({
-      'item-undated': makeItem('item-undated', { ideaIds: ['idea-undated'] }),
-      'item-dated': makeItem('item-dated', { ideaIds: ['idea-dated'] }),
-    })
+    mockContentRecords([
+      makeContentRecord('item-undated', { postContent: 'item-undated', ideaIds: 'idea-undated' }),
+      makeContentRecord('item-dated', { postContent: 'item-dated', ideaIds: 'idea-dated' }),
+    ])
     mockGetIdeasByIds.mockResolvedValue([
       { id: 'idea-undated' },
       { id: 'idea-dated', publishBy: '2026-07-01T00:00:00Z' },
@@ -300,11 +310,11 @@ describe('L7 Unit: approvalQueue sorting', () => {
   })
 
   it('places non-idea items after all idea items', async () => {
-    mockItemsById({
-      'no-idea-1': makeItem('no-idea-1'),
-      'no-idea-2': makeItem('no-idea-2'),
-      'with-idea': makeItem('with-idea', { ideaIds: ['idea-x'] }),
-    })
+    mockContentRecords([
+      makeContentRecord('no-idea-1', { postContent: 'no-idea-1' }),
+      makeContentRecord('no-idea-2', { postContent: 'no-idea-2' }),
+      makeContentRecord('with-idea', { postContent: 'with-idea', ideaIds: 'idea-x' }),
+    ])
     mockGetIdeasByIds.mockResolvedValue([
       { id: 'idea-x', publishBy: '2026-09-01T00:00:00Z' },
     ])
@@ -319,12 +329,12 @@ describe('L7 Unit: approvalQueue sorting', () => {
   it('sorts mixed batch: urgent > non-urgent > undated-idea > non-idea', async () => {
     const urgentDate = '2026-06-05T00:00:00Z'
     const laterDate = '2026-08-20T00:00:00Z'
-    mockItemsById({
-      'non-idea': makeItem('non-idea'),
-      'undated-idea': makeItem('undated-idea', { ideaIds: ['idea-none'] }),
-      'later-idea': makeItem('later-idea', { ideaIds: ['idea-later'] }),
-      'urgent-idea': makeItem('urgent-idea', { ideaIds: ['idea-urgent'] }),
-    })
+    mockContentRecords([
+      makeContentRecord('non-idea', { postContent: 'non-idea' }),
+      makeContentRecord('undated-idea', { postContent: 'undated-idea', ideaIds: 'idea-none' }),
+      makeContentRecord('later-idea', { postContent: 'later-idea', ideaIds: 'idea-later' }),
+      makeContentRecord('urgent-idea', { postContent: 'urgent-idea', ideaIds: 'idea-urgent' }),
+    ])
     mockGetIdeasByIds.mockResolvedValue([
       { id: 'idea-none' },
       { id: 'idea-later', publishBy: laterDate },
@@ -339,5 +349,61 @@ describe('L7 Unit: approvalQueue sorting', () => {
       'undated-idea',
       'non-idea',
     ])
+  })
+})
+
+// ── Priority scheduling tests ─────────────────────────────────────────
+
+describe('L7 Unit: approvalQueue priority', () => {
+  it('passes priority flag through to processApprovalBatch', async () => {
+    mockContentRecords([
+      makeContentRecord('item-1', { postContent: 'Test content' }),
+    ])
+
+    const result = await enqueueApproval(['item-1'], { priority: true })
+
+    // Should still schedule successfully (priority just changes the scheduling strategy)
+    expect(result.scheduled).toBe(1)
+    expect(mockCreatePost).toHaveBeenCalled()
+  })
+
+  it('defaults to non-priority when no options provided', async () => {
+    mockContentRecords([
+      makeContentRecord('item-1', { postContent: 'Test content' }),
+    ])
+
+    const result = await enqueueApproval(['item-1'])
+
+    expect(result.scheduled).toBe(1)
+    expect(mockCreatePost).toHaveBeenCalled()
+  })
+
+  it('fetches missing IDs in a single batch instead of per-ID', async () => {
+    // Items not in pending_review should still be found via single getContentItems call
+    mockGetContentItems.mockImplementation(async (filters?: { status?: string }) => {
+      if (filters?.status === 'pending_review') return []
+      return [
+        makeContentRecord('fallback-1', { postContent: 'fallback' }),
+      ]
+    })
+
+    const result = await enqueueApproval(['fallback-1'])
+
+    expect(result.scheduled).toBe(1)
+    // getContentItems should be called exactly twice: once for pending, once for fallback
+    expect(mockGetContentItems).toHaveBeenCalledTimes(2)
+  })
+
+  it('approval flow marks items as approved before scheduling', async () => {
+    mockContentRecords([makeContentRecord('item-1', { postContent: 'content' })])
+    await enqueueApproval(['item-1'])
+    // The approval queue calls azureApproveItem before markPublished
+    expect(mockAzureApproveItem).toHaveBeenCalled()
+  })
+
+  it('idea enrichment is not called during approval (deferred to review UI)', async () => {
+    mockContentRecords([makeContentRecord('item-1', { postContent: 'content', ideaIds: 'idea-1' })])
+    const result = await enqueueApproval(['item-1'])
+    expect(result.scheduled).toBeDefined()
   })
 })

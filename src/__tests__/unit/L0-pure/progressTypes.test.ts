@@ -31,8 +31,8 @@ describe('PIPELINE_STAGES', () => {
       expect(TOTAL_STAGES).toBe(PIPELINE_STAGES.length)
     })
 
-    test('progressEvents.REQ-012 - TOTAL_STAGES is 17', () => {
-      expect(TOTAL_STAGES).toBe(17)
+    test('progressEvents.REQ-012 - TOTAL_STAGES is 18', () => {
+      expect(TOTAL_STAGES).toBe(18)
     })
   })
 
@@ -47,8 +47,8 @@ describe('PIPELINE_STAGES', () => {
       expect(PIPELINE_STAGES[0].stage).toBe(PipelineStage.Ingestion)
     })
 
-    test('progressEvents.REQ-014 - last stage is Blog', () => {
-      expect(PIPELINE_STAGES[PIPELINE_STAGES.length - 1].stage).toBe(PipelineStage.Blog)
+    test('progressEvents.REQ-014 - last stage is CloudUpload', () => {
+      expect(PIPELINE_STAGES[PIPELINE_STAGES.length - 1].stage).toBe(PipelineStage.CloudUpload)
     })
   })
 

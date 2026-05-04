@@ -221,4 +221,22 @@ export interface VidPipeSDK {
     save(): Promise<void>
     path(): string
   }
+
+  /** Cloud storage operations (Azure) */
+  cloud: {
+    /** Upload a video to Azure Storage and trigger GitHub Actions pipeline */
+    process(videoPath: string, options?: { spec?: string; ideas?: string; publishBy?: string; repo?: string }): Promise<{ runId: string; blobPath: string; workflowTriggered: boolean }>
+    /** Upload config files (schedule.json, brand.json, assets/) to Azure */
+    pushConfig(): Promise<{ uploaded: number }>
+    /** Download config files from Azure to local vidpipe directory */
+    pullConfig(): Promise<{ downloaded: number }>
+    /** Upload existing local publish-queue/ and published/ to Azure */
+    migrate(): Promise<{ uploaded: number; errors: string[] }>
+    /** Download a video from Azure blob (blob://) or HTTP URL */
+    download(videoUrl: string, outputPath: string): Promise<void>
+    /** Check Azure connection status and stored content */
+    status(): Promise<{ configured: boolean; configFiles: number; contentItems: number; videos: number }>
+    /** Check if Azure Storage credentials are configured */
+    isConfigured(): boolean
+  }
 }

@@ -75,6 +75,13 @@ describe.skipIf(!ffmpegOk)('Caption Burn Integration', () => {
       expect(ass).not.toContain('\\fscx130');
       expect(ass).not.toContain('\\fscy130');
     });
+
+    it('portrait-lower caption style is available', () => {
+      const ass = generateStyledASS(transcript, 'portrait-lower');
+      expect(ass).toContain('[Script Info]');
+      expect(ass).toContain('280');
+      expect(ass).not.toContain('770');
+    });
   });
 
   // ── 2. Caption Burning with real FFmpeg ────────────────────────────────

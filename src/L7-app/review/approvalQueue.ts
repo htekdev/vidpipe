@@ -1,5 +1,14 @@
-import { fileExists } from '../../L1-infra/fileSystem/fileSystem.js'
-import { getItem, approveItem, approveBulk } from '../../L3-services/postStore/postStore.js'
+import { join } from '../../L1-infra/paths/paths.js'
+import { ensureDirectory, removeDirectory } from '../../L1-infra/fileSystem/fileSystem.js'
+import { getConfig } from '../../L1-infra/config/environment.js'
+import {
+  getItemById,
+  approveItem as azureApproveItem,
+  markPublished,
+  downloadMediaToFile,
+  type ReviewItem,
+} from '../../L3-services/azureStorage/azureReviewDataSource.js'
+import { getContentItems } from '../../L3-services/azureStorage/azureStorageService.js'
 import { getIdeasByIds } from '../../L3-services/ideation/ideaService.js'
 import { findNextSlot } from '../../L3-services/scheduler/scheduler.js'
 import { loadScheduleConfig } from '../../L3-services/scheduler/scheduleConfig.js'
@@ -13,6 +22,7 @@ import logger from '../../L1-infra/logger/configLogger.js'
 
 interface ApprovalJob {
   itemIds: string[]
+  priority: boolean
   resolve: (result: ApprovalResult) => void
 }
 
@@ -36,9 +46,9 @@ export interface ApprovalResult {
 const queue: ApprovalJob[] = []
 let processing = false
 
-export function enqueueApproval(itemIds: string[]): Promise<ApprovalResult> {
+export function enqueueApproval(itemIds: string[], options?: { priority?: boolean }): Promise<ApprovalResult> {
   return new Promise(resolve => {
-    queue.push({ itemIds, resolve })
+    queue.push({ itemIds, priority: options?.priority ?? false, resolve })
     if (!processing) drain()
   })
 }
@@ -48,7 +58,7 @@ async function drain(): Promise<void> {
   while (queue.length > 0) {
     const job = queue.shift()!
     try {
-      const result = await processApprovalBatch(job.itemIds)
+      const result = await processApprovalBatch(job.itemIds, job.priority)
       job.resolve(result)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -64,31 +74,46 @@ async function drain(): Promise<void> {
   processing = false
 }
 
-async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> {
+async function processApprovalBatch(itemIds: string[], priority: boolean): Promise<ApprovalResult> {
   const client = createLateApiClient()
   const schedConfig = await loadScheduleConfig()
-  const publishDataMap = new Map<string, { latePostId: string; scheduledFor: string; publishedUrl?: string; accountId?: string }>()
   const results: ApprovalResult['results'] = []
   const rateLimitedPlatforms = new Set<string>()
 
   interface EnrichedItem {
     id: string
+    videoSlug: string
     publishBy: string | null
     hasIdeas: boolean
     createdAt: string | null
   }
 
-  const loadedItems = await Promise.all(
-    itemIds.map(async (id) => ({ id, item: await getItem(id) })),
-  )
-  const itemMap = new Map(loadedItems.map(({ id, item }) => [id, item]))
+  // Load all pending content items from Azure Table and filter to requested IDs
+  const allPending = await getContentItems({ status: 'pending_review' })
+  const itemMap = new Map<string, { record: (typeof allPending)[number]; videoSlug: string }>()
+  for (const record of allPending) {
+    if (itemIds.includes(record.rowKey)) {
+      itemMap.set(record.rowKey, { record, videoSlug: record.partitionKey })
+    }
+  }
+
+  // Also try loading items individually for any IDs not found in pending query
+  const missingIds = itemIds.filter(id => !itemMap.has(id))
+  if (missingIds.length > 0) {
+    const allItems = await getContentItems()
+    const missingIdSet = new Set(missingIds)
+    for (const record of allItems) {
+      if (missingIdSet.has(record.rowKey)) {
+        itemMap.set(record.rowKey, { record, videoSlug: record.partitionKey })
+      }
+    }
+  }
 
   const allIdeaIds = new Set<string>()
-  for (const { item } of loadedItems) {
-    if (item?.metadata.ideaIds?.length) {
-      for (const ideaId of item.metadata.ideaIds) {
-        allIdeaIds.add(ideaId)
-      }
+  for (const { record } of itemMap.values()) {
+    const ideas = record.ideaIds ? record.ideaIds.split(',').filter(Boolean) : []
+    for (const ideaId of ideas) {
+      allIdeaIds.add(ideaId)
     }
   }
 
@@ -105,31 +130,34 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
     }
   }
 
-  const enriched: EnrichedItem[] = loadedItems.map(({ id, item }) => {
-    const createdAt = item?.metadata.createdAt ?? null
-    if (!item?.metadata.ideaIds?.length) {
-      return { id, publishBy: null, hasIdeas: false, createdAt }
+  const enriched: EnrichedItem[] = itemIds.map((id) => {
+    const entry = itemMap.get(id)
+    if (!entry) return { id, videoSlug: '', publishBy: null, hasIdeas: false, createdAt: null }
+
+    const { record, videoSlug } = entry
+    const createdAt = record.createdAt || null
+    const ideas = record.ideaIds ? record.ideaIds.split(',').filter(Boolean) : []
+
+    if (ideas.length === 0) {
+      return { id, videoSlug, publishBy: null, hasIdeas: false, createdAt }
     }
 
-    const dates = item.metadata.ideaIds
+    const dates = ideas
       .map((ideaId) => ideaMap.get(ideaId)?.publishBy)
       .filter((publishBy): publishBy is string => Boolean(publishBy))
       .sort()
-    return { id, publishBy: dates[0] ?? null, hasIdeas: true, createdAt }
+    return { id, videoSlug, publishBy: dates[0] ?? null, hasIdeas: true, createdAt }
   })
 
   enriched.sort((a, b) => {
-    // Tier 1: idea-linked items before non-idea items
     if (a.hasIdeas && !b.hasIdeas) return -1
     if (!a.hasIdeas && b.hasIdeas) return 1
 
-    // Tier 2: within idea items, soonest publishBy first
     if (a.hasIdeas && b.hasIdeas) {
       const aTime = a.publishBy ? new Date(a.publishBy).getTime() : Infinity
       const bTime = b.publishBy ? new Date(b.publishBy).getTime() : Infinity
       if (aTime !== bTime) return aTime - bTime
 
-      // Tier 3: same publishBy — earliest createdAt wins
       if (a.createdAt && b.createdAt) {
         const aCreated = new Date(a.createdAt).getTime()
         const bCreated = new Date(b.createdAt).getTime()
@@ -144,153 +172,175 @@ async function processApprovalBatch(itemIds: string[]): Promise<ApprovalResult> 
   const publishByMap = new Map(
     enriched.flatMap((entry) => (entry.publishBy ? [[entry.id, entry.publishBy] as const] : [])),
   )
+  const videoSlugMap = new Map(enriched.map((entry) => [entry.id, entry.videoSlug]))
 
-  for (const itemId of sortedIds) {
-    const item = itemMap.get(itemId) ?? null
+  // Create a temp directory for downloading media blobs
+  const config = getConfig()
+  const tempDir = join(config.OUTPUT_DIR, '.azure-media-temp')
+  await ensureDirectory(tempDir)
 
-    try {
-      if (!item) {
-        results.push({ itemId, success: false, error: 'Item not found' })
-        continue
-      }
+  try {
+    for (const itemId of sortedIds) {
+      const entry = itemMap.get(itemId)
 
-      const latePlatform = normalizePlatformString(item.metadata.platform)
-
-      if (rateLimitedPlatforms.has(latePlatform)) {
-        results.push({ itemId, success: false, error: `${latePlatform} rate-limited` })
-        continue
-      }
-
-      const ideaIds = item.metadata.ideaIds
-      const publishBy = publishByMap.get(itemId)
-
-      // Try queue-based scheduling first, fall back to manual slot calculation
-      const clipType = item.metadata.clipType || 'short'
-      const queueId = await getQueueId(latePlatform, clipType)
-      let slot: string | undefined
-      let useQueue = false
-
-      if (queueId) {
-        useQueue = true
-        // Queue-based scheduling: idea priority is preserved by the batch sort order above
-        // (idea-linked items processed first → get earlier queue slots via FIFO)
-        logger.debug(`Using Late queue ${queueId} for ${latePlatform}/${clipType} (idea priority via batch order)`)
-      } else {
-        // Fallback: no queue configured, use manual slot calculation with idea-aware scheduling
-        logger.debug(`No queue for ${latePlatform}/${clipType}, using local slot calculation`)
-        const foundSlot = ideaIds?.length
-          ? await findNextSlot(latePlatform, clipType, { ideaIds, publishBy })
-          : await findNextSlot(latePlatform, clipType)
-        slot = foundSlot ?? undefined
-        if (!slot) {
-          results.push({ itemId, success: false, error: `No available slot for ${latePlatform}` })
+      try {
+        if (!entry) {
+          results.push({ itemId, success: false, error: 'Item not found' })
           continue
         }
-      }
 
-      const platform = fromLatePlatform(latePlatform)
-      const accountId = item.metadata.accountId || await getAccountId(platform)
-      if (!accountId) {
-        results.push({ itemId, success: false, error: `No account for ${latePlatform}` })
-        continue
-      }
+        const { record, videoSlug } = entry
+        const latePlatform = normalizePlatformString(record.platform)
 
-      let mediaItems: Array<{ type: 'image' | 'video'; url: string; thumbnail?: string }> | undefined
-      let platformSpecificData: Record<string, unknown> | undefined = item.metadata.platformSpecificData
-      const effectiveMediaPath = item.mediaPath ?? item.metadata.sourceMediaPath
-      if (effectiveMediaPath) {
-        const mediaExists = await fileExists(effectiveMediaPath)
-        if (mediaExists) {
-          if (!item.mediaPath && item.metadata.sourceMediaPath) {
-            logger.info(`Using source media fallback for ${String(item.id).replace(/[\r\n]/g, '')}: ${String(item.metadata.sourceMediaPath).replace(/[\r\n]/g, '')}`)
+        if (rateLimitedPlatforms.has(latePlatform)) {
+          results.push({ itemId, success: false, error: `${latePlatform} rate-limited` })
+          continue
+        }
+
+        const ideaIds = record.ideaIds ? record.ideaIds.split(',').filter(Boolean) : []
+        const publishBy = publishByMap.get(itemId)
+
+        const clipType = record.clipType || 'short'
+        const queueId = await getQueueId(latePlatform, clipType)
+        let slot: string | undefined
+        let useQueue = false
+
+        if (priority && queueId) {
+          // Priority mode: shift existing queue posts to free the first slot
+          logger.info(`⚡ Priority scheduling for ${latePlatform}/${clipType}`)
+          const { priorityShiftQueue } = await import('../../L3-services/lateApi/lateApiService.js')
+          const shiftResult = await priorityShiftQueue(latePlatform, clipType)
+          if (shiftResult) {
+            slot = shiftResult.freedSlot
+            useQueue = false // Use scheduledFor with the freed slot, not queue append
+            logger.info(`⚡ Freed slot: ${slot} (shifted ${shiftResult.shiftedCount} posts)`)
+          } else {
+            // Fallback: no posts to shift, just use queue normally
+            useQueue = true
+            logger.info(`⚡ No posts to shift — using queue normally`)
           }
-          const upload = await client.uploadMedia(effectiveMediaPath)
-          const mediaItem: { type: 'image' | 'video'; url: string; thumbnail?: string } = { type: upload.type, url: upload.url }
+        } else if (queueId) {
+          useQueue = true
+          logger.debug(`Using Late queue ${queueId} for ${latePlatform}/${clipType} (idea priority via batch order)`)
+        } else {
+          logger.debug(`No queue for ${latePlatform}/${clipType}, using local slot calculation`)
+          const foundSlot = ideaIds.length > 0
+            ? await findNextSlot(latePlatform, clipType, { ideaIds, publishBy })
+            : await findNextSlot(latePlatform, clipType)
+          slot = foundSlot ?? undefined
+          if (!slot) {
+            results.push({ itemId, success: false, error: `No available slot for ${latePlatform}` })
+            continue
+          }
+        }
 
-          // Upload thumbnail if available and attach to media item
-          const effectiveThumbnailPath = item.thumbnailPath ?? item.metadata.thumbnailPath
-          if (effectiveThumbnailPath && await fileExists(effectiveThumbnailPath)) {
-            try {
-              const thumbUpload = await client.uploadMedia(effectiveThumbnailPath)
-              const thumbUrl = thumbUpload.url
+        const platform = fromLatePlatform(latePlatform)
+        const accountId = await getAccountId(platform)
+        if (!accountId) {
+          results.push({ itemId, success: false, error: `No account for ${latePlatform}` })
+          continue
+        }
 
-              // YouTube: thumbnail field on mediaItems
-              mediaItem.thumbnail = thumbUrl
+        let mediaItems: Array<{ type: 'image' | 'video'; url: string; thumbnail?: string }> | undefined
+        let platformSpecificData: Record<string, unknown> | undefined
 
-              // Instagram: instagramThumbnail in platformSpecificData
-              if (latePlatform === 'instagram') {
-                platformSpecificData = { ...platformSpecificData, instagramThumbnail: thumbUrl }
+        // Download media from Azure blob and upload to Late
+        if (record.mediaFilename) {
+          try {
+            const localMediaPath = join(tempDir, `${itemId}-${record.mediaFilename}`)
+            await downloadMediaToFile(itemId, record.mediaFilename, localMediaPath)
+
+            const upload = await client.uploadMedia(localMediaPath)
+            const mediaItem: { type: 'image' | 'video'; url: string; thumbnail?: string } = { type: upload.type, url: upload.url }
+
+            // Upload thumbnail if available
+            if (record.thumbnailFilename) {
+              try {
+                const localThumbPath = join(tempDir, `${itemId}-${record.thumbnailFilename}`)
+                await downloadMediaToFile(itemId, record.thumbnailFilename, localThumbPath)
+
+                const thumbUpload = await client.uploadMedia(localThumbPath)
+                const thumbUrl = thumbUpload.url
+
+                mediaItem.thumbnail = thumbUrl
+
+                if (latePlatform === 'instagram') {
+                  platformSpecificData = { ...platformSpecificData, instagramThumbnail: thumbUrl }
+                }
+
+                logger.info(`Uploaded thumbnail for ${String(itemId).replace(/[\r\n]/g, '')}`)
+              } catch (thumbErr) {
+                logger.warn(`Failed to upload thumbnail for ${String(itemId).replace(/[\r\n]/g, '')}: ${thumbErr instanceof Error ? thumbErr.message : String(thumbErr)}`)
               }
-
-              logger.info(`Uploaded thumbnail for ${String(item.id).replace(/[\r\n]/g, '')}`)
-            } catch (thumbErr) {
-              logger.warn(`Failed to upload thumbnail for ${String(item.id).replace(/[\r\n]/g, '')}: ${thumbErr instanceof Error ? thumbErr.message : String(thumbErr)}`)
             }
-          }
 
-          mediaItems = [mediaItem]
+            mediaItems = [mediaItem]
+          } catch (mediaErr) {
+            logger.warn(`Failed to download/upload media for ${String(itemId).replace(/[\r\n]/g, '')}: ${mediaErr instanceof Error ? mediaErr.message : String(mediaErr)}`)
+          }
+        }
+
+        const isTikTok = latePlatform === 'tiktok'
+        const tiktokSettings = isTikTok ? {
+          privacy_level: 'PUBLIC_TO_EVERYONE',
+          allow_comment: true,
+          allow_duet: true,
+          allow_stitch: true,
+          content_preview_confirmed: true,
+          express_consent_given: true,
+        } : undefined
+
+        const profileId = useQueue ? await getProfileId() : undefined
+        const createParams: Parameters<typeof client.createPost>[0] = {
+          content: record.postContent,
+          platforms: [{ platform: latePlatform, accountId }],
+          timezone: schedConfig.timezone,
+          isDraft: false,
+          mediaItems,
+          platformSpecificData,
+          tiktokSettings,
+        }
+        if (useQueue) {
+          createParams.queuedFromProfile = profileId
+          createParams.queueId = queueId ?? undefined
+        } else {
+          createParams.scheduledFor = slot
+        }
+        const latePost = await client.createPost(createParams)
+
+        // Mark as approved, then published with Late API data
+        await azureApproveItem(videoSlug, itemId)
+        await markPublished(videoSlug, itemId, {
+          latePostId: latePost._id,
+          scheduledFor: latePost.scheduledFor ?? slot ?? '',
+          publishedUrl: undefined,
+        })
+
+        results.push({ itemId, success: true, scheduledFor: latePost.scheduledFor ?? slot, latePostId: latePost._id })
+      } catch (itemErr) {
+        const itemMsg = itemErr instanceof Error ? itemErr.message : String(itemErr)
+        if (itemMsg.includes('429') || itemMsg.includes('Daily post limit')) {
+          const entry2 = itemMap.get(itemId)
+          const latePlatform = normalizePlatformString(entry2?.record.platform ?? '')
+          rateLimitedPlatforms.add(latePlatform)
+          logger.warn(`Approval queue: ${latePlatform} hit daily post limit, skipping remaining ${latePlatform} items`)
+          results.push({ itemId, success: false, error: `${latePlatform} rate-limited` })
+        } else {
+          logger.error(`Approval queue: failed for ${String(itemId).replace(/[\r\n]/g, '')}: ${String(itemMsg).replace(/[\r\n]/g, '')}`)
+          results.push({ itemId, success: false, error: itemMsg })
         }
       }
-
-      const isTikTok = latePlatform === 'tiktok'
-      const tiktokSettings = isTikTok ? {
-        privacy_level: 'PUBLIC_TO_EVERYONE',
-        allow_comment: true,
-        allow_duet: true,
-        allow_stitch: true,
-        content_preview_confirmed: true,
-        express_consent_given: true,
-      } : undefined
-
-      const profileId = useQueue ? await getProfileId() : undefined
-      const createParams: Parameters<typeof client.createPost>[0] = {
-        content: item.postContent,
-        platforms: [{ platform: latePlatform, accountId }],
-        timezone: schedConfig.timezone,
-        isDraft: false,
-        mediaItems,
-        platformSpecificData,
-        tiktokSettings,
-      }
-      if (useQueue) {
-        createParams.queuedFromProfile = profileId
-        createParams.queueId = queueId ?? undefined
-      } else {
-        createParams.scheduledFor = slot
-      }
-      const latePost = await client.createPost(createParams)
-
-      publishDataMap.set(itemId, {
-        latePostId: latePost._id,
-        scheduledFor: latePost.scheduledFor ?? slot ?? '',
-        publishedUrl: undefined,
-        accountId,
-      })
-      results.push({ itemId, success: true, scheduledFor: latePost.scheduledFor ?? slot, latePostId: latePost._id })
-    } catch (itemErr) {
-      const itemMsg = itemErr instanceof Error ? itemErr.message : String(itemErr)
-      if (itemMsg.includes('429') || itemMsg.includes('Daily post limit')) {
-        const latePlatform = normalizePlatformString(item?.metadata.platform ?? '')
-        rateLimitedPlatforms.add(latePlatform)
-        logger.warn(`Approval queue: ${latePlatform} hit daily post limit, skipping remaining ${latePlatform} items`)
-        results.push({ itemId, success: false, error: `${latePlatform} rate-limited` })
-      } else {
-        logger.error(`Approval queue: failed for ${String(itemId).replace(/[\r\n]/g, '')}: ${String(itemMsg).replace(/[\r\n]/g, '')}`)
-        results.push({ itemId, success: false, error: itemMsg })
-      }
+    }
+  } finally {
+    // Clean up temp directory
+    try {
+      await removeDirectory(tempDir)
+    } catch {
+      // Ignore cleanup errors
     }
   }
 
-  // Approve all successfully posted items
-  const successIds = itemIds.filter(id => publishDataMap.has(id))
-  if (successIds.length === 1) {
-    const id = successIds[0]
-    await approveItem(id, publishDataMap.get(id)!)
-  } else if (successIds.length > 1) {
-    await approveBulk(successIds, publishDataMap)
-  }
-
-  const scheduled = successIds.length
+  const scheduled = results.filter(r => r.success).length
   const failed = itemIds.length - scheduled
   if (scheduled > 0) {
     logger.info(`Approval queue: ${scheduled} of ${itemIds.length} scheduled${rateLimitedPlatforms.size > 0 ? ` (rate-limited: ${[...rateLimitedPlatforms].join(', ')})` : ''}`)

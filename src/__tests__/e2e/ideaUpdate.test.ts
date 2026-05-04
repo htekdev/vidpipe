@@ -20,4 +20,10 @@ describe('idea update e2e', () => {
     expect(validStatuses).toHaveLength(4)
     expect(validPriorities).toHaveLength(3)
   })
+
+  test('GitHubClient class is importable with clearCache method', async () => {
+    const { GitHubClient } = await import('../../L2-clients/github/githubClient.js')
+    expect(GitHubClient).toBeDefined()
+    expect(typeof GitHubClient.prototype.clearCache).toBe('function')
+  })
 })

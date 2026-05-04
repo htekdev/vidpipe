@@ -72,7 +72,9 @@ function buildDesiredQueues(config: Awaited<ReturnType<typeof loadScheduleConfig
     if (!platformSchedule.byClipType) continue
 
     for (const [clipType, clipTypeSchedule] of Object.entries(platformSchedule.byClipType)) {
-      const queueName = `${normalizedPlatform}-${clipType}`
+      // Queue names use 'medium'/'short'/'video', not 'medium-clip'
+      const normalizedClipType = clipType === 'medium-clip' ? 'medium' : clipType
+      const queueName = `${normalizedPlatform}-${normalizedClipType}`
       const slots: Array<{ dayOfWeek: number; time: string }> = []
 
       for (const timeSlot of clipTypeSchedule.slots) {
