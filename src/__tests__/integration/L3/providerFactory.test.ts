@@ -83,7 +83,7 @@ describe('L3 Integration: providerFactory → L2 provider chain', () => {
     await provider.createSession({ systemPrompt: 'test', tools: [] })
 
     // The CopilotClient constructor should have been called with env option
-    const ctorCalls = (CopilotClient as ReturnType<typeof vi.fn>).mock.calls
+    const ctorCalls = (CopilotClient as unknown as ReturnType<typeof vi.fn>).mock.calls
     expect(ctorCalls.length).toBeGreaterThan(0)
     const opts = ctorCalls[ctorCalls.length - 1][0] as Record<string, unknown>
     const env = opts.env as Record<string, string>
@@ -96,7 +96,7 @@ describe('L3 Integration: providerFactory → L2 provider chain', () => {
     const provider = new CopilotProvider()
     await provider.createSession({ systemPrompt: 'test', tools: [] })
 
-    const ctorCalls = (CopilotClient as ReturnType<typeof vi.fn>).mock.calls
+    const ctorCalls = (CopilotClient as unknown as ReturnType<typeof vi.fn>).mock.calls
     const opts = ctorCalls[ctorCalls.length - 1][0] as Record<string, unknown>
     // cliPath may or may not be set depending on whether native binary is installed
     // but autoRestart should always be true
