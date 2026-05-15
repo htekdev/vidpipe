@@ -166,7 +166,9 @@ export async function getQueueId(platform: string, clipType: string): Promise<st
   const cache = await ensureMappings()
   // Late API uses 'twitter', but queue names use 'x'
   const normalizedPlatform = platform === 'twitter' ? 'x' : platform
-  const queueName = `${normalizedPlatform}-${clipType}`
+  // Queue names use 'medium'/'short'/'video', not 'medium-clip'
+  const normalizedClipType = clipType === 'medium-clip' ? 'medium' : clipType
+  const queueName = `${normalizedPlatform}-${normalizedClipType}`
   return cache.mappings[queueName] ?? null
 }
 

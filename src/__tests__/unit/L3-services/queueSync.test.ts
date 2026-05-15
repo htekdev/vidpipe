@@ -419,6 +419,30 @@ describe('syncQueuesToLate', () => {
     expect(result.created).toHaveLength(2)
   })
 
+  test('normalizes medium-clip to medium in queue names', async () => {
+    mockLoadScheduleConfig.mockResolvedValue(makeConfig({
+      platforms: {
+        youtube: {
+          slots: [],
+          avoidDays: [],
+          byClipType: {
+            'medium-clip': {
+              slots: [{ days: ['tue' as const], time: '15:00', label: 'Afternoon' }],
+              avoidDays: [],
+            },
+          },
+        },
+      },
+    }))
+
+    const result = await syncQueuesToLate()
+
+    expect(mockCreateQueue).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'youtube-medium' }),
+    )
+    expect(result.created).toContain('youtube-medium')
+  })
+
   // ── Platforms without byClipType are skipped ─────────────────────────
 
   // ── Cache refresh after sync ─────────────────────────────────────────

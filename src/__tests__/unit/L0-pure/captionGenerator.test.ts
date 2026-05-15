@@ -405,6 +405,20 @@ describe('generateStyledASS – portrait style', () => {
     );
     expect(hasWhite120).toBe(true);
   });
+
+  it('portrait-lower style uses lower-third MarginV', () => {
+    const transcript: Transcript = {
+      text: 'hello',
+      segments: [],
+      words: [{ word: 'hello', start: 0, end: 1 }],
+      language: 'en',
+      duration: 1,
+    };
+    const result = generateStyledASS(transcript, 'portrait-lower');
+    expect(result).toContain('MarginV');
+    expect(result).toContain('280');
+    expect(result).not.toContain('770');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -464,6 +478,30 @@ describe('generatePortraitASSWithHook', () => {
     const ass = generatePortraitASSWithHook(transcriptWithWords, 'Hook!', 0, 3.8);
     expect(ass).toContain('PlayResX: 1080');
   });
+
+  it('generatePortraitASSWithHook uses lower-third when isSplitScreen is false', () => {
+    const transcript: Transcript = {
+      text: 'hello',
+      segments: [],
+      words: [{ word: 'hello', start: 0, end: 1 }],
+      language: 'en',
+      duration: 1,
+    };
+    const result = generatePortraitASSWithHook(transcript, 'Hook text', 0, 5, undefined, false);
+    expect(result).toContain('280');
+  });
+
+  it('generatePortraitASSWithHook uses middle when isSplitScreen is true', () => {
+    const transcript: Transcript = {
+      text: 'hello',
+      segments: [],
+      words: [{ word: 'hello', start: 0, end: 1 }],
+      language: 'en',
+      duration: 1,
+    };
+    const result = generatePortraitASSWithHook(transcript, 'Hook text', 0, 5, undefined, true);
+    expect(result).toContain('770');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -500,6 +538,19 @@ describe('generatePortraitASSWithHookComposite', () => {
     const ass = generatePortraitASSWithHookComposite(compositeTranscript, segments, 'Test');
     expect(ass).toContain('PlayResY: 1920');
     expect(ass).toContain('Style: Hook,');
+  });
+
+  it('uses lower-third MarginV when isSplitScreen is false', () => {
+    const segments = [{ start: 1.0, end: 1.5 }];
+    const ass = generatePortraitASSWithHookComposite(compositeTranscript, segments, 'Test', undefined, false);
+    expect(ass).toContain('280');
+    expect(ass).not.toContain('770');
+  });
+
+  it('uses middle MarginV when isSplitScreen is true', () => {
+    const segments = [{ start: 1.0, end: 1.5 }];
+    const ass = generatePortraitASSWithHookComposite(compositeTranscript, segments, 'Test', undefined, true);
+    expect(ass).toContain('770');
   });
 });
 

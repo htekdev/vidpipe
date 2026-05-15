@@ -27,6 +27,8 @@ const credentialKeys = [
   'lateApiKey',
   'githubToken',
   'geminiApiKey',
+  'azureStorageAccountName',
+  'azureStorageAccountKey',
 ] as const satisfies readonly CredentialKey[]
 
 const defaultKeys = [

@@ -11,6 +11,8 @@ export interface GlobalCredentials {
   lateApiKey?: string
   githubToken?: string
   geminiApiKey?: string
+  azureStorageAccountName?: string
+  azureStorageAccountKey?: string
 }
 
 export interface GlobalDefaults {

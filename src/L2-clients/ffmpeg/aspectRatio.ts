@@ -225,7 +225,7 @@ async function convertWithSmartLayout(
   outputPath: string,
   config: SmartLayoutConfig,
   webcamOverride?: WebcamRegion | null,
-): Promise<string> {
+): Promise<{ path: string; isSplitScreen: boolean }> {
   const { label, targetW, screenH, camH, fallbackRatio } = config
   const outputDir = dirname(outputPath)
   await ensureDirectory(outputDir)
@@ -234,7 +234,8 @@ async function convertWithSmartLayout(
 
   if (!webcam) {
     logger.info(`[${label}] No webcam found, falling back to center-crop`)
-    return convertAspectRatio(inputPath, outputPath, fallbackRatio)
+    const path = await convertAspectRatio(inputPath, outputPath, fallbackRatio)
+    return { path, isSplitScreen: false }
   }
 
   const resolution = await getVideoResolution(inputPath)
@@ -296,7 +297,7 @@ async function convertWithSmartLayout(
     outputPath,
   ]
 
-  return new Promise<string>((resolve, reject) => {
+  return new Promise<{ path: string; isSplitScreen: boolean }>((resolve, reject) => {
     execFileRaw(ffmpegPath, args, { maxBuffer: 10 * 1024 * 1024 }, (error, _stdout, stderr) => {
       if (error) {
         logger.error(`[${label}] FFmpeg failed: ${stderr || error.message}`)
@@ -304,7 +305,7 @@ async function convertWithSmartLayout(
         return
       }
       logger.info(`[${label}] Complete: ${outputPath}`)
-      resolve(outputPath)
+      resolve({ path: outputPath, isSplitScreen: true })
     })
   })
 }
@@ -319,12 +320,13 @@ async function convertWithSmartLayout(
  *
  * @param inputPath - Source landscape video
  * @param outputPath - Destination path for the portrait video
+ * @returns Object with output path and whether split-screen layout was used
  */
 export async function convertToPortraitSmart(
   inputPath: string,
   outputPath: string,
   webcamOverride?: WebcamRegion | null,
-): Promise<string> {
+): Promise<{ path: string; isSplitScreen: boolean }> {
   return convertWithSmartLayout(inputPath, outputPath, {
     label: 'SmartPortrait',
     targetW: 1080,
@@ -349,7 +351,7 @@ export async function convertToSquareSmart(
   inputPath: string,
   outputPath: string,
   webcamOverride?: WebcamRegion | null,
-): Promise<string> {
+): Promise<{ path: string; isSplitScreen: boolean }> {
   return convertWithSmartLayout(inputPath, outputPath, {
     label: 'SmartSquare',
     targetW: 1080,
@@ -374,7 +376,7 @@ export async function convertToFeedSmart(
   inputPath: string,
   outputPath: string,
   webcamOverride?: WebcamRegion | null,
-): Promise<string> {
+): Promise<{ path: string; isSplitScreen: boolean }> {
   return convertWithSmartLayout(inputPath, outputPath, {
     label: 'SmartFeed',
     targetW: 1080,
@@ -429,7 +431,7 @@ export async function generatePlatformVariants(
   slug: string,
   platforms: Platform[] = ['tiktok', 'linkedin'],
   options: GeneratePlatformVariantsOptions = {},
-): Promise<{ platform: Platform; aspectRatio: AspectRatio; path: string; width: number; height: number }[]> {
+): Promise<{ platform: Platform; aspectRatio: AspectRatio; path: string; width: number; height: number; isSplitScreen?: boolean }[]> {
   await ensureDirectory(outputDir)
 
   // Deduplicate by aspect ratio to avoid redundant encodes
@@ -442,31 +444,32 @@ export async function generatePlatformVariants(
     ratioMap.set(ratio, list)
   }
 
-  const variants: { platform: Platform; aspectRatio: AspectRatio; path: string; width: number; height: number }[] = []
+  const variants: { platform: Platform; aspectRatio: AspectRatio; path: string; width: number; height: number; isSplitScreen?: boolean }[] = []
 
   for (const [ratio, associatedPlatforms] of ratioMap) {
     const suffix = ratio === '9:16' ? 'portrait' : ratio === '4:5' ? 'feed' : 'square'
     const outPath = join(outputDir, `${slug}-${suffix}.mp4`)
 
     try {
+      let isSplitScreen = false
       if (ratio === '9:16') {
-        // NOTE: LayoutAgent support is DISABLED - vision-based approach not working well yet
-        // The useAgent option is kept for backwards compatibility but is ignored.
-        // All portrait conversions use the ONNX face detection pipeline.
         if (options.useAgent) {
           logger.warn(`[generatePlatformVariants] LayoutAgent is disabled, falling back to ONNX pipeline`)
         }
-        await convertToPortraitSmart(inputPath, outPath, options.webcamOverride)
+        const result = await convertToPortraitSmart(inputPath, outPath, options.webcamOverride)
+        isSplitScreen = result.isSplitScreen
       } else if (ratio === '1:1') {
-        await convertToSquareSmart(inputPath, outPath, options.webcamOverride)
+        const result = await convertToSquareSmart(inputPath, outPath, options.webcamOverride)
+        isSplitScreen = result.isSplitScreen
       } else if (ratio === '4:5') {
-        await convertToFeedSmart(inputPath, outPath, options.webcamOverride)
+        const result = await convertToFeedSmart(inputPath, outPath, options.webcamOverride)
+        isSplitScreen = result.isSplitScreen
       } else {
         await convertAspectRatio(inputPath, outPath, ratio)
       }
       const dims = DIMENSIONS[ratio]
       for (const p of associatedPlatforms) {
-        variants.push({ platform: p, aspectRatio: ratio, path: outPath, width: dims.width, height: dims.height })
+        variants.push({ platform: p, aspectRatio: ratio, path: outPath, width: dims.width, height: dims.height, isSplitScreen })
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)

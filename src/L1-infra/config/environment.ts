@@ -43,6 +43,12 @@ export interface AppEnvironment {
   GITHUB_TOKEN: string
   /** Per-agent model overrides from MODEL_* env vars (e.g. MODEL_SHORTS_AGENT=gpt-4o) */
   MODEL_OVERRIDES: Readonly<Record<string, string>>
+  /** Azure Storage account name for cloud persistence */
+  AZURE_STORAGE_ACCOUNT_NAME: string
+  /** Azure Storage account key for authentication */
+  AZURE_STORAGE_ACCOUNT_KEY: string
+  /** Azure Blob container name (default: vidpipe) */
+  AZURE_CONTAINER_NAME: string
 }
 
 export interface CLIOptions {
@@ -74,6 +80,9 @@ export interface CLIOptions {
   repoRoot?: string
   ffmpegPath?: string
   ffprobePath?: string
+  azureStorageAccountName?: string
+  azureStorageAccountKey?: string
+  azureContainerName?: string
 }
 
 let config: AppEnvironment | null = null

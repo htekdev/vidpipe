@@ -187,6 +187,21 @@ export function resolveConfig(cliOptions: Partial<CLIOptions> = {}): AppEnvironm
       globalConfig.credentials.githubToken,
     ),
     MODEL_OVERRIDES: resolveModelOverrides(),
+    AZURE_STORAGE_ACCOUNT_NAME: resolveString(
+      cliOptions.azureStorageAccountName,
+      process.env.AZURE_STORAGE_ACCOUNT_NAME,
+      globalConfig.credentials.azureStorageAccountName,
+    ),
+    AZURE_STORAGE_ACCOUNT_KEY: resolveString(
+      cliOptions.azureStorageAccountKey,
+      process.env.AZURE_STORAGE_ACCOUNT_KEY,
+      globalConfig.credentials.azureStorageAccountKey,
+    ),
+    AZURE_CONTAINER_NAME: resolveString(
+      cliOptions.azureContainerName,
+      process.env.AZURE_CONTAINER_NAME,
+      'vidpipe',
+    ),
   }
 }
 

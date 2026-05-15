@@ -13,20 +13,30 @@ vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }))
 
-const mockFileExists = vi.hoisted(() => vi.fn())
-const mockFileExistsSync = vi.hoisted(() => vi.fn().mockReturnValue(false))
 vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
-  fileExists: mockFileExists,
-  fileExistsSync: mockFileExistsSync,
+  fileExists: vi.fn(),
+  fileExistsSync: vi.fn().mockReturnValue(false),
+  ensureDirectory: vi.fn(),
+  removeDirectory: vi.fn(),
 }))
 
-const mockGetItem = vi.hoisted(() => vi.fn())
-const mockApproveItem = vi.hoisted(() => vi.fn())
-const mockApproveBulk = vi.hoisted(() => vi.fn())
-vi.mock('../../../L3-services/postStore/postStore.js', () => ({
-  getItem: mockGetItem,
-  approveItem: mockApproveItem,
-  approveBulk: mockApproveBulk,
+vi.mock('../../../L1-infra/config/environment.js', () => ({
+  getConfig: () => ({ OUTPUT_DIR: 'test-output' }),
+}))
+
+const mockGetContentItems = vi.hoisted(() => vi.fn())
+vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
+  getContentItems: mockGetContentItems,
+}))
+
+const mockAzureApproveItem = vi.hoisted(() => vi.fn())
+const mockMarkPublished = vi.hoisted(() => vi.fn())
+const mockDownloadMediaToFile = vi.hoisted(() => vi.fn())
+vi.mock('../../../L3-services/azureStorage/azureReviewDataSource.js', () => ({
+  getItemById: vi.fn(),
+  approveItem: mockAzureApproveItem,
+  markPublished: mockMarkPublished,
+  downloadMediaToFile: mockDownloadMediaToFile,
 }))
 
 const mockFindNextSlot = vi.hoisted(() => vi.fn())
@@ -58,46 +68,44 @@ vi.mock('../../../L3-services/ideation/ideaService.js', () => ({
   getIdeasByIds: mockGetIdeasByIds,
 }))
 
+vi.mock('../../../L3-services/queueMapping/queueMapping.js', () => ({
+  getQueueId: vi.fn().mockResolvedValue(null),
+  getProfileId: vi.fn().mockResolvedValue(null),
+}))
+
 // ── Import after mocks ──────────────────────────────────────────────────
 
 import { enqueueApproval } from '../../../L7-app/review/approvalQueue.js'
-import type { QueueItem, QueueItemMetadata } from '../../../L3-services/postStore/postStore.js'
+import type { ContentRecord } from '../../../L3-services/azureStorage/azureStorageService.js'
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
-function makeQueueItem(overrides: Partial<Omit<QueueItem, 'metadata'>> & { metadata?: Partial<QueueItemMetadata> } = {}): QueueItem {
-  const meta: QueueItemMetadata = {
-    id: overrides.id ?? 'item-1',
-    platform: 'tiktok',
-    accountId: '',
-    sourceVideo: '/test/video.mp4',
-    sourceClip: null,
-    clipType: 'short',
-    sourceMediaPath: '/test/media.mp4',
-    hashtags: ['test'],
-    links: [],
-    characterCount: 50,
-    platformCharLimit: 2200,
-    suggestedSlot: null,
-    scheduledFor: null,
-    status: 'pending_review',
-    latePostId: null,
-    publishedUrl: null,
-    createdAt: new Date().toISOString(),
-    reviewedAt: null,
-    publishedAt: null,
-    ...overrides.metadata,
-  }
-  const { metadata: _metaOverride, ...restOverrides } = overrides
+type FullContentRecord = ContentRecord & { partitionKey: string; rowKey: string }
+
+function makeContentRecord(overrides: Partial<FullContentRecord> = {}): FullContentRecord {
+  const rowKey = overrides.rowKey ?? 'item-1'
   return {
-    id: meta.id,
-    metadata: meta,
+    partitionKey: overrides.partitionKey ?? 'test-video',
+    rowKey,
+    platform: 'tiktok',
+    clipType: 'short',
+    status: 'pending_review' as const,
+    blobBasePath: `content/${rowKey}/`,
+    mediaType: 'video',
+    mediaFilename: 'media.mp4',
     postContent: 'Test post content #test',
-    hasMedia: true,
-    mediaPath: '/test/media.mp4',
-    thumbnailPath: null,
-    folderPath: '/test/publish-queue/item-1',
-    ...restOverrides,
+    hashtags: 'test',
+    characterCount: 50,
+    scheduledFor: '',
+    latePostId: '',
+    publishedUrl: '',
+    sourceVideoRunId: '',
+    thumbnailFilename: '',
+    ideaIds: '',
+    createdAt: new Date().toISOString(),
+    reviewedAt: '',
+    publishedAt: '',
+    ...overrides,
   }
 }
 
@@ -108,21 +116,22 @@ beforeEach(() => {
   mockLoadScheduleConfig.mockResolvedValue({ timezone: 'America/Chicago', platforms: {} })
   mockFindNextSlot.mockResolvedValue('2026-03-01T10:00:00-06:00')
   mockGetAccountId.mockResolvedValue('acc-tiktok-123')
-  mockFileExists.mockResolvedValue(true)
+  mockDownloadMediaToFile.mockResolvedValue(undefined)
   mockUploadMedia.mockResolvedValue({ type: 'video', url: 'https://cdn.test/media.mp4' })
   mockCreatePost.mockResolvedValue({ _id: 'late-post-001', status: 'scheduled' })
-  mockApproveItem.mockResolvedValue(undefined)
-  mockApproveBulk.mockResolvedValue(undefined)
+  mockAzureApproveItem.mockResolvedValue(undefined)
+  mockMarkPublished.mockResolvedValue(undefined)
   mockGetIdeasByIds.mockResolvedValue([])
+  mockGetContentItems.mockResolvedValue([])
 })
 
 // ── Tests ───────────────────────────────────────────────────────────────
 
 describe('enqueueApproval', () => {
   describe('successful approval', () => {
-    it('uploads media, creates post, and schedules', async () => {
-      const item = makeQueueItem({ id: 'approve-1' })
-      mockGetItem.mockResolvedValue(item)
+    it('downloads media from Azure, creates post, and schedules', async () => {
+      const record = makeContentRecord({ rowKey: 'approve-1' })
+      mockGetContentItems.mockResolvedValue([record])
 
       const result = await enqueueApproval(['approve-1'])
 
@@ -132,39 +141,38 @@ describe('enqueueApproval', () => {
       expect(result.results[0].success).toBe(true)
       expect(result.results[0].latePostId).toBe('late-post-001')
       expect(result.results[0].scheduledFor).toBe('2026-03-01T10:00:00-06:00')
-      expect(mockUploadMedia).toHaveBeenCalledWith('/test/media.mp4')
+      expect(mockDownloadMediaToFile).toHaveBeenCalled()
+      expect(mockUploadMedia).toHaveBeenCalled()
       expect(mockCreatePost).toHaveBeenCalledWith(
         expect.objectContaining({
           content: 'Test post content #test',
           scheduledFor: '2026-03-01T10:00:00-06:00',
         }),
       )
-      expect(mockApproveItem).toHaveBeenCalledWith('approve-1', expect.objectContaining({
+      expect(mockAzureApproveItem).toHaveBeenCalledWith('test-video', 'approve-1')
+      expect(mockMarkPublished).toHaveBeenCalledWith('test-video', 'approve-1', expect.objectContaining({
         latePostId: 'late-post-001',
-        scheduledFor: '2026-03-01T10:00:00-06:00',
       }))
     })
 
-    it('uses accountId from item metadata when available', async () => {
-      const item = makeQueueItem({
-        id: 'with-acct',
-        metadata: { accountId: 'preset-account-id' },
-      })
-      mockGetItem.mockResolvedValue(item)
+    it('uses accountId from getAccountId mapping', async () => {
+      const record = makeContentRecord({ rowKey: 'with-acct' })
+      mockGetContentItems.mockResolvedValue([record])
+      mockGetAccountId.mockResolvedValue('mapped-account-id')
 
       await enqueueApproval(['with-acct'])
 
       expect(mockCreatePost).toHaveBeenCalledWith(
         expect.objectContaining({
-          platforms: [{ platform: 'tiktok', accountId: 'preset-account-id' }],
+          platforms: [{ platform: 'tiktok', accountId: 'mapped-account-id' }],
         }),
       )
-      expect(mockGetAccountId).not.toHaveBeenCalled()
+      expect(mockGetAccountId).toHaveBeenCalled()
     })
 
     it('includes TikTok-specific settings for tiktok platform', async () => {
-      const item = makeQueueItem({ id: 'tiktok-item', metadata: { platform: 'tiktok' } })
-      mockGetItem.mockResolvedValue(item)
+      const record = makeContentRecord({ rowKey: 'tiktok-item', platform: 'tiktok' })
+      mockGetContentItems.mockResolvedValue([record])
 
       await enqueueApproval(['tiktok-item'])
 
@@ -179,8 +187,8 @@ describe('enqueueApproval', () => {
     })
 
     it('creates post with isDraft: false to prevent draft status', async () => {
-      const item = makeQueueItem({ id: 'draft-fix' })
-      mockGetItem.mockResolvedValue(item)
+      const record = makeContentRecord({ rowKey: 'draft-fix' })
+      mockGetContentItems.mockResolvedValue([record])
 
       await enqueueApproval(['draft-fix'])
 
@@ -190,11 +198,8 @@ describe('enqueueApproval', () => {
     })
 
     it('does not include TikTok settings for non-tiktok platform', async () => {
-      const item = makeQueueItem({
-        id: 'yt-item',
-        metadata: { platform: 'youtube' },
-      })
-      mockGetItem.mockResolvedValue(item)
+      const record = makeContentRecord({ rowKey: 'yt-item', platform: 'youtube' })
+      mockGetContentItems.mockResolvedValue([record])
 
       await enqueueApproval(['yt-item'])
 
@@ -205,10 +210,12 @@ describe('enqueueApproval', () => {
       )
     })
 
-    it('uses approveBulk for multiple successful items', async () => {
-      mockGetItem
-        .mockResolvedValueOnce(makeQueueItem({ id: 'bulk-a' }))
-        .mockResolvedValueOnce(makeQueueItem({ id: 'bulk-b' }))
+    it('calls approveItem and markPublished for each item in batch', async () => {
+      const records = [
+        makeContentRecord({ rowKey: 'bulk-a' }),
+        makeContentRecord({ rowKey: 'bulk-b' }),
+      ]
+      mockGetContentItems.mockResolvedValue(records)
       mockCreatePost
         .mockResolvedValueOnce({ _id: 'late-a' })
         .mockResolvedValueOnce({ _id: 'late-b' })
@@ -217,61 +224,52 @@ describe('enqueueApproval', () => {
 
       expect(result.scheduled).toBe(2)
       expect(result.failed).toBe(0)
-      expect(mockApproveBulk).toHaveBeenCalledWith(
-        ['bulk-a', 'bulk-b'],
-        expect.any(Map),
-      )
-      expect(mockApproveItem).not.toHaveBeenCalled()
+      expect(mockAzureApproveItem).toHaveBeenCalledTimes(2)
+      expect(mockMarkPublished).toHaveBeenCalledTimes(2)
     })
   })
 
   describe('missing media handling', () => {
-    it('schedules without media when media file does not exist', async () => {
-      const item = makeQueueItem({ id: 'no-media' })
-      mockGetItem.mockResolvedValue(item)
-      mockFileExists.mockResolvedValue(false)
+    it('schedules without media when record has no mediaFilename', async () => {
+      const record = makeContentRecord({ rowKey: 'no-media', mediaFilename: '' })
+      mockGetContentItems.mockResolvedValue([record])
 
       const result = await enqueueApproval(['no-media'])
 
       expect(result.scheduled).toBe(1)
       expect(result.results[0].success).toBe(true)
+      expect(mockDownloadMediaToFile).not.toHaveBeenCalled()
       expect(mockUploadMedia).not.toHaveBeenCalled()
       expect(mockCreatePost).toHaveBeenCalledWith(
         expect.objectContaining({ mediaItems: undefined }),
       )
     })
 
-    it('schedules without media when item has no media path', async () => {
-      const item = makeQueueItem({
-        id: 'null-media',
-        mediaPath: null,
-        hasMedia: false,
-        metadata: { sourceMediaPath: null },
-      })
-      mockGetItem.mockResolvedValue(item)
+    it('schedules without media when mediaFilename is empty', async () => {
+      const record = makeContentRecord({ rowKey: 'null-media', mediaFilename: '' })
+      mockGetContentItems.mockResolvedValue([record])
 
       const result = await enqueueApproval(['null-media'])
 
       expect(result.scheduled).toBe(1)
+      expect(mockDownloadMediaToFile).not.toHaveBeenCalled()
       expect(mockUploadMedia).not.toHaveBeenCalled()
     })
 
-    it('falls back to sourceMediaPath when mediaPath is null', async () => {
-      const item = makeQueueItem({
-        id: 'fallback-media',
-        mediaPath: null,
-        metadata: { sourceMediaPath: '/test/source-media.mp4' },
-      })
-      mockGetItem.mockResolvedValue(item)
-      mockFileExists.mockResolvedValue(true)
+    it('downloads media from Azure blob and uploads to Late', async () => {
+      const record = makeContentRecord({ rowKey: 'blob-media', mediaFilename: 'source-media.mp4' })
+      mockGetContentItems.mockResolvedValue([record])
 
-      await enqueueApproval(['fallback-media'])
+      await enqueueApproval(['blob-media'])
 
-      expect(mockUploadMedia).toHaveBeenCalledWith('/test/source-media.mp4')
+      expect(mockDownloadMediaToFile).toHaveBeenCalledWith(
+        'blob-media', 'source-media.mp4', expect.stringContaining('blob-media-source-media.mp4'),
+      )
+      expect(mockUploadMedia).toHaveBeenCalled()
     })
 
     it('records failure when item is not found in store', async () => {
-      mockGetItem.mockResolvedValue(null)
+      mockGetContentItems.mockResolvedValue([])
 
       const result = await enqueueApproval(['ghost-item'])
 
@@ -283,13 +281,11 @@ describe('enqueueApproval', () => {
 
   describe('rate limiting', () => {
     it('skips remaining items for a rate-limited platform', async () => {
-      const item1 = makeQueueItem({ id: 'rl-1', metadata: { platform: 'tiktok' } })
-      const item2 = makeQueueItem({ id: 'rl-2', metadata: { platform: 'tiktok' } })
-      mockGetItem
-        .mockResolvedValueOnce(item1)
-        .mockResolvedValueOnce(item2)
-        // Re-fetch for rate-limited error path
-        .mockResolvedValue(item2)
+      const records = [
+        makeContentRecord({ rowKey: 'rl-1', platform: 'tiktok' }),
+        makeContentRecord({ rowKey: 'rl-2', platform: 'tiktok' }),
+      ]
+      mockGetContentItems.mockResolvedValue(records)
       mockCreatePost
         .mockRejectedValueOnce(new Error('429 Too Many Requests'))
 
@@ -301,8 +297,8 @@ describe('enqueueApproval', () => {
     })
 
     it('handles "Daily post limit" error as rate limit', async () => {
-      const item = makeQueueItem({ id: 'daily-limit', metadata: { platform: 'instagram' } })
-      mockGetItem.mockResolvedValue(item)
+      const record = makeContentRecord({ rowKey: 'daily-limit', platform: 'instagram' })
+      mockGetContentItems.mockResolvedValue([record])
       mockCreatePost.mockRejectedValue(new Error('Daily post limit reached'))
 
       const result = await enqueueApproval(['daily-limit'])
@@ -312,11 +308,11 @@ describe('enqueueApproval', () => {
     })
 
     it('does not rate-limit other platforms when one is limited', async () => {
-      const tiktokItem = makeQueueItem({ id: 'tt-rl', metadata: { platform: 'tiktok' } })
-      const ytItem = makeQueueItem({ id: 'yt-ok', metadata: { platform: 'youtube' } })
-      // getItem is called for normal processing AND re-fetched in the 429 catch path
-      const itemMap: Record<string, QueueItem> = { 'tt-rl': tiktokItem, 'yt-ok': ytItem }
-      mockGetItem.mockImplementation(async (id: string) => itemMap[id] ?? null)
+      const records = [
+        makeContentRecord({ rowKey: 'tt-rl', platform: 'tiktok' }),
+        makeContentRecord({ rowKey: 'yt-ok', platform: 'youtube' }),
+      ]
+      mockGetContentItems.mockResolvedValue(records)
       mockCreatePost
         .mockRejectedValueOnce(new Error('429'))
         .mockResolvedValueOnce({ _id: 'late-yt-1' })
@@ -333,14 +329,17 @@ describe('enqueueApproval', () => {
   describe('sequential processing', () => {
     it('processes concurrent enqueue calls sequentially', async () => {
       const callOrder: string[] = []
-      mockGetItem.mockImplementation(async (id: string) => {
-        callOrder.push(`get:${id}`)
-        return makeQueueItem({ id })
-      })
+      const records = [
+        makeContentRecord({ rowKey: 'seq-a' }),
+        makeContentRecord({ rowKey: 'seq-b' }),
+      ]
+      mockGetContentItems.mockResolvedValue(records)
       mockCreatePost.mockImplementation(async () => {
-        // Simulate network delay
         await new Promise(r => setTimeout(r, 50))
         return { _id: `late-${Date.now()}` }
+      })
+      mockAzureApproveItem.mockImplementation(async (_slug: string, id: string) => {
+        callOrder.push(`approve:${id}`)
       })
 
       const [result1, result2] = await Promise.all([
@@ -350,16 +349,19 @@ describe('enqueueApproval', () => {
 
       expect(result1.scheduled).toBe(1)
       expect(result2.scheduled).toBe(1)
-      // seq-a should be fetched before seq-b due to sequential queue
-      const idxA = callOrder.indexOf('get:seq-a')
-      const idxB = callOrder.indexOf('get:seq-b')
+      const idxA = callOrder.indexOf('approve:seq-a')
+      const idxB = callOrder.indexOf('approve:seq-b')
       expect(idxA).toBeLessThan(idxB)
     })
 
     it('handles failure in one job without affecting the next', async () => {
-      mockGetItem
-        .mockResolvedValueOnce(null) // first job: item not found
-        .mockResolvedValueOnce(makeQueueItem({ id: 'good-item' }))
+      const goodRecord = makeContentRecord({ rowKey: 'good-item' })
+      // First batch: bad-item not found (pending query empty, fallback empty)
+      // Second batch: good-item found
+      mockGetContentItems
+        .mockResolvedValueOnce([])        // batch 1: pending query
+        .mockResolvedValueOnce([])        // batch 1: fallback all query
+        .mockResolvedValueOnce([goodRecord]) // batch 2: pending query
       mockCreatePost.mockResolvedValue({ _id: 'late-good' })
 
       const [result1, result2] = await Promise.all([
@@ -375,8 +377,8 @@ describe('enqueueApproval', () => {
 
   describe('error handling', () => {
     it('handles no available slot gracefully', async () => {
-      const item = makeQueueItem({ id: 'no-slot' })
-      mockGetItem.mockResolvedValue(item)
+      const record = makeContentRecord({ rowKey: 'no-slot' })
+      mockGetContentItems.mockResolvedValue([record])
       mockFindNextSlot.mockResolvedValue(null)
 
       const result = await enqueueApproval(['no-slot'])
@@ -386,8 +388,8 @@ describe('enqueueApproval', () => {
     })
 
     it('handles no account for platform', async () => {
-      const item = makeQueueItem({ id: 'no-acct', metadata: { accountId: '' } })
-      mockGetItem.mockResolvedValue(item)
+      const record = makeContentRecord({ rowKey: 'no-acct' })
+      mockGetContentItems.mockResolvedValue([record])
       mockGetAccountId.mockResolvedValue(null)
 
       const result = await enqueueApproval(['no-acct'])
@@ -397,8 +399,8 @@ describe('enqueueApproval', () => {
     })
 
     it('handles unexpected createPost error', async () => {
-      const item = makeQueueItem({ id: 'api-err' })
-      mockGetItem.mockResolvedValue(item)
+      const record = makeContentRecord({ rowKey: 'api-err' })
+      mockGetContentItems.mockResolvedValue([record])
       mockCreatePost.mockRejectedValue(new Error('Network timeout'))
 
       const result = await enqueueApproval(['api-err'])
@@ -410,22 +412,19 @@ describe('enqueueApproval', () => {
 
   describe('publishBy sorting', () => {
     it('processes idea-linked items before non-idea items', async () => {
-      const ideaItem = makeQueueItem({
-        id: 'idea-first',
-        metadata: { ideaIds: ['42'], createdAt: '2026-03-10T00:00:00Z' },
+      const ideaRecord = makeContentRecord({
+        rowKey: 'idea-first',
+        ideaIds: '42',
+        createdAt: '2026-03-10T00:00:00Z',
       })
-      const plainItem = makeQueueItem({
-        id: 'plain-last',
-        metadata: { createdAt: '2026-03-01T00:00:00Z' },
+      const plainRecord = makeContentRecord({
+        rowKey: 'plain-last',
+        ideaIds: '',
+        createdAt: '2026-03-01T00:00:00Z',
       })
-
-      const itemMap: Record<string, QueueItem> = {
-        'idea-first': ideaItem,
-        'plain-last': plainItem,
-      }
-      mockGetItem.mockImplementation(async (id: string) => itemMap[id] ?? null)
+      mockGetContentItems.mockResolvedValue([ideaRecord, plainRecord])
       mockGetIdeasByIds.mockResolvedValue([
-        { issueNumber: 42, publishBy: '2026-03-15' },
+        { id: '42', issueNumber: 42, publishBy: '2026-03-15' },
       ])
 
       // Input order: plain-last first, but idea-first should be processed first
@@ -439,8 +438,12 @@ describe('enqueueApproval', () => {
 
   describe('thumbnail handling', () => {
     it('passes thumbnail as string URL to createPost mediaItems', async () => {
-      mockGetItem.mockResolvedValue(makeQueueItem({ thumbnailPath: '/test/thumb.png', metadata: { thumbnailPath: '/test/thumb.png' } }))
-      mockFileExists.mockResolvedValue(true)
+      const record = makeContentRecord({
+        rowKey: 'item-1',
+        mediaFilename: 'media.mp4',
+        thumbnailFilename: 'thumb.png',
+      })
+      mockGetContentItems.mockResolvedValue([record])
       mockUploadMedia
         .mockResolvedValueOnce({ url: 'https://cdn/media.mp4', type: 'video' })
         .mockResolvedValueOnce({ url: 'https://cdn/thumb.png', type: 'image' })
@@ -456,11 +459,13 @@ describe('enqueueApproval', () => {
     })
 
     it('sets instagramThumbnail in platformSpecificData for instagram', async () => {
-      mockGetItem.mockResolvedValue(makeQueueItem({
-        thumbnailPath: '/test/thumb.png',
-        metadata: { platform: 'instagram', thumbnailPath: '/test/thumb.png' },
-      }))
-      mockFileExists.mockResolvedValue(true)
+      const record = makeContentRecord({
+        rowKey: 'item-1',
+        platform: 'instagram',
+        mediaFilename: 'media.mp4',
+        thumbnailFilename: 'thumb.png',
+      })
+      mockGetContentItems.mockResolvedValue([record])
       mockUploadMedia
         .mockResolvedValueOnce({ url: 'https://cdn/media.mp4', type: 'video' })
         .mockResolvedValueOnce({ url: 'https://cdn/ig-thumb.png', type: 'image' })

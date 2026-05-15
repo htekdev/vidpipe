@@ -197,6 +197,16 @@ describe('generatePlatformVariants', () => {
     const ffmpegCalls = mockExecFile.mock.calls.filter((c: any[]) => c[0] !== 'ffprobe');
     expect(ffmpegCalls).toHaveLength(1);
   });
+
+  it('aspectRatio module exports isSplitScreen in variant results', async () => {
+    const platforms: Platform[] = ['tiktok'];
+    const variants = await generatePlatformVariants('/in.mp4', '/out', 'clip', platforms);
+    // Each variant should have isSplitScreen property
+    expect(variants.length).toBeGreaterThan(0);
+    for (const variant of variants) {
+      expect(variant).toHaveProperty('isSplitScreen');
+    }
+  });
 });
 
 // ── Constants ───────────────────────────────────────────────────────────────

@@ -48,3 +48,5 @@ _reorder-queue.cjs
 _repair-drafts.mjs
 late-posts-report.csv
 PATTERN_SEARCH_RESULTS.txt
+
+.vidpipe-queue-cache.json

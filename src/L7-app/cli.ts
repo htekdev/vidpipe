@@ -21,6 +21,7 @@ import { runConfigure } from './commands/configure'
 import { runIntroOutro } from './commands/introOutro'
 import { runThumbnail } from './commands/thumbnail'
 import { runIdeaUpdate, runIdeaGet, runIdeaSearch } from './commands/ideaUpdate'
+import { createCloudCommand } from './commands/cloud'
 import { startReviewServer } from './review/server'
 import { parsePublishBy } from './parsePublishBy'
 import { openUrl } from '../L1-infra/cli/cli.js'
@@ -109,6 +110,32 @@ program
   .option('--queue', 'Use Late API queue reshuffle instead of per-post reschedule')
   .action(async (opts) => {
     await runRealign({ platform: opts.platform, dryRun: opts.dryRun, queue: opts.queue })
+    process.exit(0)
+  })
+
+program
+  .command('reorder-queue')
+  .description('Reorder Late queue so newest content gets earliest slots (temp queue swap)')
+  .option('--platform <name>', 'Filter to a single platform (tiktok, youtube, instagram, linkedin, x)')
+  .option('--clip-type <type>', 'Filter to a clip type (short, medium-clip, video)')
+  .option('--dry-run', 'Preview the reorder plan without making changes')
+  .option('--all', 'Reorder all queues')
+  .action(async (opts: { platform?: string; clipType?: string; dryRun?: boolean; all?: boolean }) => {
+    initConfig({})
+    const { reorderQueue, reorderAllQueues } = await import('../L3-services/lateApi/lateApiService.js')
+
+    if (opts.all) {
+      logger.info('Reordering ALL queues (newest-first)...')
+      const result = await reorderAllQueues({ dryRun: opts.dryRun })
+      logger.info(`\nTotal: ${result.total} posts reordered, ${result.errors} errors`)
+    } else if (opts.platform && opts.clipType) {
+      const result = await reorderQueue(opts.platform, opts.clipType, { dryRun: opts.dryRun })
+      logger.info(`Reordered: ${result.moved} posts, ${result.errors} errors`)
+    } else {
+      logger.error('Specify --platform + --clip-type, or use --all to reorder everything')
+      process.exit(1)
+    }
+
     process.exit(0)
   })
 
@@ -330,6 +357,8 @@ program
 
 // --- Default command (process video or watch) ---
 // This must come after subcommands so they take priority
+
+program.addCommand(createCloudCommand())
 
 const defaultCmd = program
   .command('process', { isDefault: true })

@@ -12,6 +12,28 @@ vi.mock('../../../L2-clients/openai/imageGeneration.js', () => ({
   COST_BY_QUALITY: { low: 0.04, medium: 0.07, high: 0.07 } as Record<string, number>,
 }))
 
+// Mock @github/copilot-sdk for ThumbnailAgent session tests
+vi.mock('@github/copilot-sdk', () => ({
+  CopilotClient: function CopilotClientMock() {
+    return {
+      createSession: async () => ({
+        sendAndWait: async () => ({ data: { content: '' } }),
+        on: (event: string, handler: (...args: any[]) => void) => {
+          if (event === 'session.idle') {
+            Promise.resolve().then(() => handler())
+          }
+          return () => {}
+        },
+        send: async () => {},
+        destroy: async () => {},
+      }),
+      stop: async () => {},
+    }
+  },
+  CopilotSession: function CopilotSessionMock() {},
+  approveAll: vi.fn().mockReturnValue({ result: 'allow' }),
+}))
+
 // ── Import SUT after mocks ──────────────────────────────────────────────────
 import { generateThumbnailForClip } from '../../../L5-assets/thumbnailGeneration.js'
 import type { ThumbnailContext } from '../../../L5-assets/thumbnailGeneration.js'

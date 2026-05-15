@@ -23,6 +23,28 @@ vi.mock('../../../L2-clients/ffmpeg/ffmpeg.js', () => ({
   fluent: {},
 }))
 
+// Mock @github/copilot-sdk for BaseAgent session tests
+vi.mock('@github/copilot-sdk', () => ({
+  CopilotClient: function CopilotClientMock() {
+    return {
+      createSession: async () => ({
+        sendAndWait: async () => ({ data: { content: '' } }),
+        on: (event: string, handler: (...args: any[]) => void) => {
+          if (event === 'session.idle') {
+            Promise.resolve().then(() => handler())
+          }
+          return () => {}
+        },
+        send: async () => {},
+        destroy: async () => {},
+      }),
+      stop: async () => {},
+    }
+  },
+  CopilotSession: function CopilotSessionMock() {},
+  approveAll: vi.fn().mockReturnValue({ result: 'allow' }),
+}))
+
 // ── Import after mocks ───────────────────────────────────────────────
 
 import { readTranscript, getChapters, getVideoInfo } from '../../../L4-agents/agentTools.js'

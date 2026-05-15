@@ -14,4 +14,14 @@ describe('Interview service integration (L3)', () => {
   test.skip('ideateStart.REQ-032: updateIdeaFromInsights calls updateIdea with direct replacement', () => {
     // Validated in unit tests with mocked ideaService.
   })
+
+  test('GitHubClient exports GraphQL-based read methods and clearCache', async () => {
+    const { GitHubClient } = await import('../../../L2-clients/github/githubClient.js')
+    const proto = GitHubClient.prototype
+    expect(typeof proto.getIssue).toBe('function')
+    expect(typeof proto.listIssues).toBe('function')
+    expect(typeof proto.searchIssues).toBe('function')
+    expect(typeof proto.listComments).toBe('function')
+    expect(typeof proto.clearCache).toBe('function')
+  })
 })

@@ -5,6 +5,7 @@ import { getConfig } from '../L1-infra/config/environment'
 import { progressEmitter } from '../L1-infra/progress/progressEmitter.js'
 import { MainVideoAsset } from '../L5-assets/MainVideoAsset.js'
 import { costTracker, markPending, markProcessing, markCompleted, markFailed } from '../L5-assets/pipelineServices.js'
+import { isCloudEnabled, uploadToCloud } from '../L5-assets/bridges/cloudStorageBridge.js'
 import type { CostReport } from '../L5-assets/pipelineServices.js'
 import type {
   Transcript,
@@ -460,6 +461,27 @@ export async function processVideo(videoPath: string, ideas?: Idea[], publishBy?
 
     // 14. Blog — asset handles blog post generation
     const blogPost = await trackStage<string>(Stage.Blog, () => asset.getBlog())
+
+    // 18. Cloud Upload — upload video + publish-queue contents to Azure blob storage
+    await trackStage<void>(Stage.CloudUpload, async () => {
+      const cloudEnabled = await isCloudEnabled()
+      if (!cloudEnabled) {
+        logger.info('Cloud upload skipped — Azure storage not configured')
+        return
+      }
+
+      const publishQueueDir = join(cfg.OUTPUT_DIR, 'publish-queue')
+      const result = await uploadToCloud(videoPath, publishQueueDir, video.slug, {
+        originalFilename: video.filename,
+        duration: video.duration,
+        size: video.size,
+      })
+
+      logger.info(`Cloud upload complete — runId: ${result.runId}, items uploaded: ${result.contentUploaded}, video: ${result.videoUploaded}`)
+      if (result.errors.length > 0) {
+        logger.warn(`Cloud upload had ${result.errors.length} error(s): ${result.errors.join('; ')}`)
+      }
+    })
 
     const totalDuration = Date.now() - pipelineStart
 

@@ -2,34 +2,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mockIssuesCreate = vi.hoisted(() => vi.fn())
 const mockIssuesUpdate = vi.hoisted(() => vi.fn())
-const mockIssuesGet = vi.hoisted(() => vi.fn())
-const mockIssuesListForRepo = vi.hoisted(() => vi.fn())
 const mockIssuesAddLabels = vi.hoisted(() => vi.fn())
 const mockIssuesRemoveLabel = vi.hoisted(() => vi.fn())
 const mockIssuesSetLabels = vi.hoisted(() => vi.fn())
 const mockIssuesCreateComment = vi.hoisted(() => vi.fn())
-const mockIssuesListComments = vi.hoisted(() => vi.fn())
-const mockSearchIssues = vi.hoisted(() => vi.fn())
-const mockPaginate = vi.hoisted(() => vi.fn())
+const mockRequest = vi.hoisted(() => vi.fn())
 const mockOctokitInit = vi.hoisted(() => vi.fn())
 const mockOctokitInstance = vi.hoisted(() => ({
   rest: {
     issues: {
       create: mockIssuesCreate,
       update: mockIssuesUpdate,
-      get: mockIssuesGet,
-      listForRepo: mockIssuesListForRepo,
       addLabels: mockIssuesAddLabels,
       removeLabel: mockIssuesRemoveLabel,
       setLabels: mockIssuesSetLabels,
       createComment: mockIssuesCreateComment,
-      listComments: mockIssuesListComments,
-    },
-    search: {
-      issuesAndPullRequests: mockSearchIssues,
     },
   },
-  paginate: mockPaginate,
+  request: mockRequest,
 }))
 
 vi.mock('octokit', () => ({
@@ -72,6 +62,37 @@ function makeComment(overrides: Partial<Record<string, unknown>> = {}) {
     user: { login: 'octocat' },
     ...overrides,
   }
+}
+
+// GraphQL response helpers
+function makeGqlIssueNode(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    number: 42,
+    title: 'Issue title',
+    body: 'Issue body',
+    state: 'OPEN',
+    labels: { nodes: [{ name: 'triage' }] },
+    comments: { nodes: [], pageInfo: { hasNextPage: false, endCursor: null } },
+    createdAt: '2026-03-01T00:00:00Z',
+    updatedAt: '2026-03-02T00:00:00Z',
+    url: 'https://github.com/example/repo/issues/42',
+    ...overrides,
+  }
+}
+
+function makeGqlCommentNode(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    databaseId: 99,
+    body: 'Looks good',
+    createdAt: '2026-03-01T00:00:00Z',
+    updatedAt: '2026-03-02T00:00:00Z',
+    url: 'https://github.com/example/repo/issues/42#issuecomment-99',
+    ...overrides,
+  }
+}
+
+function gqlResponse(data: unknown) {
+  return { data: { data }, headers: { 'x-ratelimit-remaining': '4999', 'x-ratelimit-reset': '9999999999' } }
 }
 
 describe('GitHubClient', () => {
@@ -212,24 +233,26 @@ describe('GitHubClient', () => {
     })
   })
 
-  describe('githubClient.REQ-004 - getIssue fetches and normalizes issue fields', () => {
-    it('githubClient.REQ-004 - fetches an issue by number', async () => {
-      mockIssuesGet.mockResolvedValueOnce({ data: makeIssue({ number: 7 }) })
+  describe('githubClient.REQ-004 - getIssue fetches via GraphQL and caches comments', () => {
+    it('githubClient.REQ-004 - fetches an issue by number via GraphQL', async () => {
+      const node = makeGqlIssueNode({ number: 7 })
+      mockRequest.mockResolvedValueOnce(gqlResponse({ repository: { issue: node } }))
       const client = new GitHubClient('token', 'owner/repo')
 
       const issue = await client.getIssue(7)
 
-      expect(mockIssuesGet).toHaveBeenCalledWith({ owner: 'owner', repo: 'repo', issue_number: 7 })
+      expect(mockRequest).toHaveBeenCalledWith('POST /graphql', expect.objectContaining({
+        variables: { owner: 'owner', repo: 'repo', number: 7 },
+      }))
       expect(issue.number).toBe(7)
     })
 
-    it('githubClient.REQ-004 - maps nullable bodies and trimmed non-empty labels', async () => {
-      mockIssuesGet.mockResolvedValueOnce({
-        data: makeIssue({
-          body: null,
-          labels: [' bug ', { name: 'needs-review ' }, { name: '' }, { name: null }],
-        }),
+    it('githubClient.REQ-004 - maps nullable bodies and labels from GraphQL', async () => {
+      const node = makeGqlIssueNode({
+        body: null,
+        labels: { nodes: [{ name: 'bug' }, { name: 'needs-review' }] },
       })
+      mockRequest.mockResolvedValueOnce(gqlResponse({ repository: { issue: node } }))
       const client = new GitHubClient('token', 'owner/repo')
 
       const issue = await client.getIssue(42)
@@ -237,114 +260,106 @@ describe('GitHubClient', () => {
       expect(issue.body).toBe('')
       expect(issue.labels).toEqual(['bug', 'needs-review'])
     })
+
+    it('githubClient.REQ-004 - returns cached issue on second call', async () => {
+      const node = makeGqlIssueNode({ number: 10 })
+      mockRequest.mockResolvedValueOnce(gqlResponse({ repository: { issue: node } }))
+      const client = new GitHubClient('token', 'owner/repo')
+
+      await client.getIssue(10)
+      const second = await client.getIssue(10)
+
+      expect(mockRequest).toHaveBeenCalledTimes(1) // only one API call
+      expect(second.number).toBe(10)
+    })
+
+    it('githubClient.REQ-004 - throws 404 when issue is null', async () => {
+      mockRequest.mockResolvedValueOnce(gqlResponse({ repository: { issue: null } }))
+      const client = new GitHubClient('token', 'owner/repo')
+
+      await expect(client.getIssue(999)).rejects.toMatchObject({
+        name: 'GitHubClientError',
+        status: 404,
+      })
+    })
   })
 
-  describe('githubClient.REQ-005 - listIssues paginates, filters pull requests, and honors maxResults', () => {
-    it('githubClient.REQ-005 - uses default paging and filters out pull requests', async () => {
-      mockIssuesListForRepo.mockResolvedValueOnce({
-        data: [makeIssue({ number: 1 }), makeIssue({ number: 2, pull_request: { url: 'pr' } })],
+  describe('githubClient.REQ-005 - listIssues paginates via GraphQL and populates comment cache', () => {
+    it('githubClient.REQ-005 - fetches issues with comments in one query', async () => {
+      const comment = makeGqlCommentNode({ databaseId: 55 })
+      const node = makeGqlIssueNode({
+        number: 1,
+        comments: { nodes: [comment], pageInfo: { hasNextPage: false, endCursor: null } },
       })
+      mockRequest.mockResolvedValueOnce(gqlResponse({
+        repository: { issues: { nodes: [node], pageInfo: { hasNextPage: false, endCursor: null } } },
+      }))
       const client = new GitHubClient('token', 'owner/repo')
 
       const issues = await client.listIssues()
 
-      expect(mockIssuesListForRepo).toHaveBeenCalledWith({
-        owner: 'owner',
-        repo: 'repo',
-        state: 'all',
-        labels: undefined,
-        sort: undefined,
-        direction: undefined,
-        per_page: 100,
-        page: undefined,
-      })
       expect(issues).toHaveLength(1)
       expect(issues[0]?.number).toBe(1)
+      // Comments should be cached — listComments should NOT trigger another API call
+      const comments = await client.listComments(1)
+      expect(comments).toHaveLength(1)
+      expect(comments[0]?.id).toBe(55)
+      expect(mockRequest).toHaveBeenCalledTimes(1) // only one API call total!
     })
 
-    it('githubClient.REQ-005 - normalizes label filters, paginates in batches of 100, and honors maxResults', async () => {
-      const firstPage = Array.from({ length: 100 }, (_, index) => makeIssue({ number: index + 1 }))
-      const secondPage = [makeIssue({ number: 101 }), makeIssue({ number: 102 })]
-      mockIssuesListForRepo
-        .mockResolvedValueOnce({ data: firstPage })
-        .mockResolvedValueOnce({ data: secondPage })
+    it('githubClient.REQ-005 - honors maxResults', async () => {
+      const nodes = Array.from({ length: 5 }, (_, i) => makeGqlIssueNode({ number: i + 1 }))
+      mockRequest.mockResolvedValueOnce(gqlResponse({
+        repository: { issues: { nodes, pageInfo: { hasNextPage: false, endCursor: null } } },
+      }))
       const client = new GitHubClient('token', 'owner/repo')
 
-      const issues = await client.listIssues({ labels: [' bug ', '', 'bug'], maxResults: 101 })
+      const issues = await client.listIssues({ maxResults: 3 })
 
-      expect(mockIssuesListForRepo).toHaveBeenNthCalledWith(1, {
-        owner: 'owner',
-        repo: 'repo',
-        state: 'all',
-        labels: 'bug',
-        sort: undefined,
-        direction: undefined,
-        per_page: 100,
-        page: undefined,
-      })
-      expect(mockIssuesListForRepo).toHaveBeenNthCalledWith(2, {
-        owner: 'owner',
-        repo: 'repo',
-        state: 'all',
-        labels: 'bug',
-        sort: undefined,
-        direction: undefined,
-        per_page: 100,
-        page: 2,
-      })
-      expect(issues.map((issue) => issue.number)).toEqual(Array.from({ length: 101 }, (_, index) => index + 1))
+      expect(issues).toHaveLength(3)
     })
 
-    it('githubClient.REQ-005 - passes state option to GitHub API', async () => {
-      mockIssuesListForRepo.mockResolvedValueOnce({ data: [makeIssue({ number: 1 })] })
+    it('githubClient.REQ-005 - returns cached list on second call', async () => {
+      mockRequest.mockResolvedValueOnce(gqlResponse({
+        repository: { issues: { nodes: [makeGqlIssueNode()], pageInfo: { hasNextPage: false, endCursor: null } } },
+      }))
       const client = new GitHubClient('token', 'owner/repo')
 
-      await client.listIssues({ state: 'closed' })
+      await client.listIssues()
+      await client.listIssues()
 
-      expect(mockIssuesListForRepo).toHaveBeenCalledWith(
-        expect.objectContaining({ state: 'closed' }),
-      )
+      expect(mockRequest).toHaveBeenCalledTimes(1)
     })
   })
 
-  describe('githubClient.REQ-006 - searchIssues scopes queries, paginates, filters PRs, and honors maxResults', () => {
-    it('githubClient.REQ-006 - prefixes the repo and issue qualifiers', async () => {
-      mockPaginate.mockResolvedValueOnce([
-        makeIssue({ number: 3, labels: ['bug', { name: 'needs-review' }] }),
-      ])
+  describe('githubClient.REQ-006 - searchIssues uses GraphQL search and populates comment cache', () => {
+    it('githubClient.REQ-006 - searches with repo scope', async () => {
+      const node = { __typename: 'Issue', ...makeGqlIssueNode({ number: 3 }) }
+      mockRequest.mockResolvedValueOnce(gqlResponse({ search: { nodes: [node] } }))
       const client = new GitHubClient('token', 'owner/repo')
 
       const issues = await client.searchIssues('label:bug')
 
-      expect(mockPaginate).toHaveBeenCalledWith(mockSearchIssues, {
-        q: 'repo:owner/repo is:issue label:bug',
-        per_page: 100,
-      })
-      expect(issues).toEqual([
-        {
-          number: 3,
-          title: 'Issue title',
-          body: 'Issue body',
-          state: 'open',
-          labels: ['bug', 'needs-review'],
-          created_at: '2026-03-01T00:00:00Z',
-          updated_at: '2026-03-02T00:00:00Z',
-          html_url: 'https://github.com/example/repo/issues/42',
-        },
-      ])
+      expect(mockRequest).toHaveBeenCalledWith('POST /graphql', expect.objectContaining({
+        variables: { q: 'repo:owner/repo is:issue label:bug' },
+      }))
+      expect(issues).toHaveLength(1)
+      expect(issues[0]?.number).toBe(3)
     })
 
-    it('githubClient.REQ-006 - filters pull requests and honors maxResults', async () => {
-      mockPaginate.mockResolvedValueOnce([
-        makeIssue({ number: 3 }),
-        makeIssue({ number: 4, pull_request: { url: 'pr' } }),
-        makeIssue({ number: 5 }),
-      ])
+    it('githubClient.REQ-006 - filters non-Issue types and honors maxResults', async () => {
+      mockRequest.mockResolvedValueOnce(gqlResponse({
+        search: { nodes: [
+          { __typename: 'Issue', ...makeGqlIssueNode({ number: 3 }) },
+          { __typename: 'PullRequest' },
+          { __typename: 'Issue', ...makeGqlIssueNode({ number: 5 }) },
+        ] },
+      }))
       const client = new GitHubClient('token', 'owner/repo')
 
       const issues = await client.searchIssues('label:bug', { maxResults: 1 })
 
-      expect(issues.map((issue) => issue.number)).toEqual([3])
+      expect(issues.map((i) => i.number)).toEqual([3])
     })
   })
 
@@ -432,23 +447,43 @@ describe('GitHubClient', () => {
       expect(comment.body).toBe('')
     })
 
-    it('githubClient.REQ-011 - lists all comments via paginate', async () => {
-      mockPaginate.mockResolvedValueOnce([makeComment({ id: 1 }), makeComment({ id: 2 })])
+    it('githubClient.REQ-011 - listComments returns cached comments from getIssue', async () => {
+      const commentNode = makeGqlCommentNode({ databaseId: 1 })
+      const issueNode = makeGqlIssueNode({
+        comments: { nodes: [commentNode], pageInfo: { hasNextPage: false, endCursor: null } },
+      })
+      mockRequest.mockResolvedValueOnce(gqlResponse({ repository: { issue: issueNode } }))
+      const client = new GitHubClient('token', 'owner/repo')
+
+      // getIssue populates the comment cache
+      await client.getIssue(42)
+      const comments = await client.listComments(42)
+
+      expect(comments).toHaveLength(1)
+      expect(comments[0]?.id).toBe(1)
+      expect(mockRequest).toHaveBeenCalledTimes(1) // no extra API call
+    })
+
+    it('githubClient.REQ-011 - listComments fetches via GraphQL on cache miss', async () => {
+      const commentNode = makeGqlCommentNode({ databaseId: 5 })
+      const issueNode = makeGqlIssueNode({
+        comments: { nodes: [commentNode], pageInfo: { hasNextPage: false, endCursor: null } },
+      })
+      mockRequest.mockResolvedValueOnce(gqlResponse({ repository: { issue: issueNode } }))
       const client = new GitHubClient('token', 'owner/repo')
 
       const comments = await client.listComments(42)
 
-      expect(mockPaginate).toHaveBeenCalledWith(mockIssuesListComments, {
-        owner: 'owner',
-        repo: 'repo',
-        issue_number: 42,
-        per_page: 100,
-      })
-      expect(comments.map((comment) => comment.id)).toEqual([1, 2])
+      expect(comments).toHaveLength(1)
+      expect(comments[0]?.id).toBe(5)
     })
 
     it('githubClient.REQ-011 - listComments maps nullable comment bodies to empty strings', async () => {
-      mockPaginate.mockResolvedValueOnce([makeComment({ id: 1, body: null })])
+      const commentNode = makeGqlCommentNode({ databaseId: 1, body: null })
+      const issueNode = makeGqlIssueNode({
+        comments: { nodes: [commentNode], pageInfo: { hasNextPage: false, endCursor: null } },
+      })
+      mockRequest.mockResolvedValueOnce(gqlResponse({ repository: { issue: issueNode } }))
       const client = new GitHubClient('token', 'owner/repo')
 
       const comments = await client.listComments(42)

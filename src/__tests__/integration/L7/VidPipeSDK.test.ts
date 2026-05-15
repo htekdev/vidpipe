@@ -35,6 +35,11 @@ const {
   mockGetQueueId,
   mockGetProfileId,
   mockCreateLateApiClient,
+  mockSpawnCommand,
+  mockUploadVideoFile,
+  mockIsAzureConfigured,
+  mockGetRunId,
+  mockDownloadBlobToFile,
 } = vi.hoisted(() => ({
   mockInitConfig: vi.fn(),
   mockGetConfig: vi.fn(),
@@ -66,6 +71,11 @@ const {
   mockGetQueueId: vi.fn(),
   mockGetProfileId: vi.fn(),
   mockCreateLateApiClient: vi.fn(),
+  mockSpawnCommand: vi.fn(),
+  mockUploadVideoFile: vi.fn(),
+  mockIsAzureConfigured: vi.fn(),
+  mockGetRunId: vi.fn(),
+  mockDownloadBlobToFile: vi.fn(),
 }))
 
 vi.mock('../../../L1-infra/config/environment.js', () => ({
@@ -129,6 +139,37 @@ vi.mock('../../../L3-services/queueMapping/queueMapping.js', () => ({
 
 vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
   createLateApiClient: mockCreateLateApiClient,
+}))
+
+vi.mock('../../../L1-infra/process/process.js', () => ({
+  spawnCommand: mockSpawnCommand,
+  execCommand: vi.fn(),
+  execFileRaw: vi.fn(),
+  execCommandSync: vi.fn(),
+  createModuleRequire: vi.fn(),
+}))
+
+vi.mock('node:fs/promises', () => ({
+  stat: vi.fn().mockResolvedValue({ size: 1024 }),
+  readFile: vi.fn().mockResolvedValue(''),
+  writeFile: vi.fn().mockResolvedValue(undefined),
+  readdir: vi.fn().mockResolvedValue([]),
+  mkdir: vi.fn().mockResolvedValue(undefined),
+}))
+
+vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
+  uploadVideoFile: mockUploadVideoFile,
+  isAzureConfigured: mockIsAzureConfigured,
+  getRunId: mockGetRunId,
+  downloadBlobToFile: mockDownloadBlobToFile,
+  getContentItems: vi.fn().mockResolvedValue([]),
+  listVideos: vi.fn().mockResolvedValue([]),
+}))
+
+vi.mock('../../../L3-services/azureStorage/azureConfigService.js', () => ({
+  pushConfig: vi.fn().mockResolvedValue({ uploaded: 0 }),
+  pullConfig: vi.fn().mockResolvedValue({ downloaded: 0 }),
+  listConfigFiles: vi.fn().mockResolvedValue([]),
 }))
 
 const baseEnvironment = {
@@ -671,6 +712,62 @@ describe('VidPipeSDK', () => {
 
       expect(result).toBe('2026-05-01T10:00:00-05:00')
       expect(mockGetQueueId).toHaveBeenCalledWith('youtube', 'short')
+    })
+  })
+
+  describe('cloud operations', () => {
+    it('cloud.process uploads video and checks spawnCommand exit status', async () => {
+      const sdk = createVidPipe()
+      mockUploadVideoFile.mockResolvedValue('https://blob.url')
+      mockIsAzureConfigured.mockReturnValue(true)
+      mockGetRunId.mockReturnValue('run-42')
+      mockSpawnCommand.mockReturnValue({ status: 0, stdout: '', stderr: '', error: null })
+
+      const result = await sdk.cloud.process('C:\\videos\\test.mp4')
+
+      expect(result.runId).toBe('run-42')
+      expect(result.workflowTriggered).toBe(true)
+      expect(mockUploadVideoFile).toHaveBeenCalled()
+      expect(mockSpawnCommand).toHaveBeenCalledWith('gh', expect.arrayContaining(['workflow', 'run']))
+    })
+
+    it('cloud.process handles gh workflow failure gracefully', async () => {
+      const sdk = createVidPipe()
+      mockUploadVideoFile.mockResolvedValue('https://blob.url')
+      mockIsAzureConfigured.mockReturnValue(true)
+      mockGetRunId.mockReturnValue('run-43')
+      mockSpawnCommand.mockReturnValue({ status: 1, stdout: '', stderr: 'gh not found', error: new Error('gh not found') })
+
+      const result = await sdk.cloud.process('C:\\videos\\test.mp4')
+
+      expect(result.runId).toBe('run-43')
+      expect(result.workflowTriggered).toBe(false)
+    })
+
+    it('cloud.download via curl checks exit status', async () => {
+      const sdk = createVidPipe()
+      mockSpawnCommand.mockReturnValue({ status: 0, stdout: '', stderr: '' })
+
+      await sdk.cloud.download('https://example.com/video.mp4', 'C:\\output\\video.mp4')
+
+      expect(mockSpawnCommand).toHaveBeenCalledWith('curl', expect.arrayContaining(['-L', '--fail', '-o']))
+    })
+
+    it('cloud.download via curl throws on non-zero exit', async () => {
+      const sdk = createVidPipe()
+      mockSpawnCommand.mockReturnValue({ status: 1, stdout: '', stderr: 'Connection refused' })
+
+      await expect(sdk.cloud.download('https://example.com/video.mp4', 'C:\\output\\video.mp4'))
+        .rejects.toThrow('curl download failed')
+    })
+
+    it('cloud.download via blob delegates to downloadBlobToFile', async () => {
+      const sdk = createVidPipe()
+      mockDownloadBlobToFile.mockResolvedValue(undefined)
+
+      await sdk.cloud.download('blob://raw/test.mp4', 'C:\\output\\test.mp4')
+
+      expect(mockDownloadBlobToFile).toHaveBeenCalledWith('raw/test.mp4', 'C:\\output\\test.mp4')
     })
   })
 })
