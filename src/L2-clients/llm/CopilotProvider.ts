@@ -259,7 +259,7 @@ class CopilotSessionWrapper implements LLMSession {
   private setupUsageTracking(): void {
     this.session.on((event: SessionEvent) => {
       if (event.type === 'assistant.usage') {
-        const d = event.data as Record<string, unknown>
+        const d = event.data as unknown as Record<string, unknown>
         this.lastUsage = {
           inputTokens: (d.inputTokens as number) ?? 0,
           outputTokens: (d.outputTokens as number) ?? 0,
