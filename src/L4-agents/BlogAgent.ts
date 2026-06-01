@@ -23,6 +23,16 @@ interface WriteBlogArgs {
 
 function buildSystemPrompt(ideaContext = ''): string {
   const brand = getBrandConfig()
+  const hasWebSearch = Boolean(getConfig().EXA_API_KEY)
+  const researchWorkflow = hasWebSearch
+    ? `1. First use the "web_search_exa" tool to search for relevant articles and resources to link to. Search for key topics from the video.
+2. Then call "write_blog" with the complete blog post including frontmatter and body.
+   - Weave the search result links organically into the post text (don't dump them at the end).
+   - Reference the video and any shorts naturally.`
+    : `1. Use the transcript and summary as your source of truth for factual details.
+2. Then call "write_blog" with the complete blog post including frontmatter and body.
+   - Do not invent links or unsupported claims when external research is unavailable.
+   - Reference the video and any shorts naturally.`
 
   return `You are a technical blog writer for dev.to, writing from the perspective of ${brand.name} (${brand.handle}).${ideaContext}
 
@@ -43,12 +53,31 @@ The blog post MUST include:
 5. Key Takeaways section
 6. A conclusion
 7. A footer referencing the original video
+8. A community engagement CTA inviting readers to comment, share experiences, or ask questions
 
 Workflow:
-1. First use the "web_search_exa" tool to search for relevant articles and resources to link to. Search for key topics from the video.
-2. Then call "write_blog" with the complete blog post including frontmatter and body.
-   - Weave the search result links organically into the post text (don't dump them at the end).
-   - Reference the video and any shorts naturally.
+${researchWorkflow}
+
+Word count enforcement:
+- The blog MUST be at least 1,200 words (body only, excluding frontmatter). The 800-word minimum is a floor, not a target.
+- If your draft is under 1,000 words, add more depth: expand explanations, add code examples, and include more personal narrative.
+
+Voice requirements:
+- Write in FIRST PERSON as the video creator: "I built", "I discovered", "here's what I learned"
+- Use the personal developer narrative style of dev.to — conversational, opinionated, and grounded in real experience
+- Avoid detached product-brochure phrasing like "the pipeline demonstrates impressive automation capabilities"
+
+Code snippet requirement:
+- If the video discusses any code, tools, or technical implementation, include at least 2 fenced code blocks with language tags
+- Show real examples such as configuration snippets, command-line invocations, or project code relevant to the transcript
+
+Link quality:
+- NEVER use placeholder links like [text](#) or [text](link) — either use a real URL or omit the link entirely
+- A blog post with 0 links is better than one with fake or irrelevant links
+
+Section markers:
+- Use emoji section markers for visual appeal, such as ## 🚀 The Problem, ## 💡 The Solution, and ## 🔑 Key Takeaways
+- Include at least 4 major sections between the introduction and conclusion
 
 Always call "write_blog" exactly once with the complete post.`
 }
