@@ -545,6 +545,99 @@ export interface StageResult {
   duration: number;
 }
 
+// ============================================================================
+// VIDEO KNOWLEDGE BASE (BLACKBOARD)
+// ============================================================================
+
+/** Single scene boundary event produced by scene analysis. */
+export interface SceneBoundary {
+  timestamp: number;
+  type: 'cut' | 'fade' | 'dissolve';
+}
+
+/** Scene segment metadata used by downstream production agents. */
+export interface SceneSegment {
+  start: number;
+  end: number;
+  description: string;
+}
+
+/** OCR record for text seen on-screen at a specific time. */
+export interface OcrRecord {
+  timestamp: number;
+  text: string;
+  region: ScreenRegion;
+}
+
+/** Content classification for what is shown on-screen. */
+export interface ContentTypeRecord {
+  timestamp: number;
+  type: 'code' | 'browser' | 'terminal' | 'slides' | 'other';
+}
+
+/** Generic edit-decision event for production planning. */
+export interface EditDecision {
+  timestamp: number;
+  decision: string;
+  reason?: string;
+}
+
+/** Planned enhancement action for graphics/visual production. */
+export interface Enhancement {
+  timestamp: number;
+  type: string;
+  details?: string;
+}
+
+/**
+ * Shared blackboard containing structured analysis and production context.
+ * This enables incremental migration from sequential stages to agent-based flow.
+ */
+export interface VideoKnowledgeBase {
+  video: VideoFile;
+  duration: number;
+  resolution: { width: number; height: number };
+
+  transcript?: {
+    whisper: Transcript;
+    gemini?: Transcript;
+    merged: Transcript;
+    confidence: number;
+  };
+  layout: {
+    webcam: WebcamRegion | null;
+    screenRegion: ScreenRegion | null;
+    layoutChanges: { timestamp: number; type: string }[];
+  };
+  scenes: {
+    boundaries: SceneBoundary[];
+    segments: SceneSegment[];
+  };
+  screenContent: {
+    ocr: OcrRecord[];
+    contentType: ContentTypeRecord[];
+  };
+  mouse: {
+    positions: { timestamp: number; x: number; y: number }[];
+    clicks: { timestamp: number; x: number; y: number }[];
+  };
+  audio: {
+    silenceRegions: { start: number; end: number }[];
+    noiseLevel: { timestamp: number; db: number }[];
+    quality?: 'good' | 'echo' | 'noisy' | 'clipping';
+  };
+  face: {
+    energy: { timestamp: number; level: number }[];
+    eyeContact: { timestamp: number; looking: boolean }[];
+  };
+
+  editorialDirection?: string;
+  editDecisions?: EditDecision[];
+  enhancementPlan?: Enhancement[];
+  shorts?: ShortClip[];
+  mediumClips?: MediumClip[];
+}
+
 /**
  * Complete output of a pipeline run.
  *
@@ -556,6 +649,7 @@ export interface StageResult {
 export interface PipelineResult {
   video: VideoFile;
   transcript?: Transcript;
+  knowledgeBase?: VideoKnowledgeBase;
   editedVideoPath?: string;
   captions?: string[];
   captionedVideoPath?: string;

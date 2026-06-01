@@ -6,6 +6,7 @@ import { progressEmitter } from '../L1-infra/progress/progressEmitter.js'
 import { MainVideoAsset } from '../L5-assets/MainVideoAsset.js'
 import { costTracker, markPending, markProcessing, markCompleted, markFailed } from '../L5-assets/pipelineServices.js'
 import { isCloudEnabled, uploadToCloud } from '../L5-assets/bridges/cloudStorageBridge.js'
+import { createVideoKnowledgeBase, writeVideoKnowledgeBase } from './knowledgeBase.js'
 import type { CostReport } from '../L5-assets/pipelineServices.js'
 import type {
   Transcript,
@@ -265,6 +266,7 @@ export async function processVideo(videoPath: string, ideas?: Idea[], publishBy?
   }
 
   const video = await asset.toVideoFile()
+  const knowledgeBase = createVideoKnowledgeBase(video)
   pushPipe(video.videoDir)
 
   // Set editorial direction from ideas (if provided)
@@ -279,6 +281,13 @@ export async function processVideo(videoPath: string, ideas?: Idea[], publishBy?
   try {
     // 2. Transcription — asset handles disk check + Whisper call + file write
     const transcript = await trackStage<Transcript>(Stage.Transcription, () => asset.getTranscript())
+    if (transcript) {
+      knowledgeBase.transcript = {
+        whisper: transcript,
+        merged: transcript,
+        confidence: 1,
+      }
+    }
 
     // 3. Silence Removal — asset handles edited video generation
     let editedVideoPath: string | undefined
@@ -346,6 +355,7 @@ export async function processVideo(videoPath: string, ideas?: Idea[], publishBy?
         return assets
       }) ?? []
       shorts = shortAssets.map(s => s.clip)
+      knowledgeBase.shorts = shorts
 
       // Generate thumbnails for each short clip
       for (const shortAsset of shortAssets) {
@@ -378,6 +388,7 @@ export async function processVideo(videoPath: string, ideas?: Idea[], publishBy?
         return assets
       }) ?? []
       mediumClips = mediumAssets.map(m => m.clip)
+      knowledgeBase.mediumClips = mediumClips
 
       // Generate thumbnails for each medium clip
       for (const clipAsset of mediumAssets) {
@@ -510,10 +521,16 @@ export async function processVideo(videoPath: string, ideas?: Idea[], publishBy?
     }
 
     logger.info(`Pipeline completed in ${totalDuration}ms`)
+    try {
+      await writeVideoKnowledgeBase(video.videoDir, knowledgeBase)
+    } catch (err) {
+      logger.warn(`[Pipeline] Failed to write knowledge base: ${err instanceof Error ? err.message : String(err)}`)
+    }
 
     return {
       video,
       transcript,
+      knowledgeBase,
       editedVideoPath,
       enhancedVideoPath,
       captions: captions ? [captions.srt, captions.vtt, captions.ass] : undefined,
