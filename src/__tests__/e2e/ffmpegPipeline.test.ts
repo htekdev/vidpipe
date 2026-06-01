@@ -8,10 +8,14 @@ import {
   getVideoDuration,
   type TestFixtures,
 } from './fixture.js';
+import { promises as fs } from 'node:fs';
 import { extractAudio } from '../../L2-clients/ffmpeg/audioExtraction.js';
 import { detectSilence } from '../../L2-clients/ffmpeg/silenceDetection.js';
 import { captureFrame, captureFrames } from '../../L2-clients/ffmpeg/frameCapture.js';
 import { extractClip } from '../../L2-clients/ffmpeg/clipExtraction.js';
+import { burnCaptions } from '../../L2-clients/ffmpeg/captionBurning.js';
+import { generateStyledASSForSegment } from '../../L0-pure/captions/captionGenerator.js';
+import type { Transcript } from '../../L0-pure/types/index.js';
 
 const ffmpegOk = await isFFmpegAvailable();
 
@@ -100,6 +104,35 @@ describe.skipIf(!ffmpegOk)('FFmpeg Pipeline Integration', () => {
       // Stream copy (-c copy) snaps to keyframes, so duration may exceed requested range
       expect(dur).toBeGreaterThanOrEqual(1.5);
       expect(dur).toBeLessThanOrEqual(4.0);
+    });
+
+    it('runs clip extraction and caption burn as one end-to-end workflow', async () => {
+      const clipStart = 0.5;
+      const clipEnd = 3.5;
+      const clipPath = path.join(fix.dir, 'output-clip-caption-source.mp4');
+      await extractClip(fix.videoPath, clipStart, clipEnd, clipPath, 0);
+
+      const rawTranscript = await fs.readFile(fix.transcriptPath, 'utf-8');
+      const transcript = JSON.parse(rawTranscript) as Transcript;
+      const assPath = path.join(fix.dir, 'output-clip-caption-source.ass');
+      await fs.writeFile(assPath, generateStyledASSForSegment(transcript, clipStart, clipEnd));
+
+      const outputPath = path.join(fix.dir, 'output-clip-captioned.mp4');
+      await burnCaptions(clipPath, assPath, outputPath);
+
+      const { exists, size } = await fileExistsWithSize(outputPath);
+      expect(exists).toBe(true);
+      expect(size).toBeGreaterThan(0);
+
+      const dur = await getVideoDuration(outputPath);
+      expect(dur).toBeGreaterThanOrEqual(2.0);
+      expect(dur).toBeLessThanOrEqual(4.5);
+
+      const framePath = path.join(fix.dir, 'output-clip-captioned.png');
+      await captureFrame(outputPath, 1.0, framePath);
+      const frame = await fileExistsWithSize(framePath);
+      expect(frame.exists).toBe(true);
+      expect(frame.size).toBeGreaterThan(0);
     });
   });
 });

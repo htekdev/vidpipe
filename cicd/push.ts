@@ -147,7 +147,19 @@ let copilotReviewDone = false;
 let copilotReviewCommit = '';
 let copilotReviewPending = false;
 
-const CI_CHECKS = ['Build', 'Type Check', 'Unit Tests', 'Unit Tests (Node 20)', 'Integration L3', 'Integration L4-L6', 'Integration L7', 'E2E'];
+const CI_CHECKS = [
+  'Build',
+  'Type Check',
+  'Unit Tests',
+  'Unit Tests (Node 20)',
+  'Integration L3',
+  'Integration L4-L6',
+  'Integration L7',
+  'E2E',
+  'Cross-platform E2E (Ubuntu)',
+  'Cross-platform E2E (Windows)',
+  'Cross-platform E2E (macOS)',
+];
 const ciCheckResults = new Map<string, { status: string; conclusion: string }>();
 let ciChecksCompleted = false;
 
