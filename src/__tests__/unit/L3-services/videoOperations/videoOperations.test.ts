@@ -12,6 +12,7 @@ const mockSinglePassEdit = vi.hoisted(() => vi.fn())
 const mockSinglePassEditAndCaption = vi.hoisted(() => vi.fn())
 const mockBurnCaptions = vi.hoisted(() => vi.fn())
 const mockDetectSilence = vi.hoisted(() => vi.fn())
+const mockDetectRecordingGlitches = vi.hoisted(() => vi.fn())
 const mockCaptureFrame = vi.hoisted(() => vi.fn())
 const mockGeneratePlatformVariants = vi.hoisted(() => vi.fn())
 const mockDetectWebcamRegion = vi.hoisted(() => vi.fn())
@@ -45,6 +46,9 @@ vi.mock('../../../../L2-clients/ffmpeg/captionBurning.js', () => ({
 vi.mock('../../../../L2-clients/ffmpeg/silenceDetection.js', () => ({
   detectSilence: mockDetectSilence,
 }))
+vi.mock('../../../../L2-clients/ffmpeg/glitchDetection.js', () => ({
+  detectRecordingGlitches: mockDetectRecordingGlitches,
+}))
 vi.mock('../../../../L2-clients/ffmpeg/frameCapture.js', () => ({
   captureFrame: mockCaptureFrame,
 }))
@@ -70,6 +74,7 @@ import {
   extractClip, extractCompositeClip, extractCompositeClipWithTransitions,
   singlePassEdit, singlePassEditAndCaption,
   burnCaptions, detectSilence, captureFrame,
+  detectRecordingGlitches,
   generatePlatformVariants, detectWebcamRegion, getVideoResolution,
   compositeOverlays, buildOverlayFilterComplex, getOverlayPosition,
   transcodeToMp4,
@@ -148,6 +153,13 @@ describe('L3 videoOperations wrappers', () => {
     mockDetectSilence.mockResolvedValue([{ start: 0, end: 1, duration: 1 }])
     const result = await detectSilence('/tmp/audio.mp3')
     expect(result).toHaveLength(1)
+  })
+
+  test('detectRecordingGlitches delegates to L2', async () => {
+    mockDetectRecordingGlitches.mockResolvedValue({ glitches: [] })
+    const result = await detectRecordingGlitches('/tmp/video.mp4')
+    expect(result).toEqual({ glitches: [] })
+    expect(mockDetectRecordingGlitches).toHaveBeenCalledWith('/tmp/video.mp4')
   })
 
   test('captureFrame delegates to L2', async () => {
