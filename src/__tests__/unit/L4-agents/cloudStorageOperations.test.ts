@@ -1,8 +1,8 @@
 import { describe, test, expect, vi, beforeEach } from 'vitest'
 
 const mockIsAzureConfigured = vi.hoisted(() => vi.fn().mockReturnValue(true))
-const mockUploadRawVideo = vi.hoisted(() => vi.fn().mockResolvedValue('raw/123-video.mp4'))
-const mockUploadPublishQueue = vi.hoisted(() => vi.fn().mockResolvedValue({ uploaded: 5, errors: [] }))
+const mockUploadRawVideo = vi.hoisted(() => vi.fn().mockResolvedValue({ blobPath: 'raw/123-video.mp4', url: 'https://blob/video.mp4' }))
+const mockUploadPublishQueue = vi.hoisted(() => vi.fn().mockResolvedValue({ uploaded: 5, errors: [], assets: [] }))
 const mockGetRunId = vi.hoisted(() => vi.fn().mockReturnValue('test-run-id'))
 const mockMigrateLocalContent = vi.hoisted(() => vi.fn().mockResolvedValue({ uploaded: 0, errors: [] }))
 const mockPushConfig = vi.hoisted(() => vi.fn().mockResolvedValue({ uploaded: 3 }))
@@ -57,6 +57,8 @@ describe('L4 Unit: Cloud Storage Operations', () => {
     expect(result.videoUploaded).toBe(true)
     expect(result.contentUploaded).toBe(5)
     expect(result.errors).toHaveLength(0)
+    expect(result.videoUrl).toBe('https://blob/video.mp4')
+    expect(result.assets).toEqual([])
     expect(mockUploadRawVideo).toHaveBeenCalled()
     expect(mockUploadPublishQueue).toHaveBeenCalled()
   })
@@ -71,6 +73,7 @@ describe('L4 Unit: Cloud Storage Operations', () => {
 
     expect(result.videoUploaded).toBe(false)
     expect(result.contentUploaded).toBe(5)
+    expect(result.assets).toEqual([])
     expect(mockUploadPublishQueue).toHaveBeenCalled()
   })
 

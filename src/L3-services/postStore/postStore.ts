@@ -379,6 +379,7 @@ export async function approveItem(
           publishedAt: now,
           latePostId: item.metadata.latePostId ?? '',
           lateUrl: item.metadata.publishedUrl || (item.metadata.latePostId ? `https://app.late.co/dashboard/post/${item.metadata.latePostId}` : ''),
+          publishedUrl: item.metadata.publishedUrl ?? undefined,
         })
       }
     } catch (err: unknown) {

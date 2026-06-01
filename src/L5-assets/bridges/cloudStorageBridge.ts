@@ -8,7 +8,22 @@ export async function uploadToCloud(
     duration?: number
     size: number
   },
-): Promise<{ runId: string; videoUploaded: boolean; contentUploaded: number; errors: string[] }> {
+): Promise<{
+  runId: string
+  videoUploaded: boolean
+  contentUploaded: number
+  errors: string[]
+  videoUrl?: string
+  assets: Array<{
+    itemId: string
+    clipType: 'video' | 'short' | 'medium-clip'
+    ideaIds: string[]
+    blobBasePath: string
+    cloudUrl?: string
+    thumbnailUrl?: string
+    clipSlug?: string
+  }>
+}> {
   const { uploadPipelineResults } = await import('../../L4-agents/cloudStorage/cloudStorageOperations.js')
   return uploadPipelineResults(inputVideoPath, publishQueueDir, videoSlug, metadata)
 }
