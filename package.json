@@ -62,7 +62,7 @@
   },
   "type": "module",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.98.0",
+    "@anthropic-ai/sdk": "^0.100.1",
     "@azure/data-tables": "^13.3.2",
     "@azure/storage-blob": "^12.31.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
