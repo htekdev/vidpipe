@@ -77,6 +77,33 @@ jobs:
           name: coverage-${{ matrix.tier.key }}
           path: coverage/${{ matrix.tier.key }}/
 
+  platform-e2e:
+    name: Cross-platform E2E (${{ matrix.platform.name }})
+    runs-on: ${{ matrix.platform.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - { name: "Ubuntu", os: "ubuntu-latest" }
+          - { name: "Windows", os: "windows-latest" }
+          - { name: "macOS", os: "macos-latest" }
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Verify FFmpeg
+        run: |
+          ffmpeg -version
+          ffprobe -version
+      - name: Run E2E tests
+        run: npm run test:e2e
+
   test-summary:
     name: Test Summary
     needs: test
