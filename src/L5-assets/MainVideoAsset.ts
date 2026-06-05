@@ -32,7 +32,7 @@ import {
 } from '../L1-infra/fileSystem/fileSystem.js'
 import { slugify } from '../L0-pure/text/text.js'
 import { generateSRT, generateVTT, generateStyledASS } from '../L0-pure/captions/captionGenerator.js'
-import { ffprobe, burnCaptions, transcodeToMp4, applyIntroOutro } from '../L4-agents/videoServiceBridge.js'
+import { ffprobe, burnCaptions, transcodeToMp4, applyIntroOutro, detectRecordingGlitches } from '../L4-agents/videoServiceBridge.js'
 import { transcribeVideo, analyzeVideoClipDirection } from '../L4-agents/analysisServiceBridge.js'
 import { removeDeadSilence } from '../L4-agents/SilenceRemovalAgent.js'
 import { generateShorts } from '../L4-agents/ShortsAgent.js'
@@ -209,6 +209,11 @@ export class MainVideoAsset extends VideoAsset {
     return join(this.videoDir, 'transcript-edited.json')
   }
 
+  /** Path to detected recording glitches manifest */
+  get glitchesPath(): string {
+    return join(this.videoDir, 'glitches.json')
+  }
+
   // ── Static Factory Methods ─────────────────────────────────────────────────
 
   /**
@@ -259,6 +264,7 @@ export class MainVideoAsset extends VideoAsset {
         'editorial-direction.md',
         'cost-report.md',
         'layout.json',
+        'glitches.json',
       ]
       for (const pattern of stalePatterns) {
         await removeFile(join(videoDir, pattern))
@@ -341,6 +347,14 @@ export class MainVideoAsset extends VideoAsset {
       logger.info(`Video metadata: duration=${metadata.duration}s, size=${stats.size} bytes`)
     } catch (err) {
       logger.warn(`Metadata extraction failed: ${err instanceof Error ? err.message : String(err)}`)
+    }
+
+    try {
+      const glitches = await detectRecordingGlitches(destPath)
+      await writeJsonFile(asset.glitchesPath, glitches)
+      logger.info(`Saved ${glitches.glitches.length} detected glitches to ${asset.glitchesPath}`)
+    } catch (err) {
+      logger.warn(`Glitch detection failed: ${err instanceof Error ? err.message : String(err)}`)
     }
 
     return asset

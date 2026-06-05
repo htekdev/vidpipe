@@ -712,6 +712,37 @@ export interface SilenceRemovalResult {
   wasEdited: boolean;
 }
 
+export type RecordingGlitchType =
+  | 'freeze-frame'
+  | 'audio-dropout'
+  | 'freeze-with-audio-dropout';
+
+export type RecordingGlitchAction = 'auto-trim' | 'review';
+
+export type RecordingGlitchConfidence = 'medium' | 'high';
+
+export interface RecordingGlitch {
+  type: RecordingGlitchType;
+  start: number;
+  end: number;
+  duration: number;
+  action: RecordingGlitchAction;
+  confidence: RecordingGlitchConfidence;
+  detectors: string[];
+}
+
+export interface RecordingGlitchManifest {
+  generatedAt: string;
+  videoPath: string;
+  thresholds: {
+    freezeMinDuration: number;
+    audioMinDuration: number;
+    audioNoiseThreshold: string;
+    autoTrimMaxDuration: number;
+  };
+  glitches: RecordingGlitch[];
+}
+
 // ============================================================================
 // AGENT RESULT (Copilot SDK)
 // ============================================================================

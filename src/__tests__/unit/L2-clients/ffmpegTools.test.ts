@@ -30,6 +30,7 @@ const {
     audioFrequency: vi.fn().mockReturnThis(),
     audioChannels: vi.fn().mockReturnThis(),
     audioFilters: vi.fn().mockReturnThis(),
+    videoFilters: vi.fn().mockReturnThis(),
     noVideo: vi.fn().mockReturnThis(),
     format: vi.fn().mockReturnThis(),
     frames: vi.fn().mockReturnThis(),
@@ -110,6 +111,7 @@ import { extractClip, extractCompositeClip, extractCompositeClipWithTransitions 
 import { burnCaptions } from '../../../L2-clients/ffmpeg/captionBurning.js';
 import { extractAudio, splitAudioIntoChunks } from '../../../L2-clients/ffmpeg/audioExtraction.js';
 import { detectSilence } from '../../../L2-clients/ffmpeg/silenceDetection.js';
+import { detectRecordingGlitches } from '../../../L2-clients/ffmpeg/glitchDetection.js';
 import { captureFrame, captureFrames } from '../../../L2-clients/ffmpeg/frameCapture.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -502,6 +504,78 @@ describe('silenceDetection', () => {
 
     const result = await detectSilence('/audio.mp3');
     expect(result).toEqual([]);
+  });
+});
+
+describe('glitchDetection', () => {
+  it('merges overlapping freeze and audio dropout regions into high-confidence glitches', async () => {
+    const stderrLines = [
+      '[freezedetect @ 0x1234] freeze_start: 5.0',
+      '[freezedetect @ 0x1234] freeze_end: 5.2 | freeze_duration: 0.2',
+      '[silencedetect @ 0x1234] silence_start: 5.05',
+      '[silencedetect @ 0x1234] silence_end: 5.18 | silence_duration: 0.13',
+    ];
+
+    mockFfmpegInstance.on.mockImplementation(function (this: any, event: string, cb: Function) {
+      if (event === 'stderr') {
+        setTimeout(() => { for (const line of stderrLines) cb(line); }, 0);
+      }
+      if (event === 'end') setTimeout(() => cb(), 10);
+      return this;
+    });
+
+    const result = await detectRecordingGlitches('/video.mp4');
+
+    expect(result.glitches).toHaveLength(1);
+    expect(result.glitches[0]).toMatchObject({
+      type: 'freeze-with-audio-dropout',
+      start: 5,
+      end: 5.2,
+      action: 'auto-trim',
+      confidence: 'high',
+      detectors: ['freezedetect', 'silencedetect'],
+    });
+    expect(result.glitches[0].duration).toBeCloseTo(0.2, 5);
+    expect(mockFfmpegInstance.videoFilters).toHaveBeenCalledWith('freezedetect=n=0.001:d=0.08');
+    expect(mockFfmpegInstance.audioFilters).toHaveBeenCalledWith('silencedetect=noise=-45dB:d=0.08');
+  });
+
+  it('keeps unmatched glitches as review items', async () => {
+    mockFfmpegInstance.on.mockImplementation(function (this: any, event: string, cb: Function) {
+      if (event === 'stderr') {
+        setTimeout(() => {
+          cb('[freezedetect @ 0x1234] freeze_start: 12.0');
+          cb('[freezedetect @ 0x1234] freeze_end: 12.8 | freeze_duration: 0.8');
+          cb('[silencedetect @ 0x1234] silence_start: 20.0');
+          cb('[silencedetect @ 0x1234] silence_end: 20.2 | silence_duration: 0.2');
+        }, 0);
+      }
+      if (event === 'end') setTimeout(() => cb(), 10);
+      return this;
+    });
+
+    const result = await detectRecordingGlitches('/video.mp4');
+
+    expect(result.glitches).toEqual([
+      {
+        type: 'freeze-frame',
+        start: 12,
+        end: 12.8,
+        duration: 0.8,
+        action: 'review',
+        confidence: 'medium',
+        detectors: ['freezedetect'],
+      },
+      {
+        type: 'audio-dropout',
+        start: 20,
+        end: 20.2,
+        duration: 0.2,
+        action: 'review',
+        confidence: 'medium',
+        detectors: ['silencedetect'],
+      },
+    ]);
   });
 });
 
