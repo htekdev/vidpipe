@@ -26,6 +26,20 @@ const ideaStatuses = new Set<IdeaStatus>(['draft', 'ready', 'recorded', 'publish
 
 type IdeaPriority = IdeaFilters['priority']
 
+interface CloudAssetRecord {
+  assetKey: string
+  clipType: IdeaPublishRecord['clipType']
+  sourceVideoSlug: string
+  clipSlug?: string
+  cloudUrl?: string
+  thumbnailUrl?: string
+  uploadedAt: string
+}
+
+type ParsedIdeaComment =
+  | IdeaCommentData
+  | { type: 'cloud-asset'; asset: CloudAssetRecord }
+
 interface IdeaBodyData {
   hook: string
   audience: string
@@ -215,7 +229,7 @@ function formatIdeaComment(data: IdeaCommentData): string {
 }
 
 function formatPublishRecordComment(record: IdeaPublishRecord): string {
-  return [
+  const lines = [
     'Published content recorded for this idea.',
     '',
     `- Clip type: ${record.clipType}`,
@@ -224,9 +238,14 @@ function formatPublishRecordComment(record: IdeaPublishRecord): string {
     `- Published at: ${record.publishedAt}`,
     `- Late post ID: ${record.latePostId}`,
     `- Late URL: ${record.lateUrl}`,
-    '',
-    formatIdeaComment({ type: 'publish-record', record }),
-  ].join('\n')
+  ]
+
+  if (record.publishedUrl) {
+    lines.push(`- Published URL: ${record.publishedUrl}`)
+  }
+
+  lines.push('', formatIdeaComment({ type: 'publish-record', record }))
+  return lines.join('\n')
 }
 
 function formatVideoLinkComment(videoSlug: string, linkedAt: string): string {
@@ -240,7 +259,44 @@ function formatVideoLinkComment(videoSlug: string, linkedAt: string): string {
   ].join('\n')
 }
 
-function parseIdeaComment(commentBody: string): IdeaCommentData | null {
+function formatCloudAssetComment(asset: CloudAssetRecord): string {
+  const lines = [
+    'Cloud media uploaded for this idea.',
+    '',
+    `- Asset key: ${asset.assetKey}`,
+    `- Clip type: ${asset.clipType}`,
+    `- Source video: ${asset.sourceVideoSlug}`,
+  ]
+
+  if (asset.clipSlug) {
+    lines.push(`- Clip slug: ${asset.clipSlug}`)
+  }
+  if (asset.cloudUrl) {
+    lines.push(`- Cloud URL: ${asset.cloudUrl}`)
+  }
+  if (asset.thumbnailUrl) {
+    lines.push(`- Thumbnail URL: ${asset.thumbnailUrl}`)
+  }
+
+  lines.push(
+    `- Uploaded at: ${asset.uploadedAt}`,
+    '',
+    [
+      COMMENT_MARKER,
+      '```json',
+      JSON.stringify({ type: 'cloud-asset', asset }, null, 2),
+      '```',
+    ].join('\n'),
+  )
+
+  if (asset.thumbnailUrl) {
+    lines.push('', `![${asset.clipSlug ?? asset.sourceVideoSlug} thumbnail](${asset.thumbnailUrl})`)
+  }
+
+  return lines.join('\n')
+}
+
+function parseIdeaComment(commentBody: string): ParsedIdeaComment | null {
   const markerIndex = commentBody.indexOf(COMMENT_MARKER)
   if (markerIndex === -1) {
     return null
@@ -254,9 +310,10 @@ function parseIdeaComment(commentBody: string): IdeaCommentData | null {
   }
 
   try {
-    const parsed = JSON.parse(jsonText) as Partial<IdeaCommentData> & {
+    const parsed = JSON.parse(jsonText) as {
       type?: string
       record?: Partial<IdeaPublishRecord>
+      asset?: Partial<CloudAssetRecord>
       videoSlug?: unknown
       linkedAt?: unknown
     }
@@ -289,6 +346,34 @@ function parseIdeaComment(commentBody: string): IdeaCommentData | null {
             publishedAt: record.publishedAt,
             latePostId: record.latePostId,
             lateUrl: record.lateUrl,
+            publishedUrl: typeof record.publishedUrl === 'string' ? record.publishedUrl : undefined,
+          },
+        }
+      }
+    }
+
+    if (parsed.type === 'cloud-asset' && parsed.asset) {
+      const asset = parsed.asset
+      if (
+        typeof asset.assetKey === 'string'
+        && typeof asset.clipType === 'string'
+        && (asset.clipType === 'video' || asset.clipType === 'short' || asset.clipType === 'medium-clip')
+        && typeof asset.sourceVideoSlug === 'string'
+        && typeof asset.uploadedAt === 'string'
+        && (asset.clipSlug === undefined || typeof asset.clipSlug === 'string')
+        && (asset.cloudUrl === undefined || typeof asset.cloudUrl === 'string')
+        && (asset.thumbnailUrl === undefined || typeof asset.thumbnailUrl === 'string')
+      ) {
+        return {
+          type: 'cloud-asset',
+          asset: {
+            assetKey: asset.assetKey,
+            clipType: asset.clipType,
+            sourceVideoSlug: asset.sourceVideoSlug,
+            clipSlug: asset.clipSlug,
+            cloudUrl: asset.cloudUrl,
+            thumbnailUrl: asset.thumbnailUrl,
+            uploadedAt: asset.uploadedAt,
           },
         }
       }
@@ -362,7 +447,9 @@ function mapIssueToIdea(issue: GitHubIssue, comments: GitHubComment[]): Idea {
       continue
     }
 
-    sourceVideoSlug = parsedComment.videoSlug
+    if (parsedComment.type === 'video-link') {
+      sourceVideoSlug = parsedComment.videoSlug
+    }
   }
 
   return {
@@ -608,6 +695,26 @@ export async function recordPublish(issueNumber: number, record: IdeaPublishReco
     const message = getErrorMessage(error)
     logger.error(`[IdeaService] Failed to record publish for idea #${issueNumber}: ${message}`)
     throw new Error(`Failed to record publish for idea #${issueNumber}: ${message}`)
+  }
+}
+
+export async function recordCloudAsset(issueNumber: number, asset: CloudAssetRecord): Promise<void> {
+  const client = getGitHubClient()
+
+  try {
+    const comments = await client.listComments(issueNumber)
+    const hasDuplicate = comments.some((comment) => {
+      const parsedComment = parseIdeaComment(comment.body)
+      return parsedComment?.type === 'cloud-asset' && parsedComment.asset.assetKey === asset.assetKey
+    })
+
+    if (!hasDuplicate) {
+      await client.addComment(issueNumber, formatCloudAssetComment(asset))
+    }
+  } catch (error: unknown) {
+    const message = getErrorMessage(error)
+    logger.error(`[IdeaService] Failed to record cloud asset for idea #${issueNumber}: ${message}`)
+    throw new Error(`Failed to record cloud asset for idea #${issueNumber}: ${message}`)
   }
 }
 

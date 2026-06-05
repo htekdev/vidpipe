@@ -27,6 +27,8 @@ import type { ShortVideoAsset } from '../L5-assets/ShortVideoAsset.js'
 import type { MediumClipAsset } from '../L5-assets/MediumClipAsset.js'
 import type { CaptionFiles } from '../L5-assets/VideoAsset.js'
 
+type CloudUploadResult = Awaited<ReturnType<typeof uploadToCloud>>
+
 /**
  * Execute a single pipeline stage with error isolation and timing.
  *
@@ -481,6 +483,8 @@ export async function processVideo(videoPath: string, ideas?: Idea[], publishBy?
       if (result.errors.length > 0) {
         logger.warn(`Cloud upload had ${result.errors.length} error(s): ${result.errors.join('; ')}`)
       }
+
+      await syncCloudAssetsToIdeas(video, asset.ideas, result)
     })
 
     const totalDuration = Date.now() - pipelineStart
@@ -530,6 +534,56 @@ export async function processVideo(videoPath: string, ideas?: Idea[], publishBy?
     }
   } finally {
     popPipe()
+  }
+}
+
+async function syncCloudAssetsToIdeas(
+  video: Awaited<ReturnType<MainVideoAsset['toVideoFile']>>,
+  ideas: Idea[] | undefined,
+  uploadResult: CloudUploadResult,
+): Promise<void> {
+  const { recordCloudAsset } = await import('../L3-services/ideaService/ideaService.js')
+  const uploadedAt = new Date().toISOString()
+  const uniqueVideoIdeaNumbers = Array.from(new Set(
+    (ideas ?? [])
+      .map((idea) => idea.issueNumber)
+      .filter((issueNumber) => Number.isInteger(issueNumber) && issueNumber > 0),
+  ))
+
+  if (uploadResult.videoUrl) {
+    for (const issueNumber of uniqueVideoIdeaNumbers) {
+      await recordCloudAsset(issueNumber, {
+        assetKey: `video:${video.slug}`,
+        clipType: 'video',
+        sourceVideoSlug: video.slug,
+        cloudUrl: uploadResult.videoUrl,
+        uploadedAt,
+      })
+    }
+  }
+
+  for (const asset of uploadResult.assets) {
+    if (!asset.cloudUrl && !asset.thumbnailUrl) {
+      continue
+    }
+
+    const issueNumbers = Array.from(new Set(
+      asset.ideaIds
+        .map((ideaId) => Number.parseInt(ideaId, 10))
+        .filter((issueNumber) => Number.isInteger(issueNumber) && issueNumber > 0),
+    ))
+
+    for (const issueNumber of issueNumbers) {
+      await recordCloudAsset(issueNumber, {
+        assetKey: `queue:${asset.itemId}`,
+        clipType: asset.clipType,
+        sourceVideoSlug: video.slug,
+        clipSlug: asset.clipSlug,
+        cloudUrl: asset.cloudUrl,
+        thumbnailUrl: asset.thumbnailUrl,
+        uploadedAt,
+      })
+    }
   }
 }
 
