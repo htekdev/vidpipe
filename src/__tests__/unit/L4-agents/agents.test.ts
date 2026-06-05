@@ -7,6 +7,7 @@ const mockState = vi.hoisted(() => {
   const state = {
     capturedTools: [] as any[],
     capturedSystemPrompt: '' as string,
+    exaApiKey: '' as string,
     mockSession: {
       sendAndWait: async () => ({ data: { content: '' } }),
       on: (event: string, handler: (...args: any[]) => void) => {
@@ -66,7 +67,7 @@ vi.mock('../../../L1-infra/config/environment.js', () => ({
     OUTPUT_DIR: '/tmp/test-output',
     LLM_PROVIDER: 'copilot',
     LLM_MODEL: '',
-    EXA_API_KEY: '',
+    EXA_API_KEY: mockState.exaApiKey,
     EXA_MCP_URL: 'https://mcp.exa.ai/mcp',
     MODEL_OVERRIDES: {},
   }),
@@ -710,6 +711,7 @@ describe('Real SummaryAgent', () => {
 describe('Real BlogAgent', () => {
   beforeEach(() => {
     mockState.capturedTools.length = 0;
+    mockState.exaApiKey = '';
   });
 
   it('exposes write_blog tool; handler works (search is via MCP)', async () => {
@@ -735,6 +737,37 @@ describe('Real BlogAgent', () => {
     );
 
     expect(writeResult).toContain('success');
+  });
+
+  it('strengthens the prompt and falls back cleanly when EXA is unavailable', async () => {
+    const { generateBlogPost } = await import('../../../L4-agents/BlogAgent.js');
+
+    try {
+      await generateBlogPost(mockVideo, mockTranscript, mockSummary);
+    } catch {
+      // Expected: "BlogAgent did not produce any blog content"
+    }
+
+    const systemPrompt = mockState.capturedSystemPrompt;
+    expect(systemPrompt).toContain('community engagement CTA');
+    expect(systemPrompt).toContain('FIRST PERSON as the video creator');
+    expect(systemPrompt).toContain('at least 1,200 words');
+    expect(systemPrompt).toContain('at least 2 fenced code blocks');
+    expect(systemPrompt).toContain('Do not invent links or unsupported claims');
+    expect(systemPrompt).not.toContain('web_search_exa');
+  });
+
+  it('mentions web_search_exa when EXA research is configured', async () => {
+    const { generateBlogPost } = await import('../../../L4-agents/BlogAgent.js');
+    mockState.exaApiKey = 'test-exa-key';
+
+    try {
+      await generateBlogPost(mockVideo, mockTranscript, mockSummary);
+    } catch {
+      // Expected: "BlogAgent did not produce any blog content"
+    }
+
+    expect(mockState.capturedSystemPrompt).toContain('web_search_exa');
   });
 });
 
