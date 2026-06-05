@@ -76,6 +76,7 @@ export type {
   // Pipeline
   StageResult,
   PipelineResult,
+  VideoKnowledgeBase,
 
   // Progress events
   ProgressEvent,

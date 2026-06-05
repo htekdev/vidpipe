@@ -443,6 +443,8 @@ describe('processVideo', () => {
 
     expect(result.video).toEqual(video)
     expect(result.transcript).toEqual(transcript)
+    expect(result.knowledgeBase?.video).toEqual(video)
+    expect(result.knowledgeBase?.transcript?.merged).toEqual(transcript)
     expect(result.stageResults.length).toBeGreaterThanOrEqual(1)
     expect(result.totalDuration).toBeGreaterThanOrEqual(0)
   })
