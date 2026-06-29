@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -30,7 +30,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -55,7 +55,7 @@ jobs:
           - { name: "Integration L7", script: "test:integration:L7:coverage", node: 22, coverage: true, key: "integration-L7" }
           - { name: "E2E", script: "test:e2e:coverage", node: 22, coverage: true, key: "e2e" }
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ matrix.tier.node }}
@@ -86,7 +86,7 @@ jobs:
       contents: read
       pull-requests: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Download all coverage artifacts
         uses: actions/download-artifact@v8
@@ -261,7 +261,7 @@ jobs:
             }
 
       - name: Unit file coverage details
-        uses: davelosert/vitest-coverage-report-action@02f3c2e641286b7fa308cd3e430783103ce6103b # v2.12.0
+        uses: davelosert/vitest-coverage-report-action@3c054a2d2e2ca45446417ad5d6d5eb33092af8f1 # v2.12.1
         with:
           name: 'Unit'
           json-summary-path: coverage-artifacts/coverage-unit/coverage-summary.json
@@ -275,7 +275,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
