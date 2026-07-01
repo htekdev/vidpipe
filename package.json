@@ -62,7 +62,7 @@
   },
   "type": "module",
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.100.1",
+    "@anthropic-ai/sdk": "^0.109.0",
     "@azure/data-tables": "^13.3.2",
     "@azure/storage-blob": "^12.31.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
@@ -80,7 +80,7 @@
     "open": "^11.0.0",
     "openai": "^6.18.0",
     "react": "^19.2.4",
-    "sharp": "^0.34.5",
+    "sharp": "^0.35.3",
     "slugify": "^1.6.6",
     "tmp": "^0.2.5",
     "uuid": "^14.0.0",
