@@ -4,6 +4,7 @@ import { extractClip as _extractClip, extractCompositeClip as _extractCompositeC
 import { singlePassEdit as _singlePassEdit, singlePassEditAndCaption as _singlePassEditAndCaption } from '../../L2-clients/ffmpeg/singlePassEdit.js'
 import { burnCaptions as _burnCaptions } from '../../L2-clients/ffmpeg/captionBurning.js'
 import { detectSilence as _detectSilence } from '../../L2-clients/ffmpeg/silenceDetection.js'
+import { detectRecordingGlitches as _detectRecordingGlitches } from '../../L2-clients/ffmpeg/glitchDetection.js'
 import { captureFrame as _captureFrame } from '../../L2-clients/ffmpeg/frameCapture.js'
 import { generatePlatformVariants as _generatePlatformVariants } from '../../L2-clients/ffmpeg/aspectRatio.js'
 import { detectWebcamRegion as _detectWebcamRegion, getVideoResolution as _getVideoResolution } from '../../L2-clients/ffmpeg/faceDetection.js'
@@ -13,6 +14,7 @@ import { transcodeToMp4 as _transcodeToMp4 } from '../../L2-clients/ffmpeg/trans
 // Re-export types (exempt from layer rules)
 export type { KeepSegment } from '../../L2-clients/ffmpeg/singlePassEdit.js'
 export type { SilenceRegion } from '../../L2-clients/ffmpeg/silenceDetection.js'
+export type { RecordingGlitchDetectionOptions } from '../../L2-clients/ffmpeg/glitchDetection.js'
 export type { Platform } from '../../L2-clients/ffmpeg/aspectRatio.js'
 
 // Video information
@@ -67,6 +69,10 @@ export function burnCaptions(...args: Parameters<typeof _burnCaptions>): ReturnT
 // Detection
 export function detectSilence(...args: Parameters<typeof _detectSilence>): ReturnType<typeof _detectSilence> {
   return _detectSilence(...args)
+}
+
+export function detectRecordingGlitches(...args: Parameters<typeof _detectRecordingGlitches>): ReturnType<typeof _detectRecordingGlitches> {
+  return _detectRecordingGlitches(...args)
 }
 
 // Frame capture

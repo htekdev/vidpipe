@@ -14,6 +14,7 @@ export {
   compositeOverlays,
   getVideoResolution,
   detectWebcamRegion,
+  detectRecordingGlitches,
   burnCaptions,
   singlePassEditAndCaption,
   transcodeToMp4,

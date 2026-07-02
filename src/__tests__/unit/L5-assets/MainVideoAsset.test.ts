@@ -33,6 +33,17 @@ vi.mock('../../../L4-agents/videoServiceBridge.js', () => ({
   getFFprobePath: vi.fn().mockReturnValue('/usr/bin/ffprobe'),
   burnCaptions: vi.fn().mockResolvedValue('/recordings/test/test-captioned.mp4'),
   transcodeToMp4: vi.fn().mockResolvedValue('/recordings/test/test.mp4'),
+  detectRecordingGlitches: vi.fn().mockResolvedValue({
+    generatedAt: '2026-01-01T00:00:00.000Z',
+    videoPath: '/recordings/test/test.mp4',
+    thresholds: {
+      freezeMinDuration: 0.08,
+      audioMinDuration: 0.08,
+      audioNoiseThreshold: '-45dB',
+      autoTrimMaxDuration: 0.5,
+    },
+    glitches: [],
+  }),
   singlePassEditAndCaption: vi.fn().mockResolvedValue('/recordings/test/test-captioned.mp4'),
   extractCompositeClip: vi.fn(),
   compositeOverlays: vi.fn(),
@@ -245,6 +256,65 @@ describe('MainVideoAsset', () => {
       expect(mockReadStream.pipe).toHaveBeenCalledWith(mockWriteStream)
     })
 
+    it('writes glitches.json after detection during ingest', async () => {
+      setupIngestMocks()
+      vi.mocked(fileSystem.getFileStats)
+        .mockRejectedValueOnce(new Error('missing destination'))
+        .mockResolvedValueOnce({ size: 5_000_000 } as any)
+
+      const mockReadStream = {
+        on: vi.fn().mockReturnThis(),
+        pipe: vi.fn().mockReturnThis(),
+      }
+      const mockWriteStream = {
+        on: vi.fn().mockImplementation((event: string, cb: () => void) => {
+          if (event === 'finish') setTimeout(() => cb(), 0)
+          return mockWriteStream
+        }),
+      }
+
+      vi.mocked(fileSystem.openReadStream).mockReturnValue(mockReadStream as any)
+      vi.mocked(fileSystem.openWriteStream).mockReturnValue(mockWriteStream as any)
+      vi.mocked(videoServiceBridge.detectRecordingGlitches).mockResolvedValueOnce({
+        generatedAt: '2026-01-01T00:00:00.000Z',
+        videoPath: '/recordings/recording/recording.mp4',
+        thresholds: {
+          freezeMinDuration: 0.08,
+          audioMinDuration: 0.08,
+          audioNoiseThreshold: '-45dB',
+          autoTrimMaxDuration: 0.5,
+        },
+        glitches: [
+          {
+            type: 'freeze-with-audio-dropout',
+            start: 5,
+            end: 5.2,
+            duration: 0.2,
+            action: 'auto-trim',
+            confidence: 'high',
+            detectors: ['freezedetect', 'silencedetect'],
+          },
+        ],
+      })
+
+      const asset = await MainVideoAsset.ingest('/watch/recording.mp4')
+
+      expect(videoServiceBridge.detectRecordingGlitches).toHaveBeenCalledWith(
+        expect.stringMatching(/recordings[/\\]recording[/\\]recording\.mp4$/),
+      )
+      expect(fileSystem.writeJsonFile).toHaveBeenCalledWith(
+        asset.glitchesPath,
+        expect.objectContaining({
+          glitches: [
+            expect.objectContaining({
+              type: 'freeze-with-audio-dropout',
+              action: 'auto-trim',
+            }),
+          ],
+        }),
+      )
+    })
+
     it('skips transcode when transcoded MP4 already exists', async () => {
       setupIngestMocks()
       vi.mocked(fileSystem.getFileStats).mockResolvedValue({ size: 5_000_000 } as any)
@@ -320,6 +390,10 @@ describe('MainVideoAsset', () => {
 
     it('computes adjustedTranscriptPath correctly', () => {
       expect(asset.adjustedTranscriptPath).toMatch(/recordings[/\\]test-slug[/\\]transcript-edited\.json$/)
+    })
+
+    it('computes glitchesPath correctly', () => {
+      expect(asset.glitchesPath).toMatch(/recordings[/\\]test-slug[/\\]glitches\.json$/)
     })
 
     it('computes transcriptPath correctly (inherited)', () => {
