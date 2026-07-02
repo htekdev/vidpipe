@@ -45,6 +45,21 @@ export interface ContentRecord {
   publishedAt: string
 }
 
+export interface UploadedRawVideo {
+  blobPath: string
+  url: string
+}
+
+export interface UploadedContentAsset {
+  itemId: string
+  clipType: 'video' | 'short' | 'medium-clip'
+  ideaIds: string[]
+  blobBasePath: string
+  cloudUrl?: string
+  thumbnailUrl?: string
+  clipSlug?: string
+}
+
 export async function uploadVideoFile(
   localPath: string,
   blobPath: string,
@@ -78,11 +93,11 @@ export async function uploadRawVideo(
     duration?: number
     size: number
   },
-): Promise<string> {
+): Promise<UploadedRawVideo> {
   const blobPath = `raw/${runId}-${metadata.originalFilename}`
 
   logger.info(`Uploading raw video to Azure: ${blobPath}`)
-  await blobClient.uploadFile(blobPath, localPath, 'video/mp4')
+  const url = await blobClient.uploadFile(blobPath, localPath, 'video/mp4')
 
   await tableClient.upsertEntity(VIDEOS_TABLE, 'video', runId, {
     originalFilename: metadata.originalFilename,
@@ -98,7 +113,7 @@ export async function uploadRawVideo(
   } satisfies VideoRecord)
 
   logger.info(`Created video record: ${runId}`)
-  return blobPath
+  return { blobPath, url }
 }
 
 export async function uploadContentItem(
@@ -107,8 +122,9 @@ export async function uploadContentItem(
   videoSlug: string,
   runId: string,
   metadata?: Partial<ContentRecord>,
-): Promise<string> {
+): Promise<UploadedContentAsset> {
   const blobBasePath = `content/${itemId}/`
+  const uploadedUrls = new Map<string, string>()
 
   // Upload all files in the item directory
   const files = await readdir(localItemDir)
@@ -116,7 +132,7 @@ export async function uploadContentItem(
     const localFilePath = join(localItemDir, file)
     const blobPath = `${blobBasePath}${file}`
     const contentType = getContentType(file)
-    await blobClient.uploadFile(blobPath, localFilePath, contentType)
+    uploadedUrls.set(file, await blobClient.uploadFile(blobPath, localFilePath, contentType))
   }
 
   // Read metadata.json if exists to populate table record
@@ -141,10 +157,19 @@ export async function uploadContentItem(
   // Determine media file
   const mediaFilename = files.find(f => f.startsWith('media.')) || ''
   const thumbnailFilename = files.find(f => f.startsWith('thumbnail.')) || ''
+  const clipType = String(itemMetadata.clipType || metadata?.clipType || '')
+  const ideaIds = Array.isArray(itemMetadata.ideaIds)
+    ? (itemMetadata.ideaIds as string[]).map((id) => String(id)).filter(Boolean)
+    : typeof metadata?.ideaIds === 'string'
+      ? metadata.ideaIds.split(',').map((id) => id.trim()).filter(Boolean)
+      : []
+  const clipSlug = typeof itemMetadata.sourceClip === 'string' && itemMetadata.sourceClip.trim().length > 0
+    ? basename(itemMetadata.sourceClip)
+    : undefined
 
   const record: ContentRecord = {
     platform: String(itemMetadata.platform || metadata?.platform || ''),
-    clipType: String(itemMetadata.clipType || metadata?.clipType || ''),
+    clipType,
     status: metadata?.status || 'pending_review',
     blobBasePath,
     mediaType: String(itemMetadata.mediaType || metadata?.mediaType || 'video'),
@@ -157,7 +182,7 @@ export async function uploadContentItem(
     publishedUrl: String(itemMetadata.publishedUrl || metadata?.publishedUrl || ''),
     sourceVideoRunId: runId,
     thumbnailFilename,
-    ideaIds: Array.isArray(itemMetadata.ideaIds) ? (itemMetadata.ideaIds as string[]).join(',') : (metadata?.ideaIds || ''),
+    ideaIds: ideaIds.join(','),
     createdAt: String(itemMetadata.createdAt || new Date().toISOString()),
     reviewedAt: String(itemMetadata.reviewedAt || metadata?.reviewedAt || ''),
     publishedAt: String(itemMetadata.publishedAt || metadata?.publishedAt || ''),
@@ -166,15 +191,24 @@ export async function uploadContentItem(
   await tableClient.upsertEntity(CONTENT_TABLE, videoSlug, itemId, record)
   logger.info(`Uploaded content item: ${itemId} (${record.platform}/${record.clipType}) — blob + table record created`)
 
-  return blobBasePath
+  return {
+    itemId,
+    clipType: isClipType(clipType) ? clipType : 'video',
+    ideaIds,
+    blobBasePath,
+    cloudUrl: mediaFilename ? uploadedUrls.get(mediaFilename) : undefined,
+    thumbnailUrl: thumbnailFilename ? uploadedUrls.get(thumbnailFilename) : undefined,
+    clipSlug,
+  }
 }
 
 export async function uploadPublishQueue(
   publishQueueDir: string,
   videoSlug: string,
   runId: string,
-): Promise<{ uploaded: number; errors: string[] }> {
+): Promise<{ uploaded: number; errors: string[]; assets: UploadedContentAsset[] }> {
   const errors: string[] = []
+  const assets: UploadedContentAsset[] = []
   let uploaded = 0
 
   let items: string[]
@@ -182,7 +216,7 @@ export async function uploadPublishQueue(
     items = await readdir(publishQueueDir)
   } catch {
     logger.warn(`Publish queue directory not found: ${publishQueueDir}`)
-    return { uploaded: 0, errors: ['Publish queue directory not found'] }
+    return { uploaded: 0, errors: ['Publish queue directory not found'], assets: [] }
   }
 
   for (const itemId of items) {
@@ -204,7 +238,8 @@ export async function uploadPublishQueue(
     }
 
     try {
-      await uploadContentItem(itemDir, itemId, videoSlug, runId)
+      const uploadedAsset = await uploadContentItem(itemDir, itemId, videoSlug, runId)
+      assets.push(uploadedAsset)
       uploaded++
     } catch (error: unknown) {
       const msg = error instanceof Error ? error.message : String(error)
@@ -219,7 +254,7 @@ export async function uploadPublishQueue(
   })
 
   logger.info(`Uploaded ${uploaded} content items to Azure (${errors.length} errors)`)
-  return { uploaded, errors }
+  return { uploaded, errors, assets }
 }
 
 export async function migrateLocalContent(
@@ -389,4 +424,8 @@ function extractVideoSlug(itemId: string): string {
     }
   }
   return itemId
+}
+
+function isClipType(value: string): value is UploadedContentAsset['clipType'] {
+  return value === 'video' || value === 'short' || value === 'medium-clip'
 }

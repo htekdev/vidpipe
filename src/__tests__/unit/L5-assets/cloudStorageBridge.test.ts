@@ -2,7 +2,7 @@ import { describe, test, expect, vi } from 'vitest'
 
 const mockIsCloudEnabled = vi.hoisted(() => vi.fn().mockReturnValue(true))
 const mockUploadPipelineResults = vi.hoisted(() => vi.fn().mockResolvedValue({
-  runId: 'test-run', videoUploaded: true, contentUploaded: 3, errors: [],
+  runId: 'test-run', videoUploaded: true, contentUploaded: 3, errors: [], videoUrl: 'https://blob/video.mp4', assets: [],
 }))
 
 vi.mock('../../../L4-agents/cloudStorage/cloudStorageOperations.js', () => ({

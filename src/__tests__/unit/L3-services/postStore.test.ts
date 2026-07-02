@@ -266,12 +266,14 @@ describe('postStore', () => {
         platform: 'youtube',
         queueItemId: 'approve-ideas',
         lateUrl: 'https://youtube.com/watch?v=ideas',
+        publishedUrl: 'https://youtube.com/watch?v=ideas',
       }))
       expect(mockMarkPublished).toHaveBeenNthCalledWith(2, 2, expect.objectContaining({
         clipType: 'short',
         platform: 'youtube',
         queueItemId: 'approve-ideas',
         lateUrl: 'https://youtube.com/watch?v=ideas',
+        publishedUrl: 'https://youtube.com/watch?v=ideas',
       }))
 
       const publishedMeta = JSON.parse(
@@ -296,6 +298,7 @@ describe('postStore', () => {
       expect(mockMarkPublished).toHaveBeenCalledWith(1, expect.objectContaining({
         latePostId: 'late-dashboard',
         lateUrl: 'https://app.late.co/dashboard/post/late-dashboard',
+        publishedUrl: undefined,
       }))
     })
 

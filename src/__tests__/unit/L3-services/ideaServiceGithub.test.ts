@@ -38,6 +38,7 @@ import {
   listIdeas,
   markPublished,
   markRecorded,
+  recordCloudAsset,
   recordPublish,
   searchIdeas,
   updateIdea,
@@ -121,6 +122,7 @@ function createPublishRecord(overrides: Partial<IdeaPublishRecord> = {}): IdeaPu
     publishedAt: overrides.publishedAt ?? '2026-02-20T12:00:00.000Z',
     latePostId: overrides.latePostId ?? 'late-123',
     lateUrl: overrides.lateUrl ?? 'https://late.example/posts/late-123',
+    publishedUrl: overrides.publishedUrl,
   }
 }
 
@@ -139,7 +141,7 @@ function createVideoLinkComment(videoSlug = 'video-debug-loop'): string {
 }
 
 function createPublishComment(record: IdeaPublishRecord): string {
-  return [
+  const lines = [
     'Published content recorded for this idea.',
     '',
     `- Clip type: ${record.clipType}`,
@@ -148,12 +150,20 @@ function createPublishComment(record: IdeaPublishRecord): string {
     `- Published at: ${record.publishedAt}`,
     `- Late post ID: ${record.latePostId}`,
     `- Late URL: ${record.lateUrl}`,
+  ]
+
+  if (record.publishedUrl) {
+    lines.push(`- Published URL: ${record.publishedUrl}`)
+  }
+
+  lines.push(
     '',
     '<!-- vidpipe:idea-comment -->',
     '```json',
     JSON.stringify({ type: 'publish-record', record }, null, 2),
     '```',
-  ].join('\n')
+  )
+  return lines.join('\n')
 }
 
 describe('ideaService GitHub integration', () => {
@@ -225,7 +235,7 @@ describe('ideaService GitHub integration', () => {
   })
 
   it('ideaService.REQ-003 ideaService.REQ-014 ideaService.REQ-015 - getIdea reconstructs the full idea from issue body, labels, and structured comments', async () => {
-    const publishRecord = createPublishRecord()
+    const publishRecord = createPublishRecord({ publishedUrl: 'https://youtube.com/watch?v=abc123' })
     mockGitHubClient.getIssue.mockResolvedValue(createIssue())
     mockGitHubClient.listComments.mockResolvedValue([
       createComment({ id: 1, body: createVideoLinkComment('video-debug-loop') }),
@@ -374,7 +384,7 @@ describe('ideaService GitHub integration', () => {
   })
 
   it('ideaService.REQ-009 ideaService.REQ-014 - recordPublish adds a structured publish-record comment when needed and ensures the idea is labeled published', async () => {
-    const publishRecord = createPublishRecord({ queueItemId: 'queue-new' })
+    const publishRecord = createPublishRecord({ queueItemId: 'queue-new', publishedUrl: 'https://youtube.com/watch?v=queue-new' })
     mockGitHubClient.getIssue.mockResolvedValue(createIssue({ labels: ['status:recorded', 'platform:youtube', 'copilot'] }))
     mockGitHubClient.listComments.mockResolvedValue([])
 
@@ -382,9 +392,68 @@ describe('ideaService GitHub integration', () => {
 
     expect(mockGitHubClient.addComment).toHaveBeenCalledWith(42, expect.stringContaining('<!-- vidpipe:idea-comment -->'))
     expect(mockGitHubClient.addComment).toHaveBeenCalledWith(42, expect.stringContaining('"type": "publish-record"'))
+    expect(mockGitHubClient.addComment).toHaveBeenCalledWith(42, expect.stringContaining('Published URL: https://youtube.com/watch?v=queue-new'))
     expect(mockGitHubClient.updateIssue).toHaveBeenCalledWith(42, expect.objectContaining({
       labels: expect.arrayContaining(['status:published', 'platform:youtube', 'copilot']),
     }))
+  })
+
+  it('ideaService.REQ-017 - recordCloudAsset adds a deduplicated structured cloud asset comment with thumbnail preview', async () => {
+    mockGitHubClient.listComments
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        createComment({
+          body: [
+            'Cloud media uploaded for this idea.',
+            '',
+            '- Asset key: queue:clip-1-youtube',
+            '- Clip type: short',
+            '- Source video: source-video',
+            '- Cloud URL: https://blob.example/media.mp4',
+            '- Thumbnail URL: https://blob.example/thumbnail.png',
+            '- Uploaded at: 2026-02-21T12:00:00.000Z',
+            '',
+            '<!-- vidpipe:idea-comment -->',
+            '```json',
+            JSON.stringify({
+              type: 'cloud-asset',
+              asset: {
+                assetKey: 'queue:clip-1-youtube',
+                clipType: 'short',
+                sourceVideoSlug: 'source-video',
+                cloudUrl: 'https://blob.example/media.mp4',
+                thumbnailUrl: 'https://blob.example/thumbnail.png',
+                uploadedAt: '2026-02-21T12:00:00.000Z',
+              },
+            }, null, 2),
+            '```',
+          ].join('\n'),
+        }),
+      ])
+
+    await recordCloudAsset(42, {
+      assetKey: 'queue:clip-1-youtube',
+      clipType: 'short',
+      sourceVideoSlug: 'source-video',
+      clipSlug: 'clip-1',
+      cloudUrl: 'https://blob.example/media.mp4',
+      thumbnailUrl: 'https://blob.example/thumbnail.png',
+      uploadedAt: '2026-02-21T12:00:00.000Z',
+    })
+
+    expect(mockGitHubClient.addComment).toHaveBeenCalledWith(42, expect.stringContaining('"type": "cloud-asset"'))
+    expect(mockGitHubClient.addComment).toHaveBeenCalledWith(42, expect.stringContaining('![clip-1 thumbnail](https://blob.example/thumbnail.png)'))
+
+    await recordCloudAsset(42, {
+      assetKey: 'queue:clip-1-youtube',
+      clipType: 'short',
+      sourceVideoSlug: 'source-video',
+      cloudUrl: 'https://blob.example/media.mp4',
+      thumbnailUrl: 'https://blob.example/thumbnail.png',
+      uploadedAt: '2026-02-21T12:00:00.000Z',
+    })
+
+    expect(mockGitHubClient.addComment).toHaveBeenCalledTimes(1)
   })
 
   it('ideaService.REQ-011 - getReadyIdeas, markRecorded, and markPublished delegate to list and lifecycle helpers', async () => {

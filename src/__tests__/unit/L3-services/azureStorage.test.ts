@@ -81,13 +81,16 @@ describe('L3 Unit: Azure Storage Service', () => {
   })
 
   test('uploadRawVideo uploads file and creates table record', async () => {
-    const blobPath = await uploadRawVideo('/videos/video.mp4', 'run-123', {
+    const uploadedVideo = await uploadRawVideo('/videos/video.mp4', 'run-123', {
       originalFilename: 'video.mp4',
       slug: 'my-video',
       size: 1024000,
     })
 
-    expect(blobPath).toBe('raw/run-123-video.mp4')
+    expect(uploadedVideo).toEqual({
+      blobPath: 'raw/run-123-video.mp4',
+      url: 'https://blob.url',
+    })
     expect(mockUploadFile).toHaveBeenCalledWith('raw/run-123-video.mp4', '/videos/video.mp4', 'video/mp4')
     expect(mockUpsertEntity).toHaveBeenCalledWith('Videos', 'video', 'run-123', expect.objectContaining({
       originalFilename: 'video.mp4',
@@ -207,7 +210,14 @@ describe('L3 Unit: Azure Storage Service', () => {
 
       const result = await uploadContentItem('/items/item-1', 'item-1', 'my-video', 'run-1')
 
-      expect(result).toBe('content/item-1/')
+      expect(result).toEqual(expect.objectContaining({
+        itemId: 'item-1',
+        clipType: 'short',
+        ideaIds: ['idea-1'],
+        blobBasePath: 'content/item-1/',
+        cloudUrl: 'https://blob.url',
+        thumbnailUrl: 'https://blob.url',
+      }))
       // Uploads 4 files
       expect(mockUploadFile).toHaveBeenCalledTimes(4)
       expect(mockUploadFile).toHaveBeenCalledWith('content/item-1/media.mp4', expect.any(String), 'video/mp4')
@@ -239,7 +249,11 @@ describe('L3 Unit: Azure Storage Service', () => {
         clipType: 'short',
       })
 
-      expect(result).toBe('content/item-2/')
+      expect(result).toEqual(expect.objectContaining({
+        itemId: 'item-2',
+        clipType: 'short',
+        blobBasePath: 'content/item-2/',
+      }))
       expect(mockUpsertEntity).toHaveBeenCalledWith('Content', 'my-video', 'item-2', expect.objectContaining({
         platform: 'tiktok',
         clipType: 'short',
@@ -309,6 +323,7 @@ describe('L3 Unit: Azure Storage Service', () => {
 
       expect(result.uploaded).toBe(2) // item-other skipped
       expect(result.errors).toHaveLength(0)
+      expect(result.assets).toHaveLength(2)
       expect(mockUpdateEntity).toHaveBeenCalledWith('Videos', 'video', 'run-1', { contentCount: 2 })
     })
 
@@ -319,6 +334,7 @@ describe('L3 Unit: Azure Storage Service', () => {
       const result = await uploadPublishQueue('/queue', 'my-video', 'run-1')
 
       expect(result.uploaded).toBe(0)
+      expect(result.assets).toEqual([])
     })
 
     test('handles missing publish queue directory', async () => {
@@ -328,6 +344,7 @@ describe('L3 Unit: Azure Storage Service', () => {
 
       expect(result.uploaded).toBe(0)
       expect(result.errors).toEqual(['Publish queue directory not found'])
+      expect(result.assets).toEqual([])
     })
 
     test('captures errors for individual items', async () => {
@@ -347,6 +364,7 @@ describe('L3 Unit: Azure Storage Service', () => {
 
       expect(result.uploaded).toBe(1)
       expect(result.errors).toHaveLength(1)
+      expect(result.assets).toHaveLength(1)
       expect(result.errors[0]).toContain('item-bad')
       expect(result.errors[0]).toContain('Permission denied')
     })

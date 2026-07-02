@@ -16,19 +16,28 @@ export async function uploadPipelineResults(
     duration?: number
     size: number
   },
-): Promise<{ runId: string; videoUploaded: boolean; contentUploaded: number; errors: string[] }> {
+): Promise<{
+  runId: string
+  videoUploaded: boolean
+  contentUploaded: number
+  errors: string[]
+  videoUrl?: string
+  assets: azureStorageService.UploadedContentAsset[]
+}> {
   const runId = azureStorageService.getRunId()
+  let videoUrl: string | undefined
 
   logger.info(`Cloud upload starting (runId: ${runId})`)
 
   // Upload raw video
   let videoUploaded = false
   try {
-    await azureStorageService.uploadRawVideo(inputVideoPath, runId, {
+    const uploadedVideo = await azureStorageService.uploadRawVideo(inputVideoPath, runId, {
       ...metadata,
       slug: videoSlug,
     })
     videoUploaded = true
+    videoUrl = uploadedVideo.url
   } catch (error: unknown) {
     const msg = error instanceof Error ? error.message : String(error)
     logger.error(`Failed to upload raw video: ${msg}`)
@@ -44,6 +53,8 @@ export async function uploadPipelineResults(
     videoUploaded,
     contentUploaded: result.uploaded,
     errors: result.errors,
+    videoUrl,
+    assets: result.assets,
   }
 }
 

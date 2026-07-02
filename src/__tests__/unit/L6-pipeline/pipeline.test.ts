@@ -40,6 +40,9 @@ const {
   mockGetEditorialDirection,
   mockGetMetadata,
   mockGetIntroOutroVideo,
+  mockIsCloudEnabled,
+  mockUploadToCloud,
+  mockRecordCloudAsset,
 } = vi.hoisted(() => ({
   mockLogger: { info: vi.fn(), error: vi.fn(), warn: vi.fn(), debug: vi.fn() },
   mockGetConfig: vi.fn(),
@@ -74,6 +77,9 @@ const {
   mockGetEditorialDirection: vi.fn().mockResolvedValue('editorial direction text'),
   mockGetMetadata: vi.fn().mockResolvedValue({ width: 1920, height: 1080, duration: 120 }),
   mockGetIntroOutroVideo: vi.fn().mockResolvedValue('/intro-outro.mp4'),
+  mockIsCloudEnabled: vi.fn().mockResolvedValue(false),
+  mockUploadToCloud: vi.fn().mockResolvedValue({ runId: 'run-1', videoUploaded: true, contentUploaded: 0, errors: [], assets: [] }),
+  mockRecordCloudAsset: vi.fn().mockResolvedValue(undefined),
 }))
 
 // ---- Mock L1 dependencies ----
@@ -112,6 +118,15 @@ vi.mock('../../../L5-assets/pipelineServices.js', () => ({
   markProcessing: mockMarkProcessing,
   markCompleted: mockMarkCompleted,
   markFailed: mockMarkFailed,
+}))
+
+vi.mock('../../../L5-assets/bridges/cloudStorageBridge.js', () => ({
+  isCloudEnabled: mockIsCloudEnabled,
+  uploadToCloud: mockUploadToCloud,
+}))
+
+vi.mock('../../../L3-services/ideaService/ideaService.js', () => ({
+  recordCloudAsset: mockRecordCloudAsset,
 }))
 
 // Mock visual enhancement (L6-internal) to prevent eager module loading
@@ -436,6 +451,8 @@ describe('processVideo', () => {
     mockGenerateMediumClipPostsData.mockResolvedValue([])
     mockGetBlog.mockResolvedValue('# Blog')
     mockBuildQueue.mockResolvedValue(undefined)
+    mockIsCloudEnabled.mockResolvedValue(false)
+    mockUploadToCloud.mockResolvedValue({ runId: 'run-1', videoUploaded: true, contentUploaded: 0, errors: [], assets: [] })
   })
 
   it('returns a PipelineResult with all stages recorded', async () => {
@@ -445,6 +462,62 @@ describe('processVideo', () => {
     expect(result.transcript).toEqual(transcript)
     expect(result.stageResults.length).toBeGreaterThanOrEqual(1)
     expect(result.totalDuration).toBeGreaterThanOrEqual(0)
+  })
+
+  it('records uploaded cloud asset URLs back to linked ideas', async () => {
+    mockIsCloudEnabled.mockResolvedValue(true)
+    mockUploadToCloud.mockResolvedValue({
+      runId: 'run-1',
+      videoUploaded: true,
+      videoUrl: 'https://blob.example/raw/test-video.mp4',
+      contentUploaded: 1,
+      errors: [],
+      assets: [{
+        itemId: 'clip-1-youtube',
+        clipType: 'short',
+        ideaIds: ['42'],
+        blobBasePath: 'content/clip-1-youtube/',
+        cloudUrl: 'https://blob.example/content/clip-1-youtube/media.mp4',
+        thumbnailUrl: 'https://blob.example/content/clip-1-youtube/thumbnail.png',
+        clipSlug: 'clip-1',
+      }],
+    })
+    mockMainVideoAssetIngest.mockResolvedValue(makeAssetMock({
+      ideas: [{
+        issueNumber: 7,
+        issueUrl: 'https://github.com/htekdev/content-management/issues/7',
+        repoFullName: 'htekdev/content-management',
+        id: 'idea-7',
+        topic: 'Video idea',
+        hook: 'Hook',
+        audience: 'Audience',
+        keyTakeaway: 'Takeaway',
+        talkingPoints: ['One'],
+        platforms: [Platform.YouTube],
+        status: 'recorded',
+        tags: ['video'],
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        publishBy: '2026-02-01',
+      }],
+    }))
+
+    await processVideo('/videos/test.mp4')
+
+    expect(mockRecordCloudAsset).toHaveBeenNthCalledWith(1, 7, expect.objectContaining({
+      assetKey: 'video:test-video',
+      clipType: 'video',
+      sourceVideoSlug: 'test-video',
+      cloudUrl: 'https://blob.example/raw/test-video.mp4',
+    }))
+    expect(mockRecordCloudAsset).toHaveBeenNthCalledWith(2, 42, expect.objectContaining({
+      assetKey: 'queue:clip-1-youtube',
+      clipType: 'short',
+      sourceVideoSlug: 'test-video',
+      clipSlug: 'clip-1',
+      cloudUrl: 'https://blob.example/content/clip-1-youtube/media.mp4',
+      thumbnailUrl: 'https://blob.example/content/clip-1-youtube/thumbnail.png',
+    }))
   })
 
   it('sets ideas on the asset when provided', async () => {
