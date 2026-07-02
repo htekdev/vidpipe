@@ -19,38 +19,12 @@
               "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
               "time": "08:00",
               "label": "Morning"
-            },
-            {
-              "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-              "time": "12:00",
-              "label": "Lunch"
-            },
-            {
-              "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-              "time": "15:00",
-              "label": "Afternoon"
             }
           ],
           "avoidDays": []
         },
         "medium-clip": {
-          "slots": [
-            {
-              "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-              "time": "10:00",
-              "label": "Morning deep dive"
-            },
-            {
-              "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-              "time": "14:00",
-              "label": "Lunch deep dive"
-            },
-            {
-              "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-              "time": "17:00",
-              "label": "Afternoon deep dive"
-            }
-          ],
+          "slots": [],
           "avoidDays": []
         }
       }
@@ -84,19 +58,6 @@
                 "sat",
                 "sun"
               ],
-              "time": "12:30",
-              "label": "Lunch break"
-            },
-            {
-              "days": [
-                "mon",
-                "tue",
-                "wed",
-                "thu",
-                "fri",
-                "sat",
-                "sun"
-              ],
               "time": "19:00",
               "label": "Evening prime time"
             }
@@ -104,21 +65,7 @@
           "avoidDays": []
         },
         "medium-clip": {
-          "slots": [
-            {
-              "days": [
-                "mon",
-                "tue",
-                "wed",
-                "thu",
-                "fri",
-                "sat",
-                "sun"
-              ],
-              "time": "15:00",
-              "label": "Afternoon engagement"
-            }
-          ],
+          "slots": [],
           "avoidDays": []
         }
       }
@@ -141,52 +88,12 @@
               ],
               "time": "08:00",
               "label": "Morning upload"
-            },
-            {
-              "days": [
-                "mon",
-                "tue",
-                "wed",
-                "thu",
-                "fri",
-                "sat",
-                "sun"
-              ],
-              "time": "13:00",
-              "label": "Afternoon upload"
-            },
-            {
-              "days": [
-                "mon",
-                "tue",
-                "wed",
-                "thu",
-                "fri",
-                "sat",
-                "sun"
-              ],
-              "time": "18:00",
-              "label": "Evening upload"
             }
           ],
           "avoidDays": []
         },
         "medium-clip": {
-          "slots": [
-            {
-              "days": [
-                "mon",
-                "tue",
-                "wed",
-                "thu",
-                "fri",
-                "sat",
-                "sun"
-              ],
-              "time": "16:00",
-              "label": "Late afternoon feature"
-            }
-          ],
+          "slots": [],
           "avoidDays": []
         },
         "video": {
@@ -221,66 +128,16 @@
               ],
               "time": "08:30",
               "label": "Morning reel"
-            },
-            {
-              "days": [
-                "mon",
-                "tue",
-                "wed",
-                "thu",
-                "fri",
-                "sat",
-                "sun"
-              ],
-              "time": "12:00",
-              "label": "Lunch reel"
-            },
-            {
-              "days": [
-                "mon",
-                "tue",
-                "wed",
-                "thu",
-                "fri",
-                "sat",
-                "sun"
-              ],
-              "time": "15:30",
-              "label": "Afternoon reel"
             }
           ],
           "avoidDays": []
         },
         "medium-clip": {
-          "slots": [
-            {
-              "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-              "time": "10:30",
-              "label": "Morning feature"
-            },
-            {
-              "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-              "time": "14:00",
-              "label": "Lunch feature"
-            },
-            {
-              "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"],
-              "time": "17:30",
-              "label": "Afternoon feature"
-            }
-          ],
+          "slots": [],
           "avoidDays": []
         },
         "video": {
-          "slots": [
-            {
-              "days": [
-                "sat"
-              ],
-              "time": "14:00",
-              "label": "Weekend showcase"
-            }
-          ],
+          "slots": [],
           "avoidDays": []
         }
       }
@@ -314,54 +171,14 @@
                 "sat",
                 "sun"
               ],
-              "time": "10:30",
-              "label": "Mid-morning"
-            },
-            {
-              "days": [
-                "mon",
-                "tue",
-                "wed",
-                "thu",
-                "fri",
-                "sat",
-                "sun"
-              ],
               "time": "14:00",
               "label": "Afternoon"
-            },
-            {
-              "days": [
-                "mon",
-                "tue",
-                "wed",
-                "thu",
-                "fri",
-                "sat",
-                "sun"
-              ],
-              "time": "20:30",
-              "label": "Night owl"
             }
           ],
           "avoidDays": []
         },
         "medium-clip": {
-          "slots": [
-            {
-              "days": [
-                "mon",
-                "tue",
-                "wed",
-                "thu",
-                "fri",
-                "sat",
-                "sun"
-              ],
-              "time": "17:00",
-              "label": "End of day"
-            }
-          ],
+          "slots": [],
           "avoidDays": []
         }
       }

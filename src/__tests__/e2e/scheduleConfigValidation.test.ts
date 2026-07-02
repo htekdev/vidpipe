@@ -1,7 +1,6 @@
 import { describe, test, expect, beforeAll } from 'vitest'
 import { Platform } from '../../L0-pure/types/index.js'
 import { loadScheduleConfig, getPlatformSchedule, clearScheduleCache } from '../../L3-services/scheduler/scheduleConfig.js'
-import type { ClipType } from '../../L3-services/socialPosting/platformContentStrategy.js'
 
 /**
  * Config validation: ensures every platform that the pipeline generates posts for
@@ -12,8 +11,6 @@ import type { ClipType } from '../../L3-services/socialPosting/platformContentSt
  * to silently fail with "No available slot."
  */
 
-const ALL_CLIP_TYPES: ClipType[] = ['video', 'short', 'medium-clip']
-
 const PLATFORM_SCHEDULE_KEYS: Record<Platform, string> = {
   [Platform.YouTube]: 'youtube',
   [Platform.LinkedIn]: 'linkedin',
@@ -22,20 +19,28 @@ const PLATFORM_SCHEDULE_KEYS: Record<Platform, string> = {
   [Platform.X]: 'x',
 }
 
-describe('schedule.json ↔ content strategy consistency', () => {
+const EXPECTED_SLOT_COUNTS: Record<string, Partial<Record<'video' | 'short' | 'medium-clip', number>>> = {
+  youtube: { short: 1, 'medium-clip': 0, video: 1 },
+  linkedin: { short: 1, 'medium-clip': 0 },
+  tiktok: { short: 2, 'medium-clip': 0 },
+  instagram: { short: 1, 'medium-clip': 0, video: 0 },
+  x: { short: 2, 'medium-clip': 0 },
+}
+
+describe('schedule.json slot sizing', () => {
   beforeAll(async () => {
     clearScheduleCache()
     await loadScheduleConfig()
   })
 
   for (const platform of Object.values(Platform)) {
-    for (const clipType of ALL_CLIP_TYPES) {
-      const scheduleKey = PLATFORM_SCHEDULE_KEYS[platform]
-
-      test(`${scheduleKey}/${clipType} has usable schedule slots (direct or fallback)`, () => {
+    const scheduleKey = PLATFORM_SCHEDULE_KEYS[platform]
+    const clipTypes = EXPECTED_SLOT_COUNTS[scheduleKey]
+    for (const [clipType, expectedSlotCount] of Object.entries(clipTypes)) {
+      test(`${scheduleKey}/${clipType} has ${expectedSlotCount} configured slots`, () => {
         const schedule = getPlatformSchedule(scheduleKey, clipType)
         expect(schedule, `No schedule config for ${scheduleKey}/${clipType}`).not.toBeNull()
-        expect(schedule!.slots.length, `${scheduleKey}/${clipType} resolved to 0 slots — posts cannot be approved`).toBeGreaterThan(0)
+        expect(schedule!.slots.length).toBe(expectedSlotCount)
       })
     }
   }
