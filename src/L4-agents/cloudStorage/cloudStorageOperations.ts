@@ -1,9 +1,9 @@
 import logger from '../../L1-infra/logger/configLogger.js'
-import * as azureStorageService from '../../L3-services/azureStorage/azureStorageService.js'
+import * as storageService from '../../L3-services/storage/storageService.js'
 import * as azureConfigService from '../../L3-services/azureStorage/azureConfigService.js'
 
 export function isCloudEnabled(): boolean {
-  return azureStorageService.isAzureConfigured()
+  return storageService.isStorageConfigured()
 }
 
 export async function uploadPipelineResults(
@@ -17,14 +17,14 @@ export async function uploadPipelineResults(
     size: number
   },
 ): Promise<{ runId: string; videoUploaded: boolean; contentUploaded: number; errors: string[] }> {
-  const runId = azureStorageService.getRunId()
+  const runId = storageService.getRunId()
 
   logger.info(`Cloud upload starting (runId: ${runId})`)
 
   // Upload raw video
   let videoUploaded = false
   try {
-    await azureStorageService.uploadRawVideo(inputVideoPath, runId, {
+    await storageService.uploadRawVideo(inputVideoPath, runId, {
       ...metadata,
       slug: videoSlug,
     })
@@ -35,7 +35,7 @@ export async function uploadPipelineResults(
   }
 
   // Upload publish queue content
-  const result = await azureStorageService.uploadPublishQueue(publishQueueDir, videoSlug, runId)
+  const result = await storageService.uploadPublishQueue(publishQueueDir, videoSlug, runId)
 
   logger.info(`Cloud upload complete: video=${videoUploaded}, content=${result.uploaded}, errors=${result.errors.length}`)
 
@@ -48,13 +48,19 @@ export async function uploadPipelineResults(
 }
 
 export async function pullConfig(targetDir: string): Promise<{ downloaded: number }> {
+  if (storageService.getStorageProviderName() !== 'azure') {
+    throw new Error('Cloud configuration synchronization is not supported with AWS storage')
+  }
   return azureConfigService.pullConfig(targetDir)
 }
 
 export async function pushConfig(sourceDir: string): Promise<{ uploaded: number }> {
+  if (storageService.getStorageProviderName() !== 'azure') {
+    throw new Error('Cloud configuration synchronization is not supported with AWS storage')
+  }
   return azureConfigService.pushConfig(sourceDir)
 }
 
 export async function migrateLocalContent(outputDir: string): Promise<{ uploaded: number; errors: string[] }> {
-  return azureStorageService.migrateLocalContent(outputDir)
+  return storageService.migrateLocalContent(outputDir)
 }

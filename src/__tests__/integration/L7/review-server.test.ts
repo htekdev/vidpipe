@@ -12,6 +12,8 @@ const mockAzureRejectItem = vi.hoisted(() => vi.fn())
 const mockGetMediaStream = vi.hoisted(() => vi.fn())
 const mockGetContentItems = vi.hoisted(() => vi.fn())
 const mockFindContentItemByRowKey = vi.hoisted(() => vi.fn().mockResolvedValue(null))
+const mockIsStorageConfigured = vi.hoisted(() => vi.fn().mockReturnValue(true))
+const mockStorageProvider = vi.hoisted(() => vi.fn().mockReturnValue('aws'))
 
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -36,7 +38,7 @@ vi.mock('../../../L1-infra/paths/paths.js', async (importOriginal) => {
   }
 })
 
-vi.mock('../../../L3-services/azureStorage/azureReviewDataSource.js', () => ({
+vi.mock('../../../L3-services/storage/reviewDataSource.js', () => ({
   listPendingItems: mockListPendingItems,
   getGroupedItems: mockGetGroupedItems,
   getItemById: mockGetItemById,
@@ -48,10 +50,11 @@ vi.mock('../../../L3-services/azureStorage/azureReviewDataSource.js', () => ({
   downloadMediaToFile: vi.fn(),
 }))
 
-vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
+vi.mock('../../../L3-services/storage/storageService.js', () => ({
   getContentItems: mockGetContentItems,
   findContentItemByRowKey: mockFindContentItemByRowKey,
-  isAzureConfigured: () => true,
+  isStorageConfigured: mockIsStorageConfigured,
+  getStorageProviderName: mockStorageProvider,
 }))
 
 vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
@@ -86,7 +89,8 @@ vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
 import express from 'express'
 import request from 'supertest'
 import { createRouter } from '../../../L7-app/review/routes.js'
-import type { ReviewItem, ReviewGroup } from '../../../L3-services/azureStorage/azureReviewDataSource.js'
+import { startReviewServer } from '../../../L7-app/review/server.js'
+import type { ReviewItem, ReviewGroup } from '../../../L3-services/storage/reviewDataSource.js'
 
 function buildApp() {
   const app = express()
@@ -150,6 +154,8 @@ function makeContentRecord(id: string, overrides: Partial<ReviewItem> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockIsStorageConfigured.mockReturnValue(true)
+  mockStorageProvider.mockReturnValue('aws')
   mockGetIdeasByIds.mockResolvedValue([])
   mockListPendingItems.mockResolvedValue([])
   mockGetGroupedItems.mockResolvedValue([])
@@ -159,6 +165,17 @@ beforeEach(() => {
   mockGetContentItems.mockResolvedValue([])
   mockFindContentItemByRowKey.mockResolvedValue(null)
   mockGetMediaStream.mockRejectedValue(new Error('Not found'))
+})
+
+it('ReviewStorage.REQ-003: startup reports AWS resources rather than requiring Azure credentials', async () => {
+  mockIsStorageConfigured.mockReturnValue(false)
+  await expect(startReviewServer()).rejects.toThrow('AWS S3 and DynamoDB')
+})
+
+it('ReviewStorage.REQ-003: Azure startup keeps its existing configuration diagnostic', async () => {
+  mockIsStorageConfigured.mockReturnValue(false)
+  mockStorageProvider.mockReturnValue('azure')
+  await expect(startReviewServer()).rejects.toThrow('AZURE_STORAGE_ACCOUNT_NAME')
 })
 
 // ── Tests ──────────────────────────────────────────────────────────────
@@ -176,7 +193,7 @@ describe('Review Server API', () => {
       expect(res.body.total).toBe(0)
     })
 
-    it('returns items when queue has posts', async () => {
+    it('ReviewStorage.REQ-003: lists selected-provider posts without Azure configuration', async () => {
       mockListPendingItems.mockResolvedValue([
         makeReviewItem('item-a'),
         makeReviewItem('item-b'),
@@ -265,7 +282,7 @@ describe('Review Server API', () => {
       expect(res.body.error).toBe('Item not found')
     })
 
-    it('rejects item and returns success', async () => {
+    it('ReviewStorage.REQ-003: rejects selected-provider items', async () => {
       mockFindContentItemByRowKey.mockResolvedValue(makeContentRecord('reject-me'))
 
       const res = await request(app).post('/api/posts/reject-me/reject')
@@ -288,7 +305,7 @@ describe('Review Server API', () => {
       expect(res.body.error).toBe('Item not found')
     })
 
-    it('updates post content', async () => {
+    it('ReviewStorage.REQ-003: edits selected-provider items', async () => {
       const updatedItem = makeReviewItem('edit-me', { postContent: 'Updated content!' })
       mockFindContentItemByRowKey.mockResolvedValue(makeContentRecord('edit-me'))
       mockAzureUpdateItem.mockResolvedValue(updatedItem)
@@ -305,6 +322,74 @@ describe('Review Server API', () => {
   // ─── GET /api/media/:itemId/:filename ─────────────────────────────
 
   describe('GET /api/media/:itemId/:filename', () => {
+    it('ReviewStorage.REQ-002: cancels media that arrives after the client disconnects', async () => {
+      const stream = new Readable({ read() {} })
+      let finishDownload!: (value: { stream: Readable; contentType: string }) => void
+      mockGetMediaStream.mockReturnValueOnce(new Promise(resolve => { finishDownload = resolve }))
+      let closedResponse!: () => void
+      const responseClosed = new Promise<void>(resolve => { closedResponse = resolve })
+      const app = express()
+      app.use((_req, res, next) => {
+        res.once('close', closedResponse)
+        res.destroy()
+        next()
+      })
+      app.use(createRouter())
+      request(app).get('/api/media/item-1/media.mp4').end(() => {})
+      await responseClosed
+      finishDownload({ stream, contentType: 'video/mp4' })
+      await new Promise(resolve => setImmediate(resolve))
+      expect(stream.destroyed).toBe(true)
+      stream.destroy()
+    })
+
+    it('ReviewStorage.REQ-002: cancels upstream media when the playback client disconnects', async () => {
+      const stream = new Readable({ read() {} })
+      mockGetMediaStream.mockResolvedValueOnce({ stream, contentType: 'video/mp4' })
+      const closed = new Promise<void>(resolve => stream.once('close', resolve))
+      const app = express()
+      app.use((_req, res, next) => {
+        res.once('pipe', () => res.destroy())
+        next()
+      })
+      app.use(createRouter())
+      request(app).get('/api/media/item-1/media.mp4').end(() => {})
+      await closed
+      expect(stream.destroyed).toBe(true)
+    })
+
+    it('ReviewStorage.REQ-002: preserves unsatisfiable range errors', async () => {
+      mockGetMediaStream.mockRejectedValueOnce(Object.assign(new Error('Range not satisfiable'), { statusCode: 416 }))
+      const res = await request(buildApp()).get('/api/media/item-1/media.mp4').set('Range', 'bytes=99999-')
+      expect(res.status).toBe(416)
+    })
+
+    it('ReviewStorage.REQ-002: stream failures return JSON without stale media-length headers', async () => {
+      const stream = new Readable({ read() { this.destroy(new Error('Download failed')) } })
+      mockGetMediaStream.mockResolvedValueOnce({ stream, contentType: 'video/mp4', contentLength: 100 })
+      const res = await request(buildApp()).get('/api/media/item-1/media.mp4')
+      expect(res.status).toBe(500)
+      expect(res.headers['content-type']).toContain('application/json')
+      expect(res.body.error).toBe('Stream error')
+    })
+
+    it('ReviewStorage.REQ-002: forwards byte ranges and partial content metadata', async () => {
+      mockGetMediaStream.mockResolvedValue({
+        stream: Readable.from(Buffer.from('part')),
+        contentType: 'video/mp4',
+        contentLength: 4,
+        contentRange: 'bytes 0-3/10',
+        acceptRanges: 'bytes',
+        statusCode: 206,
+      })
+      const res = await request(app).get('/api/media/item-1/media.mp4').set('Range', 'bytes=0-3')
+      expect(mockGetMediaStream).toHaveBeenCalledWith('item-1', 'media.mp4', 'bytes=0-3')
+      expect(res.status).toBe(206)
+      expect(res.headers['content-range']).toBe('bytes 0-3/10')
+      expect(res.headers['content-length']).toBe('4')
+      expect(res.headers['accept-ranges']).toBe('bytes')
+    })
+
     it('returns 404 for non-existent media', async () => {
       mockGetMediaStream.mockRejectedValue(new Error('Blob not found'))
 
@@ -369,6 +454,14 @@ describe('Review Server API', () => {
   // ─── GET /api/init ────────────────────────────────────────────────
 
   describe('GET /api/init', () => {
+    it('ReviewStorage.REQ-001: returns a storage failure instead of an empty queue', async () => {
+      mockGetGroupedItems.mockRejectedValueOnce(new Error('AWS access denied for content table'))
+      const res = await request(app).get('/api/init')
+      expect(res.status).toBe(503)
+      expect(res.body.error).toContain('AWS access denied')
+      expect(res.body.groups).toBeUndefined()
+    })
+
     it('returns combined init data', async () => {
       const res = await request(app).get('/api/init')
       expect(res.status).toBe(200)

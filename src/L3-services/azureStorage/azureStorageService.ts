@@ -9,41 +9,8 @@ import * as tableClient from '../../L2-clients/azure/tableClient.js'
 const VIDEOS_TABLE = 'Videos'
 const CONTENT_TABLE = 'Content'
 
-export interface VideoRecord {
-  [key: string]: unknown
-  originalFilename: string
-  slug: string
-  blobPath: string
-  sourceUrl: string
-  duration: number
-  size: number
-  status: 'processing' | 'completed' | 'failed'
-  contentCount: number
-  processedAt: string
-  createdAt: string
-}
-
-export interface ContentRecord {
-  [key: string]: unknown
-  platform: string
-  clipType: string
-  status: 'pending_review' | 'approved' | 'published' | 'rejected'
-  blobBasePath: string
-  mediaType: string
-  mediaFilename: string
-  postContent: string
-  hashtags: string
-  characterCount: number
-  scheduledFor: string
-  latePostId: string
-  publishedUrl: string
-  sourceVideoRunId: string
-  thumbnailFilename: string
-  ideaIds: string
-  createdAt: string
-  reviewedAt: string
-  publishedAt: string
-}
+import type { ContentRecord, VideoRecord } from '../../L0-pure/types/index.js'
+export type { ContentRecord, VideoRecord } from '../../L0-pure/types/index.js'
 
 export async function uploadVideoFile(
   localPath: string,

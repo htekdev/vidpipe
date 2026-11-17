@@ -7,8 +7,8 @@ import {
   markPublished,
   downloadMediaToFile,
   type ReviewItem,
-} from '../../L3-services/azureStorage/azureReviewDataSource.js'
-import { getContentItems } from '../../L3-services/azureStorage/azureStorageService.js'
+} from '../../L3-services/storage/reviewDataSource.js'
+import { getContentItems } from '../../L3-services/storage/storageService.js'
 import { getIdeasByIds } from '../../L3-services/ideation/ideaService.js'
 import { findNextSlot } from '../../L3-services/scheduler/scheduler.js'
 import { loadScheduleConfig } from '../../L3-services/scheduler/scheduleConfig.js'
@@ -88,7 +88,7 @@ async function processApprovalBatch(itemIds: string[], priority: boolean): Promi
     createdAt: string | null
   }
 
-  // Load all pending content items from Azure Table and filter to requested IDs
+  // Load pending content from the selected provider and filter to requested IDs
   const allPending = await getContentItems({ status: 'pending_review' })
   const itemMap = new Map<string, { record: (typeof allPending)[number]; videoSlug: string }>()
   for (const record of allPending) {
@@ -176,7 +176,7 @@ async function processApprovalBatch(itemIds: string[], priority: boolean): Promi
 
   // Create a temp directory for downloading media blobs
   const config = getConfig()
-  const tempDir = join(config.OUTPUT_DIR, '.azure-media-temp')
+  const tempDir = join(config.OUTPUT_DIR, '.cloud-media-temp')
   await ensureDirectory(tempDir)
 
   try {

@@ -57,7 +57,7 @@ vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
   loadScheduleConfig: async () => ({ timezone: 'America/Chicago', platforms: {} }),
 }))
 
-vi.mock('../../../L3-services/azureStorage/azureReviewDataSource.js', () => ({
+vi.mock('../../../L3-services/storage/reviewDataSource.js', () => ({
   listPendingItems: vi.fn().mockResolvedValue([]),
   getGroupedItems: mockGetGroupedItems,
   getItemById: vi.fn().mockResolvedValue(null),
@@ -66,7 +66,7 @@ vi.mock('../../../L3-services/azureStorage/azureReviewDataSource.js', () => ({
   getMediaStream: vi.fn().mockRejectedValue(new Error('Not found')),
 }))
 
-vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
+vi.mock('../../../L3-services/storage/storageService.js', () => ({
   getContentItems: vi.fn().mockResolvedValue([]),
   findContentItemByRowKey: vi.fn().mockResolvedValue(null),
 }))

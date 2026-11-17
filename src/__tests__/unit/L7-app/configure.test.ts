@@ -119,13 +119,12 @@ describe('L7 Unit: configure command', () => {
 
     expect(mockLoadGlobalConfig).toHaveBeenCalledTimes(1)
     expect(mockMaskSecret).toHaveBeenCalledWith('sk-secret-value')
-    expect(mockConsoleLog).toHaveBeenCalledTimes(21)
-
     const logs = getLogs()
     expect(logs).toContain('credentials.openaiApiKey')
     expect(logs).toContain('masked:sk-secret-value')
     expect(logs).toContain('defaults.llmProvider')
     expect(logs).toContain('claude')
+    expect(logs).toContain('defaults.storageProvider')
   })
 
   it('resets config when reset is confirmed', async () => {

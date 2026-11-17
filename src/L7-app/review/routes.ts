@@ -3,14 +3,14 @@ import {
   listPendingItems,
   getGroupedItems,
   getItemById,
-  updateItem as azureUpdateItem,
-  rejectItem as azureRejectItem,
-  approveItem as azureApproveItem,
+  updateItem,
+  rejectItem,
+  approveItem,
   getMediaStream,
   type ReviewItem,
   type ReviewGroup,
-} from '../../L3-services/azureStorage/azureReviewDataSource.js'
-import { getContentItems, findContentItemByRowKey } from '../../L3-services/azureStorage/azureStorageService.js'
+} from '../../L3-services/storage/reviewDataSource.js'
+import { getContentItems, findContentItemByRowKey } from '../../L3-services/storage/storageService.js'
 import { getIdeasByIds } from '../../L3-services/ideation/ideaService.js'
 import { findNextSlot, getScheduleCalendar } from '../../L3-services/scheduler/scheduler.js'
 import { createLateApiClient, type LateApiClient, type LateAccount, type LateProfile } from '../../L3-services/lateApi/lateApiService.js'
@@ -114,23 +114,38 @@ function enrichGroupedItems(groups: ReviewGroup[]): ReviewGroupedItem[] {
 export function createRouter(): Router {
   const router = Router()
 
-  // GET /api/media/:itemId/:filename — proxy media from Azure blob storage
+  // GET /api/media/:itemId/:filename — proxy media from selected cloud storage
   router.get('/api/media/:itemId/:filename', async (req, res) => {
     try {
       const { itemId, filename } = req.params
-      const { stream, contentType } = await getMediaStream(itemId, filename)
+      const { stream, contentType, contentLength, contentRange, statusCode, acceptRanges } =
+        await getMediaStream(itemId, filename, req.headers.range)
+      if (res.destroyed) {
+        stream.destroy()
+        return
+      }
       res.setHeader('Content-Type', contentType)
-      res.setHeader('Cache-Control', 'public, max-age=3600')
-      stream.pipe(res)
+      res.setHeader('Cache-Control', 'private, max-age=3600')
+      if (contentLength !== undefined) res.setHeader('Content-Length', contentLength)
+      if (contentRange) res.setHeader('Content-Range', contentRange)
+      if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges)
+      if (statusCode) res.status(statusCode)
+      res.on('close', () => stream.destroy())
       stream.on('error', () => {
         if (!res.headersSent) {
-          res.status(500).json({ error: 'Stream error' })
+          res.removeHeader('Content-Length')
+          res.removeHeader('Content-Range')
+          res.status(500).type('json').json({ error: 'Stream error' })
+        } else {
+          res.destroy()
         }
       })
+      stream.pipe(res)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (!res.headersSent) {
-        res.status(404).json({ error: msg })
+        const status = err instanceof Error && 'statusCode' in err && err.statusCode === 416 ? 416 : 404
+        res.status(status).json({ error: msg })
       }
     }
   })
@@ -170,7 +185,12 @@ export function createRouter(): Router {
       })(),
     ])
 
-    const groups = groupsResult.status === 'fulfilled' ? groupsResult.value : []
+    if (groupsResult.status === 'rejected') {
+      const message = groupsResult.reason instanceof Error ? groupsResult.reason.message : 'Storage unavailable'
+      logger.error(`Review storage initialization failed: ${String(message).replace(/[\r\n]/g, '')}`)
+      return res.status(503).json({ error: `Unable to load review storage: ${message}` })
+    }
+    const groups = groupsResult.value
     const accounts = accountsResult.status === 'fulfilled' ? accountsResult.value : []
     const profile = profileResult.status === 'fulfilled' ? profileResult.value : null
 
@@ -198,7 +218,7 @@ export function createRouter(): Router {
     try {
       const match = await findContentItemByRowKey(itemId)
       if (match) {
-        await azureApproveItem(match.partitionKey, match.rowKey)
+        await approveItem(match.partitionKey, match.rowKey)
       }
     } catch {
       // Non-fatal — approval queue will also try to update status
@@ -228,7 +248,7 @@ export function createRouter(): Router {
       try {
         const match = await findContentItemByRowKey(itemId)
         if (match) {
-          await azureApproveItem(match.partitionKey, match.rowKey)
+          await approveItem(match.partitionKey, match.rowKey)
         }
       } catch {
         // Non-fatal — approval queue will also try to update status
@@ -243,13 +263,13 @@ export function createRouter(): Router {
     })
   })
 
-  // POST /api/posts/:id/reject — mark as rejected in Azure
+  // POST /api/posts/:id/reject — mark as rejected in selected storage
   router.post('/api/posts/:id/reject', async (req, res) => {
     try {
       const match = await findContentItemByRowKey(req.params.id)
       if (!match) return res.status(404).json({ error: 'Item not found' })
 
-      await azureRejectItem(match.partitionKey, match.rowKey)
+      await rejectItem(match.partitionKey, match.rowKey)
       res.json({ success: true })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -277,7 +297,7 @@ export function createRouter(): Router {
             logger.error(`Bulk reject: item not found: ${String(itemId).replace(/[\r\n]/g, '')}`)
             continue
           }
-          await azureRejectItem(videoSlug, itemId)
+          await rejectItem(videoSlug, itemId)
           succeeded++
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
@@ -296,7 +316,7 @@ export function createRouter(): Router {
       const match = await findContentItemByRowKey(req.params.id)
       if (!match) return res.status(404).json({ error: 'Item not found' })
 
-      const updated = await azureUpdateItem(match.partitionKey, match.rowKey, { postContent })
+      const updated = await updateItem(match.partitionKey, match.rowKey, { postContent })
       if (!updated) return res.status(404).json({ error: 'Item not found' })
       res.json(updated)
     } catch (err) {

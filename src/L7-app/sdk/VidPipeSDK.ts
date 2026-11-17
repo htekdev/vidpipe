@@ -37,6 +37,7 @@ import { getQueueId, getProfileId } from '../../L3-services/queueMapping/queueMa
 import { buildRealignPlan, executeRealignPlan } from '../../L3-services/scheduler/realign.js'
 import { loadScheduleConfig } from '../../L3-services/scheduler/scheduleConfig.js'
 import { findNextSlot, getScheduleCalendar } from '../../L3-services/scheduler/scheduler.js'
+import { getStorageProviderName, isStorageConfigured } from '../../L3-services/storage/storageService.js'
 import {
   burnCaptions,
   captureFrame,
@@ -91,6 +92,12 @@ const defaultKeys = [
   'lateProfileId',
   'geminiModel',
   'scheduleConfig',
+  'storageProvider',
+  'awsRegion',
+  'awsS3Bucket',
+  'awsS3Prefix',
+  'awsDynamodbContentTable',
+  'awsDynamodbVideosTable',
 ] as const satisfies readonly DefaultKey[]
 
 const configKeyMap = {
@@ -111,6 +118,12 @@ const configKeyMap = {
   'late-profile-id': { section: 'defaults', key: 'lateProfileId' },
   'gemini-model': { section: 'defaults', key: 'geminiModel' },
   'schedule-config': { section: 'defaults', key: 'scheduleConfig' },
+  'storage-provider': { section: 'defaults', key: 'storageProvider' },
+  'aws-region': { section: 'defaults', key: 'awsRegion' },
+  'aws-s3-bucket': { section: 'defaults', key: 'awsS3Bucket' },
+  'aws-s3-prefix': { section: 'defaults', key: 'awsS3Prefix' },
+  'aws-dynamodb-content-table': { section: 'defaults', key: 'awsDynamodbContentTable' },
+  'aws-dynamodb-videos-table': { section: 'defaults', key: 'awsDynamodbVideosTable' },
 } as const satisfies Record<string, ConfigKeyTarget>
 
 const providerDefaults = {
@@ -136,6 +149,12 @@ const runtimeConfigKeyMap = {
   'defaults.ideasRepo': 'IDEAS_REPO',
   'defaults.lateProfileId': 'LATE_PROFILE_ID',
   'defaults.geminiModel': 'GEMINI_MODEL',
+  'defaults.storageProvider': 'STORAGE_PROVIDER',
+  'defaults.awsRegion': 'AWS_REGION',
+  'defaults.awsS3Bucket': 'AWS_S3_BUCKET',
+  'defaults.awsS3Prefix': 'AWS_S3_PREFIX',
+  'defaults.awsDynamodbContentTable': 'AWS_DYNAMODB_CONTENT_TABLE',
+  'defaults.awsDynamodbVideosTable': 'AWS_DYNAMODB_VIDEOS_TABLE',
 } as const satisfies Record<string, keyof AppEnvironment>
 
 const platformVariantMap: Readonly<Record<string, VariantPlatform>> = {
@@ -170,6 +189,12 @@ function mapSdkConfigToCliOptions(sdkConfig?: VidPipeConfig): CLIOptions {
     llmModel: sdkConfig?.llmModel,
     geminiModel: sdkConfig?.geminiModel,
     repoRoot: sdkConfig?.repoRoot,
+    storageProvider: sdkConfig?.storageProvider,
+    awsRegion: sdkConfig?.awsRegion,
+    awsS3Bucket: sdkConfig?.awsS3Bucket,
+    awsS3Prefix: sdkConfig?.awsS3Prefix,
+    awsDynamodbContentTable: sdkConfig?.awsDynamodbContentTable,
+    awsDynamodbVideosTable: sdkConfig?.awsDynamodbVideosTable,
   }
 }
 
@@ -283,6 +308,24 @@ function applyPersistedConfigToRuntime(
       break
     case 'defaults.geminiModel':
       currentCliOptions.geminiModel = value
+      break
+    case 'defaults.storageProvider':
+      currentCliOptions.storageProvider = value
+      break
+    case 'defaults.awsRegion':
+      currentCliOptions.awsRegion = value
+      break
+    case 'defaults.awsS3Bucket':
+      currentCliOptions.awsS3Bucket = value
+      break
+    case 'defaults.awsS3Prefix':
+      currentCliOptions.awsS3Prefix = value
+      break
+    case 'defaults.awsDynamodbContentTable':
+      currentCliOptions.awsDynamodbContentTable = value
+      break
+    case 'defaults.awsDynamodbVideosTable':
+      currentCliOptions.awsDynamodbVideosTable = value
       break
     default:
       break
@@ -908,10 +951,13 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
 
     cloud: {
       async process(videoPath, options) {
-        const { uploadVideoFile, isAzureConfigured, getRunId } =
-          await import('../../L3-services/azureStorage/azureStorageService.js')
+        if (getStorageProviderName() === 'aws') {
+          throw new Error('Remote processing is not supported with AWS storage')
+        }
+        const { uploadVideoFile, getRunId } =
+          await import('../../L3-services/storage/storageService.js')
 
-        if (!isAzureConfigured()) {
+        if (!isStorageConfigured()) {
           throw new Error('Azure Storage not configured')
         }
 
@@ -946,6 +992,9 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
       },
 
       async pushConfig() {
+        if (getStorageProviderName() === 'aws') {
+          throw new Error('Configuration synchronization is not supported with AWS storage')
+        }
         const { dirname: getDirname } = await import('node:path')
         const config = getConfig()
         const vidpipeDir = getDirname(config.OUTPUT_DIR)
@@ -954,6 +1003,9 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
       },
 
       async pullConfig() {
+        if (getStorageProviderName() === 'aws') {
+          throw new Error('Configuration synchronization is not supported with AWS storage')
+        }
         const { dirname: getDirname } = await import('node:path')
         const config = getConfig()
         const vidpipeDir = getDirname(config.OUTPUT_DIR)
@@ -961,18 +1013,17 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
         return pull(vidpipeDir)
       },
 
-      async migrate() {
+      async migrate(options) {
         const config = getConfig()
-        const { migrateLocalContent } = await import('../../L3-services/azureStorage/azureStorageService.js')
-        return migrateLocalContent(config.OUTPUT_DIR)
+        const { migrateLocalContent } = await import('../../L3-services/storage/storageService.js')
+        return migrateLocalContent(options?.sourceDir ?? config.OUTPUT_DIR, options ? { dryRun: options.dryRun } : undefined)
       },
 
       async download(videoUrl, outputPath) {
-        if (videoUrl.startsWith('blob://')) {
-          const blobPath = videoUrl.slice('blob://'.length)
-          const { downloadBlobToFile } = await import('../../L3-services/azureStorage/azureStorageService.js')
-          await downloadBlobToFile(blobPath, outputPath)
-        } else {
+        if (videoUrl.startsWith('blob://') || videoUrl.startsWith('s3://')) {
+          const { downloadStorageUrlToFile } = await import('../../L3-services/storage/storageService.js')
+          await downloadStorageUrlToFile(videoUrl, outputPath)
+        } else if (/^https?:\/\//i.test(videoUrl)) {
           const result = await spawnCommand('curl', ['-L', '--fail', '-o', outputPath, videoUrl])
           if (result.status !== 0) {
             const stderr = typeof result.stderr === 'string' ? result.stderr.trim() : ''
@@ -982,21 +1033,24 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
                 : `curl download failed with exit code ${result.status}`,
             )
           }
+        } else {
+          throw new Error('Unsupported download URL scheme; use blob://, s3://, or HTTP(S)')
         }
       },
 
       async status() {
-        const { isAzureConfigured, getContentItems, listVideos } =
-          await import('../../L3-services/azureStorage/azureStorageService.js')
-        const { listConfigFiles } = await import('../../L3-services/azureStorage/azureConfigService.js')
+        const { getContentItems, listVideos } =
+          await import('../../L3-services/storage/storageService.js')
 
-        const configured = isAzureConfigured()
+        const configured = isStorageConfigured()
         if (!configured) {
           return { configured, configFiles: 0, contentItems: 0, videos: 0 }
         }
 
         const [configFiles, contentItems, videos] = await Promise.all([
-          listConfigFiles(),
+          getStorageProviderName() === 'aws'
+            ? []
+            : import('../../L3-services/azureStorage/azureConfigService.js').then(({ listConfigFiles }) => listConfigFiles()),
           getContentItems(),
           listVideos(),
         ])
@@ -1005,8 +1059,7 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
       },
 
       isConfigured() {
-        const config = getConfig()
-        return Boolean(config.AZURE_STORAGE_ACCOUNT_NAME && config.AZURE_STORAGE_ACCOUNT_KEY)
+        return isStorageConfigured()
       },
     },
   }

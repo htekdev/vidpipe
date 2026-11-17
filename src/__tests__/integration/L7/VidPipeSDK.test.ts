@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { stat } from 'node:fs/promises'
 
 import { Platform } from '../../../L0-pure/types/index.js'
 import type { CreateIdeaInput, Idea } from '../../../L0-pure/types/index.js'
@@ -37,9 +38,16 @@ const {
   mockCreateLateApiClient,
   mockSpawnCommand,
   mockUploadVideoFile,
-  mockIsAzureConfigured,
+  mockIsStorageConfigured,
   mockGetRunId,
-  mockDownloadBlobToFile,
+  mockDownloadStorageUrlToFile,
+  mockGetStorageProviderName,
+  mockMigrateLocalContent,
+  mockGetContentItems,
+  mockListVideos,
+  mockListConfigFiles,
+  mockPushConfig,
+  mockPullConfig,
 } = vi.hoisted(() => ({
   mockInitConfig: vi.fn(),
   mockGetConfig: vi.fn(),
@@ -73,9 +81,16 @@ const {
   mockCreateLateApiClient: vi.fn(),
   mockSpawnCommand: vi.fn(),
   mockUploadVideoFile: vi.fn(),
-  mockIsAzureConfigured: vi.fn(),
+  mockIsStorageConfigured: vi.fn(),
   mockGetRunId: vi.fn(),
-  mockDownloadBlobToFile: vi.fn(),
+  mockDownloadStorageUrlToFile: vi.fn(),
+  mockGetStorageProviderName: vi.fn(),
+  mockMigrateLocalContent: vi.fn(),
+  mockGetContentItems: vi.fn(),
+  mockListVideos: vi.fn(),
+  mockListConfigFiles: vi.fn(),
+  mockPushConfig: vi.fn(),
+  mockPullConfig: vi.fn(),
 }))
 
 vi.mock('../../../L1-infra/config/environment.js', () => ({
@@ -157,19 +172,21 @@ vi.mock('node:fs/promises', () => ({
   mkdir: vi.fn().mockResolvedValue(undefined),
 }))
 
-vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
+vi.mock('../../../L3-services/storage/storageService.js', () => ({
   uploadVideoFile: mockUploadVideoFile,
-  isAzureConfigured: mockIsAzureConfigured,
+  isStorageConfigured: mockIsStorageConfigured,
+  getStorageProviderName: mockGetStorageProviderName,
   getRunId: mockGetRunId,
-  downloadBlobToFile: mockDownloadBlobToFile,
-  getContentItems: vi.fn().mockResolvedValue([]),
-  listVideos: vi.fn().mockResolvedValue([]),
+  downloadStorageUrlToFile: mockDownloadStorageUrlToFile,
+  migrateLocalContent: mockMigrateLocalContent,
+  getContentItems: mockGetContentItems,
+  listVideos: mockListVideos,
 }))
 
 vi.mock('../../../L3-services/azureStorage/azureConfigService.js', () => ({
-  pushConfig: vi.fn().mockResolvedValue({ uploaded: 0 }),
-  pullConfig: vi.fn().mockResolvedValue({ downloaded: 0 }),
-  listConfigFiles: vi.fn().mockResolvedValue([]),
+  pushConfig: mockPushConfig,
+  pullConfig: mockPullConfig,
+  listConfigFiles: mockListConfigFiles,
 }))
 
 const baseEnvironment = {
@@ -310,6 +327,15 @@ describe('VidPipeSDK', () => {
 
     mockGetFFmpegPath.mockReturnValue('ffmpeg')
     mockGetFFprobePath.mockReturnValue('ffprobe')
+    mockGetStorageProviderName.mockReturnValue('azure')
+    mockIsStorageConfigured.mockReturnValue(true)
+    mockDownloadStorageUrlToFile.mockReset().mockResolvedValue(undefined)
+    mockMigrateLocalContent.mockResolvedValue({ uploaded: 2, skipped: 1, errors: [] })
+    mockGetContentItems.mockResolvedValue([])
+    mockListVideos.mockResolvedValue([])
+    mockListConfigFiles.mockResolvedValue([])
+    mockPushConfig.mockResolvedValue({ uploaded: 0 })
+    mockPullConfig.mockResolvedValue({ downloaded: 0 })
 
     restoreEnv()
   })
@@ -716,10 +742,171 @@ describe('VidPipeSDK', () => {
   })
 
   describe('cloud operations', () => {
+    it('CloudStorage.REQ-006: forwards constructor AWS settings without credential options', () => {
+      const options = {
+        storageProvider: 'aws' as const,
+        awsRegion: 'us-west-2',
+        awsS3Bucket: 'sdk-bucket',
+        awsS3Prefix: 'vidpipe',
+        awsDynamodbContentTable: 'SdkContent',
+        awsDynamodbVideosTable: 'SdkVideos',
+      }
+
+      createVidPipe(options)
+
+      expect(mockInitConfig).toHaveBeenCalledWith(expect.objectContaining(options))
+      expect(mockInitConfig.mock.calls[0][0]).not.toHaveProperty('awsAccessKeyId')
+      expect(mockInitConfig.mock.calls[0][0]).not.toHaveProperty('awsSecretAccessKey')
+    })
+
+    it.each([
+      ['storageProvider', 'storage-provider', 'STORAGE_PROVIDER', 'aws'],
+      ['awsRegion', 'aws-region', 'AWS_REGION', 'us-west-2'],
+      ['awsS3Bucket', 'aws-s3-bucket', 'AWS_S3_BUCKET', 'sdk-bucket'],
+      ['awsS3Prefix', 'aws-s3-prefix', 'AWS_S3_PREFIX', 'namespace'],
+      ['awsDynamodbContentTable', 'aws-dynamodb-content-table', 'AWS_DYNAMODB_CONTENT_TABLE', 'SdkContent'],
+      ['awsDynamodbVideosTable', 'aws-dynamodb-videos-table', 'AWS_DYNAMODB_VIDEOS_TABLE', 'SdkVideos'],
+    ])('CloudStorage.REQ-006: persists and applies %s through SDK aliases', async (key, alias, envKey, value) => {
+      const environment: Record<string, unknown> = { ...baseEnvironment }
+      mockInitConfig.mockImplementation((options: Record<string, unknown>) => {
+        if (options[key] !== undefined) environment[envKey] = options[key]
+        mockGetConfig.mockReturnValue(environment)
+        return environment
+      })
+      const sdk = createVidPipe()
+
+      for (const configKey of [key, alias, `defaults.${key}`]) {
+        sdk.config.set(configKey, value)
+        expect(mockSetGlobalConfigValue).toHaveBeenLastCalledWith('defaults', key, value)
+        expect(mockInitConfig).toHaveBeenLastCalledWith(expect.objectContaining({ [key]: value }))
+        expect(sdk.config.get(configKey)).toBe(value)
+        expect(sdk.config.get(envKey)).toBe(value)
+      }
+      await sdk.config.save()
+      expect(mockSaveGlobalConfig).toHaveBeenCalledWith(mockLoadGlobalConfig())
+      expect(mockInitConfig).toHaveBeenLastCalledWith(expect.objectContaining({ [key]: value }))
+    })
+
+    it.each(['azure', 'aws'])('CloudStorage.REQ-006: migrates %s content with default or explicit options', async (provider) => {
+      mockGetStorageProviderName.mockReturnValue(provider)
+      const sdk = createVidPipe()
+
+      await expect(sdk.cloud.migrate()).resolves.toEqual({ uploaded: 2, skipped: 1, errors: [] })
+      expect(mockMigrateLocalContent).toHaveBeenLastCalledWith('C:\\output', undefined)
+      await sdk.cloud.migrate({ sourceDir: 'C:\\archive', dryRun: true })
+      expect(mockMigrateLocalContent).toHaveBeenLastCalledWith('C:\\archive', { dryRun: true })
+      await sdk.cloud.migrate({ dryRun: false })
+      expect(mockMigrateLocalContent).toHaveBeenLastCalledWith('C:\\output', { dryRun: false })
+    })
+
+    it('CloudStorage.REQ-006: AWS status queries selected backend without Azure configuration access', async () => {
+      mockGetStorageProviderName.mockReturnValue('aws')
+      mockGetContentItems.mockResolvedValue([{}, {}])
+      mockListVideos.mockResolvedValue([{}])
+      const sdk = createVidPipe()
+
+      await expect(sdk.cloud.status()).resolves.toMatchObject({
+        configured: true, configFiles: 0, contentItems: 2, videos: 1,
+      })
+      expect(mockGetContentItems).toHaveBeenCalledOnce()
+      expect(mockListVideos).toHaveBeenCalledOnce()
+      expect(mockListConfigFiles).not.toHaveBeenCalled()
+    })
+
+    it('CloudStorage.REQ-006: Azure status retains config file counts', async () => {
+      mockListConfigFiles.mockResolvedValue(['brand.json'])
+      mockGetContentItems.mockResolvedValue([{}])
+      const sdk = createVidPipe()
+
+      await expect(sdk.cloud.status()).resolves.toEqual({
+        configured: true, configFiles: 1, contentItems: 1, videos: 0,
+      })
+      expect(mockListConfigFiles).toHaveBeenCalledOnce()
+    })
+
+    it.each(['azure', 'aws'])('CloudStorage.REQ-006: unconfigured %s status performs no storage queries', async (provider) => {
+      mockGetStorageProviderName.mockReturnValue(provider)
+      mockIsStorageConfigured.mockReturnValue(false)
+      const sdk = createVidPipe()
+
+      expect(sdk.cloud.isConfigured()).toBe(false)
+      await expect(sdk.cloud.status()).resolves.toEqual({
+        configured: false, configFiles: 0, contentItems: 0, videos: 0,
+      })
+      expect(mockGetContentItems).not.toHaveBeenCalled()
+      expect(mockListVideos).not.toHaveBeenCalled()
+      expect(mockListConfigFiles).not.toHaveBeenCalled()
+    })
+
+    it.each(['azure', 'aws'])('CloudStorage.REQ-006: isConfigured uses selected %s structural readiness', (provider) => {
+      mockGetStorageProviderName.mockReturnValue(provider)
+      expect(createVidPipe().cloud.isConfigured()).toBe(true)
+      expect(mockIsStorageConfigured).toHaveBeenCalledOnce()
+    })
+
+    it.each(['process', 'pushConfig', 'pullConfig'] as const)('CloudStorage.REQ-006: AWS rejects %s before side effects', async (operation) => {
+      mockGetStorageProviderName.mockReturnValue('aws')
+      const sdk = createVidPipe()
+
+      const request = operation === 'process'
+        ? sdk.cloud.process('C:\\videos\\test.mp4')
+        : sdk.cloud[operation]()
+      await expect(request).rejects.toThrow(/AWS.*not supported|not supported.*AWS/i)
+
+      expect(stat).not.toHaveBeenCalled()
+      expect(mockGetRunId).not.toHaveBeenCalled()
+      expect(mockIsStorageConfigured).not.toHaveBeenCalled()
+      expect(mockUploadVideoFile).not.toHaveBeenCalled()
+      expect(mockSpawnCommand).not.toHaveBeenCalled()
+      expect(mockPushConfig).not.toHaveBeenCalled()
+      expect(mockPullConfig).not.toHaveBeenCalled()
+    })
+
+    it('CloudStorage.REQ-006: Azure config synchronization preserves its existing result shapes', async () => {
+      const sdk = createVidPipe()
+      mockPushConfig.mockResolvedValue({ uploaded: 3 })
+      mockPullConfig.mockResolvedValue({ downloaded: 2 })
+
+      await expect(sdk.cloud.pushConfig()).resolves.toEqual({ uploaded: 3 })
+      await expect(sdk.cloud.pullConfig()).resolves.toEqual({ downloaded: 2 })
+      expect(mockPushConfig).toHaveBeenCalledOnce()
+      expect(mockPullConfig).toHaveBeenCalledOnce()
+    })
+
+    it('CloudStorage.REQ-006: forwards S3 URLs intact to the validated storage download helper', async () => {
+      mockGetStorageProviderName.mockReturnValue('aws')
+      const sdk = createVidPipe()
+      mockDownloadStorageUrlToFile.mockResolvedValue(undefined)
+
+      await sdk.cloud.download('s3://sdk-bucket/namespace/raw/video.mp4', 'C:\\output\\video.mp4')
+
+      expect(mockDownloadStorageUrlToFile).toHaveBeenCalledWith('s3://sdk-bucket/namespace/raw/video.mp4', 'C:\\output\\video.mp4')
+      expect(mockSpawnCommand).not.toHaveBeenCalled()
+    })
+
+    it('CloudStorage.REQ-006: propagates storage download validation errors without curl fallback', async () => {
+      const sdk = createVidPipe()
+      mockDownloadStorageUrlToFile.mockRejectedValueOnce(new Error('S3 object is outside the configured prefix.'))
+
+      await expect(sdk.cloud.download('s3://other-bucket/video.mp4', 'C:\\output\\video.mp4'))
+        .rejects.toThrow('outside the configured prefix')
+      expect(mockSpawnCommand).not.toHaveBeenCalled()
+    })
+
+    it.each(['file:///C:/secret', 'ftp://example.com/video.mp4', 'data:video/mp4,abc', '--help', 'C:\\videos\\test.mp4'])(
+      'CloudStorage.REQ-006: rejects unsupported download input %s before invoking curl',
+      async (value) => {
+        const sdk = createVidPipe()
+        await expect(sdk.cloud.download(value, 'C:\\output\\video.mp4')).rejects.toThrow(/unsupported.*URL|HTTP|scheme/i)
+        expect(mockSpawnCommand).not.toHaveBeenCalled()
+        expect(mockDownloadStorageUrlToFile).not.toHaveBeenCalled()
+      },
+    )
+
     it('cloud.process uploads video and checks spawnCommand exit status', async () => {
       const sdk = createVidPipe()
       mockUploadVideoFile.mockResolvedValue('https://blob.url')
-      mockIsAzureConfigured.mockReturnValue(true)
+      mockIsStorageConfigured.mockReturnValue(true)
       mockGetRunId.mockReturnValue('run-42')
       mockSpawnCommand.mockReturnValue({ status: 0, stdout: '', stderr: '', error: null })
 
@@ -734,7 +921,7 @@ describe('VidPipeSDK', () => {
     it('cloud.process handles gh workflow failure gracefully', async () => {
       const sdk = createVidPipe()
       mockUploadVideoFile.mockResolvedValue('https://blob.url')
-      mockIsAzureConfigured.mockReturnValue(true)
+      mockIsStorageConfigured.mockReturnValue(true)
       mockGetRunId.mockReturnValue('run-43')
       mockSpawnCommand.mockReturnValue({ status: 1, stdout: '', stderr: 'gh not found', error: new Error('gh not found') })
 
@@ -761,13 +948,13 @@ describe('VidPipeSDK', () => {
         .rejects.toThrow('curl download failed')
     })
 
-    it('cloud.download via blob delegates to downloadBlobToFile', async () => {
+    it('CloudStorage.REQ-006: blob downloads delegate intact URLs to the validated storage helper', async () => {
       const sdk = createVidPipe()
-      mockDownloadBlobToFile.mockResolvedValue(undefined)
+      mockDownloadStorageUrlToFile.mockResolvedValue(undefined)
 
       await sdk.cloud.download('blob://raw/test.mp4', 'C:\\output\\test.mp4')
 
-      expect(mockDownloadBlobToFile).toHaveBeenCalledWith('raw/test.mp4', 'C:\\output\\test.mp4')
+      expect(mockDownloadStorageUrlToFile).toHaveBeenCalledWith('blob://raw/test.mp4', 'C:\\output\\test.mp4')
     })
   })
 })

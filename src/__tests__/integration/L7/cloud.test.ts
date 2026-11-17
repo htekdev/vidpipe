@@ -23,6 +23,10 @@ const mockFileStat = vi.hoisted(() => vi.fn().mockResolvedValue({ size: 1024 * 1
 const mockReaddir = vi.hoisted(() => vi.fn().mockResolvedValue([]))
 const mockReadFile = vi.hoisted(() => vi.fn().mockResolvedValue('{}'))
 const mockExecFile = vi.hoisted(() => vi.fn())
+const mockGetStorageProviderName = vi.hoisted(() => vi.fn().mockReturnValue('azure'))
+const mockUploadRawVideo = vi.hoisted(() => vi.fn().mockResolvedValue('raw/test-run-id/video.mp4'))
+const mockUploadPublishQueue = vi.hoisted(() => vi.fn().mockResolvedValue({ uploaded: 2, skipped: 0, errors: [] }))
+const mockDownloadStorageUrl = vi.hoisted(() => vi.fn().mockResolvedValue(undefined))
 
 // ── L1 mocks ────────────────────────────────────────────────────────────
 
@@ -61,6 +65,19 @@ vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
   uploadContentItem: mockUploadContentItem,
 }))
 
+vi.mock('../../../L3-services/storage/storageService.js', () => ({
+  migrateLocalContent: mockMigrateLocalContent,
+  isStorageConfigured: mockIsAzureConfigured,
+  getStorageProviderName: mockGetStorageProviderName,
+  getContentItems: mockGetContentItems,
+  listVideos: mockListVideos,
+  uploadVideoFile: mockUploadVideoFile,
+  uploadRawVideo: mockUploadRawVideo,
+  uploadPublishQueue: mockUploadPublishQueue,
+  getRunId: mockGetRunId,
+  downloadStorageUrlToFile: mockDownloadStorageUrl,
+}))
+
 vi.mock('node:fs/promises', () => ({
   stat: mockFileStat,
   readdir: mockReaddir,
@@ -72,6 +89,7 @@ vi.mock('node:child_process', () => ({
 }))
 
 import { createCloudCommand } from '../../../L7-app/commands/cloud.js'
+import logger from '../../../L1-infra/logger/configLogger.js'
 
 describe('L7 Unit: Cloud command', () => {
   let exitSpy: ReturnType<typeof vi.spyOn>
@@ -81,8 +99,9 @@ describe('L7 Unit: Cloud command', () => {
     vi.clearAllMocks()
     // Re-establish default mock implementations after clearAllMocks
     mockIsAzureConfigured.mockReturnValue(true)
+    mockGetStorageProviderName.mockReturnValue('azure')
     mockGetConfig.mockReturnValue({ OUTPUT_DIR })
-    mockReaddir.mockResolvedValue([])
+    mockReaddir.mockReset().mockResolvedValue([])
     mockReadFile.mockResolvedValue('{}')
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never)
     consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -139,7 +158,7 @@ describe('L7 Unit: Cloud command', () => {
       await cloud.parseAsync(['migrate'], { from: 'user' })
 
       expect(mockInitConfig).toHaveBeenCalled()
-      expect(mockMigrateLocalContent).toHaveBeenCalledWith(OUTPUT_DIR)
+      expect(mockMigrateLocalContent).toHaveBeenCalledWith(OUTPUT_DIR, { dryRun: false })
     })
 
     test('logs warnings when migration has errors', async () => {
@@ -152,6 +171,7 @@ describe('L7 Unit: Cloud command', () => {
       await cloud.parseAsync(['migrate'], { from: 'user' })
 
       expect(mockMigrateLocalContent).toHaveBeenCalled()
+      expect(process.exitCode).toBe(1)
     })
 
     test('handles migrate error gracefully', async () => {
@@ -275,7 +295,7 @@ describe('L7 Unit: Cloud command', () => {
       const cloud = createCloudCommand()
       await cloud.parseAsync(['download', 'blob://raw/test.mp4', 'C:\\output\\test.mp4'], { from: 'user' })
 
-      expect(mockDownloadBlobToFile).toHaveBeenCalledWith('raw/test.mp4', 'C:\\output\\test.mp4')
+      expect(mockDownloadStorageUrl).toHaveBeenCalledWith('blob://raw/test.mp4', 'C:\\output\\test.mp4')
     })
 
     test('downloads HTTP URL via curl', async () => {
@@ -294,7 +314,7 @@ describe('L7 Unit: Cloud command', () => {
     })
 
     test('handles download error gracefully', async () => {
-      mockDownloadBlobToFile.mockRejectedValueOnce(new Error('Blob not found'))
+      mockDownloadStorageUrl.mockRejectedValueOnce(new Error('Blob not found'))
 
       const cloud = createCloudCommand()
       await cloud.parseAsync(['download', 'blob://raw/missing.mp4', 'C:\\output\\out.mp4'], { from: 'user' })
@@ -315,6 +335,29 @@ describe('L7 Unit: Cloud command', () => {
   })
 
   describe('upload', () => {
+    test('CloudStorage.REQ-005: records the raw video and uploads its queue through selected storage', async () => {
+      mockGetStorageProviderName.mockReturnValue('aws')
+      mockReaddir.mockResolvedValueOnce(['video.mp4'])
+      const recording = join('/VidPipe', 'recordings', 'my-video')
+
+      await createCloudCommand().parseAsync(['upload', recording], { from: 'user' })
+
+      expect(mockUploadRawVideo).toHaveBeenCalledWith(join(recording, 'video.mp4'), 'test-run-id', {
+        slug: 'my-video', originalFilename: 'video.mp4', size: 1024 * 1024,
+      })
+      expect(mockUploadPublishQueue).toHaveBeenCalledWith(join(OUTPUT_DIR, 'publish-queue'), 'my-video', 'test-run-id')
+      expect(mockUploadVideoFile).not.toHaveBeenCalled()
+    })
+
+    test('CloudStorage.REQ-005: incomplete queue uploads fail the command', async () => {
+      mockReaddir.mockResolvedValueOnce(['video.mp4'])
+      mockUploadPublishQueue.mockResolvedValueOnce({ uploaded: 0, skipped: 0, errors: ['item: upload denied'] })
+
+      await createCloudCommand().parseAsync(['upload', '/recording'], { from: 'user' })
+
+      expect(process.exitCode).toBe(1)
+    })
+
     test('exits with error when Azure not configured', async () => {
       mockIsAzureConfigured.mockReturnValueOnce(false)
       mockReaddir.mockResolvedValueOnce(['video.mp4'])
@@ -332,6 +375,45 @@ describe('L7 Unit: Cloud command', () => {
       await cloud.parseAsync(['upload', join('/VidPipe', 'recordings', 'no-video')], { from: 'user' })
 
       expect(exitSpy).toHaveBeenCalledWith(1)
+    })
+
+    test('CloudStorage.REQ-001: migration forwards source directory and dry-run options', async () => {
+      mockMigrateLocalContent.mockResolvedValueOnce({
+        uploaded: 0, skipped: 2, eligible: 7, invalid: 0, failed: 0, errors: [],
+      })
+      await createCloudCommand().parseAsync(['migrate', '--source-dir', 'C:\\VidPipe\\output', '--dry-run'], { from: 'user' })
+      expect(mockMigrateLocalContent).toHaveBeenCalledWith('C:\\VidPipe\\output', { dryRun: true })
+      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('7 eligible'))
+      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('2 skipped'))
+      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('0 invalid'))
+      expect(logger.info).toHaveBeenCalledWith(expect.stringContaining('0 failed'))
+    })
+
+    test.each(['process', 'push-config', 'pull-config'])('CloudStorage.REQ-002: AWS rejects %s before side effects', async (command) => {
+      mockGetStorageProviderName.mockReturnValue('aws')
+      const args = command === 'process' ? [command, 'video.mp4'] : [command]
+      await createCloudCommand().parseAsync(args, { from: 'user' })
+      expect(process.exitCode).toBe(1)
+      expect(mockUploadVideoFile).not.toHaveBeenCalled()
+      expect(mockPushConfig).not.toHaveBeenCalled()
+      expect(mockPullConfig).not.toHaveBeenCalled()
+      expect(mockExecFile).not.toHaveBeenCalled()
+    })
+
+    test('CloudStorage.REQ-003: AWS status queries selected storage without Azure configuration', async () => {
+      mockGetStorageProviderName.mockReturnValue('aws')
+      await createCloudCommand().parseAsync(['status'], { from: 'user' })
+      expect(mockGetContentItems).toHaveBeenCalled()
+      expect(mockListVideos).toHaveBeenCalled()
+      expect(mockListConfigFiles).not.toHaveBeenCalled()
+      expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('AWS'))
+    })
+
+    test('CloudStorage.REQ-004: S3 URLs use the validated storage download instead of curl', async () => {
+      mockGetStorageProviderName.mockReturnValue('aws')
+      await createCloudCommand().parseAsync(['download', 's3://bucket/prefix/video.mp4', 'out.mp4'], { from: 'user' })
+      expect(mockDownloadStorageUrl).toHaveBeenCalledWith('s3://bucket/prefix/video.mp4', 'out.mp4')
+      expect(mockExecFile).not.toHaveBeenCalled()
     })
   })
 })

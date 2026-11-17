@@ -43,6 +43,14 @@ export interface AppEnvironment {
   GITHUB_TOKEN: string
   /** Per-agent model overrides from MODEL_* env vars (e.g. MODEL_SHORTS_AGENT=gpt-4o) */
   MODEL_OVERRIDES: Readonly<Record<string, string>>
+  /** Cloud storage backend; Azure remains the default. */
+  STORAGE_PROVIDER: 'azure' | 'aws'
+  AWS_REGION: string
+  AWS_S3_BUCKET: string
+  /** Optional slash-delimited object namespace, not a local file path. */
+  AWS_S3_PREFIX: string
+  AWS_DYNAMODB_CONTENT_TABLE: string
+  AWS_DYNAMODB_VIDEOS_TABLE: string
   /** Azure Storage account name for cloud persistence */
   AZURE_STORAGE_ACCOUNT_NAME: string
   /** Azure Storage account key for authentication */
@@ -83,6 +91,12 @@ export interface CLIOptions {
   azureStorageAccountName?: string
   azureStorageAccountKey?: string
   azureContainerName?: string
+  storageProvider?: string
+  awsRegion?: string
+  awsS3Bucket?: string
+  awsS3Prefix?: string
+  awsDynamodbContentTable?: string
+  awsDynamodbVideosTable?: string
 }
 
 let config: AppEnvironment | null = null

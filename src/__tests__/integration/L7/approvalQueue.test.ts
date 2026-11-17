@@ -25,14 +25,14 @@ vi.mock('../../../L1-infra/config/environment.js', () => ({
 }))
 
 const mockGetContentItems = vi.hoisted(() => vi.fn())
-vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
+vi.mock('../../../L3-services/storage/storageService.js', () => ({
   getContentItems: mockGetContentItems,
 }))
 
 const mockAzureApproveItem = vi.hoisted(() => vi.fn())
 const mockMarkPublished = vi.hoisted(() => vi.fn())
 const mockDownloadMediaToFile = vi.hoisted(() => vi.fn())
-vi.mock('../../../L3-services/azureStorage/azureReviewDataSource.js', () => ({
+vi.mock('../../../L3-services/storage/reviewDataSource.js', () => ({
   getItemById: vi.fn(),
   approveItem: mockAzureApproveItem,
   markPublished: mockMarkPublished,
@@ -129,7 +129,7 @@ beforeEach(() => {
 
 describe('enqueueApproval', () => {
   describe('successful approval', () => {
-    it('downloads media from Azure, creates post, and schedules', async () => {
+    it('ReviewStorage.REQ-003: worker downloads media and updates selected-provider content', async () => {
       const record = makeContentRecord({ rowKey: 'approve-1' })
       mockGetContentItems.mockResolvedValue([record])
 

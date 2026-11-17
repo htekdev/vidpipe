@@ -196,6 +196,10 @@ Two-phase webcam detection:
 
 All FFmpeg tools use `execFile()` with `process.env.FFMPEG_PATH` (not shell commands). Set via `FFMPEG_PATH` / `FFPROBE_PATH` env vars.
 
+### Cloud Storage
+
+Review and pipeline cloud operations use `src/L3-services/storage/storageService.ts` and the shared `reviewDataSource.ts`, not provider-specific services. `STORAGE_PROVIDER` defaults to `azure`; `aws` selects S3 files and DynamoDB metadata using the AWS SDK credential chain. Keep object keys separate from Windows filesystem paths. Migration skips existing identities, imports published items before pending items, supports dry-run, and never modifies local sources or schedules posts. AWS remote processing and configuration synchronization remain unsupported and must fail before side effects. See `docs/aws-storage.md` for resources, configuration, and migration.
+
 ### Social Publishing (Late API)
 
 vidpipe publishes social media posts via [Late API](https://getlate.dev). Posts stay **local until approved** through the review web app.

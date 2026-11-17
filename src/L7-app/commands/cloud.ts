@@ -26,6 +26,8 @@ export function createCloudCommand(): Command {
 
       logger.info(`Pushing config from ${sourceDir} to Azure Storage...`)
       try {
+        const { getStorageProviderName } = await import('../../L3-services/storage/storageService.js')
+        if (getStorageProviderName() !== 'azure') throw new Error('Cloud configuration synchronization is not supported with AWS storage')
         const { pushConfig } = await import('../../L3-services/azureStorage/azureConfigService.js')
         const result = await pushConfig(sourceDir)
         logger.info(`✅ Pushed ${result.uploaded} config file(s) to Azure Storage`)
@@ -46,6 +48,8 @@ export function createCloudCommand(): Command {
 
       logger.info(`Pulling config from Azure Storage to ${targetDir}...`)
       try {
+        const { getStorageProviderName } = await import('../../L3-services/storage/storageService.js')
+        if (getStorageProviderName() !== 'azure') throw new Error('Cloud configuration synchronization is not supported with AWS storage')
         const { pullConfig } = await import('../../L3-services/azureStorage/azureConfigService.js')
         const result = await pullConfig(targetDir)
         logger.info(`✅ Pulled ${result.downloaded} config file(s) from Azure Storage`)
@@ -59,19 +63,19 @@ export function createCloudCommand(): Command {
 
   cloud
     .command('upload <recording-folder>')
-    .description('Upload a recording folder (video + publish-queue) to Azure Storage')
+    .description('Upload a recording folder (video + publish-queue) to selected cloud storage')
     .option('--slug <slug>', 'Video slug (auto-derived from folder name if omitted)')
     .action(async (recordingFolder: string, opts: { slug?: string }) => {
       initConfig({})
       const config = getConfig()
 
       try {
-        const { uploadVideoFile, uploadPublishQueue, isAzureConfigured, getRunId } =
-          await import('../../L3-services/azureStorage/azureStorageService.js')
+        const { uploadRawVideo, uploadPublishQueue, isStorageConfigured, getStorageProviderName, getRunId } =
+          await import('../../L3-services/storage/storageService.js')
         const { readdir, stat: getFileStat } = await import('node:fs/promises')
 
-        if (!isAzureConfigured()) {
-          logger.error('Azure Storage not configured')
+        if (!isStorageConfigured()) {
+          logger.error(`${getStorageProviderName()} storage not configured`)
           process.exit(1)
           return
         }
@@ -89,48 +93,22 @@ export function createCloudCommand(): Command {
         const folderName = basename(recordingFolder)
         const slug = opts.slug || folderName.replace(/[^a-z0-9-]/gi, '-').toLowerCase()
         const runId = getRunId()
-        const blobPath = `raw/${runId}-${mp4File}`
 
         // Upload raw video
         const stats = await getFileStat(videoPath)
-        logger.info(`Uploading ${mp4File} (${(stats.size / 1024 / 1024).toFixed(1)} MB) to Azure...`)
-        await uploadVideoFile(videoPath, blobPath)
+        logger.info(`Uploading ${mp4File} (${(stats.size / 1024 / 1024).toFixed(1)} MB) to ${getStorageProviderName()}...`)
+        const blobPath = await uploadRawVideo(videoPath, runId, { slug, originalFilename: mp4File, size: stats.size })
         logger.info(`✅ Raw video uploaded: ${blobPath}`)
 
         // Upload publish-queue items belonging to this recording
         const publishQueueDir = join(config.OUTPUT_DIR, 'publish-queue')
         logger.info(`Scanning publish-queue for items from ${folderName}...`)
 
-        let uploaded = 0
-        const errors: string[] = []
-        try {
-          const queueItems = await readdir(publishQueueDir)
-          const { readFile } = await import('node:fs/promises')
-          const { uploadContentItem } = await import('../../L3-services/azureStorage/azureStorageService.js')
-
-          for (const itemId of queueItems) {
-            const itemDir = join(publishQueueDir, itemId)
-            const metadataPath = join(itemDir, 'metadata.json')
-            try {
-              const meta = JSON.parse(await readFile(metadataPath, 'utf8')) as Record<string, unknown>
-              const sourceVideo = String(meta.sourceVideo || '')
-              // Match if sourceVideo ends with this recording folder name
-              if (!sourceVideo.endsWith(folderName)) continue
-
-              await uploadContentItem(itemDir, itemId, slug, runId)
-              uploaded++
-              logger.info(`  ✅ ${itemId}`)
-            } catch (err: unknown) {
-              const msg = err instanceof Error ? err.message : String(err)
-              errors.push(`${itemId}: ${msg}`)
-            }
-          }
-        } catch {
-          logger.warn('No publish-queue directory found')
-        }
+        const { uploaded, errors } = await uploadPublishQueue(publishQueueDir, slug, runId)
 
         logger.info(`✅ Content uploaded: ${uploaded} item(s)`)
         if (errors.length > 0) {
+          process.exitCode = 1
           logger.warn(`   ${errors.length} error(s):`)
           for (const err of errors) {
             logger.warn(`     ⚠ ${err}`)
@@ -148,18 +126,21 @@ export function createCloudCommand(): Command {
 
   cloud
     .command('migrate')
-    .description('Upload existing local publish-queue/ and published/ content to Azure Storage')
-    .action(async () => {
+    .description('Import local publish-queue/ and published/ into selected cloud storage, skipping existing records')
+    .option('--source-dir <path>', 'Source output directory (defaults to OUTPUT_DIR)')
+    .option('--dry-run', 'Inspect migration without uploading or modifying records', false)
+    .action(async (opts: { sourceDir?: string; dryRun: boolean }) => {
       initConfig({})
       const config = getConfig()
-      const outputDir = config.OUTPUT_DIR
+      const outputDir = opts.sourceDir ?? config.OUTPUT_DIR
 
-      logger.info(`Migrating local content from ${outputDir} to Azure Storage...`)
+      logger.info(`${opts.dryRun ? 'Previewing migration' : 'Migrating local content'} from ${outputDir}...`)
       try {
-        const { migrateLocalContent } = await import('../../L3-services/azureStorage/azureStorageService.js')
-        const result = await migrateLocalContent(outputDir)
-        logger.info(`✅ Migration complete: ${result.uploaded} file(s) uploaded`)
+        const { migrateLocalContent } = await import('../../L3-services/storage/storageService.js')
+        const result = await migrateLocalContent(outputDir, { dryRun: opts.dryRun })
+        logger.info(`✅ Migration ${opts.dryRun ? 'preview' : 'complete'}: ${result.eligible} eligible, ${result.uploaded} uploaded, ${result.skipped} skipped, ${result.invalid} invalid, ${result.failed} failed`)
         if (result.errors.length > 0) {
+          process.exitCode = 1
           logger.warn(`   ${result.errors.length} error(s):`)
           for (const err of result.errors) {
             logger.warn(`     ⚠ ${err}`)
@@ -175,28 +156,31 @@ export function createCloudCommand(): Command {
 
   cloud
     .command('status')
-    .description('Show Azure connection status, stored config files, and content counts')
+    .description('Show selected storage configuration status and content counts')
     .action(async () => {
       initConfig({})
 
       try {
-        const { isAzureConfigured, getContentItems, listVideos } =
-          await import('../../L3-services/azureStorage/azureStorageService.js')
-        const { listConfigFiles } =
-          await import('../../L3-services/azureStorage/azureConfigService.js')
+        const { isStorageConfigured, getStorageProviderName, getContentItems, listVideos } =
+          await import('../../L3-services/storage/storageService.js')
 
-        const configured = isAzureConfigured()
-        console.log(`\n☁️  Azure Storage Status\n`)
+        const provider = getStorageProviderName()
+        const configured = isStorageConfigured()
+        console.log(`\n☁️  ${provider === 'aws' ? 'AWS' : 'Azure'} Storage Status\n`)
         console.log(`  Connection: ${configured ? '✅ Configured' : '❌ Not configured'}`)
 
         if (!configured) {
-          console.log('\n  Run `vidpipe configure set credentials.azureStorageAccountName <name>` and\n  `vidpipe configure set credentials.azureStorageAccountKey <key>` to configure.\n')
+          console.log(provider === 'aws'
+            ? '\n  Configure aws-region, aws-s3-bucket, aws-dynamodb-content-table and aws-dynamodb-videos-table; authenticate using an AWS profile or role.\n'
+            : '\n  Run `vidpipe configure set credentials.azureStorageAccountName <name>` and\n  `vidpipe configure set credentials.azureStorageAccountKey <key>` to configure.\n')
           process.exit(0)
           return
         }
 
         const [configFiles, contentItems, videos] = await Promise.all([
-          listConfigFiles(),
+          provider === 'azure'
+            ? import('../../L3-services/azureStorage/azureConfigService.js').then(service => service.listConfigFiles())
+            : Promise.resolve([]),
           getContentItems(),
           listVideos(),
         ])
@@ -211,7 +195,7 @@ export function createCloudCommand(): Command {
         console.log()
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err)
-        logger.error(`Failed to check Azure status: ${msg}`)
+        logger.error(`Failed to check storage status: ${msg}`)
         process.exitCode = 1
       }
       process.exit(process.exitCode ?? 0)
@@ -228,10 +212,11 @@ export function createCloudCommand(): Command {
       initConfig({})
 
       try {
-        const { uploadVideoFile, isAzureConfigured, getRunId } =
-          await import('../../L3-services/azureStorage/azureStorageService.js')
+        const { uploadVideoFile, isStorageConfigured, getStorageProviderName, getRunId } =
+          await import('../../L3-services/storage/storageService.js')
+        if (getStorageProviderName() !== 'azure') throw new Error('Remote cloud processing is not supported with AWS storage')
 
-        if (!isAzureConfigured()) {
+        if (!isStorageConfigured()) {
           logger.error('Azure Storage not configured. Run `vidpipe configure set credentials.azureStorageAccountName <name>`')
           process.exit(1)
           return
@@ -276,17 +261,16 @@ export function createCloudCommand(): Command {
 
   cloud
     .command('download <video-url> <output-path>')
-    .description('Download a video from Azure blob (blob://) or HTTP URL')
+    .description('Download media from selected cloud storage (blob:// or s3://) or an HTTP URL')
     .action(async (videoUrl: string, outputPath: string) => {
       initConfig({})
 
       try {
-        if (videoUrl.startsWith(BLOB_PREFIX)) {
-          const blobPath = videoUrl.slice(BLOB_PREFIX.length)
-          logger.info(`Downloading from Azure blob: ${blobPath}`)
-          const { downloadBlobToFile } = await import('../../L3-services/azureStorage/azureStorageService.js')
-          await downloadBlobToFile(blobPath, outputPath)
+        if (videoUrl.startsWith(BLOB_PREFIX) || videoUrl.startsWith('s3://')) {
+          const { downloadStorageUrlToFile } = await import('../../L3-services/storage/storageService.js')
+          await downloadStorageUrlToFile(videoUrl, outputPath)
         } else {
+          if (!/^https?:\/\//i.test(videoUrl)) throw new Error('Expected an HTTP, blob://, or s3:// URL')
           logger.info(`Downloading from URL: ${videoUrl}`)
           await new Promise<void>((resolve, reject) => {
             execFile('curl', ['-L', '--fail', '-o', outputPath, videoUrl], (err, _stdout, stderr) => {
