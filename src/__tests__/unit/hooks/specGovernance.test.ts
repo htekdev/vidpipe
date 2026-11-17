@@ -3,6 +3,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { evaluateHook, runHook } from '../../../../.github/hooks/spec-governance.mjs';
+import { buildFileArgs } from '../../../../cicd/lib/testRunner.js';
 
 const root = resolve(import.meta.dirname, '..', '..', '..', '..');
 const config = JSON.parse(readFileSync(join(root, '.github', 'hooks', 'hooks.json'), 'utf8'));
@@ -35,6 +36,22 @@ afterEach(() => {
 });
 
 describe('SpecGovernance', () => {
+  test.each(['it', 'test', 'describe'])('SpecGovernance.REQ-002: runs full files for multiline %s.each tables', (kind) => {
+    const file = join(fixture, 'table.test.ts');
+    writeFileSync(file, [
+      "import { it, test, describe, expect } from 'vitest';",
+      `${kind}.each([`,
+      '  [1],',
+      '  [2],',
+      "])('accepts %i', (value) => {",
+      '  expect(value).toBeGreaterThan(0);',
+      '});',
+    ].join('\n'));
+    expect(buildFileArgs([{
+      file, tier: 'unit', layer: -1, changedLines: [{ start: 3, end: 4 }],
+    }])).toEqual([file]);
+  });
+
   test('SpecGovernance.REQ-002: commit analysis includes hook unit tests in spec traceability', () => {
     const testPath = 'src/__tests__/unit/hooks/widget.test.ts';
     stage(testPath, "test('Widget.REQ-001', () => expect(true).toBe(true));");
