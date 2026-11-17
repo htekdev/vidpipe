@@ -3,7 +3,6 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { evaluateHook, runHook } from '../../../../.github/hooks/spec-governance.mjs';
-import { buildFileArgs } from '../../../../cicd/lib/testRunner.js';
 
 const root = resolve(import.meta.dirname, '..', '..', '..', '..');
 const config = JSON.parse(readFileSync(join(root, '.github', 'hooks', 'hooks.json'), 'utf8'));
@@ -47,9 +46,15 @@ describe('SpecGovernance', () => {
       '  expect(value).toBeGreaterThan(0);',
       '});',
     ].join('\n'));
-    expect(buildFileArgs([{
+    const changes = [{
       file, tier: 'unit', layer: -1, changedLines: [{ start: 3, end: 4 }],
-    }])).toEqual([file]);
+    }];
+    const runnerUrl = new URL('../../../../cicd/lib/testRunner.ts', import.meta.url).href;
+    const script = `import { buildFileArgs } from ${JSON.stringify(runnerUrl)}; process.stdout.write(JSON.stringify(buildFileArgs(${JSON.stringify(changes)})));`;
+    const result = execFileSync(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', script], {
+      cwd: fixture, encoding: 'utf8',
+    });
+    expect(JSON.parse(result)).toEqual([file]);
   });
 
   test('SpecGovernance.REQ-002: commit analysis includes hook unit tests in spec traceability', () => {
