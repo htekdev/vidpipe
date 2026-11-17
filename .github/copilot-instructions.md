@@ -202,6 +202,8 @@ Review and pipeline cloud operations use `src/L3-services/storage/storageService
 
 ### Social Publishing (Late API)
 
+Publishing account mappings, queue ownership, and review identity must honor `LATE_PROFILE_ID`. Without it, select only a sole profile or unique default; ambiguous profiles fail closed. Account and queue caches carry both the configured profile scope and resolved profile ID; never reuse legacy unscoped caches or fall back to another brand's accounts.
+
 vidpipe publishes social media posts via [Late API](https://getlate.dev). Posts stay **local until approved** through the review web app.
 
 **Architecture:**

@@ -10,6 +10,8 @@ import { LateApiClient } from '../../L2-clients/late/lateApi.js'
 import logger from '../../L1-infra/logger/configLogger.js'
 import { readTextFile, writeTextFile, removeFile } from '../../L1-infra/fileSystem/fileSystem.js'
 import { join, resolve, sep } from '../../L1-infra/paths/paths.js'
+import { getConfig } from '../../L1-infra/config/environment.js'
+import { selectLateProfile } from '../socialPosting/profileSelection.js'
 
 // ── Cache ──────────────────────────────────────────────────────────────
 
@@ -17,6 +19,7 @@ const CACHE_FILE = '.vidpipe-queue-cache.json'
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 interface QueueCache {
+  configuredProfileId: string
   mappings: Record<string, string> // queueName → queueId
   profileId: string
   fetchedAt: string
@@ -31,6 +34,9 @@ function cachePath(): string {
 }
 
 function isCacheValid(cache: QueueCache): boolean {
+  const configuredProfileId = getConfig().LATE_PROFILE_ID || ''
+  if (cache.configuredProfileId !== configuredProfileId || !cache.profileId ||
+      (configuredProfileId && cache.profileId !== configuredProfileId)) return false
   const fetchedAtTime = new Date(cache.fetchedAt).getTime()
   if (Number.isNaN(fetchedAtTime)) {
     logger.warn('Invalid fetchedAt in queue cache; treating as stale', {
@@ -62,6 +68,7 @@ async function writeFileCache(cache: QueueCache): Promise<void> {
       return
     }
     const sanitized: QueueCache = {
+      configuredProfileId: cache.configuredProfileId,
       mappings: typeof cache.mappings === 'object' ? { ...cache.mappings } : {},
       profileId: String(cache.profileId),
       fetchedAt: String(cache.fetchedAt),
@@ -87,11 +94,13 @@ async function writeFileCache(cache: QueueCache): Promise<void> {
 async function fetchAndCache(): Promise<QueueCache> {
   const client = new LateApiClient()
 
-  // Get the first profile to use as the queue owner
+  const configuredProfileId = getConfig().LATE_PROFILE_ID || ''
   const profiles = await client.listProfiles()
-  if (profiles.length === 0) {
+  const profile = selectLateProfile(profiles, configuredProfileId)
+  if (!profile) {
     logger.warn('No Late API profiles found — queue mappings will be empty')
     const emptyCache: QueueCache = {
+      configuredProfileId,
       mappings: {},
       profileId: '',
       fetchedAt: new Date().toISOString(),
@@ -99,7 +108,7 @@ async function fetchAndCache(): Promise<QueueCache> {
     memoryCache = emptyCache
     return emptyCache
   }
-  const profileId = profiles[0]._id
+  const profileId = profile._id
 
   // Fetch all queues (including inactive)
   const { queues } = await client.listQueues(profileId, true)
@@ -112,10 +121,11 @@ async function fetchAndCache(): Promise<QueueCache> {
 
   const mappings: Record<string, string> = {}
   for (const queue of queues) {
-    mappings[queue.name] = queue._id
+    if (queue.profileId === profileId) mappings[queue.name] = queue._id
   }
 
   const cache: QueueCache = {
+    configuredProfileId,
     mappings,
     profileId,
     fetchedAt: new Date().toISOString(),
@@ -148,7 +158,7 @@ async function ensureMappings(): Promise<QueueCache> {
     return await fetchAndCache()
   } catch (err) {
     logger.error('Failed to fetch Late queue mappings', { error: err })
-    return { mappings: {}, profileId: '', fetchedAt: new Date().toISOString() }
+    return { mappings: {}, profileId: '', configuredProfileId: getConfig().LATE_PROFILE_ID || '', fetchedAt: new Date().toISOString() }
   }
 }
 

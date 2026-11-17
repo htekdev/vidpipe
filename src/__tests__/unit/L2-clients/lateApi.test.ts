@@ -2,14 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 // ── Mocks ──────────────────────────────────────────────────────────────
 
-vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}))
-
-vi.mock('../../../L1-infra/config/environment.js', () => ({
-  getConfig: () => ({ LATE_API_KEY: 'test-api-key-123' }),
-}))
-
 const mockFetch = vi.fn()
 vi.stubGlobal('fetch', mockFetch)
 
@@ -82,6 +74,24 @@ describe('LateApiClient', () => {
       expect(url).toContain('/profiles')
       expect(opts.headers.Authorization).toBe('Bearer test-api-key-123')
     })
+  })
+
+  it('LateProfileRouting.REQ-001: preserves account ownership references returned by the API', async () => {
+    const accounts = [
+      { _id: 'target-account', platform: 'instagram', isActive: true, profileId: 'target-profile' },
+      { _id: 'other-account', platform: 'instagram', isActive: true, profileId: { _id: 'other-profile', name: 'Other' } },
+    ]
+    mockFetch.mockResolvedValueOnce(jsonResponse({ accounts }))
+
+    const result = await client.listAccounts()
+
+    expect(result).toEqual(accounts)
+    expect(result[0].profileId).toBe('target-profile')
+    expect(result[1].profileId).toEqual({ _id: 'other-profile', name: 'Other' })
+    expect(mockFetch).toHaveBeenCalledWith(
+      expect.stringMatching(/\/accounts$/),
+      expect.objectContaining({ headers: expect.objectContaining({ Authorization: expect.any(String) }) }),
+    )
   })
 
   describe('createPost', () => {
@@ -308,7 +318,7 @@ describe('LateApiClient', () => {
 
   describe('constructor', () => {
     it('throws when no API key provided and none in config', () => {
-      // The mock always returns a key, so test with explicit empty string
+      // An explicit empty key must not fall back to local credentials.
       expect(() => new LateApiClient('')).toThrow(/LATE_API_KEY/)
     })
   })

@@ -14,6 +14,9 @@ const mockGetContentItems = vi.hoisted(() => vi.fn())
 const mockFindContentItemByRowKey = vi.hoisted(() => vi.fn().mockResolvedValue(null))
 const mockIsStorageConfigured = vi.hoisted(() => vi.fn().mockReturnValue(true))
 const mockStorageProvider = vi.hoisted(() => vi.fn().mockReturnValue('aws'))
+const profileConfig = vi.hoisted(() => ({ LATE_PROFILE_ID: '' }))
+const mockListAccounts = vi.hoisted(() => vi.fn())
+const mockListProfiles = vi.hoisted(() => vi.fn())
 
 vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
   default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -21,7 +24,7 @@ vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
 }))
 
 vi.mock('../../../L1-infra/config/environment.js', () => ({
-  getConfig: () => ({ OUTPUT_DIR: 'C:\\test-output', LATE_API_KEY: 'test-key' }),
+  getConfig: () => ({ OUTPUT_DIR: 'C:\\test-output', LATE_API_KEY: 'test-key', ...profileConfig }),
   initConfig: () => ({ OUTPUT_DIR: 'C:\\test-output', LATE_API_KEY: 'test-key' }),
 }))
 
@@ -62,8 +65,8 @@ vi.mock('../../../L3-services/lateApi/lateApiService.js', () => ({
     async uploadMedia() { return { url: 'https://test.com/media.mp4', type: 'video' } },
     async createPost() { return { _id: 'test-post-id', status: 'scheduled' } },
     async getScheduledPosts() { return [] },
-    async listAccounts() { return [{ id: 'acc-1', platform: 'tiktok', name: 'Test Account' }] },
-    async listProfiles() { return [{ id: 'profile-1', name: 'Test Profile' }] },
+    listAccounts: mockListAccounts,
+    listProfiles: mockListProfiles,
   }),
 }))
 
@@ -154,6 +157,9 @@ function makeContentRecord(id: string, overrides: Partial<ReviewItem> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  profileConfig.LATE_PROFILE_ID = ''
+  mockListProfiles.mockResolvedValue([{ _id: 'profile-1', name: 'Test Profile' }])
+  mockListAccounts.mockResolvedValue([{ _id: 'acc-1', platform: 'tiktok', profileId: 'profile-1' }])
   mockIsStorageConfigured.mockReturnValue(true)
   mockStorageProvider.mockReturnValue('aws')
   mockGetIdeasByIds.mockResolvedValue([])
@@ -165,6 +171,34 @@ beforeEach(() => {
   mockGetContentItems.mockResolvedValue([])
   mockFindContentItemByRowKey.mockResolvedValue(null)
   mockGetMediaStream.mockRejectedValue(new Error('Not found'))
+})
+
+it('LateProfileRouting.REQ-006: review identity and accounts follow configured profile and cache switches', async () => {
+  const app = buildApp()
+  mockListProfiles.mockResolvedValue([
+    { _id: 'review-other', name: 'Other' },
+    { _id: 'review-target', name: 'Target' },
+  ])
+  mockListAccounts.mockResolvedValue([
+    { _id: 'other-account', platform: 'instagram', profileId: 'review-other' },
+    { _id: 'target-account', platform: 'instagram', profileId: { _id: 'review-target', name: 'Target' } },
+  ])
+  profileConfig.LATE_PROFILE_ID = 'review-target'
+  const initial = await request(app).get('/api/init')
+  expect(initial.body.profile._id).toBe('review-target')
+  expect(initial.body.accounts.map((account: { _id: string }) => account._id)).toEqual(['target-account'])
+  expect((await request(app).get('/api/profile')).body.profile._id).toBe('review-target')
+  expect((await request(app).get('/api/accounts')).body.accounts).toHaveLength(1)
+
+  profileConfig.LATE_PROFILE_ID = 'review-other'
+  expect((await request(app).get('/api/profile')).body.profile._id).toBe('review-other')
+  expect((await request(app).get('/api/accounts')).body.accounts.map((account: { _id: string }) => account._id)).toEqual(['other-account'])
+
+  profileConfig.LATE_PROFILE_ID = 'review-missing'
+  const missing = await request(app).get('/api/init')
+  expect(missing.body.profile).toBeNull()
+  expect(missing.body.accounts).toEqual([])
+  expect((await request(app).get('/api/profile')).status).toBe(500)
 })
 
 it('ReviewStorage.REQ-003: startup reports AWS resources rather than requiring Azure credentials', async () => {

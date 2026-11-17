@@ -18,6 +18,8 @@ import { normalizePlatformString } from '../../L0-pure/types/index.js'
 import logger from '../../L1-infra/logger/configLogger.js'
 import { getQueueId, getProfileId } from '../../L3-services/queueMapping/queueMapping.js'
 import { enqueueApproval } from './approvalQueue.js'
+import { getConfig } from '../../L1-infra/config/environment.js'
+import { selectLateProfile } from '../../L3-services/socialPosting/profileSelection.js'
 
 // ── Simple in-memory cache (avoids repeated Late API calls) ────────────
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
@@ -32,6 +34,29 @@ function getCached<T>(key: string): T | undefined {
 
 function setCache(key: string, data: unknown, ttl = CACHE_TTL_MS): void {
   cache.set(key, { data, expiry: Date.now() + ttl })
+}
+
+async function loadReviewProfile(scope: string): Promise<LateProfile | null> {
+  const key = `profile:${scope}`
+  const cached = getCached<LateProfile | null>(key)
+  if (cached !== undefined) return cached
+  const profiles = await createLateApiClient().listProfiles()
+  const profile = selectLateProfile(profiles, scope)
+  setCache(key, profile)
+  return profile
+}
+
+async function loadReviewAccounts(scope: string): Promise<LateAccount[]> {
+  const key = `accounts:${scope}`
+  const cached = getCached<LateAccount[]>(key)
+  if (cached) return cached
+  const profile = await loadReviewProfile(scope)
+  if (!profile) return []
+  const accounts = (await createLateApiClient().listAccounts()).filter(account =>
+    (typeof account.profileId === 'string' ? account.profileId : account.profileId?._id) === profile._id,
+  )
+  setCache(key, accounts)
+  return accounts
 }
 
 type ReviewQueueItem = ReviewItem & { ideaPublishBy?: string }
@@ -164,25 +189,11 @@ export function createRouter(): Router {
 
   // GET /api/init — combined endpoint for initial page load (1 request instead of 3)
   router.get('/api/init', async (req, res) => {
+    const scope = getConfig().LATE_PROFILE_ID || ''
     const [groupsResult, accountsResult, profileResult] = await Promise.allSettled([
       (async () => enrichGroupedItems(await getGroupedItems()))(),
-      (async () => {
-        const cached = getCached<LateAccount[]>('accounts')
-        if (cached) return cached
-        const client = createLateApiClient()
-        const accounts = await client.listAccounts()
-        setCache('accounts', accounts)
-        return accounts
-      })(),
-      (async () => {
-        const cached = getCached<LateProfile | null>('profile')
-        if (cached !== undefined) return cached
-        const client = createLateApiClient()
-        const profiles = await client.listProfiles()
-        const profile = profiles[0] || null
-        setCache('profile', profile)
-        return profile
-      })(),
+      loadReviewAccounts(scope),
+      loadReviewProfile(scope),
     ])
 
     if (groupsResult.status === 'rejected') {
@@ -369,12 +380,7 @@ export function createRouter(): Router {
   // GET /api/accounts — list connected Late accounts (cached)
   router.get('/api/accounts', async (req, res) => {
     try {
-      const cached = getCached<LateAccount[]>('accounts')
-      if (cached) return res.json({ accounts: cached })
-
-      const client = createLateApiClient()
-      const accounts = await client.listAccounts()
-      setCache('accounts', accounts)
+      const accounts = await loadReviewAccounts(getConfig().LATE_PROFILE_ID || '')
       res.json({ accounts })
     } catch (err) {
       res.status(500).json({ accounts: [], error: err instanceof Error ? err.message : 'Failed to fetch accounts' })
@@ -384,13 +390,7 @@ export function createRouter(): Router {
   // GET /api/profile — get Late profile info (cached)
   router.get('/api/profile', async (req, res) => {
     try {
-      const cached = getCached<LateProfile | null>('profile')
-      if (cached !== undefined) return res.json({ profile: cached })
-
-      const client = createLateApiClient()
-      const profiles = await client.listProfiles()
-      const profile = profiles[0] || null
-      setCache('profile', profile)
+      const profile = await loadReviewProfile(getConfig().LATE_PROFILE_ID || '')
       res.json({ profile })
     } catch (err) {
       res.status(500).json({ profile: null, error: err instanceof Error ? err.message : 'Failed to fetch profile' })
