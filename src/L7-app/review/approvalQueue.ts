@@ -249,8 +249,7 @@ async function processApprovalBatch(itemIds: string[], priority: boolean, videoS
         if (record.mediaFilename) {
           try {
             const localMediaPath = join(tempDir, `${itemId}-${record.mediaFilename}`)
-            if (videoSlugs?.[itemId]) await downloadMediaToFile(record.rowKey, record.mediaFilename, localMediaPath, videoSlug)
-            else await downloadMediaToFile(itemId, record.mediaFilename, localMediaPath)
+            await downloadMediaToFile(record.rowKey, record.mediaFilename, localMediaPath, videoSlug)
 
             const upload = await client.uploadMedia(localMediaPath)
             const mediaItem: { type: 'image' | 'video'; url: string; thumbnail?: string } = { type: upload.type, url: upload.url }
@@ -259,8 +258,7 @@ async function processApprovalBatch(itemIds: string[], priority: boolean, videoS
             if (record.thumbnailFilename) {
               try {
                 const localThumbPath = join(tempDir, `${itemId}-${record.thumbnailFilename}`)
-                if (videoSlugs?.[itemId]) await downloadMediaToFile(record.rowKey, record.thumbnailFilename, localThumbPath, videoSlug)
-                else await downloadMediaToFile(itemId, record.thumbnailFilename, localThumbPath)
+                await downloadMediaToFile(record.rowKey, record.thumbnailFilename, localThumbPath, videoSlug)
 
                 const thumbUpload = await client.uploadMedia(localThumbPath)
                 const thumbUrl = thumbUpload.url

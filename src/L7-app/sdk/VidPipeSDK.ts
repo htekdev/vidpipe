@@ -3,7 +3,7 @@ import {
   Platform,
 } from '../../L0-pure/types/index.js'
 import type { SocialPost } from '../../L0-pure/types/index.js'
-import { getConfig, initConfig } from '../../L1-infra/config/environment.js'
+import { getConfig, initConfig, withConfig } from '../../L1-infra/config/environment.js'
 import type { AppEnvironment, CLIOptions } from '../../L1-infra/config/environment.js'
 import {
   getConfigPath,
@@ -574,10 +574,11 @@ async function buildSocialPosts(
 
 export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
   let currentCliOptions = mapSdkConfigToCliOptions(sdkConfig)
-  initConfig(currentCliOptions)
+  let instanceConfig = initConfig(currentCliOptions)
 
   function refreshConfig(): AppEnvironment {
-    return initConfig(currentCliOptions)
+    instanceConfig = initConfig(currentCliOptions)
+    return instanceConfig
   }
 
   async function withTemporaryCliOverrides<T>(
@@ -950,7 +951,7 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
     },
 
     cloud: {
-      async process(videoPath, options) {
+      process: (videoPath, options) => withConfig(instanceConfig, async () => {
         if (getStorageProviderName() === 'aws') {
           throw new Error('Remote processing is not supported with AWS storage')
         }
@@ -989,9 +990,9 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
         }
 
         return { runId, blobPath, workflowTriggered }
-      },
+      }),
 
-      async pushConfig() {
+      pushConfig: () => withConfig(instanceConfig, async () => {
         if (getStorageProviderName() === 'aws') {
           throw new Error('Configuration synchronization is not supported with AWS storage')
         }
@@ -1000,9 +1001,9 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
         const vidpipeDir = getDirname(config.OUTPUT_DIR)
         const { pushConfig: push } = await import('../../L3-services/azureStorage/azureConfigService.js')
         return push(vidpipeDir)
-      },
+      }),
 
-      async pullConfig() {
+      pullConfig: () => withConfig(instanceConfig, async () => {
         if (getStorageProviderName() === 'aws') {
           throw new Error('Configuration synchronization is not supported with AWS storage')
         }
@@ -1011,15 +1012,15 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
         const vidpipeDir = getDirname(config.OUTPUT_DIR)
         const { pullConfig: pull } = await import('../../L3-services/azureStorage/azureConfigService.js')
         return pull(vidpipeDir)
-      },
+      }),
 
-      async migrate(options) {
+      migrate: (options) => withConfig(instanceConfig, async () => {
         const config = getConfig()
         const { migrateLocalContent } = await import('../../L3-services/storage/storageService.js')
         return migrateLocalContent(options?.sourceDir ?? config.OUTPUT_DIR, options ? { dryRun: options.dryRun } : undefined)
-      },
+      }),
 
-      async download(videoUrl, outputPath) {
+      download: (videoUrl, outputPath) => withConfig(instanceConfig, async () => {
         if (videoUrl.startsWith('blob://') || videoUrl.startsWith('s3://')) {
           const { downloadStorageUrlToFile } = await import('../../L3-services/storage/storageService.js')
           await downloadStorageUrlToFile(videoUrl, outputPath)
@@ -1036,9 +1037,9 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
         } else {
           throw new Error('Unsupported download URL scheme; use blob://, s3://, or HTTP(S)')
         }
-      },
+      }),
 
-      async status() {
+      status: () => withConfig(instanceConfig, async () => {
         const { getContentItems, listVideos } =
           await import('../../L3-services/storage/storageService.js')
 
@@ -1056,11 +1057,9 @@ export function createVidPipe(sdkConfig?: VidPipeConfig): VidPipeSDK {
         ])
 
         return { configured, configFiles: configFiles.length, contentItems: contentItems.length, videos: videos.length }
-      },
+      }),
 
-      isConfigured() {
-        return isStorageConfigured()
-      },
+      isConfigured: () => withConfig(instanceConfig, () => isStorageConfigured()),
     },
   }
 }

@@ -74,7 +74,12 @@ export async function downloadStorageUrlToFile(value: string, localPath: string)
   try { key = decodeURIComponent(match[2]) } catch { throw new Error('Invalid encoded S3 object path.') }
   if (!key || key.includes('\\') || /[\u0000-\u001f]/.test(key)
     || key.split('/').some(part => !part || part === '.' || part === '..')) throw new Error('Invalid S3 object path.')
-  const prefix = getConfig().AWS_S3_PREFIX.replace(/^\/+|\/+$/g, '')
+  const rawPrefix = getConfig().AWS_S3_PREFIX
+  let start = 0
+  let end = rawPrefix.length
+  while (start < end && rawPrefix[start] === '/') start++
+  while (end > start && rawPrefix[end - 1] === '/') end--
+  const prefix = rawPrefix.slice(start, end)
   if (prefix) {
     if (!key.startsWith(`${prefix}/`) || key.length <= prefix.length + 1) throw new Error('S3 object is outside the configured prefix.')
     key = key.slice(prefix.length + 1)

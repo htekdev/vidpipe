@@ -68,6 +68,34 @@ test('awsClients.REQ-004: uses configured namespace and leaves credentials to de
   expect(mocks.send.mock.lastCall?.[0].input).toMatchObject({ Bucket: 'bucket', Key: 'tenant/content/a' })
 })
 
+test.each([
+  ['', 'content/My%20Video % #.mp4'],
+  ['/', 'content/My%20Video % #.mp4'],
+  ['////', 'content/My%20Video % #.mp4'],
+  ['///tenant/sub///', 'tenant/sub/content/My%20Video % #.mp4'],
+  ['/tenant//sub/', 'tenant//sub/content/My%20Video % #.mp4'],
+  ['/%2Ftenant%20/', '%2Ftenant%20/content/My%20Video % #.mp4'],
+])('awsClients.REQ-004: normalizes only namespace edge slashes in %j', async (prefix, expectedKey) => {
+  process.env.AWS_S3_PREFIX = prefix
+  initConfig()
+  mocks.send.mockResolvedValueOnce({})
+  const url = await s3.uploadBuffer('///content/My%20Video % #.mp4', Buffer.from('ok'))
+  expect(mocks.send.mock.lastCall?.[0].input.Key).toBe(expectedKey)
+  expect(decodeURIComponent(new URL(url).pathname.slice(1))).toBe(expectedKey)
+})
+
+test('awsClients.REQ-004: long interior slash runs normalize without quadratic backtracking', async () => {
+  const prefix = `tenant${'/'.repeat(100_000)}child`
+  process.env.AWS_S3_PREFIX = `///${prefix}///`
+  initConfig()
+  mocks.send.mockResolvedValueOnce({})
+  const start = performance.now()
+  await s3.uploadBuffer('content/a', Buffer.from('ok'))
+  const elapsed = performance.now() - start
+  expect(mocks.send.mock.lastCall?.[0].input.Key).toBe(`${prefix}/content/a`)
+  expect(elapsed).toBeLessThan(1_000)
+})
+
 test('awsClients.REQ-005: file and buffer upload URLs preserve literal percent escapes, spaces and fragments', async () => {
   const key = 'raw/My%20Video 50% #1.mp4'
   mocks.done.mockResolvedValueOnce({})

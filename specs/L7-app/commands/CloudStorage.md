@@ -11,3 +11,4 @@ Cloud commands and SDK operations use the configured storage provider.
 | REQ-005 | Recording uploads store the video record and upload its queue through the selected provider, propagating item failures. | P0 |
 | REQ-006 | SDK configuration supports AWS provider/resource options and its migration/status methods use the selected backend without breaking existing no-argument callers. | P0 |
 | REQ-007 | Upload with an explicit destination slug selects queue items from the original recording folder and writes their records under the requested destination slug. | P0 |
+| REQ-008 | Every SDK cloud operation uses its invoking instance's resolved provider and resource settings throughout asynchronous downstream calls, including overlapping instances with different regions, buckets, tables, prefixes, and Azure accounts/containers. AWS unsupported-operation guards run before effects even after constructing an Azure instance; omitted provider retains Azure behavior. | P0 |

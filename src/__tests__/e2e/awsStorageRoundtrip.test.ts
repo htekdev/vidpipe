@@ -71,9 +71,10 @@ beforeAll(async () => {
         res.statusCode = 404
         res.end()
       }
-    } catch (error) {
+    } catch {
       res.statusCode = 500
-      res.end(JSON.stringify({ message: String(error) }))
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+      res.end('Offline AWS endpoint failed')
     }
   })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
@@ -102,6 +103,19 @@ afterAll(async () => {
     await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()))
   }
   if (workspace) await rm(workspace, { recursive: true, force: true })
+})
+
+test.each([
+  { path: '/', target: 'DynamoDB.GetItem', body: '<img src=x onerror=alert(1)>' },
+  { path: '/', target: 'DynamoDB.<script>alert(1)</script>', body: '{}' },
+  { path: '/offline-bucket/%ZZ', target: '', body: '' },
+])('offline AWS fixture returns generic plain-text errors for $target $path', async ({ path, target, body }) => {
+  const response = await fetch(`${environment.AWS_ENDPOINT_URL}${path}`, {
+    method: 'POST', headers: { 'x-amz-target': target }, body,
+  })
+  expect(response.status).toBe(500)
+  expect(response.headers.get('content-type')).toBe('text/plain; charset=utf-8')
+  expect(await response.text()).toBe('Offline AWS endpoint failed')
 })
 
 test('CloudStorage.REQ-007 storageService.REQ-007 awsClients.REQ-005 reviewDataSource.REQ-004: real CLI renamed uploads and generated S3 URLs retain exact keys and review partitions', async () => {

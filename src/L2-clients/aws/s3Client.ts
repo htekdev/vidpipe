@@ -13,7 +13,12 @@ function client(): S3Client {
 function location(key: string): { Bucket: string; Key: string } {
   const config = getConfig()
   if (!config.AWS_REGION || !config.AWS_S3_BUCKET) throw new Error('AWS storage requires AWS_REGION and AWS_S3_BUCKET.')
-  const prefix = config.AWS_S3_PREFIX.replace(/^\/+|\/+$/g, '')
+  const rawPrefix = config.AWS_S3_PREFIX
+  let start = 0
+  let end = rawPrefix.length
+  while (start < end && rawPrefix[start] === '/') start++
+  while (end > start && rawPrefix[end - 1] === '/') end--
+  const prefix = rawPrefix.slice(start, end)
   return { Bucket: config.AWS_S3_BUCKET, Key: [prefix, key.replace(/^\/+/, '')].filter(Boolean).join('/') }
 }
 

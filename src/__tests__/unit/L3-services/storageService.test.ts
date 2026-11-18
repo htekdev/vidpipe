@@ -139,6 +139,42 @@ test('storageService.REQ-007: validates bucket, prefix, encoding and traversal b
   ]) await expect(storage.downloadStorageUrlToFile(url, 'download.mp4')).rejects.toThrow()
   expect(mocks.downloadToFile).toHaveBeenCalledTimes(1)
 })
+
+test.each([
+  ['', 'objects/My%2520Video%25%23.mp4'],
+  ['/', 'objects/My%2520Video%25%23.mp4'],
+  ['////', 'objects/My%2520Video%25%23.mp4'],
+  ['///tenant/sub///', 'tenant/sub/objects/My%2520Video%25%23.mp4'],
+  ['/%2Ftenant%20/', '%252Ftenant%2520/objects/My%2520Video%25%23.mp4'],
+])('storageService.REQ-007: edge slash normalization in %j preserves exact decoded keys', async (prefix, path) => {
+  process.env.AWS_S3_PREFIX = prefix
+  initConfig()
+  await storage.downloadStorageUrlToFile(`s3://bucket/${path}`, 'download.mp4')
+  expect(mocks.downloadToFile).toHaveBeenCalledExactlyOnceWith('objects/My%20Video%#.mp4', 'download.mp4')
+})
+
+test.each([
+  's3://bucket/tenant//file', 's3://bucket/tenant/', 's3://bucket/tenant',
+  's3://bucket/tenant-evil/file', 's3://bucket/tenant/%2Ffile',
+  's3://bucket/tenant/%5cfile', 's3://bucket/tenant/%00file',
+  's3://bucket/tenant/%2e/file', 's3://bucket/tenant/%2e%2e/file',
+])('storageService.REQ-007: normalized prefixes retain path and namespace protections for %s', async url => {
+  process.env.AWS_S3_PREFIX = '///tenant///'
+  initConfig()
+  await expect(storage.downloadStorageUrlToFile(url, 'download.mp4')).rejects.toThrow()
+  expect(mocks.downloadToFile).not.toHaveBeenCalled()
+})
+
+test('storageService.REQ-007: long interior slash runs reject without quadratic backtracking', async () => {
+  process.env.AWS_S3_PREFIX = `///tenant${'/'.repeat(100_000)}child///`
+  initConfig()
+  const start = performance.now()
+  await expect(storage.downloadStorageUrlToFile('s3://bucket/tenant/child/file', 'download.mp4')).rejects.toThrow(/outside/)
+  const elapsed = performance.now() - start
+  expect(mocks.downloadToFile).not.toHaveBeenCalled()
+  expect(elapsed).toBeLessThan(1_000)
+})
+
 test('reviewDataSource.REQ-001: shared review mutations use selected backend', async () => {
   mocks.getItem.mockResolvedValue(record)
   await review.approveItem('video', 'item')

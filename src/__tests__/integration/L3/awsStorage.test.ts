@@ -7,6 +7,7 @@ const transport = vi.hoisted(() => ({
   send: vi.fn(),
   upload: vi.fn(),
   options: vi.fn(),
+  prefix: 'tenant',
   objects: new Map<string, Buffer>(),
   record: undefined as Record<string, unknown> | undefined,
   indexRecord: undefined as Record<string, unknown> | undefined,
@@ -17,7 +18,7 @@ vi.mock('../../../L1-infra/config/environment.js', () => ({
     STORAGE_PROVIDER: 'aws',
     AWS_REGION: 'us-east-1',
     AWS_S3_BUCKET: 'integration-bucket',
-    AWS_S3_PREFIX: 'tenant',
+    AWS_S3_PREFIX: transport.prefix,
     AWS_DYNAMODB_CONTENT_TABLE: 'integration-content',
     AWS_DYNAMODB_VIDEOS_TABLE: 'integration-videos',
     AZURE_STORAGE_ACCOUNT_NAME: '',
@@ -130,9 +131,56 @@ beforeAll(async () => {
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })
 })
-beforeEach(() => { vi.clearAllMocks() })
+beforeEach(() => {
+  vi.clearAllMocks()
+  transport.prefix = 'tenant'
+})
 
 describe('Integration L3: selected AWS storage with real clients', () => {
+  test.each([
+    {
+      name: 'nested literal percent-encoded namespace',
+      prefix: '///tenant/%2Fnamespace///',
+      keyPrefix: 'tenant/%2Fnamespace/',
+      urlPrefix: 's3://integration-bucket/tenant/%252Fnamespace/',
+    },
+    {
+      name: 'long boundary slash runs',
+      prefix: `${'/'.repeat(100_000)}tenant${'/'.repeat(100_000)}`,
+      keyPrefix: 'tenant/',
+      urlPrefix: 's3://integration-bucket/tenant/',
+    },
+    {
+      name: 'slash-only empty namespace',
+      prefix: '////',
+      keyPrefix: '',
+      urlPrefix: 's3://integration-bucket/',
+    },
+  ])('awsClients.REQ-004 awsClients.REQ-005 storageService.REQ-007: $name preserves the uploaded namespace and exact literal key on download', async ({ prefix, keyPrefix, urlPrefix }) => {
+    transport.prefix = prefix
+    const literalKey = 'raw/%2e%2e/My%20Video % #.mp4'
+    const expectedKey = `${keyPrefix}${literalKey}`
+    const url = await storage.uploadVideoFile(join(root, 'media.png'), literalKey)
+    expect(url).toBe(`${urlPrefix}raw/%252e%252e/My%2520Video%20%25%20%23.mp4`)
+    expect(transport.upload).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      params: expect.objectContaining({ Bucket: 'integration-bucket', Key: expectedKey }),
+    }))
+    expect(transport.objects.get(expectedKey)).toEqual(media)
+
+    const output = join(root, 'downloads', 'normalized-namespace.png')
+    await storage.downloadStorageUrlToFile(url, output)
+    expect(await readFile(output)).toEqual(media)
+    expect(transport.send).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      kind: 'getObject',
+      input: expect.objectContaining({ Bucket: 'integration-bucket', Key: expectedKey }),
+    }))
+
+    transport.send.mockClear()
+    await expect(storage.downloadStorageUrlToFile(`${urlPrefix}raw/%2e%2e/file.mp4`, output)).rejects.toThrow(/path/)
+    await expect(storage.downloadStorageUrlToFile(`${url}?query=1`, output)).rejects.toThrow(/bucket/)
+    expect(transport.send).not.toHaveBeenCalled()
+  })
+
   test('awsClients.REQ-005 storageService.REQ-007: generated upload URLs download the exact literal key through the real S3 client and validator', async () => {
     for (const filename of ['My Video.mp4', '50% complete #1.mp4']) {
       const key = `raw/${encodeURIComponent(filename)}`

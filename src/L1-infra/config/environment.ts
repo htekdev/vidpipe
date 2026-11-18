@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { join } from '../paths/paths.js'
 import { fileExistsSync } from '../fileSystem/fileSystem.js'
 import { loadEnvFile } from '../env/env.js'
@@ -100,6 +101,12 @@ export interface CLIOptions {
 }
 
 let config: AppEnvironment | null = null
+const configScope = new AsyncLocalStorage<AppEnvironment>()
+
+/** Bind config to an operation and its async descendants without changing the global fallback. */
+export function withConfig<T>(scopedConfig: AppEnvironment, operation: () => T): T {
+  return configScope.run(scopedConfig, operation)
+}
 
 export function validateRequiredKeys(): void {
   if (!config?.OPENAI_API_KEY) {
@@ -114,6 +121,9 @@ export function initConfig(cli: CLIOptions = {}): AppEnvironment {
 }
 
 export function getConfig(): AppEnvironment {
+  const scopedConfig = configScope.getStore()
+  if (scopedConfig) return scopedConfig
+
   if (config) {
     return config
   }

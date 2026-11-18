@@ -140,6 +140,38 @@ beforeEach(() => {
 // ── Tests ──────────────────────────────────────────────────────────────
 
 describe('L7 Unit: approvalQueue', () => {
+  it('ReviewStorage.REQ-006: legacy callers scope media, thumbnail and mutations to the selected pending duplicate', async () => {
+    const pending = makeContentRecord('duplicate', {
+      videoSlug: 'pending-video', postContent: 'Pending content',
+      thumbnailFilename: 'thumbnail.png', createdAt: '2025-01-01',
+    })
+    const published = {
+      ...makeContentRecord('duplicate', {
+        videoSlug: 'published-video', postContent: 'Published content',
+        thumbnailFilename: 'thumbnail.png', createdAt: '2026-01-01',
+      }),
+      status: 'published' as const,
+    }
+    mockGetContentItems.mockImplementation(async (filters?: { status?: string }) => {
+      const records = [pending, published]
+      return filters?.status ? records.filter(record => record.status === filters.status) : records
+    })
+
+    const result = await enqueueApproval(['duplicate'])
+
+    expect(result.scheduled).toBe(1)
+    expect(result.failed).toBe(0)
+    expect(mockCreatePost).toHaveBeenCalledWith(expect.objectContaining({ content: 'Pending content' }))
+    expect(mockDownloadMediaToFile.mock.calls).toEqual([
+      ['duplicate', 'media.mp4', expect.stringContaining('duplicate-media.mp4'), 'pending-video'],
+      ['duplicate', 'thumbnail.png', expect.stringContaining('duplicate-thumbnail.png'), 'pending-video'],
+    ])
+    expect(mockAzureApproveItem.mock.calls).toEqual([['pending-video', 'duplicate']])
+    expect(mockMarkPublished.mock.calls).toEqual([
+      ['pending-video', 'duplicate', expect.objectContaining({ latePostId: 'late-Pending content' })],
+    ])
+  })
+
   it('passes isDraft: false to createPost', async () => {
     mockContentRecords([
       makeContentRecord('item-1', { postContent: 'Test content' }),

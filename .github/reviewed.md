@@ -1,47 +1,63 @@
 # Code Review
 
-**Reviewed:** 2026-11-17T18:01:29-06:00
+**Reviewed:** 2026-11-17T18:53:56-06:00
 **Reviewer:** code-reviewer
 **Branch:** feature/aws-storage
-**HEAD:** dd12224943ca7cafd1b346428d9d93e260d9a75e
-**Scope:** Bounded re-review of unstaged fixes since `dd12224`, their regressions and specifications. Builds on the preceding complete 85-file `origin/main...dd12224` review; merge base `99a5378f1c93c40a5908e314c15186453154136f`.
-**Reviewed state:** Current working changes, including two new untracked regression files; index remains empty and HEAD unchanged.
-**Verdict:** Approved; all four prior findings resolved. Ready for the parent's normal staging/commit gates.
+**HEAD:** c41bc8595215f8100d2f45d1575ff56e4cf935e0
+**PR:** htekdev/vidpipe#180
+**Scope:** Only the combined uncommitted post-PR patch since this HEAD, its regressions/specifications, and necessary immediate caller/client context. The unchanged 85-file feature was not reviewed again.
+**Reviewed state:** Working changes include two new untracked regression files. No staging, commit or push performed.
+**Verdict:** Approved; no blocking findings in this bounded patch. Ready for the parent's final validation and normal commit gates.
 
 ## Files Reviewed
 
-- Implementation: `src/L2-clients/aws/s3Client.ts`; `src/L3-services/azureStorage/azureStorageService.ts`; `src/L3-services/storage/{storageService,reviewDataSource}.ts`; `src/L7-app/commands/cloud.ts`; `src/L7-app/review/{routes,approvalQueue}.ts` and `public/index.html`.
-- Specifications: `awsClients.md`, `storageService.md`, `reviewDataSource.md`, `CloudStorage.md`, `ReviewStorage.md`.
-- Changed tests: unit `awsClients`, `storageService`, `azureReviewDataSource`; integration `awsStorage`, `approvalQueue`, `cloud`, `routes.queue`.
-- New tests: `src/__tests__/unit/L7-app/reviewActions.test.ts`, `src/__tests__/e2e/awsStorageRoundtrip.test.ts`. Existing `azureStorage` unit tests checked for compatibility.
-- Backend-agent evidence: `coverage/reviewfix/verification.txt`, result JSON files, coverage summary and changed-line coverage log.
+- `src/L1-infra/config/environment.ts`
+- `src/L2-clients/aws/s3Client.ts`
+- `src/L3-services/storage/storageService.ts`
+- `src/L7-app/review/approvalQueue.ts`
+- `src/L7-app/sdk/VidPipeSDK.ts`
+- `src/__tests__/unit/L1-infra/environment.scope.test.ts` (new)
+- `src/__tests__/unit/L2-clients/awsClients.test.ts`
+- `src/__tests__/unit/L3-services/storageService.test.ts`
+- `src/__tests__/integration/L7/VidPipeSDK.cloudIsolation.test.ts` (new)
+- `src/__tests__/integration/L7/VidPipeSDK.test.ts`
+- `src/__tests__/integration/L7/approvalQueue.test.ts`
+- `src/__tests__/e2e/awsStorageRoundtrip.test.ts`
+- `specs/L1-infra/config/environment.md`
+- `specs/L2-clients/aws/awsClients.md`
+- `specs/L3-services/storage/storageService.md`
+- `specs/L7-app/commands/CloudStorage.md`
+- `specs/L7-app/review/ReviewStorage.md`
+- `.github/copilot-instructions.md`
+- Immediate unchanged context: AWS storage/DynamoDB clients, Azure blob/Table/config clients, and SDK configuration refresh/temporary overrides.
 
 ## Findings
 
 ### Fixed
 
-- **Prior P1, Azure serialization — `src/L3-services/storage/storageService.ts:100-103`:** Arrays/nested metadata become JSON scalar Table properties; absent values are omitted and original metadata files remain unchanged. Empty/nonempty links and nested platform data pass the installed Azure serializer.
-- **Prior P1, complete review identity — `src/L3-services/storage/storageService.ts:191`, `src/L7-app/review/routes.ts:139`, `src/L7-app/review/approvalQueue.ts:96,107`:** Scoped media/text/download lookups, frontend bulk actions, mutation routes and approval jobs retain `(videoSlug, itemId)`. Missing scoped identities do not fall back to another partition; worker status writes retain raw IDs. Unscoped newest-record lookup remains compatible.
-- **Prior P2, source/destination slugs — `src/L7-app/commands/cloud.ts:107`, `src/L3-services/storage/storageService.ts:171`, `src/L3-services/azureStorage/azureStorageService.ts:144`:** Optional source selection uses the original folder while storing under the requested destination, for both providers; existing three-argument callers retain their behavior.
-- **Prior P2, S3 URL round trip — `src/L2-clients/aws/s3Client.ts:30,48`:** Both upload paths encode literal key segments. One decode restores spaces, percent escape text and `#` exactly; literal double-encoded dot text remains an object name, while actual decoded traversal and namespace escapes remain rejected.
+- `src/L1-infra/config/environment.ts:104`, `src/L7-app/sdk/VidPipeSDK.ts:577,954`: Instance configuration snapshots and `AsyncLocalStorage.run()` cover all seven SDK cloud methods. Downstream reads retain provider, region, bucket/prefix, table and Azure resource settings across awaits and overlapping instances; scoped failures restore the enclosing context. Default Azure and early AWS unsupported-operation guards remain intact.
+- `src/L7-app/review/approvalQueue.ts:252,261`: Both primary media and thumbnail downloads always use the selected pending entry's `(videoSlug, rowKey)`, including legacy callers without a slug map, consistent with text selection and status mutations.
+- `src/L2-clients/aws/s3Client.ts:16`, `src/L3-services/storage/storageService.ts:77`: Linear edge scanning replaces potentially expensive slash-trimming expressions without changing prefix normalization, literal-percent handling or namespace/traversal rejection.
+- `src/__tests__/e2e/awsStorageRoundtrip.test.ts`: Offline endpoint failures return fixed generic plain text rather than reflecting attacker-controlled request/error details.
 
 ### Acknowledged (Tech Debt)
 
-- None newly identified in this bounded re-review.
+- None newly identified in this bounded patch.
 
 ### No Issues
 
-- No remaining blocking findings in the repair diff.
-- Provider defaults, legacy optional-argument contracts, recorded-filename restrictions, bucket/prefix validation, and raw/encoded traversal checks remain intact.
-- Regression/specification updates cover each original root cause; no unrelated implementation changes found.
+- No correctness, concurrency or resource-isolation findings remain in the reviewed patch.
+- Prefix changes preserve the existing one-decode S3 URL contract; malformed encoding, foreign namespaces, decoded traversal, backslashes, controls, query and fragment remain rejected.
+- Changed tests, specifications and living architecture instructions match the implementation.
 
 ## Validation
 
-- **Independently run:** `npm run typecheck`, `git diff --check`, and eight non-server regression files: **180 tests passed**. Process-local configuration was isolated and credential environment values cleared; global configuration was untouched.
-- **Independent in-memory checks:** three S3 streamed/buffered URL round trips; 18 rejected URL cases (foreign bucket, credentials, prefix mismatch, traversal, backslash/control bytes, malformed encoding, query/fragment and wrong scheme); scoped media/filename restrictions; exact-route 404s without fallback; displayed-row edits/bulk rejection; approval scope retention; missing-scope worker failure without posting/mutation; legacy newest lookup.
-- **Backend-agent results, inspected but not independently rerun:** focused **195 passed**; full suite and full coverage each **3,173 passed / 64 skipped / 0 failed**. Saved JSON reports agree. Coverage summary: **80.55% statements / 72.47% branches**; changed-line log: **48/48 (100%)**. Backend agent also reports build, boundaries and test-tier checks passed.
-- Server-based route/E2E regressions were read but not rerun by this reviewer; no server or remote operation was performed.
+- **Independently run on this patch:** six non-server regression files listed above (all except the offline E2E file): **166 tests passed**. Includes SDK overlap, nested/failing scopes, legacy approval identity, long-prefix normalization, literal-percent round trips and namespace-negative cases.
+- **Independently run:** `npm run typecheck` and `git diff --check`, both passed.
+- Test execution used a nonexistent process-local `VIDPIPE_CONFIG_DIR`, cleared credential/token environment values, and disabled EC2 metadata discovery. No persisted configuration was changed.
+- **Implementer-reported, not independently rerun as separate runs:** security-fixer **74 unit + 4 E2E passed**, affected coverage **95.79% statements / 89.37% branches / 95.12% functions / 97.51% lines**; review-triage **143 focused passed**. These reports are not independent full-suite or full-coverage verification.
+- Offline E2E fixture/negative regressions were inspected, not executed, to avoid server lifecycle operations. No full suite, coverage run, live API, cloud or social operation was performed by this reviewer.
 
 ## Summary
 
-All four original findings are resolved and the bounded fix set is approved for the parent to stage and run normal commit gates. This reviewer changed only the existing review artifact; no source/test/spec edits, staging, commit, push, cloud/social operation, global configuration change or server lifecycle operation.
+The combined post-PR patch is approved with no blocking findings. Only this existing review artifact was changed by the reviewer; implementation/test/spec changes, index, live resources and servers were left untouched for the parent's final validation and commit/push workflow.

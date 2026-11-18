@@ -96,6 +96,7 @@ const {
 vi.mock('../../../L1-infra/config/environment.js', () => ({
   initConfig: mockInitConfig,
   getConfig: mockGetConfig,
+  withConfig: <T>(_config: unknown, operation: () => T): T => operation(),
 }))
 
 vi.mock('../../../L1-infra/config/globalConfig.js', () => ({
