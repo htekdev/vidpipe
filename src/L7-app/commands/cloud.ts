@@ -104,7 +104,7 @@ export function createCloudCommand(): Command {
         const publishQueueDir = join(config.OUTPUT_DIR, 'publish-queue')
         logger.info(`Scanning publish-queue for items from ${folderName}...`)
 
-        const { uploaded, errors } = await uploadPublishQueue(publishQueueDir, slug, runId)
+        const { uploaded, errors } = await uploadPublishQueue(publishQueueDir, slug, runId, { sourceVideoSlug: folderName })
 
         logger.info(`✅ Content uploaded: ${uploaded} item(s)`)
         if (errors.length > 0) {

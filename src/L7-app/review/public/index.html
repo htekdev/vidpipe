@@ -673,7 +673,7 @@
         fetch('/api/posts/bulk-approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ itemIds: selectedPlatforms, priority }),
+          body: JSON.stringify({ itemIds: selectedPlatforms, priority, videoSlugs: Object.fromEntries(currentGroup.items.map(item => [item.id, item.videoSlug])) }),
         }).catch(err => showToast(`Approve failed: ${err.message}`, 'error'))
         
         setStats(s => ({ ...s, approved: s.approved + count }))
@@ -695,7 +695,7 @@
         fetch('/api/posts/bulk-reject', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ itemIds: allIds }),
+          body: JSON.stringify({ itemIds: allIds, videoSlugs: Object.fromEntries(currentGroup.items.map(item => [item.id, item.videoSlug])) }),
         }).catch(err => showToast(`Reject failed: ${err.message}`, 'error'))
         
         setStats(s => ({ ...s, rejected: s.rejected + allIds.length }))

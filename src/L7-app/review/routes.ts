@@ -136,6 +136,14 @@ function enrichGroupedItems(groups: ReviewGroup[]): ReviewGroupedItem[] {
   })
 }
 
+async function findRequestedItem(itemId: string, videoSlug: unknown): Promise<{ partitionKey: string; rowKey: string } | null> {
+  if (typeof videoSlug === 'string' && videoSlug) {
+    const item = await getItemById(videoSlug, itemId)
+    return item ? { partitionKey: item.videoSlug, rowKey: item.id } : null
+  }
+  return findContentItemByRowKey(itemId)
+}
+
 export function createRouter(): Router {
   const router = Router()
 
@@ -143,8 +151,10 @@ export function createRouter(): Router {
   router.get('/api/media/:itemId/:filename', async (req, res) => {
     try {
       const { itemId, filename } = req.params
-      const { stream, contentType, contentLength, contentRange, statusCode, acceptRanges } =
-        await getMediaStream(itemId, filename, req.headers.range)
+      const videoSlug = typeof req.query.videoSlug === 'string' ? req.query.videoSlug : undefined
+      const { stream, contentType, contentLength, contentRange, statusCode, acceptRanges } = videoSlug
+        ? await getMediaStream(itemId, filename, req.headers.range, videoSlug)
+        : await getMediaStream(itemId, filename, req.headers.range)
       if (res.destroyed) {
         stream.destroy()
         return
@@ -211,7 +221,7 @@ export function createRouter(): Router {
   // GET /api/posts/:id — get single post with full content
   router.get('/api/posts/:id', async (req, res) => {
     // Look up the item by RowKey (direct query, not full table scan)
-    const match = await findContentItemByRowKey(req.params.id)
+    const match = await findRequestedItem(req.params.id, req.query.videoSlug)
     if (!match) return res.status(404).json({ error: 'Item not found' })
 
     const item = await getItemById(match.partitionKey, match.rowKey)
@@ -227,7 +237,7 @@ export function createRouter(): Router {
 
     // Immediately mark as approved so it disappears from pending review
     try {
-      const match = await findContentItemByRowKey(itemId)
+      const match = await findRequestedItem(itemId, req.query.videoSlug ?? req.body?.videoSlug)
       if (match) {
         await approveItem(match.partitionKey, match.rowKey)
       }
@@ -237,7 +247,8 @@ export function createRouter(): Router {
 
     res.status(202).json({ accepted: true })
 
-    enqueueApproval([itemId], { priority }).then(result => {
+    const scope = req.query.videoSlug ?? req.body?.videoSlug
+    enqueueApproval([itemId], { priority, ...(typeof scope === 'string' && scope ? { videoSlugs: { [itemId]: scope } } : {}) }).then(result => {
       if (result.scheduled > 0) {
         logger.info(`Single approve completed: ${String(itemId).replace(/[\r\n]/g, '')} → ${result.results[0]?.scheduledFor}`)
       } else {
@@ -249,7 +260,7 @@ export function createRouter(): Router {
   // POST /api/posts/bulk-approve — mark approved immediately, then process Late API scheduling in background
   // Body: { itemIds: string[], priority?: boolean }
   router.post('/api/posts/bulk-approve', async (req, res) => {
-    const { itemIds, priority } = req.body
+    const { itemIds, priority, videoSlugs } = req.body
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
       return res.status(400).json({ error: 'itemIds must be a non-empty array' })
     }
@@ -257,7 +268,7 @@ export function createRouter(): Router {
     // Immediately mark all items as approved so they disappear from pending review
     for (const itemId of itemIds) {
       try {
-        const match = await findContentItemByRowKey(itemId)
+        const match = await findRequestedItem(itemId, videoSlugs?.[itemId])
         if (match) {
           await approveItem(match.partitionKey, match.rowKey)
         }
@@ -268,7 +279,7 @@ export function createRouter(): Router {
 
     res.status(202).json({ accepted: true, count: itemIds.length })
 
-    enqueueApproval(itemIds, { priority: priority === true }).catch(err => {
+    enqueueApproval(itemIds, { priority: priority === true, ...(videoSlugs ? { videoSlugs } : {}) }).catch(err => {
       const msg = err instanceof Error ? err.message : String(err)
       logger.error(`Bulk approve background failed: ${String(msg).replace(/[\r\n]/g, '')}`)
     })
@@ -277,7 +288,7 @@ export function createRouter(): Router {
   // POST /api/posts/:id/reject — mark as rejected in selected storage
   router.post('/api/posts/:id/reject', async (req, res) => {
     try {
-      const match = await findContentItemByRowKey(req.params.id)
+      const match = await findRequestedItem(req.params.id, req.query.videoSlug ?? req.body?.videoSlug)
       if (!match) return res.status(404).json({ error: 'Item not found' })
 
       await rejectItem(match.partitionKey, match.rowKey)
@@ -290,7 +301,7 @@ export function createRouter(): Router {
 
   // POST /api/posts/bulk-reject — fire-and-forget: returns 202 immediately, rejects in background
   router.post('/api/posts/bulk-reject', (req, res) => {
-    const { itemIds } = req.body
+    const { itemIds, videoSlugs } = req.body
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
       return res.status(400).json({ error: 'itemIds must be a non-empty array' })
     }
@@ -299,11 +310,13 @@ export function createRouter(): Router {
 
     ;(async () => {
       const allItems = await getContentItems()
-      const itemLookup = new Map(allItems.map(r => [r.rowKey, r.partitionKey]))
       let succeeded = 0
       for (const itemId of itemIds) {
         try {
-          const videoSlug = itemLookup.get(itemId)
+          const matches = allItems.filter(record => record.rowKey === itemId
+            && (!videoSlugs?.[itemId] || record.partitionKey === videoSlugs[itemId]))
+          matches.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.partitionKey.localeCompare(a.partitionKey))
+          const videoSlug = matches[0]?.partitionKey
           if (!videoSlug) {
             logger.error(`Bulk reject: item not found: ${String(itemId).replace(/[\r\n]/g, '')}`)
             continue
@@ -324,7 +337,7 @@ export function createRouter(): Router {
     try {
       const { postContent } = req.body
 
-      const match = await findContentItemByRowKey(req.params.id)
+      const match = await findRequestedItem(req.params.id, req.query.videoSlug ?? req.body?.videoSlug)
       if (!match) return res.status(404).json({ error: 'Item not found' })
 
       const updated = await updateItem(match.partitionKey, match.rowKey, { postContent })

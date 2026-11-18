@@ -5,6 +5,7 @@ import logger from '../../L1-infra/logger/configLogger.js'
 import { getConfig } from '../../L1-infra/config/environment.js'
 import * as blobClient from '../../L2-clients/azure/blobClient.js'
 import * as tableClient from '../../L2-clients/azure/tableClient.js'
+import { resolveVideoSlug } from '../storage/contentMetadata.js'
 
 const VIDEOS_TABLE = 'Videos'
 const CONTENT_TABLE = 'Content'
@@ -140,6 +141,7 @@ export async function uploadPublishQueue(
   publishQueueDir: string,
   videoSlug: string,
   runId: string,
+  options?: { sourceVideoSlug: string },
 ): Promise<{ uploaded: number; errors: string[] }> {
   const errors: string[] = []
   let uploaded = 0
@@ -162,7 +164,7 @@ export async function uploadPublishQueue(
       const meta = JSON.parse(metaContent) as Record<string, unknown>
       const sourceVideo = String(meta.sourceVideo || '')
       // Match if sourceVideo path ends with the video slug
-      if (sourceVideo && !sourceVideo.endsWith(videoSlug)) {
+      if (options ? resolveVideoSlug(meta, itemId) !== options.sourceVideoSlug : sourceVideo && !sourceVideo.endsWith(videoSlug)) {
         continue // skip — belongs to a different recording
       }
     } catch {

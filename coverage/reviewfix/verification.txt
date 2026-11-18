@@ -1,0 +1,87 @@
+AWS pre-push review repair handoff
+Worktree: C:\Repos\htekdev\vidpipe-aws-storage
+Branch: feature/aws-storage
+Starting HEAD: dd12224943ca7cafd1b346428d9d93e260d9a75e
+
+All four reviewer findings repaired. Specs and failing regressions preceded source edits.
+Observed red failures reproduced Azure serialization, mixed-status duplicate review
+identity, renamed CLI queue selection and S3 literal-key URL decoding. Additional
+route and worker red regressions demonstrated the wrong-partition operations.
+
+Implementation:
+1. Azure migration converts retained object/array Table fields to JSON scalars,
+   omits absent values, and uploads original metadata.json unchanged.
+2. Media URLs now include videoSlug. Optional scoped lookups, frontend bulk
+   requests, routes and approval jobs preserve the complete partition/item identity.
+   The worker still writes raw stored IDs. Unscoped backend lookup remains newest.
+3. Optional uploadPublishQueue fourth argument {sourceVideoSlug} separates source
+   filtering from destination identity for Azure/AWS; CLI supplies original folder.
+4. Generated S3 URLs encode each literal key segment. The validator decodes exactly
+   once, permits literal percent escape text, and retains namespace/traversal guards.
+
+Source files:
+src\L2-clients\aws\s3Client.ts
+src\L3-services\azureStorage\azureStorageService.ts
+src\L3-services\storage\reviewDataSource.ts
+src\L3-services\storage\storageService.ts
+src\L7-app\commands\cloud.ts
+src\L7-app\review\approvalQueue.ts
+src\L7-app\review\public\index.html
+src\L7-app\review\routes.ts
+
+Specs:
+specs\L2-clients\aws\awsClients.md
+specs\L3-services\storage\reviewDataSource.md
+specs\L3-services\storage\storageService.md
+specs\L7-app\commands\CloudStorage.md
+specs\L7-app\review\ReviewStorage.md
+
+Tests:
+src\__tests__\unit\L2-clients\awsClients.test.ts
+src\__tests__\unit\L3-services\storageService.test.ts
+src\__tests__\unit\L3-services\azureReviewDataSource.test.ts
+src\__tests__\unit\L7-app\reviewActions.test.ts (new)
+src\__tests__\integration\L3\awsStorage.test.ts
+src\__tests__\integration\L7\cloud.test.ts
+src\__tests__\integration\L7\routes.queue.test.ts
+src\__tests__\integration\L7\approvalQueue.test.ts
+src\__tests__\e2e\awsStorageRoundtrip.test.ts (new)
+
+Validation:
+All test runs isolated process-local configuration/credential environment:
+VIDPIPE_CONFIG_DIR empty; APPDATA/LOCALAPPDATA project-owned .test-reviewfix-env;
+cloud/API credential variables cleared; AWS_EC2_METADATA_DISABLED=true.
+The new E2E starts an ephemeral loopback HTTP endpoint, uses real child CLI/SDK
+processes and synthetic credentials only, and closes/cleans its fixtures.
+
+Passed focused command (195 tests, 10 files):
+npx vitest run --project unit --project integration-L3 --project integration-L7 --project e2e src\__tests__\unit\L2-clients\awsClients.test.ts src\__tests__\unit\L3-services\storageService.test.ts src\__tests__\unit\L3-services\azureReviewDataSource.test.ts src\__tests__\unit\L3-services\azureStorage.test.ts src\__tests__\unit\L7-app\reviewActions.test.ts src\__tests__\integration\L3\awsStorage.test.ts src\__tests__\integration\L7\cloud.test.ts src\__tests__\integration\L7\routes.queue.test.ts src\__tests__\integration\L7\approvalQueue.test.ts src\__tests__\e2e\awsStorageRoundtrip.test.ts --reporter=dot
+
+Passed full suite (3173 passed, 64 skipped):
+npm test -- --reporter=json --outputFile=.test-reviewfix-env\full-results.json
+
+Passed full coverage suite (3173 passed, 64 skipped):
+npm run test:coverage -- --reporter=json --outputFile=.test-reviewfix-env\coverage-results.json --coverage.reportsDirectory=.test-reviewfix-env\coverage
+Overall coverage: statements80.55%, branches72.47%, functions82.42%, lines80.93%.
+Every changed source module individually exceeds80% statements/functions/lines
+and75% branches. Existing gate checker reports100% changed lines (48/48), with
+no lowered thresholds. Details in coverage-check.log and coverage-summary.json.
+
+Passed:
+npm run typecheck
+npm run build
+git diff --check
+
+Existing governance helpers validateBoundaries and validateTestTiers also passed
+against the working changes, including new unit-L7 and E2E tests. These supplemental
+checks do NOT replace the normal staged commit dry-run.
+
+Remaining parent action:
+Stage intended source/spec/test files and run normal npm run commit -- --dry-run.
+Staging was prohibited for this agent; the index remains empty. No commit/push,
+cloud operation, global configuration change, server stop/restart or nested agent.
+The reviewer-owned .github\reviewed.md was not edited.
+
+Generated scratch directory was removed. Ignored coverage evidence retained here.
+The first full-suite dot-reporter attempt exited1 with output truncated by the
+tool; subsequent captured full-suite and full-coverage runs both passed completely.

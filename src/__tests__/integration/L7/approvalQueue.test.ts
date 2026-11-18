@@ -128,6 +128,19 @@ beforeEach(() => {
 // ── Tests ───────────────────────────────────────────────────────────────
 
 describe('enqueueApproval', () => {
+  it('ReviewStorage.REQ-005: approval preserves the requested duplicate partition for text, media and final raw-ID status writes', async () => {
+    const older = makeContentRecord({ rowKey: 'duplicate', partitionKey: 'older', status: 'approved', postContent: 'Pending displayed text', createdAt: '2025-01-01', thumbnailFilename: 'thumb.png' })
+    const newer = makeContentRecord({ rowKey: 'duplicate', partitionKey: 'newer', status: 'published', postContent: 'Published history', createdAt: '2026-01-01' })
+    mockGetContentItems.mockResolvedValueOnce([]).mockResolvedValueOnce([older, newer])
+    const result = await enqueueApproval(['duplicate'], { videoSlugs: { duplicate: 'older' } })
+    expect(result.scheduled).toBe(1)
+    expect(mockCreatePost).toHaveBeenCalledWith(expect.objectContaining({ content: 'Pending displayed text' }))
+    expect(mockDownloadMediaToFile).toHaveBeenCalledWith('duplicate', 'media.mp4', expect.any(String), 'older')
+    expect(mockDownloadMediaToFile).toHaveBeenCalledWith('duplicate', 'thumb.png', expect.any(String), 'older')
+    expect(mockAzureApproveItem).toHaveBeenCalledWith('older', 'duplicate')
+    expect(mockMarkPublished).toHaveBeenCalledWith('older', 'duplicate', expect.objectContaining({ latePostId: 'late-post-001' }))
+    expect(mockMarkPublished).not.toHaveBeenCalledWith('newer', expect.anything(), expect.anything())
+  })
   describe('successful approval', () => {
     it('ReviewStorage.REQ-003: worker downloads media and updates selected-provider content', async () => {
       const record = makeContentRecord({ rowKey: 'approve-1' })

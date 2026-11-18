@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { Readable } from 'node:stream'
@@ -90,11 +90,11 @@ beforeAll(async () => {
       const body = transport.objects.get(String(input.Key))
       if (!body) throw new Error(`Missing uploaded object: ${String(input.Key)}`)
       return {
-        Body: Readable.from(body.subarray(1, 4)),
+        Body: Readable.from(input.Range ? body.subarray(1, 4) : body),
         ContentType: 'image/png',
-        ContentLength: 3,
-        ContentRange: `bytes 1-3/${body.length}`,
-        $metadata: { httpStatusCode: 206 },
+        ContentLength: input.Range ? 3 : body.length,
+        ContentRange: input.Range ? `bytes 1-3/${body.length}` : undefined,
+        $metadata: { httpStatusCode: input.Range ? 206 : 200 },
       }
     }
     if (input.TableName !== 'integration-content') throw new Error(`Unexpected table: ${String(input.TableName)}`)
@@ -130,8 +130,19 @@ beforeAll(async () => {
 afterAll(async () => {
   await rm(root, { recursive: true, force: true })
 })
+beforeEach(() => { vi.clearAllMocks() })
 
 describe('Integration L3: selected AWS storage with real clients', () => {
+  test('awsClients.REQ-005 storageService.REQ-007: generated upload URLs download the exact literal key through the real S3 client and validator', async () => {
+    for (const filename of ['My Video.mp4', '50% complete #1.mp4']) {
+      const key = `raw/${encodeURIComponent(filename)}`
+      const url = await storage.uploadVideoFile(join(root, 'media.png'), key)
+      const output = join(root, 'downloads', 'download.png')
+      await storage.downloadStorageUrlToFile(url, output)
+      expect(await readFile(output)).toEqual(media)
+      expect(transport.send).toHaveBeenLastCalledWith(expect.objectContaining({ kind: 'getObject', input: expect.objectContaining({ Key: `tenant/${key}` }) }))
+    }
+  })
   test('storageService.REQ-001 storageService.REQ-002 storageService.REQ-004 reviewDataSource.REQ-001 reviewDataSource.REQ-002: uploads, reads, approves and streams through the L1 SDK boundary without Azure', async () => {
     const base = await storage.uploadContentItem(root, metadata.id, metadata.videoSlug, 'integration-run')
     expect(await storage.getContentItem(metadata.videoSlug, metadata.id)).toMatchObject({

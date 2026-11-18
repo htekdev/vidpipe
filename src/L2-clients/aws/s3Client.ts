@@ -27,7 +27,7 @@ export async function uploadBody(key: string, body: Readable, contentType?: stri
       queueSize: 4, partSize: 8 * 1024 * 1024, leavePartsOnError: false,
     })
     await upload.done()
-    return `s3://${target.Bucket}/${target.Key}`
+    return `s3://${target.Bucket}/${target.Key.split('/').map(encodeURIComponent).join('/')}`
   } catch (error) {
     await upload?.abort().catch(() => {})
     throw error
@@ -45,7 +45,7 @@ export async function uploadFile(key: string, path: string, contentType?: string
 export async function uploadBuffer(key: string, body: Buffer, contentType?: string): Promise<string> {
   const target = location(key)
   await client().send(new PutObjectCommand({ ...target, Body: body, ContentType: contentType }))
-  return `s3://${target.Bucket}/${target.Key}`
+  return `s3://${target.Bucket}/${target.Key.split('/').map(encodeURIComponent).join('/')}`
 }
 
 /** Return the original Node stream so caller cancellation destroys the HTTP body. */

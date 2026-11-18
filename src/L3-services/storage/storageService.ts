@@ -73,7 +73,7 @@ export async function downloadStorageUrlToFile(value: string, localPath: string)
   let key: string
   try { key = decodeURIComponent(match[2]) } catch { throw new Error('Invalid encoded S3 object path.') }
   if (!key || key.includes('\\') || /[\u0000-\u001f]/.test(key)
-    || key.split('/').some(part => !part || part === '.' || part === '..') || /%[0-9a-f]{2}/i.test(key)) throw new Error('Invalid S3 object path.')
+    || key.split('/').some(part => !part || part === '.' || part === '..')) throw new Error('Invalid S3 object path.')
   const prefix = getConfig().AWS_S3_PREFIX.replace(/^\/+|\/+$/g, '')
   if (prefix) {
     if (!key.startsWith(`${prefix}/`) || key.length <= prefix.length + 1) throw new Error('S3 object is outside the configured prefix.')
@@ -97,7 +97,10 @@ async function createImportedContent(path: string, id: string, slug: string, run
       await azureBlob.uploadFile(key, join(path, filename), getContentType(filename))
     }
     metadataAttempted = true
-    await azureTable.createEntity('Content', slug, id, { ...normalized, blobBasePath: base })
+    const tableFields = Object.fromEntries(Object.entries({ ...normalized, blobBasePath: base })
+      .filter(([, value]) => value !== null && value !== undefined)
+      .map(([name, value]) => [name, typeof value === 'object' ? JSON.stringify(value) : value]))
+    await azureTable.createEntity('Content', slug, id, tableFields)
     return true
   } catch (error) {
     const conflict = error && typeof error === 'object' && 'statusCode' in error && error.statusCode === 409
@@ -165,8 +168,8 @@ export async function migrateLocalContent(outputDir: string, options?: { dryRun?
 }
 
 /** Upload only items belonging to a recording, preserving per-item errors. */
-export async function uploadPublishQueue(publishQueueDir: string, videoSlug: string, runId: string): Promise<{ uploaded: number; errors: string[] }> {
-  if (getStorageProviderName() === 'azure') return azure.uploadPublishQueue(publishQueueDir, videoSlug, runId)
+export async function uploadPublishQueue(publishQueueDir: string, videoSlug: string, runId: string, options?: { sourceVideoSlug: string }): Promise<{ uploaded: number; errors: string[] }> {
+  if (getStorageProviderName() === 'azure') return azure.uploadPublishQueue(publishQueueDir, videoSlug, runId, options)
   const result = { uploaded: 0, errors: [] as string[] }
   let entries
   try { entries = await readdir(publishQueueDir, { withFileTypes: true }) }
@@ -176,7 +179,7 @@ export async function uploadPublishQueue(publishQueueDir: string, videoSlug: str
     try {
       const path = join(publishQueueDir, entry.name)
       const { record, metadata } = await readContentDirectory(path, runId)
-      if (resolveVideoSlug(metadata, entry.name) !== videoSlug) continue
+      if (resolveVideoSlug(metadata, entry.name) !== (options?.sourceVideoSlug ?? videoSlug)) continue
       if (await createImportedContent(path, String(metadata.id ?? metadata.itemId ?? entry.name), videoSlug, runId, record)) result.uploaded++
     } catch (error) { result.errors.push(`${entry.name}: ${error instanceof Error ? error.message : String(error)}`) }
   }
@@ -185,8 +188,8 @@ export async function uploadPublishQueue(publishQueueDir: string, videoSlug: str
 }
 
 /** Resolve media through its recorded location, not a reconstructed legacy prefix. */
-export async function resolveContentFile(itemId: string, filename: string): Promise<{ record: StoredContentRecord; key: string }> {
-  const record = await findContentItemByRowKey(itemId)
+export async function resolveContentFile(itemId: string, filename: string, videoSlug?: string): Promise<{ record: StoredContentRecord; key: string }> {
+  const record = videoSlug ? await getContentItem(videoSlug, itemId) : await findContentItemByRowKey(itemId)
   if (!record) throw Object.assign(new Error(`Content item not found: ${itemId}`), { statusCode: 404 })
   if (!filename || /[\\/]/.test(filename) || ![record.mediaFilename, record.thumbnailFilename].includes(filename)) {
     throw Object.assign(new Error('Invalid media filename'), { statusCode: 400 })

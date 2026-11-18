@@ -68,6 +68,17 @@ test('awsClients.REQ-004: uses configured namespace and leaves credentials to de
   expect(mocks.send.mock.lastCall?.[0].input).toMatchObject({ Bucket: 'bucket', Key: 'tenant/content/a' })
 })
 
+test('awsClients.REQ-005: file and buffer upload URLs preserve literal percent escapes, spaces and fragments', async () => {
+  const key = 'raw/My%20Video 50% #1.mp4'
+  mocks.done.mockResolvedValueOnce({})
+  mocks.send.mockResolvedValueOnce({})
+  const streamed = await s3.uploadBody(key, Readable.from('video'))
+  const buffered = await s3.uploadBuffer(key, Buffer.from('video'))
+  expect(streamed).toBe('s3://bucket/tenant/raw/My%2520Video%2050%25%20%231.mp4')
+  expect(buffered).toBe(streamed)
+  expect(decodeURIComponent(new URL(streamed).pathname.slice(1))).toBe(`tenant/${key}`)
+})
+
 test('awsClients.REQ-001: scans every empty continuation page and never strongly reads a GSI', async () => {
   mocks.send.mockResolvedValueOnce({ LastEvaluatedKey: { id: 'a' } }).mockResolvedValueOnce({ Items: [{ id: 'b' }] })
   expect(await db.scanAll({ TableName: 'content' })).toEqual([{ id: 'b' }])

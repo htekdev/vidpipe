@@ -108,6 +108,14 @@ describe('L7 Unit: Cloud command', () => {
     process.exitCode = undefined
   })
 
+  test('CloudStorage.REQ-007: explicit slug renames the destination without changing the queue source selector', async () => {
+    mockGetStorageProviderName.mockReturnValue('aws')
+    mockReaddir.mockResolvedValueOnce(['My Video.mp4'])
+    await createCloudCommand().parseAsync(['upload', join(OUTPUT_DIR, 'original'), '--slug', 'renamed'], { from: 'user' })
+    expect(mockUploadRawVideo).toHaveBeenCalledWith(expect.any(String), 'test-run-id', expect.objectContaining({ slug: 'renamed' }))
+    expect(mockUploadPublishQueue).toHaveBeenCalledWith(join(OUTPUT_DIR, 'publish-queue'), 'renamed', 'test-run-id', { sourceVideoSlug: 'original' })
+  })
+
   afterEach(() => {
     exitSpy.mockRestore()
     consoleSpy.mockRestore()
@@ -345,7 +353,7 @@ describe('L7 Unit: Cloud command', () => {
       expect(mockUploadRawVideo).toHaveBeenCalledWith(join(recording, 'video.mp4'), 'test-run-id', {
         slug: 'my-video', originalFilename: 'video.mp4', size: 1024 * 1024,
       })
-      expect(mockUploadPublishQueue).toHaveBeenCalledWith(join(OUTPUT_DIR, 'publish-queue'), 'my-video', 'test-run-id')
+      expect(mockUploadPublishQueue).toHaveBeenCalledWith(join(OUTPUT_DIR, 'publish-queue'), 'my-video', 'test-run-id', { sourceVideoSlug: 'my-video' })
       expect(mockUploadVideoFile).not.toHaveBeenCalled()
     })
 

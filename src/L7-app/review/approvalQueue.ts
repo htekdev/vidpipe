@@ -23,6 +23,7 @@ import logger from '../../L1-infra/logger/configLogger.js'
 interface ApprovalJob {
   itemIds: string[]
   priority: boolean
+  videoSlugs?: Record<string, string>
   resolve: (result: ApprovalResult) => void
 }
 
@@ -46,9 +47,9 @@ export interface ApprovalResult {
 const queue: ApprovalJob[] = []
 let processing = false
 
-export function enqueueApproval(itemIds: string[], options?: { priority?: boolean }): Promise<ApprovalResult> {
+export function enqueueApproval(itemIds: string[], options?: { priority?: boolean; videoSlugs?: Record<string, string> }): Promise<ApprovalResult> {
   return new Promise(resolve => {
-    queue.push({ itemIds, priority: options?.priority ?? false, resolve })
+    queue.push({ itemIds, priority: options?.priority ?? false, videoSlugs: options?.videoSlugs, resolve })
     if (!processing) drain()
   })
 }
@@ -58,7 +59,7 @@ async function drain(): Promise<void> {
   while (queue.length > 0) {
     const job = queue.shift()!
     try {
-      const result = await processApprovalBatch(job.itemIds, job.priority)
+      const result = await processApprovalBatch(job.itemIds, job.priority, job.videoSlugs)
       job.resolve(result)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -74,7 +75,7 @@ async function drain(): Promise<void> {
   processing = false
 }
 
-async function processApprovalBatch(itemIds: string[], priority: boolean): Promise<ApprovalResult> {
+async function processApprovalBatch(itemIds: string[], priority: boolean, videoSlugs?: Record<string, string>): Promise<ApprovalResult> {
   const client = createLateApiClient()
   const schedConfig = await loadScheduleConfig()
   const results: ApprovalResult['results'] = []
@@ -92,7 +93,7 @@ async function processApprovalBatch(itemIds: string[], priority: boolean): Promi
   const allPending = await getContentItems({ status: 'pending_review' })
   const itemMap = new Map<string, { record: (typeof allPending)[number]; videoSlug: string }>()
   for (const record of allPending) {
-    if (itemIds.includes(record.rowKey)) {
+    if (itemIds.includes(record.rowKey) && (!videoSlugs?.[record.rowKey] || videoSlugs[record.rowKey] === record.partitionKey)) {
       itemMap.set(record.rowKey, { record, videoSlug: record.partitionKey })
     }
   }
@@ -103,7 +104,7 @@ async function processApprovalBatch(itemIds: string[], priority: boolean): Promi
     const allItems = await getContentItems()
     const missingIdSet = new Set(missingIds)
     for (const record of allItems) {
-      if (missingIdSet.has(record.rowKey)) {
+      if (missingIdSet.has(record.rowKey) && (!videoSlugs?.[record.rowKey] || videoSlugs[record.rowKey] === record.partitionKey)) {
         itemMap.set(record.rowKey, { record, videoSlug: record.partitionKey })
       }
     }
@@ -248,7 +249,8 @@ async function processApprovalBatch(itemIds: string[], priority: boolean): Promi
         if (record.mediaFilename) {
           try {
             const localMediaPath = join(tempDir, `${itemId}-${record.mediaFilename}`)
-            await downloadMediaToFile(itemId, record.mediaFilename, localMediaPath)
+            if (videoSlugs?.[itemId]) await downloadMediaToFile(record.rowKey, record.mediaFilename, localMediaPath, videoSlug)
+            else await downloadMediaToFile(itemId, record.mediaFilename, localMediaPath)
 
             const upload = await client.uploadMedia(localMediaPath)
             const mediaItem: { type: 'image' | 'video'; url: string; thumbnail?: string } = { type: upload.type, url: upload.url }
@@ -257,7 +259,8 @@ async function processApprovalBatch(itemIds: string[], priority: boolean): Promi
             if (record.thumbnailFilename) {
               try {
                 const localThumbPath = join(tempDir, `${itemId}-${record.thumbnailFilename}`)
-                await downloadMediaToFile(itemId, record.thumbnailFilename, localThumbPath)
+                if (videoSlugs?.[itemId]) await downloadMediaToFile(record.rowKey, record.thumbnailFilename, localThumbPath, videoSlug)
+                else await downloadMediaToFile(itemId, record.thumbnailFilename, localThumbPath)
 
                 const thumbUpload = await client.uploadMedia(localThumbPath)
                 const thumbUrl = thumbUpload.url

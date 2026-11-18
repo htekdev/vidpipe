@@ -2,6 +2,7 @@ import { beforeEach, afterEach, expect, test, vi } from 'vitest'
 import { mkdir, writeFile, rm, readFile } from 'node:fs/promises'
 import { resolve, join } from 'node:path'
 import { Readable } from 'node:stream'
+import { pathToFileURL } from 'node:url'
 import { initConfig } from '../../../L1-infra/config/environment.js'
 
 const mocks = vi.hoisted(() => ({
@@ -132,7 +133,7 @@ test('storageService.REQ-007: validates bucket, prefix, encoding and traversal b
   expect(mocks.downloadToFile).toHaveBeenCalledWith('content/my file.mp4', 'download.mp4')
   for (const url of [
     's3://other/tenant/file', 's3://user@bucket/tenant/file', 's3://bucket/tenant-evil/file',
-    's3://bucket/tenant/../file', 's3://bucket/tenant/%2e%2e/file', 's3://bucket/tenant/%252e%252e/file',
+    's3://bucket/tenant/../file', 's3://bucket/tenant/%2e%2e/file',
     's3://bucket/tenant/file?x=y', 's3://bucket/tenant/file#hash', 's3://bucket/tenant/%zz',
     'blob://tenant/file',
   ]) await expect(storage.downloadStorageUrlToFile(url, 'download.mp4')).rejects.toThrow()
@@ -403,6 +404,52 @@ test('storageService.REQ-008: content counts increment new uploads without recou
   mocks.getItem.mockResolvedValue(record)
   expect(await storage.uploadPublishQueue(join(root, 'queue'), 'video', 'run')).toMatchObject({ uploaded: 0 })
   expect(mocks.incrementCounter).toHaveBeenCalledTimes(1)
+})
+
+test.each([{ links: [] }, { links: [{ url: 'https://example.test/docs', title: 'Docs' }] }])('storageService.REQ-009: Azure migration handles ordinary links $links through the installed Azure serializer', async ({ links }) => {
+  initConfig({ storageProvider: 'azure' })
+  const platformSpecificData = { linkedin: { visibility: 'PUBLIC' } }
+  const { serialize } = await import(pathToFileURL(resolve('node_modules', '@azure', 'data-tables', 'dist', 'esm', 'serialization.js')).href)
+  azureMocks.createEntity.mockImplementation(async (_table, partitionKey, rowKey, fields) => {
+    serialize({ partitionKey, rowKey, ...fields })
+  })
+  const path = await fixture('published/linked-item', { sourceVideo: 'video', links, platformSpecificData })
+  expect(await storage.migrateLocalContent(root)).toMatchObject({ uploaded: 1, errors: [] })
+  const fields = azureMocks.createEntity.mock.lastCall?.[3]
+  expect(fields.links).toBe(JSON.stringify(links))
+  expect(fields.platformSpecificData).toBe(JSON.stringify(platformSpecificData))
+  expect(JSON.parse(await readFile(join(path, 'metadata.json'), 'utf8'))).toMatchObject({ links, platformSpecificData })
+})
+
+test.each(['azure', 'aws'] as const)('storageService.REQ-010: %s queue source filtering remains independent from the destination slug', async provider => {
+  initConfig({ storageProvider: provider })
+  await fixture('queue/item', { sourceVideo: 'C:\\recordings\\original', links: [] })
+  await fixture('queue/unrelated', { sourceVideo: '/recordings/unrelated' })
+  expect(await storage.uploadPublishQueue(join(root, 'queue'), 'renamed', 'run', { sourceVideoSlug: 'original' })).toMatchObject({ uploaded: 1, errors: [] })
+  if (provider === 'aws') expect(mocks.createItem.mock.lastCall?.[1]).toMatchObject({ videoSlug: 'renamed', sourceVideo: 'C:\\recordings\\original' })
+  else expect(azureMocks.createEntity).toHaveBeenCalledWith('Content', 'renamed', 'item', expect.objectContaining({ sourceVideoRunId: 'run' }))
+})
+
+test('reviewDataSource.REQ-004: an older pending card keeps its exact identity when a newer published duplicate exists', async () => {
+  const older = { ...record, videoSlug: 'older', partitionKey: 'older', createdAt: '2025-01-01', blobBasePath: 'old/', postContent: 'Pending text' }
+  const newer = { ...record, videoSlug: 'newer', partitionKey: 'newer', createdAt: '2026-01-01', status: 'published', blobBasePath: 'new/', postContent: 'Published text' }
+  mocks.queryAll.mockImplementation(async input => input.IndexName ? [older] : [newer, older])
+  mocks.getItem.mockImplementation(async (_table, key) => key.videoSlug === 'older' ? older : newer)
+  const [item] = await review.listPendingItems()
+  expect(item.postContent).toBe('Pending text')
+  expect(item.mediaUrl).toContain('videoSlug=older')
+  mocks.getMediaStream.mockResolvedValue({ stream: Readable.from('old'), contentType: 'image/png' })
+  await review.getMediaStream(item.id, 'media.png', undefined, item.videoSlug)
+  expect(mocks.getMediaStream).toHaveBeenLastCalledWith('old/media.png', undefined)
+  expect(await storage.findContentItemByRowKey(item.id)).toMatchObject({ partitionKey: 'newer' })
+  expect(await review.getPostContent(item.id, item.videoSlug)).toBe('Pending text')
+  await review.downloadMediaToFile(item.id, 'media.png', 'local.png', item.videoSlug)
+  expect(mocks.downloadToFile).toHaveBeenLastCalledWith('old/media.png', 'local.png')
+})
+
+test('storageService.REQ-007: percent escape text in a literal S3 key is decoded only once, not treated as filesystem traversal', async () => {
+  await storage.downloadStorageUrlToFile('s3://bucket/objects/%252e%252e/My%2520Video%25%23.mp4', 'local.mp4')
+  expect(mocks.downloadToFile).toHaveBeenCalledWith('objects/%2e%2e/My%20Video%#.mp4', 'local.mp4')
 })
 
 test('storageService.REQ-001: legacy Azure media streams preserve direct blob paths, MIME types and transport failures independently of the selected provider', async () => {

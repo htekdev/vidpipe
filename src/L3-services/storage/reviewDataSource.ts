@@ -49,14 +49,14 @@ function mapContentRecordToReviewItem(
     clipType: record.clipType,
     status: record.status,
     mediaType: record.mediaType || 'video',
-    mediaUrl: mediaFilename ? `/api/media/${itemId}/${mediaFilename}` : '',
+    mediaUrl: mediaFilename ? `/api/media/${encodeURIComponent(itemId)}/${encodeURIComponent(mediaFilename)}?videoSlug=${encodeURIComponent(record.partitionKey)}` : '',
     postContent: record.postContent || '',
     hashtags: record.hashtags ? record.hashtags.split(',').filter(Boolean) : [],
     scheduledFor: record.scheduledFor || null,
     latePostId: record.latePostId || null,
     publishedUrl: record.publishedUrl || null,
     createdAt: record.createdAt || new Date().toISOString(),
-    thumbnailUrl: thumbnailFilename ? `/api/media/${itemId}/${thumbnailFilename}` : null,
+    thumbnailUrl: thumbnailFilename ? `/api/media/${encodeURIComponent(itemId)}/${encodeURIComponent(thumbnailFilename)}?videoSlug=${encodeURIComponent(record.partitionKey)}` : null,
     ideaIds: record.ideaIds ? record.ideaIds.split(',').filter(Boolean) : [],
     mediaFilename,
     thumbnailFilename,
@@ -158,8 +158,9 @@ export async function getMediaStream(
   itemId: string,
   filename: string,
   range?: string,
+  videoSlug?: string,
 ): Promise<MediaStreamResult> {
-  const { key } = await storageService.resolveContentFile(itemId, filename)
+  const { key } = await storageService.resolveContentFile(itemId, filename, videoSlug)
   const result = await storageService.getStorageMediaStream(key, range)
   return { ...result, contentType: result.contentType || getContentTypeForFilename(filename) }
 }
@@ -231,8 +232,8 @@ export async function updateItem(
 
 // ── Post content retrieval ───────────────────────────────────────────────
 
-export async function getPostContent(itemId: string): Promise<string> {
-  const record = await storageService.findContentItemByRowKey(itemId)
+export async function getPostContent(itemId: string, videoSlug?: string): Promise<string> {
+  const record = videoSlug ? await storageService.getContentItem(videoSlug, itemId) : await storageService.findContentItemByRowKey(itemId)
   return record?.postContent ?? ''
 }
 
@@ -242,7 +243,8 @@ export async function downloadMediaToFile(
   itemId: string,
   filename: string,
   localPath: string,
+  videoSlug?: string,
 ): Promise<void> {
-  const { key } = await storageService.resolveContentFile(itemId, filename)
+  const { key } = await storageService.resolveContentFile(itemId, filename, videoSlug)
   await storageService.downloadBlobToFile(key, localPath)
 }
