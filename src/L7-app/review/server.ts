@@ -1,7 +1,7 @@
 import { express } from '../../L1-infra/http/http.js'
 import { join, dirname, fileURLToPath } from '../../L1-infra/paths/paths.js'
 import { createRouter } from './routes.js'
-import { isAzureConfigured } from '../../L3-services/azureStorage/azureStorageService.js'
+import { isStorageConfigured, getStorageProviderName } from '../../L3-services/storage/storageService.js'
 import logger from '../../L1-infra/logger/configLogger.js'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
@@ -14,9 +14,10 @@ export async function startReviewServer(options: ReviewServerOptions = {}): Prom
   port: number
   close: () => Promise<void>
 }> {
-  // Azure Storage is required for the review server
-  if (!isAzureConfigured()) {
-    const msg = 'Review server requires Azure Storage. Set AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY environment variables.'
+  if (!isStorageConfigured()) {
+    const msg = getStorageProviderName() === 'aws'
+      ? 'Review server requires AWS S3 and DynamoDB. Set AWS_REGION, AWS_S3_BUCKET, AWS_DYNAMODB_CONTENT_TABLE, and AWS_DYNAMODB_VIDEOS_TABLE, and configure AWS credentials using a profile or role.'
+      : 'Review server requires Azure Storage. Set AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY environment variables.'
     logger.error(msg)
     throw new Error(msg)
   }

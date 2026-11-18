@@ -429,6 +429,7 @@ Social media publishing is configured via `schedule.json` and the Late API. See 
 | [FFmpeg Setup](./docs/ffmpeg-setup.md) | Platform-specific install (Windows, macOS, Linux, ARM64) |
 | [Brand Customization](./docs/brand-customization.md) | Customize AI voice, vocabulary, hashtags, and content style |
 | [Social Publishing](./docs/social-publishing.md) | Review, schedule, and publish social posts via Late API |
+| [AWS Storage](./docs/aws-storage.md) | Optional S3/DynamoDB storage, CloudFormation setup, and safe local queue migration; Azure remains the default |
 | [Architecture (L0–L7)](./docs/architecture/layers.md) | Layer hierarchy, import rules, and testing strategy |
 | [Platform Content Strategy](./docs/platform-content-strategy.md) | Research-backed recommendations per social platform |
 
@@ -567,4 +568,3 @@ SDK features include:
 - `doctor()` and `config.*` for diagnostics and configuration access
 
 See [docs/sdk.md](./docs/sdk.md) for the full SDK guide.
-

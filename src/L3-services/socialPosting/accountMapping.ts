@@ -4,6 +4,8 @@ import type { LateAccount } from '../../L2-clients/late/lateApi.js'
 import logger from '../../L1-infra/logger/configLogger.js'
 import { readTextFile, writeTextFile, removeFile } from '../../L1-infra/fileSystem/fileSystem.js'
 import { join, resolve, sep } from '../../L1-infra/paths/paths.js'
+import { getConfig } from '../../L1-infra/config/environment.js'
+import { selectLateProfile } from './profileSelection.js'
 
 // ── Cache ──────────────────────────────────────────────────────────────
 
@@ -11,6 +13,8 @@ const CACHE_FILE = '.vidpipe-cache.json'
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000 // 24 hours
 
 interface AccountCache {
+  profileId: string
+  configuredProfileId: string
   accounts: Record<string, string> // platform -> accountId
   fetchedAt: string
 }
@@ -31,6 +35,9 @@ function cachePath(): string {
 }
 
 function isCacheValid(cache: AccountCache): boolean {
+  const configuredProfileId = getConfig().LATE_PROFILE_ID || ''
+  if (cache.configuredProfileId !== configuredProfileId || !cache.profileId ||
+      (configuredProfileId && cache.profileId !== configuredProfileId)) return false
   const fetchedAtTime = new Date(cache.fetchedAt).getTime()
   if (Number.isNaN(fetchedAtTime)) {
     logger.warn('Invalid fetchedAt in account cache; treating as stale', {
@@ -64,6 +71,8 @@ async function writeFileCache(cache: AccountCache): Promise<void> {
     }
     // Sanitize by re-constructing with only expected fields
     const sanitized: AccountCache = {
+      profileId: cache.profileId,
+      configuredProfileId: cache.configuredProfileId,
       accounts: typeof cache.accounts === 'object' ? { ...cache.accounts } : {},
       fetchedAt: String(cache.fetchedAt),
     }
@@ -88,16 +97,23 @@ async function writeFileCache(cache: AccountCache): Promise<void> {
 
 async function fetchAndCache(): Promise<Record<string, string>> {
   const client = new LateApiClient()
+  const configuredProfileId = getConfig().LATE_PROFILE_ID || ''
+  const profileId = configuredProfileId ||
+    selectLateProfile(await client.listProfiles(), configuredProfileId)?._id
+  if (!profileId) return {}
   const accounts: LateAccount[] = await client.listAccounts()
 
   const mapping: Record<string, string> = {}
   for (const acct of accounts) {
-    if (acct.isActive) {
+    const accountProfileId = typeof acct.profileId === 'string' ? acct.profileId : acct.profileId?._id
+    if (acct.isActive && accountProfileId === profileId) {
       mapping[acct.platform] = acct._id
     }
   }
 
   const cache: AccountCache = {
+    profileId,
+    configuredProfileId,
     accounts: mapping,
     fetchedAt: new Date().toISOString(),
   }
@@ -142,7 +158,8 @@ async function ensureMappings(): Promise<Record<string, string>> {
  * 2. File cache (.vidpipe-cache.json)
  * 3. Fetch from Late API and cache
  *
- * Returns null if the platform is not connected.
+ * Only accounts belonging to the configured (or unambiguous default) profile
+ * are eligible. Returns null if that profile has no active platform account.
  */
 export async function getAccountId(
   platform: Platform,

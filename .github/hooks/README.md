@@ -2,7 +2,24 @@
 
 > Automated enforcement of vidpipe's L0–L7 layered architecture via GitHub Copilot pre/post tool-use hooks.
 
-These hooks run **before** or **after** every Copilot tool call (edit, create, bash, powershell). They inspect the proposed change and return `deny` if it violates the architecture rules. All hooks are **fail-open** — if the hook script itself errors, the tool call proceeds.
+These hooks run **before** or **after** every Copilot tool call (edit, create, bash, powershell). They inspect the proposed change and return `deny` if it violates the architecture rules. The legacy architecture scripts catch errors and fail open; the staged spec gate returns an actionable JSON denial if validation cannot run. A missing command is different: Copilot CLI fails closed on pre-tool command errors, blocking even read-only calls.
+
+### Spec governance and entrypoint regression checks
+
+The pre/post spec entries both run `node .github/hooks/spec-governance.mjs`, with `pre` or `post` as the argument. They previously referenced four scripts that were absent from the repository (`pre-spec-test-coverage.ps1` / `.sh` and `post-spec-change.ps1` / `.sh`).
+
+- **Pre-tool:** Before commit/push commands (including `npm run commit`, `npm run push`, and `gh hookflow git-push`), added/modified staged `specs/**/*.md` requirement rows need matching `{SpecName}.REQ-XXX` references in staged test changes under `src/__tests__/`. Ordinary reads and edits are not blocked. This complements, rather than replaces, the existing commit gate; it checks staged changes, not requirements already committed to history.
+- **Post-tool:** Editing, creating, or patching a spec emits `additionalContext` reminding the agent to update corresponding tests. Patch reminders include added, updated, and moved spec files. Tests belong under `src/__tests__/`, not `specs/__tests__/`.
+- Both entries accept stringified or object `toolArgs`; `apply_patch` also accepts its native FREEFORM patch text. Arguments are parsed only for applicable tools, so unrelated FREEFORM tools cannot block the session. Malformed shell arguments still fail closed.
+- The entries use Node.js (already required by this project) and preserve all existing git, architecture, and Hookflow hooks. No new extension is required.
+
+Run the focused regression suite (including every registered local Windows script command with an actual stdin payload):
+
+```powershell
+npx vitest run --project unit src\__tests__\unit\hooks\specGovernance.test.ts --coverage --coverage.include=.github/hooks/spec-governance.mjs --coverage.reportsDirectory=coverage/hooks --coverage.reporter=lcov --coverage.reporter=text-summary --coverage.reporter=json-summary --coverage.thresholds.statements=80 --coverage.thresholds.branches=75 --coverage.thresholds.functions=80 --coverage.thresholds.lines=80
+```
+
+Protocol reference: [GitHub Copilot hooks reference](https://docs.github.com/en/copilot/reference/hooks-reference).
 
 ---
 

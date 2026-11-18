@@ -53,6 +53,14 @@ export interface VidPipeConfig {
   // GitHub/Ideas
   ideasRepo?: string
   geminiModel?: string
+
+  // Cloud storage (AWS credentials use the SDK default credential chain)
+  storageProvider?: 'azure' | 'aws'
+  awsRegion?: string
+  awsS3Bucket?: string
+  awsS3Prefix?: string
+  awsDynamodbContentTable?: string
+  awsDynamodbVideosTable?: string
 }
 
 /**
@@ -222,21 +230,21 @@ export interface VidPipeSDK {
     path(): string
   }
 
-  /** Cloud storage operations (Azure) */
+  /** Cloud storage operations for the configured provider (Azure by default) */
   cloud: {
-    /** Upload a video to Azure Storage and trigger GitHub Actions pipeline */
+    /** Upload a video to Azure Storage and trigger GitHub Actions pipeline; unsupported with AWS */
     process(videoPath: string, options?: { spec?: string; ideas?: string; publishBy?: string; repo?: string }): Promise<{ runId: string; blobPath: string; workflowTriggered: boolean }>
-    /** Upload config files (schedule.json, brand.json, assets/) to Azure */
+    /** Upload config files (schedule.json, brand.json, assets/) to Azure; unsupported with AWS */
     pushConfig(): Promise<{ uploaded: number }>
-    /** Download config files from Azure to local vidpipe directory */
+    /** Download config files from Azure to local vidpipe directory; unsupported with AWS */
     pullConfig(): Promise<{ downloaded: number }>
-    /** Upload existing local publish-queue/ and published/ to Azure */
-    migrate(): Promise<{ uploaded: number; errors: string[] }>
-    /** Download a video from Azure blob (blob://) or HTTP URL */
+    /** Import local publish-queue/ and published/ content; sourceDir defaults to OUTPUT_DIR */
+    migrate(options?: { sourceDir?: string; dryRun?: boolean }): Promise<{ uploaded: number; skipped?: number; errors: string[] }>
+    /** Download a validated provider URL (blob:// or s3://) or an HTTP(S) URL */
     download(videoUrl: string, outputPath: string): Promise<void>
-    /** Check Azure connection status and stored content */
+    /** Check selected provider readiness and stored content; AWS configFiles is always zero */
     status(): Promise<{ configured: boolean; configFiles: number; contentItems: number; videos: number }>
-    /** Check if Azure Storage credentials are configured */
+    /** Check selected provider configuration without network requests or AWS credential resolution */
     isConfigured(): boolean
   }
 }

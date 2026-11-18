@@ -74,6 +74,55 @@ describe('L7 Integration: configure command', () => {
     return mockConsoleLog.mock.calls.map((call) => call.map(String).join(' ')).join('\n')
   }
 
+  it.each([
+    ['storage-provider', 'storageProvider', 'aws'],
+    ['aws-region', 'awsRegion', 'us-west-2'],
+    ['aws-s3-bucket', 'awsS3Bucket', 'media'],
+    ['aws-s3-prefix', 'awsS3Prefix', 'vidpipe'],
+    ['aws-dynamodb-content-table', 'awsDynamodbContentTable', 'content'],
+    ['aws-dynamodb-videos-table', 'awsDynamodbVideosTable', 'videos'],
+  ])('configure.REQ-001: supports %s set/get and defaults dot notation', async (alias, key, value) => {
+    mockGetGlobalConfigValue.mockReturnValue(value)
+    await runConfigure('set', [alias, value])
+    expect(mockSetGlobalConfigValue).toHaveBeenCalledWith('defaults', key, value)
+    await runConfigure('get', [alias])
+    expect(mockGetGlobalConfigValue).toHaveBeenCalledWith('defaults', key)
+    expect(getLogs()).toContain(`defaults.${key} = ${value}`)
+    await runConfigure('set', [`defaults.${key}`, value])
+    expect(mockSetGlobalConfigValue).toHaveBeenLastCalledWith('defaults', key, value)
+    expect(mockMaskSecret).not.toHaveBeenCalled()
+    expect(process.exitCode).toBeUndefined()
+  })
+
+  it('configure.REQ-001: lists AWS resource values as non-secret defaults', async () => {
+    mockLoadGlobalConfig.mockReturnValue({
+      credentials: {},
+      defaults: { storageProvider: 'aws', awsRegion: 'us-west-2', awsS3Bucket: 'media' },
+    })
+    await runConfigure('list')
+    expect(getLogs()).toContain('defaults.storageProvider')
+    expect(getLogs()).toContain('defaults.awsS3Bucket')
+    expect(getLogs()).toContain('media')
+    expect(getLogs()).toContain('defaults.awsDynamodbVideosTable')
+    expect(mockMaskSecret).not.toHaveBeenCalled()
+  })
+
+  it.each(['storage-provider', 'defaults.storageProvider'])('configure.REQ-002: rejects invalid provider via %s before saving', async (key) => {
+    await runConfigure('set', [key, 'gcp'])
+    expect(mockSetGlobalConfigValue).not.toHaveBeenCalled()
+    expect(getLogs()).toMatch(/azure.*aws/)
+    expect(process.exitCode).toBe(1)
+  })
+
+  it.each(['aws-access-key-id', 'aws-secret-access-key', 'credentials.awsAccessKeyId', 'credentials.awsSecretAccessKey'])(
+    'configure.REQ-002: does not offer static AWS secret storage through %s',
+    async (key) => {
+      await runConfigure('set', [key, 'not-a-credential'])
+      expect(mockSetGlobalConfigValue).not.toHaveBeenCalled()
+      expect(process.exitCode).toBe(1)
+    },
+  )
+
   it('maps openai-key to credentials.openaiApiKey for set', async () => {
     mockGetGlobalConfigValue.mockReturnValue('sk-xxx')
 
@@ -119,13 +168,12 @@ describe('L7 Integration: configure command', () => {
 
     expect(mockLoadGlobalConfig).toHaveBeenCalledTimes(1)
     expect(mockMaskSecret).toHaveBeenCalledWith('sk-secret-value')
-    expect(mockConsoleLog).toHaveBeenCalledTimes(21)
-
     const logs = getLogs()
     expect(logs).toContain('credentials.openaiApiKey')
     expect(logs).toContain('masked:sk-secret-value')
     expect(logs).toContain('defaults.llmProvider')
     expect(logs).toContain('claude')
+    expect(logs).toContain('defaults.storageProvider')
   })
 
   it('resets config when reset is confirmed', async () => {

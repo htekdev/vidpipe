@@ -98,16 +98,17 @@ function makeQueueCache(
   return {
     mappings,
     profileId,
+    configuredProfileId: '',
     fetchedAt: fetchedAt ?? new Date().toISOString(),
   }
 }
 
 /** Build the JSON shape that the Late API /queue/slots endpoint returns. */
-function queuesApiBody(queues: Array<{ _id: string; name: string; slots?: Array<{ dayOfWeek: number; time: string }>; active?: boolean }>) {
+function queuesApiBody(queues: Array<{ _id: string; name: string; slots?: Array<{ dayOfWeek: number; time: string }>; active?: boolean }>, profileId = 'profile-1') {
   return {
     queues: queues.map((q) => ({
       _id: q._id,
-      profileId: 'profile-1',
+      profileId,
       name: q.name,
       timezone: 'America/Chicago',
       slots: q.slots ?? [],
@@ -146,7 +147,7 @@ function stubFetchForRefresh(
 ) {
   mockFetch
     .mockResolvedValueOnce(fakeResponse(profilesApiBody(profiles)))
-    .mockResolvedValueOnce(fakeResponse(queuesApiBody(queues)))
+    .mockResolvedValueOnce(fakeResponse(queuesApiBody(queues, profiles[0]?._id)))
 }
 
 const SCHEDULE_WITH_CLIP_TYPES: ScheduleConfig = {

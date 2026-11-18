@@ -25,6 +25,12 @@ export interface GlobalDefaults {
   lateProfileId?: string
   geminiModel?: string
   scheduleConfig?: string
+  storageProvider?: string
+  awsRegion?: string
+  awsS3Bucket?: string
+  awsS3Prefix?: string
+  awsDynamodbContentTable?: string
+  awsDynamodbVideosTable?: string
 }
 
 export interface GlobalConfig {

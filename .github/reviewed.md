@@ -1,161 +1,63 @@
 # Code Review
 
-**Reviewed:** 2026-02-22T08:23:54-06:00
+**Reviewed:** 2026-11-17T18:53:56-06:00
 **Reviewer:** code-reviewer
-**Branch:** feature/hook-first-clips
+**Branch:** feature/aws-storage
+**HEAD:** c41bc8595215f8100d2f45d1575ff56e4cf935e0
+**PR:** htekdev/vidpipe#180
+**Scope:** Only the combined uncommitted post-PR patch since this HEAD, its regressions/specifications, and necessary immediate caller/client context. The unchanged 85-file feature was not reviewed again.
+**Reviewed state:** Working changes include two new untracked regression files. No staging, commit or push performed.
+**Verdict:** Approved; no blocking findings in this bounded patch. Ready for the parent's final validation and normal commit gates.
 
 ## Files Reviewed
 
-### Modified Files
-- src/L2-clients/llm/CopilotProvider.ts
-- src/L4-agents/BlogAgent.ts
-- src/L4-agents/MediumVideoAgent.ts
-- src/L4-agents/ShortsAgent.ts
-- src/L5-assets/Asset.ts
-- src/L5-assets/MainVideoAsset.ts
-- src/L6-pipeline/pipeline.ts
-- src/L7-app/cli.ts
-- src/__tests__/unit/L5-assets/Asset.test.ts
-- src/__tests__/unit/L5-assets/MainVideoAsset.test.ts
-- src/__tests__/unit/L6-pipeline/pipeline.test.ts
-- .github/agents/review-triage.agent.md
-- .github/hooks/hooks.json
-- schedule.json
-
-### New Files
-- .github/hooks/post-spec-change.ps1
-- .github/hooks/post-spec-change.sh
-- src/L6-pipeline/regenerate.ts
-- src/L7-app/commands/regenerate.ts
-- specs/L4-agents/VisualEnhancement.md
-- specs/L7-app/CLI.md
+- `src/L1-infra/config/environment.ts`
+- `src/L2-clients/aws/s3Client.ts`
+- `src/L3-services/storage/storageService.ts`
+- `src/L7-app/review/approvalQueue.ts`
+- `src/L7-app/sdk/VidPipeSDK.ts`
+- `src/__tests__/unit/L1-infra/environment.scope.test.ts` (new)
+- `src/__tests__/unit/L2-clients/awsClients.test.ts`
+- `src/__tests__/unit/L3-services/storageService.test.ts`
+- `src/__tests__/integration/L7/VidPipeSDK.cloudIsolation.test.ts` (new)
+- `src/__tests__/integration/L7/VidPipeSDK.test.ts`
+- `src/__tests__/integration/L7/approvalQueue.test.ts`
+- `src/__tests__/e2e/awsStorageRoundtrip.test.ts`
+- `specs/L1-infra/config/environment.md`
+- `specs/L2-clients/aws/awsClients.md`
+- `specs/L3-services/storage/storageService.md`
+- `specs/L7-app/commands/CloudStorage.md`
+- `specs/L7-app/review/ReviewStorage.md`
+- `.github/copilot-instructions.md`
+- Immediate unchanged context: AWS storage/DynamoDB clients, Azure blob/Table/config clients, and SDK configuration refresh/temporary overrides.
 
 ## Findings
 
-### ❌ Blocking Issues
+### Fixed
 
-#### 1. Missing Abstract Method Implementation
-**Severity:** CRITICAL — Code does not compile with `tsc --noEmit`
+- `src/L1-infra/config/environment.ts:104`, `src/L7-app/sdk/VidPipeSDK.ts:577,954`: Instance configuration snapshots and `AsyncLocalStorage.run()` cover all seven SDK cloud methods. Downstream reads retain provider, region, bucket/prefix, table and Azure resource settings across awaits and overlapping instances; scoped failures restore the enclosing context. Default Azure and early AWS unsupported-operation guards remain intact.
+- `src/L7-app/review/approvalQueue.ts:252,261`: Both primary media and thumbnail downloads always use the selected pending entry's `(videoSlug, rowKey)`, including legacy callers without a slug map, consistent with text selection and status mutations.
+- `src/L2-clients/aws/s3Client.ts:16`, `src/L3-services/storage/storageService.ts:77`: Linear edge scanning replaces potentially expensive slash-trimming expressions without changing prefix normalization, literal-percent handling or namespace/traversal rejection.
+- `src/__tests__/e2e/awsStorageRoundtrip.test.ts`: Offline endpoint failures return fixed generic plain text rather than reflecting attacker-controlled request/error details.
 
-- **src/L5-assets/MainVideoAsset.ts**: Missing `getCompletionMarkerPath()` implementation
-- **src/L5-assets/BlogAsset.ts**: Missing `getCompletionMarkerPath()` implementation
-- **src/L5-assets/MediumClipAsset.ts**: Missing `getCompletionMarkerPath()` implementation
-- **src/L5-assets/ShortVideoAsset.ts**: Missing `getCompletionMarkerPath()` implementation
-- **src/L5-assets/SocialPostAsset.ts**: Missing `getCompletionMarkerPath()` implementation
-- **src/L5-assets/SummaryAsset.ts**: Missing `getCompletionMarkerPath()` implementation
+### Acknowledged (Tech Debt)
 
-The `Asset` base class now requires all concrete classes to implement `getCompletionMarkerPath(): string`. While the **spec-driven completion marker pattern** is architecturally sound, the implementation is **incomplete**.
+- None newly identified in this bounded patch.
 
-**Impact:**
-- TypeScript compilation fails with `tsc --noEmit` (22 errors total)
-- Tests pass because they use `tsup` which may not enforce strict type checking
-- Runtime errors likely if completion marker methods are called on these assets
+### No Issues
 
-**Required fix:**
-Each asset class must implement `getCompletionMarkerPath()` returning the appropriate `.complete` marker path. For example:
+- No correctness, concurrency or resource-isolation findings remain in the reviewed patch.
+- Prefix changes preserve the existing one-decode S3 URL contract; malformed encoding, foreign namespaces, decoded traversal, backslashes, controls, query and fragment remain rejected.
+- Changed tests, specifications and living architecture instructions match the implementation.
 
-```typescript
-// MainVideoAsset.ts
-getCompletionMarkerPath(): string {
-  return join(this.videoDir, 'pipeline.complete')
-}
+## Validation
 
-// BlogAsset.ts  
-getCompletionMarkerPath(): string {
-  return this.parentAsset.blogCompletionMarkerPath
-}
-```
-
-#### 2. Type Errors in Tests
-**Severity:** HIGH
-
-Multiple test files have type errors that would prevent TypeScript compilation:
-- `src/__tests__/unit/L5-assets/TextAsset.test.ts`: Test class missing `getCompletionMarkerPath`
-- `src/__tests__/unit/L5-assets/VideoAsset.test.ts`: Test class missing `getCompletionMarkerPath`
-- `src/__tests__/unit/L3-services/lateApi/lateApiService.test.ts`: Accessing private property
-- `src/__tests__/unit/L4-agents/analysisServiceBridge.test.ts`: Type mismatches (5 errors)
-- `src/__tests__/unit/L4-agents/pipelineServiceBridge.test.ts`: Argument count mismatches
-- `src/__tests__/unit/L6-pipeline/visualEnhancement.test.ts`: Argument count mismatch
-
-#### 3. Service Type Errors
-**Severity:** HIGH
-
-- **src/L4-agents/pipelineServiceBridge.ts:23**: Property `recordCall` does not exist on type `CostTracker`
-- **src/L5-assets/MainVideoAsset.ts:803**: Condition always returns true (Promise<boolean> check issue)
-
-### ✅ Architecture & Patterns — Excellent
-
-1. **✅ Completion Marker Pattern**: The addition of `.complete` marker files for idempotent asset generation is a solid architectural improvement. Each asset stage (shorts, medium clips, social posts, blog) now has:
-   - `isComplete()` — check if generation finished successfully
-   - `markComplete()` — write marker after successful generation
-   - `clearCompletion()` — remove marker for forced regeneration
-
-2. **✅ Provider Abstraction Compliance**: CopilotProvider changes properly use the `LLMProvider` interface. No direct SDK imports outside the provider layer.
-
-3. **✅ Error Handling Improvement**: The "missing finish_reason" SDK bug workaround in CopilotProvider, MediumVideoAgent, and ShortsAgent is well-documented and defensive:
-   - Tracks `toolsCompleted` count to detect partial success
-   - Only treats as success if tools actually ran
-   - Re-throws error if no work was done
-
-4. **✅ Pipeline Simplification**: The pipeline.ts refactor delegates responsibility to asset methods (`getTranscript()`, `getShorts()`, etc.) instead of orchestrating low-level logic. This is cleaner and more testable.
-
-5. **✅ Regenerate Command**: New `vidpipe regenerate <stage>` CLI command enables re-running failed pipeline stages without full re-processing. Uses the same asset.get*({ force: true }) pattern as the pipeline.
-
-### ⚠️ Code Quality Issues (Non-Blocking)
-
-#### 1. Incomplete Spec Coverage
-**Location:** `specs/` directory
-
-New spec files added (`specs/L4-agents/VisualEnhancement.md`, `specs/L7-app/CLI.md`) but no corresponding test files detected. The pre-push hook `pre-spec-test-coverage.ps1` should enforce this.
-
-**Recommendation:** Verify hook is running, or add test files:
-- `specs/__tests__/L4-agents/VisualEnhancement.test.ts`
-- `specs/__tests__/L7-app/CLI.test.ts`
-
-#### 2. BlogAgent Return Type Change
-**Location:** src/L4-agents/BlogAgent.ts:330
-
-Changed from returning file path (`string`) to returning markdown content (`string`). While the return type is the same, this is a **semantic breaking change**:
-
-```typescript
-// Before: returned path
-return outputPath  // "/path/to/devto.md"
-
-// After: returns content
-return renderBlogMarkdown(blogContent)  // "# Blog Title\n..."
-```
-
-**Impact:** Any code expecting a file path will break. The pipeline test mocks still expect paths.
-
-**Recommendation:** Update the return type to be more explicit (e.g., `BlogContent` type) or update all callers to handle content instead of paths.
-
-#### 3. Schedule.json Changes
-**Location:** schedule.json
-
-Substantial changes to posting schedule (time slots, labels). This appears to be configuration tuning rather than code change, but should be verified as intentional.
-
-### ✅ Testing
-
-- All 1442 tests pass (vitest run)
-- Test coverage appears maintained
-- Pipeline test mocks updated to match new asset-oriented architecture
-- Asset.test.ts updated with completion marker assertions
-
-### ✅ Documentation
-
-- Completion marker pattern well-documented in Asset.ts JSDoc
-- Hook comments clear in post-spec-change.ps1/sh
-- Pipeline comments updated to reflect asset delegation pattern
+- **Independently run on this patch:** six non-server regression files listed above (all except the offline E2E file): **166 tests passed**. Includes SDK overlap, nested/failing scopes, legacy approval identity, long-prefix normalization, literal-percent round trips and namespace-negative cases.
+- **Independently run:** `npm run typecheck` and `git diff --check`, both passed.
+- Test execution used a nonexistent process-local `VIDPIPE_CONFIG_DIR`, cleared credential/token environment values, and disabled EC2 metadata discovery. No persisted configuration was changed.
+- **Implementer-reported, not independently rerun as separate runs:** security-fixer **74 unit + 4 E2E passed**, affected coverage **95.79% statements / 89.37% branches / 95.12% functions / 97.51% lines**; review-triage **143 focused passed**. These reports are not independent full-suite or full-coverage verification.
+- Offline E2E fixture/negative regressions were inspected, not executed, to avoid server lifecycle operations. No full suite, coverage run, live API, cloud or social operation was performed by this reviewer.
 
 ## Summary
 
-**BLOCKING:** This code **cannot be merged** until the missing `getCompletionMarkerPath()` implementations are added to all asset classes. TypeScript compilation fails with 22 type errors.
-
-**Architecture:** The completion marker pattern and asset-oriented refactor are excellent improvements. The SDK bug workaround is pragmatic and well-documented.
-
-**Next Steps:**
-1. Implement `getCompletionMarkerPath()` in all asset classes
-2. Fix test type errors (mock/stub updates needed)
-3. Fix `recordCall` type error in pipelineServiceBridge.ts
-4. Verify BlogAgent semantic change doesn't break pipeline
-5. Re-run `npx tsc --noEmit` to confirm all type errors resolved
+The combined post-PR patch is approved with no blocking findings. Only this existing review artifact was changed by the reviewer; implementation/test/spec changes, index, live resources and servers were left untouched for the parent's final validation and commit/push workflow.
