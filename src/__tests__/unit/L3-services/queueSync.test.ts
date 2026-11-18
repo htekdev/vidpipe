@@ -1,5 +1,6 @@
 import { vi, describe, test, expect, beforeEach, afterEach } from 'vitest'
 import type { ScheduleConfig } from '../../../L3-services/scheduler/scheduleConfig.js'
+import { initConfig } from '../../../L1-infra/config/environment.js'
 
 // ── Hoisted mock variables ─────────────────────────────────────────────
 
@@ -87,12 +88,83 @@ function setupDefaults() {
 describe('syncQueuesToLate', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    initConfig({ lateProfileId: '' })
     vi.useFakeTimers({ shouldAdvanceTime: true })
     setupDefaults()
   })
 
   afterEach(() => {
     vi.useRealTimers()
+    initConfig()
+  })
+
+  test('LateProfileRouting.REQ-007: uses an explicit non-first profile for lookup and all queue mutations before refresh', async () => {
+    initConfig({ lateProfileId: 'selected-profile' })
+    mockListProfiles.mockResolvedValue([
+      { _id: 'other-profile', name: 'Other', isDefault: true },
+      { _id: 'selected-profile', name: 'Selected' },
+    ])
+    const config = makeConfig()
+    config.platforms.linkedin.byClipType!.video = {
+      slots: [{ days: ['mon'], time: '18:00', label: 'Video' }],
+      avoidDays: [],
+    }
+    mockLoadScheduleConfig.mockResolvedValue(config)
+    mockListQueues.mockResolvedValue({
+      queues: [
+        { _id: 'selected-short', name: 'linkedin-short', slots: [], active: true },
+        { _id: 'selected-orphan', name: 'obsolete', slots: [], active: true },
+      ],
+    })
+
+    const result = await syncQueuesToLate({ deleteOrphans: true })
+
+    expect(mockListQueues).toHaveBeenCalledExactlyOnceWith('selected-profile', true)
+    expect(mockCreateQueue).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      profileId: 'selected-profile', name: 'linkedin-video',
+    }))
+    expect(mockUpdateQueue).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      profileId: 'selected-profile', queueId: 'selected-short',
+    }))
+    expect(mockDeleteQueue).toHaveBeenCalledExactlyOnceWith('selected-profile', 'selected-orphan')
+    expect(mockRefreshQueueMappings).toHaveBeenCalledOnce()
+    expect(mockRefreshQueueMappings.mock.invocationCallOrder[0])
+      .toBeGreaterThan(mockDeleteQueue.mock.invocationCallOrder[0])
+    expect(result).toEqual({
+      created: ['linkedin-video'], updated: ['linkedin-short'], deleted: ['obsolete'],
+      unchanged: [], errors: [],
+    })
+  })
+
+  test.each([
+    { configured: 'missing', profiles: [DEFAULT_PROFILE], error: 'Configured LATE_PROFILE_ID is not accessible' },
+    { configured: 'missing', profiles: [], error: 'Configured LATE_PROFILE_ID is not accessible' },
+    { configured: '', profiles: [], error: 'No Late API profiles found' },
+    { configured: '', profiles: [DEFAULT_PROFILE, { _id: 'other', name: 'Other' }], error: 'Multiple Late profiles found' },
+    { configured: '', profiles: [{ ...DEFAULT_PROFILE, isDefault: true }, { _id: 'other', name: 'Other', isDefault: true }], error: 'Multiple Late profiles found' },
+  ])('LateProfileRouting.REQ-008: fails before queue effects for unsafe profile selection (%j)', async ({ configured, profiles, error }) => {
+    initConfig({ lateProfileId: configured })
+    mockListProfiles.mockResolvedValue(profiles)
+
+    await expect(syncQueuesToLate({ deleteOrphans: true })).rejects.toThrow(error)
+
+    expect(mockListQueues).not.toHaveBeenCalled()
+    expect(mockCreateQueue).not.toHaveBeenCalled()
+    expect(mockUpdateQueue).not.toHaveBeenCalled()
+    expect(mockDeleteQueue).not.toHaveBeenCalled()
+    expect(mockRefreshQueueMappings).not.toHaveBeenCalled()
+  })
+
+  test('LateProfileRouting.REQ-008: uses the unique non-first default when no profile is configured', async () => {
+    mockListProfiles.mockResolvedValue([
+      DEFAULT_PROFILE,
+      { _id: 'default-profile', name: 'Default', isDefault: true },
+    ])
+
+    await syncQueuesToLate()
+
+    expect(mockListQueues).toHaveBeenCalledExactlyOnceWith('default-profile', true)
+    expect(mockCreateQueue).toHaveBeenCalledWith(expect.objectContaining({ profileId: 'default-profile' }))
   })
 
   // ── 1. Creates new queues ────────────────────────────────────────────
