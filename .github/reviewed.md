@@ -61,3 +61,10 @@
 ## Summary
 
 The combined post-PR patch is approved with no blocking findings. Only this existing review artifact was changed by the reviewer; implementation/test/spec changes, index, live resources and servers were left untouched for the parent's final validation and commit/push workflow.
+
+## Merge Follow-up: Queue Synchronization Profile (2026-11-18)
+
+- Direct source/specification review found no blocking issues in the queue synchronization follow-up. The existing shared selector resolves the configured profile before queue lookup or mutation, replacing the first-profile assumption.
+- Provisioning retains the selected profile ID for subsequent operations; inaccessible or ambiguous profile selection fails before queue effects.
+- Implementer-reported validation: 12 new regression failures before the fix, then 59 passing unit/integration tests. Reported queue synchronization coverage is 100% statements, functions and lines, with 88.09% branches. Typecheck and diff check passed.
+- This follow-up review did not execute live API operations or independently repeat those tests. Normal commit/push gates remain required.
