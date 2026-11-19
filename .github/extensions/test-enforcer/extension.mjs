@@ -41,8 +41,14 @@ function hasCommitCommand(command) {
                 if (/^(?:-C|-c|--git-dir|--work-tree|--namespace|--config-env|--prefix|--workspace|-w)$/.test(option)) arg++;
             }
             if (executable === "git" && literal(tokens[arg]).toLowerCase() === "commit") return true;
-            if (executable === "npm" && literal(tokens[arg]).toLowerCase() === "run" &&
-                literal(tokens[arg + 1]).toLowerCase() === "commit") return true;
+            if (executable === "npm" && literal(tokens[arg]).toLowerCase() === "run") {
+                arg++;
+                while (arg < end && literal(tokens[arg]).startsWith("-")) {
+                    const option = literal(tokens[arg++]);
+                    if (/^(?:--prefix|--workspace|-w)$/.test(option)) arg++;
+                }
+                if (literal(tokens[arg]).toLowerCase() === "commit") return true;
+            }
         }
     }
     return false;

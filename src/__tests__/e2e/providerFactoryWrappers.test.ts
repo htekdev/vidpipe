@@ -38,6 +38,22 @@ describe('E2E: providerFactory wrappers', () => {
     expect(model ?? provider.getDefaultModel()).toBe(expected)
   })
 
+  test('IdeationAgent.REQ-015: actual unavailable direct providers fall back to the Copilot agent default', () => {
+    for (const [configured, globalModel] of [
+      ['claude', 'claude-sonnet-4-20250514'],
+      ['openai', 'gpt-4o'],
+    ] as const) {
+      const config = initConfig({
+        llmProvider: configured, llmModel: globalModel, openaiKey: '', anthropicKey: '',
+      })
+      config.MODEL_OVERRIDES = {}
+      const provider = getProvider()
+      expect(provider.name).toBe('copilot')
+      expect(getProviderName()).toBe('copilot')
+      expect(getModelForAgent('IdeationAgent', provider.name)).toBe(provider.getDefaultModel())
+    }
+  })
+
   test('getProviderName returns a valid provider name', () => {
     const name = getProviderName()
     expect(['copilot', 'openai', 'claude']).toContain(name)

@@ -78,6 +78,21 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
     })
   })
 
+  it('testEnforcer.REQ-010: rejects npm target options in either position before reading an index', async () => {
+    for (const command of [
+      'npm --prefix target run commit -- -m fix',
+      'npm run --prefix target commit -- -m fix',
+      'npm run --prefix=target commit -- -m fix',
+      'npm --prefix target run --workspace sample commit -- -m fix',
+    ]) {
+      for (const files of stagedIndexes) {
+        execFileSync.mockReturnValue(files)
+        expect((await onPreToolUse({ toolName, toolArgs: { command } }))?.permissionDecision).toBe('deny')
+        expect(execFileSync).not.toHaveBeenCalled()
+      }
+    }
+  })
+
   it('testEnforcer.REQ-005: anchors Git index reads to the extension worktree', async () => {
     await onPreToolUse({ toolName, toolArgs: { command: 'npm run commit' } })
     expect(execFileSync).toHaveBeenCalledExactlyOnceWith(
@@ -190,34 +205,38 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
     expect(execFileSync).not.toHaveBeenCalled()
   })
 
-  it.each([
-    'git add cicd/commit.ts',
-    'git diff -- cicd/commit.ts',
-    'git add "cicd/commit.ts"',
-    "git diff -- 'cicd/commit.ts'",
-    'git diff -- commit',
-    'git add commit',
-    'git show HEAD:cicd/commit.ts',
-    'git log --grep=commit',
-    'git log --grep="git commit"',
-    'git log --grep="npm run commit; git commit"',
-    'echo git commit',
-    'echo "git commit"',
-    'Write-Output "npm run commit"',
-    'npm test -- cicd/commit.ts',
-    'npm run lint -- --message "git commit"',
-    'echo "git commit; npm run commit && git commit"',
-    'git diff -- cicd/commit.ts; git add cicd/commit.ts',
-    'git -C target diff -- cicd/commit.ts',
-    'npm --prefix target run lint -- commit.ts',
-    'printf "%s" "git commit"',
-    'bash -c "git diff -- cicd/commit.ts"',
-    'powershell -Command "Write-Output \'git commit\'"',
-  ])('testEnforcer.REQ-008: ignores commit text outside command/subcommand positions: %s', async (command) => {
-    for (const files of stagedIndexes) {
-      execFileSync.mockReturnValue(files)
-      expect(await onPreToolUse({ toolName, toolArgs: { command } })).toBeUndefined()
-      expect(execFileSync).not.toHaveBeenCalled()
+  it('testEnforcer.REQ-008: ignores commit text outside command/subcommand positions', async () => {
+    for (const command of [
+      'git add cicd/commit.ts',
+      'git diff -- cicd/commit.ts',
+      'git add "cicd/commit.ts"',
+      "git diff -- 'cicd/commit.ts'",
+      'git diff -- commit',
+      'git add commit',
+      'git show HEAD:cicd/commit.ts',
+      'git log --grep=commit',
+      'git log --grep="git commit"',
+      'git log --grep="npm run commit; git commit"',
+      'echo git commit',
+      'echo "git commit"',
+      'Write-Output "npm run commit"',
+      'npm test -- cicd/commit.ts',
+      'npm run lint -- --message "git commit"',
+      'echo "git commit; npm run commit && git commit"',
+      'git diff -- cicd/commit.ts; git add cicd/commit.ts',
+      'git -C target diff -- cicd/commit.ts',
+      'npm --prefix target run lint -- commit.ts',
+      'npm run --prefix target lint -- commit',
+      'npm run --prefix=target lint -- "npm run commit"',
+      'printf "%s" "git commit"',
+      'bash -c "git diff -- cicd/commit.ts"',
+      'powershell -Command "Write-Output \'git commit\'"',
+    ]) {
+      for (const files of stagedIndexes) {
+        execFileSync.mockReturnValue(files)
+        expect(await onPreToolUse({ toolName, toolArgs: { command } })).toBeUndefined()
+        expect(execFileSync).not.toHaveBeenCalled()
+      }
     }
   })
 
