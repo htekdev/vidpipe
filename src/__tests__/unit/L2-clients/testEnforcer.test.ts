@@ -187,6 +187,55 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
     expect(await onPreToolUse({ toolName, toolArgs: { command } })).toBeUndefined()
     expect(execFileSync).not.toHaveBeenCalled()
   })
+
+  it.each([
+    'git add cicd/commit.ts',
+    'git diff -- cicd/commit.ts',
+    'git add "cicd/commit.ts"',
+    "git diff -- 'cicd/commit.ts'",
+    'git diff -- commit',
+    'git add commit',
+    'git show HEAD:cicd/commit.ts',
+    'git log --grep=commit',
+    'git log --grep="git commit"',
+    'git log --grep="npm run commit; git commit"',
+    'echo git commit',
+    'echo "git commit"',
+    'Write-Output "npm run commit"',
+    'npm test -- cicd/commit.ts',
+    'npm run lint -- --message "git commit"',
+    'echo "git commit; npm run commit && git commit"',
+    'git diff -- cicd/commit.ts; git add cicd/commit.ts',
+    'git -C target diff -- cicd/commit.ts',
+    'npm --prefix target run lint -- commit.ts',
+    'printf "%s" "git commit"',
+    'bash -c "git diff -- cicd/commit.ts"',
+    'powershell -Command "Write-Output \'git commit\'"',
+  ])('testEnforcer.REQ-008: ignores commit text outside command/subcommand positions: %s', async (command) => {
+    for (const files of stagedIndexes) {
+      execFileSync.mockReturnValue(files)
+      expect(await onPreToolUse({ toolName, toolArgs: { command } })).toBeUndefined()
+      expect(execFileSync).not.toHaveBeenCalled()
+    }
+  })
+
+  it.each([
+    'git add cicd/commit.ts && npm run commit -- -m fix',
+    'git diff -- cicd/commit.ts; git commit -m fix',
+    'Set-Location target; git -C other commit -m fix',
+    'git --git-dir target commit -m fix',
+    'git --work-tree=target commit -m fix',
+    'npm --prefix=target run commit -- -m fix',
+    'echo "git commit"; npm run commit',
+    'bash -c "git add cicd/commit.ts; npm run commit -- -m fix"',
+    'powershell -NoProfile -Command "Set-Location target; npm run commit -- -m fix"',
+  ])('testEnforcer.REQ-008: still rejects real compound/target commits before reading any index: %s', async (command) => {
+    for (const files of stagedIndexes) {
+      execFileSync.mockReturnValue(files)
+      expect((await onPreToolUse({ toolName, toolArgs: { command } }))?.permissionDecision).toBe('deny')
+      expect(execFileSync).not.toHaveBeenCalled()
+    }
+  })
 })
 
 describe('different repository indexes', () => {

@@ -42,3 +42,7 @@ No meaningful bug blockers found in the three-file unstaged delta atop be52df5; 
 ## Fixture Correction Validation
 - `src/__tests__/unit/L1-infra/fileSystem-extra.test.ts` — corrected the test fixture to close a raw descriptor opened with `openSync`, then verify `fstatSync` throws `EBADF`, avoiding a second close by a still-live `FileHandle` owner.
 - Validation: targeted file test passed (33 tests); `npm run test:unit:coverage` passed (2,299 tests, 6 skipped; statements 78.41%, branches 70.14%, functions 80.96%, lines 78.83%).
+
+## Command Detection Follow-up
+- Reviewed the scoped hook, specification and regression-test diff atop `200ffb4`: candidate detection inspects executable/subcommand positions instead of matching filenames or ordinary argument values. Compound-command rejection and anchored index reads remain unchanged. No blocking correctness issue found in this delta.
+- Reported regression evidence: 44 failures before correction, then 232 focused tests passed; typecheck, syntax and diff checks passed. These commands were run by review-triage, not independently repeated during this direct diff review.

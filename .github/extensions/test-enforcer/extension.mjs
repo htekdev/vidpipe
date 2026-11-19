@@ -6,6 +6,48 @@ const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
 
 const valueOptions = new Set(["-m", "--message", "-F", "--file", "--trailer"]);
 
+// Only inspect command heads and their subcommands, never arbitrary argument text.
+function hasCommitCommand(command) {
+    const pending = [command];
+    const separator = /^[;&|(){}\r\n]$/;
+    const literal = (token = "") => /^(['"])[\s\S]*\1$/.test(token) ? token.slice(1, -1) : token;
+    while (pending.length) {
+        const tokens = pending.pop().match(/(?:[^\s;&|(){}'"]+|'[^']*'|"(?:\\.|[^"\\])*")+|[;&|(){}\r\n]/g) ?? [];
+        let atCommand = true;
+        for (let index = 0; index < tokens.length; index++) {
+            if (separator.test(tokens[index])) {
+                atCommand = true;
+                continue;
+            }
+            if (!atCommand) continue;
+            const executable = literal(tokens[index]).toLowerCase();
+            if (/^[A-Za-z_]\w*=/.test(tokens[index]) || /^(?:env|command|exec)$/.test(executable)) continue;
+            atCommand = false;
+            let end = index + 1;
+            while (end < tokens.length && !separator.test(tokens[end])) end++;
+            if (/^(?:bash|sh|powershell|pwsh)$/.test(executable)) {
+                const flag = tokens.slice(index + 1, end).findIndex((token) => /^-(?:[a-z]*c|command)$/i.test(token));
+                if (flag !== -1 && index + flag + 2 < end) {
+                    const body = tokens[index + flag + 2];
+                    // Inspect only explicit command arguments, not ordinary quoted values.
+                    // Each queued body is a shorter substring; no expansion or execution.
+                    pending.push(literal(body) === body ? tokens.slice(index + flag + 2, end).join(" ") : literal(body));
+                }
+            }
+            if (executable !== "git" && executable !== "npm") continue;
+            let arg = index + 1;
+            while (arg < end && literal(tokens[arg]).startsWith("-")) {
+                const option = literal(tokens[arg++]);
+                if (/^(?:-C|-c|--git-dir|--work-tree|--namespace|--config-env|--prefix|--workspace|-w)$/.test(option)) arg++;
+            }
+            if (executable === "git" && literal(tokens[arg]).toLowerCase() === "commit") return true;
+            if (executable === "npm" && literal(tokens[arg]).toLowerCase() === "run" &&
+                literal(tokens[arg + 1]).toLowerCase() === "commit") return true;
+        }
+    }
+    return false;
+}
+
 // Lexical allowlist, not a shell parser. Never expand or execute token values.
 function isStandaloneCommit(command) {
     // ASCII avoids PowerShell smart quotes; reject interpolation in either shell.
@@ -50,7 +92,7 @@ await joinSession({
         onPreToolUse: async (input) => {
             if (input.toolName !== "powershell" && input.toolName !== "bash") return;
             const command = String(input.toolArgs?.command ?? "");
-            if (!/\b(?:git|npm)\b[\s\S]*\bcommit\b/i.test(command)) return;
+            if (!hasCommitCommand(command)) return;
             if (!isStandaloneCommit(command)) {
                 return {
                     permissionDecision: "deny",
