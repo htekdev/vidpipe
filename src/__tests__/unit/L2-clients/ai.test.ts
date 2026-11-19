@@ -111,6 +111,25 @@ describe('ClaudeProvider.createSession uses createAnthropic wrapper', () => {
 })
 
 describe('CopilotProvider.createSession uses createCopilotClient wrapper', () => {
+  test('CopilotProvider.REQ-001: requests the supported default model when none is specified', async () => {
+    const { CopilotProvider } = await import('../../../L2-clients/llm/CopilotProvider.js')
+    const provider = new CopilotProvider()
+    await provider.createSession({ systemPrompt: 'test', tools: [] })
+    expect(mockCopilotCreateSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ model: 'gpt-6.1-sol' }),
+    )
+    expect(provider.getDefaultModel()).toBe('gpt-6.1-sol')
+  })
+
+  test('CopilotProvider.REQ-002: preserves an explicit model selection', async () => {
+    const { CopilotProvider } = await import('../../../L2-clients/llm/CopilotProvider.js')
+    const provider = new CopilotProvider()
+    await provider.createSession({ model: 'gpt-5.3-codex', systemPrompt: 'test', tools: [] })
+    expect(mockCopilotCreateSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ model: 'gpt-5.3-codex' }),
+    )
+  })
+
   test('createSession creates client via wrapper and returns session', async () => {
     const { CopilotProvider } = await import('../../../L2-clients/llm/CopilotProvider.js')
     const provider = new CopilotProvider()

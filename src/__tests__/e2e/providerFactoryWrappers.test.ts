@@ -6,18 +6,21 @@
  */
 import { describe, test, expect, afterEach } from 'vitest'
 import { getProvider, resetProvider, getProviderName } from '../../L3-services/llm/providerFactory.js'
+import { getModelForAgent } from '../../L1-infra/config/modelConfig.js'
 
 describe('E2E: providerFactory wrappers', () => {
   afterEach(async () => {
     await resetProvider()
   })
 
-  test('getProvider returns a real provider with expected interface', () => {
+  test('modelConfig.REQ-001: real provider and agent selection agree on GPT-6.1 Sol', () => {
     const provider = getProvider('copilot')
     expect(provider).toBeDefined()
     expect(provider.name).toBe('copilot')
     expect(typeof provider.isAvailable).toBe('function')
     expect(typeof provider.createSession).toBe('function')
+    expect(provider.getDefaultModel()).toBe('gpt-6.1-sol')
+    expect(getModelForAgent('ShortsAgent')).toBe(provider.getDefaultModel())
   })
 
   test('getProviderName returns a valid provider name', () => {

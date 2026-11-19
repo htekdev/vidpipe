@@ -42,6 +42,17 @@ describe('L3 Integration: providerFactory → L2 provider chain', () => {
     expect(provider.isAvailable()).toBe(true)
   })
 
+  test('CopilotProvider.REQ-001: factory sessions request GPT-6.1 Sol by default', async () => {
+    const { CopilotClient } = await import('@github/copilot-sdk')
+    const provider = getProvider('copilot')
+    await provider.createSession({ systemPrompt: 'test', tools: [] })
+
+    const sdkClient = vi.mocked(CopilotClient).mock.instances.at(-1)!
+    expect(sdkClient.createSession).toHaveBeenLastCalledWith(
+      expect.objectContaining({ model: 'gpt-6.1-sol' }),
+    )
+  })
+
   test('getProvider caches singleton instance', () => {
     const first = getProvider('copilot')
     const second = getProvider('copilot')

@@ -12,10 +12,10 @@ afterEach(() => {
 })
 
 describe('getModelForAgent', () => {
-  it('returns correct model for each tier', () => {
-    expect(getModelForAgent('ShortsAgent')).toBe('claude-opus-4.5')
-    expect(getModelForAgent('BlogAgent')).toBe('claude-opus-4.5')
-    expect(getModelForAgent('ChapterAgent')).toBe('claude-opus-4.5')
+  it('modelConfig.REQ-001: selects GPT-6.1 Sol for every built-in agent', () => {
+    for (const agentName of Object.keys(AGENT_MODEL_MAP)) {
+      expect(getModelForAgent(agentName)).toBe('gpt-6.1-sol')
+    }
   })
 
   it('returns undefined for unknown agents', () => {

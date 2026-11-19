@@ -39,6 +39,8 @@ Agentic video editor that watches a folder for new `.mp4` recordings, then runs 
 
 All LLM interactions go through a provider abstraction layer. `BaseAgent` accepts an `LLMProvider` instead of directly using `CopilotClient`, allowing agents to work with any supported backend.
 
+Built-in pipeline agents and the Copilot provider default to GPT-6.1 Sol (`gpt-6.1-sol`). Keep the Copilot default sourced from `PREMIUM_MODEL` in `src/L1-infra/config/modelConfig.ts` so agent selection and provider fallback cannot drift; preserve explicit session model overrides.
+
 | File | Purpose |
 |------|---------|
 | `types.ts` | `LLMProvider`, `LLMSession`, `LLMResponse`, `TokenUsage`, `CostInfo` interfaces |

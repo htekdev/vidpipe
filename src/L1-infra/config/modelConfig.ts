@@ -7,7 +7,7 @@
 
 import { getConfig } from './environment.js';
 
-export const PREMIUM_MODEL = 'claude-opus-4.5';
+export const PREMIUM_MODEL = 'gpt-6.1-sol';
 export const STANDARD_MODEL = 'claude-sonnet-4.5';
 export const FREE_MODEL = 'gpt-4.1';
 
