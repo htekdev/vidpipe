@@ -1,3 +1,5 @@
+import { resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { execFileSync, joinSession } = vi.hoisted(() => ({
@@ -15,14 +17,23 @@ type PreToolUse = (input: {
 
 let onPreToolUse: PreToolUse
 
+// Variable import keeps this .mjs entry point outside TypeScript source compilation.
+const extensionPath = '../../../../.github/extensions/test-enforcer/extension.mjs'
+const extensionUrl = new URL(extensionPath, import.meta.url)
+
 beforeEach(async () => {
   vi.resetModules()
   vi.clearAllMocks()
   execFileSync.mockReturnValue('src/L1-infra/config/modelConfig.ts\n')
-  // Variable import keeps this .mjs entry point outside TypeScript source compilation.
-  const extensionPath = '../../../../../.github/extensions/test-enforcer/extension.mjs'
-  await import(extensionPath)
+  await import(extensionUrl.href)
   onPreToolUse = joinSession.mock.calls[0][0].hooks.onPreToolUse
+})
+
+it('testEnforcer.REQ-003: resolves the extension inside this test file’s worktree', () => {
+  const worktreeRoot = resolve(import.meta.dirname, '../../../..')
+  expect(fileURLToPath(extensionUrl)).toBe(
+    resolve(worktreeRoot, '.github/extensions/test-enforcer/extension.mjs'),
+  )
 })
 
 describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (toolName) => {
@@ -35,6 +46,21 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
       )
       expect(result?.permissionDecision).toBe('deny')
       expect(result?.permissionDecisionReason).toContain('staged regression tests')
+    },
+  )
+
+  it.each(['&&', ';'])(
+    'testEnforcer.REQ-001: explains staging first when git add %s npm run commit has not executed',
+    async (separator) => {
+      const command = `git add src/__tests__/unit/L1-infra/modelConfig.test.ts ${separator} npm run commit -- -m fix`
+      const result = await onPreToolUse({ toolName, toolArgs: { command } })
+      expect(result?.permissionDecision).toBe('deny')
+      expect(result?.permissionDecisionReason).toContain('before this shell command runs')
+      expect(result?.permissionDecisionReason).toContain('separate tool call')
+      expect(result?.permissionDecisionReason).toContain('npm run commit')
+      expect(execFileSync).toHaveBeenCalledExactlyOnceWith(
+        'git', ['diff', '--cached', '--name-only'], expect.objectContaining({ encoding: 'utf8' }),
+      )
     },
   )
 

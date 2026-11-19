@@ -16,7 +16,7 @@ await joinSession({
             if (hasSource && !hasTests) {
                 return {
                     permissionDecision: "deny",
-                    permissionDecisionReason: "Source changes require staged regression tests before committing.",
+                    permissionDecisionReason: "Source changes require staged regression tests before committing. This hook checks the index before this shell command runs, so any staging in it has not run yet. Stage source and regression tests in a separate tool call, then run `npm run commit` in a new tool call.",
                 };
             }
         },
