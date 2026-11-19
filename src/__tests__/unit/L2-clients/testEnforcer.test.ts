@@ -1,6 +1,7 @@
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const { execFileSync, joinSession } = vi.hoisted(() => ({
   execFileSync: vi.fn(),
@@ -20,6 +21,12 @@ let onPreToolUse: PreToolUse
 // Variable import keeps this .mjs entry point outside TypeScript source compilation.
 const extensionPath = '../../../../.github/extensions/test-enforcer/extension.mjs'
 const extensionUrl = new URL(extensionPath, import.meta.url)
+const worktreeRoot = fileURLToPath(new URL('../../../../', import.meta.url))
+const stagedIndexes = [
+  '',
+  'src/L1-infra/config/modelConfig.ts\n',
+  'src/L1-infra/config/modelConfig.ts\nsrc/__tests__/unit/L1-infra/modelConfig.test.ts\n',
+]
 
 beforeEach(async () => {
   vi.resetModules()
@@ -30,7 +37,6 @@ beforeEach(async () => {
 })
 
 it('testEnforcer.REQ-003: resolves the extension inside this test file’s worktree', () => {
-  const worktreeRoot = resolve(import.meta.dirname, '../../../..')
   expect(fileURLToPath(extensionUrl)).toBe(
     resolve(worktreeRoot, '.github/extensions/test-enforcer/extension.mjs'),
   )
@@ -49,20 +55,123 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
     },
   )
 
-  it.each(['&&', ';'])(
-    'testEnforcer.REQ-001: explains staging first when git add %s npm run commit has not executed',
-    async (separator) => {
-      const command = `git add src/__tests__/unit/L1-infra/modelConfig.test.ts ${separator} npm run commit -- -m fix`
+  describe.each(stagedIndexes)('initial index %j', (files) => {
+    it.each([
+      'git add src/L1-infra/config/modelConfig.ts; npm run commit -- -m fix',
+      'git add src/__tests__/unit/L1-infra/modelConfig.test.ts && npm run commit -- -m fix',
+      'git add src/L1-infra/config/modelConfig.ts; git commit -m fix',
+      'git add src/L1-infra/config/modelConfig.ts\nnpm run commit -- -m fix',
+      'npm run commit; git status',
+      'git commit -a -m fix',
+      'git commit --include src/L1-infra/config/modelConfig.ts -m fix',
+      'npm --prefix target run commit -- -m fix',
+      'bash -c "npm run commit"',
+      'powershell -Command "npm run commit"',
+    ])('testEnforcer.REQ-004: rejects unsupported commit before reading index: %s', async (command) => {
+      execFileSync.mockReturnValue(files)
       const result = await onPreToolUse({ toolName, toolArgs: { command } })
       expect(result?.permissionDecision).toBe('deny')
-      expect(result?.permissionDecisionReason).toContain('before this shell command runs')
       expect(result?.permissionDecisionReason).toContain('separate tool call')
+      expect(result?.permissionDecisionReason).toContain('session rooted in the target worktree')
       expect(result?.permissionDecisionReason).toContain('npm run commit')
+      expect(execFileSync).not.toHaveBeenCalled()
+    })
+  })
+
+  it('testEnforcer.REQ-005: anchors Git index reads to the extension worktree', async () => {
+    await onPreToolUse({ toolName, toolArgs: { command: 'npm run commit' } })
+    expect(execFileSync).toHaveBeenCalledExactlyOnceWith(
+      'git', ['diff', '--cached', '--name-only'], expect.objectContaining({
+        cwd: worktreeRoot,
+        encoding: 'utf8',
+        windowsHide: true,
+      }),
+    )
+  })
+
+  it.each([
+    'git commit',
+    'git commit --message fix',
+    ' npm run commit -- ',
+    'npm run commit -- --message fix',
+    'git commit -m "fix; keep && separators | literal"',
+    "npm run commit -- -m 'fix; keep && separators | literal'",
+  ])('testEnforcer.REQ-001 REQ-002 REQ-006: checks safe standalone invocation: %s', async (command) => {
+    expect((await onPreToolUse({ toolName, toolArgs: { command } }))?.permissionDecision).toBe('deny')
+    execFileSync.mockReturnValue(stagedIndexes[2])
+    expect(await onPreToolUse({ toolName, toolArgs: { command } })).toBeUndefined()
+    expect(execFileSync).toHaveBeenCalledTimes(2)
+  })
+
+  it.each([
+    String.raw`npm run commit -- -F "C:\repo worktree\commit-message.txt"`,
+    String.raw`npm run commit -- -F 'C:\repo worktree\commit-message.txt'`,
+    String.raw`npm run commit -- --file "C:\repo\commit-message.txt"`,
+    String.raw`git commit -F "C:\repo worktree\commit-message.txt"`,
+    'git commit --file commit-message.txt',
+    'npm run commit -- -m "fix: hook arguments" -m "Regression coverage; literal && separators"',
+    'git commit -m "fix: hook arguments" -m "Body | literal separators"',
+    'npm run commit -- --message fix --message "Second paragraph"',
+    'npm run commit -- -m fix --trailer "Co-authored-by: Copilot <copilot@github.com>"',
+    'npm run commit -- -m fix --trailer "Co-authored-by: Copilot <copilot@github.com>" --trailer "Copilot-Session: session-id"',
+    'git commit --trailer "Copilot-Session: session-id" -m fix',
+    String.raw`npm run commit -- -F "C:\repo\commit-message.txt" --trailer "Co-authored-by: Copilot <copilot@github.com>"`,
+  ])('testEnforcer.REQ-007: validates required option/value pairs without executing values: %s', async (command) => {
+    for (const files of [stagedIndexes[2], stagedIndexes[1], stagedIndexes[0]]) {
+      execFileSync.mockClear().mockReturnValue(files)
+      const result = await onPreToolUse({ toolName, toolArgs: { command } })
+      if (files === stagedIndexes[1]) {
+        expect(result?.permissionDecision).toBe('deny')
+        expect(result?.permissionDecisionReason).toContain('staged regression tests')
+      } else {
+        expect(result).toBeUndefined()
+      }
       expect(execFileSync).toHaveBeenCalledExactlyOnceWith(
-        'git', ['diff', '--cached', '--name-only'], expect.objectContaining({ encoding: 'utf8' }),
+        'git', ['diff', '--cached', '--name-only'], {
+          cwd: worktreeRoot, encoding: 'utf8', windowsHide: true,
+        },
       )
-    },
-  )
+    }
+  })
+
+  it.each([
+    String.raw`npm run commit -- -F "C:\repo\message.txt"; git add src/model.ts`,
+    String.raw`npm run commit -- -F "C:\repo\"; git add src/model.ts; npm run commit -- -m "fix"`,
+    'npm run commit -- -F "$(git add src/model.ts)"',
+    'npm run commit -- -m fix --trailer "$env:COMMIT_TRAILER"',
+    'git commit -m fix --trailer "Co-authored-by: `git add src/model.ts`"',
+    'npm run commit -- -m fix -m body --prefix target',
+    'git commit --file message.txt --all',
+    'npm run commit -- -F',
+    'npm run commit -- -m',
+    'npm run commit -- -m fix --trailer',
+    'npm run commit -- -m fix --trailer Co-authored-by:Copilot<copilot@github.com>',
+    'npm run commit -- --file="message.txt"',
+    '"npm" run commit -- -m fix',
+    'npm run commit -- -m "fix"junk',
+  ])('testEnforcer.REQ-007: rejects unsafe or unsupported tokens before reading any index: %s', async (command) => {
+    for (const files of stagedIndexes) {
+      execFileSync.mockReturnValue(files)
+      expect((await onPreToolUse({ toolName, toolArgs: { command } }))?.permissionDecision).toBe('deny')
+      expect(execFileSync).not.toHaveBeenCalled()
+    }
+  })
+
+  it.each([
+    'git commit -m "fix"; npm test',
+    'git commit -m "$(git add src/model.ts)"',
+    'git commit -m "`git add src/model.ts`"',
+    "git commit -m 'fix\\'",
+    'npm run commit -- -m "unterminated',
+    'git commit -m "fix\nmessage"',
+    'git commit -m "fix\u0000message"',
+    'git commit -m "fix\u201d ; git add src/model.ts; npm run commit -- -m \u201cfix"',
+    "git commit -m 'fix\u2019 ; git add src/model.ts; npm run commit -- -m \u2018fix'",
+    'git commit -m "fix caf\u00e9"',
+  ])('testEnforcer.REQ-006: rejects ambiguous literal syntax before reading index: %s', async (command) => {
+    expect((await onPreToolUse({ toolName, toolArgs: { command } }))?.permissionDecision).toBe('deny')
+    expect(execFileSync).not.toHaveBeenCalled()
+  })
 
   it.each([
     'src/L1-infra/config/modelConfig.ts\nsrc/__tests__/unit/L1-infra/modelConfig.test.ts\n',
@@ -76,6 +185,71 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
 
   it.each(['npm test', 'git status', undefined])('testEnforcer.REQ-002: ignores non-commit command %j', async (command) => {
     expect(await onPreToolUse({ toolName, toolArgs: { command } })).toBeUndefined()
+    expect(execFileSync).not.toHaveBeenCalled()
+  })
+})
+
+describe('different repository indexes', () => {
+  let fixtureRoot: string
+  let cleanRoot: string
+  let sourceRoot: string
+  let testedRoot: string
+  let cleanIndex: string
+  let sourceIndex: string
+  let testedIndex: string
+
+  beforeAll(async () => {
+    const { execFileSync: git } = await vi.importActual<typeof import('node:child_process')>('node:child_process')
+    fixtureRoot = mkdtempSync(resolve(worktreeRoot, '.test-enforcer-'))
+    ;[cleanRoot, sourceRoot, testedRoot] = ['clean', 'source-only', 'source-and-test'].map((name) => {
+      const cwd = resolve(fixtureRoot, name)
+      mkdirSync(cwd)
+      git('git', ['init', '--quiet', cwd], { windowsHide: true })
+      return cwd
+    })
+    for (const cwd of [sourceRoot, testedRoot]) {
+      mkdirSync(resolve(cwd, 'src'), { recursive: true })
+      writeFileSync(resolve(cwd, 'src/model.ts'), 'export const model = "fixture"\n')
+      if (cwd === testedRoot) {
+        mkdirSync(resolve(cwd, 'src/__tests__'), { recursive: true })
+        writeFileSync(resolve(cwd, 'src/__tests__/model.test.ts'), '// regression fixture\n')
+      }
+      git('git', ['add', 'src'], { cwd, windowsHide: true })
+    }
+    ;[cleanIndex, sourceIndex, testedIndex] = [cleanRoot, sourceRoot, testedRoot].map((cwd) =>
+      git('git', ['diff', '--cached', '--name-only'], { cwd, encoding: 'utf8', windowsHide: true }),
+    )
+    expect(cleanIndex).toBe('')
+    expect(sourceIndex).toBe('src/model.ts\n')
+    expect(testedIndex).toContain('src/__tests__/model.test.ts\n')
+  })
+
+  afterAll(() => {
+    if (fixtureRoot) rmSync(fixtureRoot, { recursive: true, force: true })
+  })
+
+  it.each([
+    ['bash', 'cd'],
+    ['powershell', 'cd'],
+    ['powershell', 'Set-Location -LiteralPath'],
+    ['powershell', 'Push-Location'],
+  ])('testEnforcer.REQ-004: %s rejects %s target with differing real indexes before Git', async (toolName, prefix) => {
+    for (const [currentIndex, target] of [
+      [cleanIndex, sourceRoot],
+      [sourceIndex, testedRoot],
+      [testedIndex, sourceRoot],
+    ]) {
+      execFileSync.mockReturnValue(currentIndex)
+      const command = `${prefix} "${target}" ${toolName === 'bash' ? '&&' : ';'} npm run commit -- -m fix`
+      expect((await onPreToolUse({ toolName, toolArgs: { command } }))?.permissionDecision).toBe('deny')
+      expect(execFileSync).not.toHaveBeenCalled()
+    }
+  })
+
+  it.each(['bash', 'powershell'])('testEnforcer.REQ-004: %s rejects Git -C target before Git', async (toolName) => {
+    execFileSync.mockReturnValue(cleanIndex)
+    const command = `git -C "${sourceRoot}" commit -m fix`
+    expect((await onPreToolUse({ toolName, toolArgs: { command } }))?.permissionDecision).toBe('deny')
     expect(execFileSync).not.toHaveBeenCalled()
   })
 })

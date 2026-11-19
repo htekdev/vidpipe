@@ -1,13 +1,64 @@
 import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { joinSession } from "@github/copilot-sdk/extension";
+
+const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
+
+const valueOptions = new Set(["-m", "--message", "-F", "--file", "--trailer"]);
+
+// Lexical allowlist, not a shell parser. Never expand or execute token values.
+function isStandaloneCommit(command) {
+    // ASCII avoids PowerShell smart quotes; reject interpolation in either shell.
+    if (/[^\t\x20-\x7e]|[$`]/.test(command)) return false;
+    const text = command.trim();
+    // Quotes must enclose a whole token. Backslashes cannot escape an enclosing quote.
+    const token = /(?:"([^"$`\\]*(?:\\[^"$`][^"$`\\]*)*)"|'([^'$`\\]*(?:\\[^'$`][^'$`\\]*)*)'|([-A-Za-z0-9_.\/:]+))(?:[ \t]+|$)/y;
+    const tokens = [];
+    while (token.lastIndex < text.length) {
+        const match = token.exec(text);
+        if (!match) return false;
+        tokens.push({ value: match[1] ?? match[2] ?? match[3], quoted: match[3] === undefined });
+    }
+
+    const keyword = (index, value) =>
+        tokens[index] && !tokens[index].quoted && tokens[index].value.toLowerCase() === value;
+    let index;
+    if (keyword(0, "git") && keyword(1, "commit")) {
+        index = 2;
+    } else if (keyword(0, "npm") && keyword(1, "run") && keyword(2, "commit")) {
+        index = 3;
+        if (tokens.length > index) {
+            if (!keyword(index, "--")) return false;
+            index++;
+        }
+    } else {
+        return false;
+    }
+
+    for (; index < tokens.length; index += 2) {
+        const option = tokens[index];
+        const value = tokens[index + 1];
+        if (option.quoted || !valueOptions.has(option.value) || !value) return false;
+        // Literal Windows paths are allowed only as message-file values.
+        if (value.value.includes("\\") && option.value !== "-F" && option.value !== "--file") return false;
+    }
+    return true;
+}
 
 await joinSession({
     hooks: {
         onPreToolUse: async (input) => {
             if (input.toolName !== "powershell" && input.toolName !== "bash") return;
             const command = String(input.toolArgs?.command ?? "");
-            if (!/\b(?:git\s+commit|npm\s+run\s+commit)\b/.test(command)) return;
+            if (!/\b(?:git|npm)\b[\s\S]*\bcommit\b/i.test(command)) return;
+            if (!isStandaloneCommit(command)) {
+                return {
+                    permissionDecision: "deny",
+                    permissionDecisionReason: "Only standalone `git commit` or `npm run commit` invocations with literal ASCII values for -m/--message, -F/--file and --trailer are supported. Use a session rooted in the target worktree, stage source and regression tests in a separate tool call, then run `npm run commit` alone. Compound commands, directory changes, target overrides, shell expansion and other options are not supported.",
+                };
+            }
             const files = execFileSync("git", ["diff", "--cached", "--name-only"], {
+                cwd: repositoryRoot,
                 encoding: "utf8",
                 windowsHide: true,
             }).trim().split(/\r?\n/);
