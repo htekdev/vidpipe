@@ -87,7 +87,7 @@ export async function generateImage(
       Authorization: `Bearer ${config.OPENAI_API_KEY}`,
     },
     body: JSON.stringify({
-      model: 'gpt-image-1.5',
+      model: 'gpt-image-2.6-sunburst',
       prompt: fullPrompt,
       n: 1,
       size,
