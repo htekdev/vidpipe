@@ -11,6 +11,7 @@ export const PREMIUM_MODEL = 'gpt-6.1-sol';
 export const STANDARD_MODEL = 'claude-sonnet-4.5';
 export const FREE_MODEL = 'gpt-4.1';
 
+/** Built-in agent defaults for Copilot; direct providers keep their own defaults. */
 export const AGENT_MODEL_MAP: Record<string, string> = {
   SilenceRemovalAgent: PREMIUM_MODEL,
   ShortsAgent: PREMIUM_MODEL,
@@ -28,11 +29,12 @@ export const AGENT_MODEL_MAP: Record<string, string> = {
 /**
  * Resolve model for an agent. Priority:
  * 1. MODEL_OVERRIDES from resolved config (populated from MODEL_* env vars)
- * 2. AGENT_MODEL_MAP entry
+ * 2. AGENT_MODEL_MAP entry (Copilot only)
  * 3. Global LLM_MODEL from config
  * 4. undefined (provider default)
+ * Pass the actual provider name when it may differ from global configuration.
  */
-export function getModelForAgent(agentName: string): string | undefined {
+export function getModelForAgent(agentName: string, providerName?: string): string | undefined {
   const config = getConfig();
 
   // Per-agent override from resolved config (e.g. MODEL_SHORTS_AGENT=gpt-4o)
@@ -40,7 +42,9 @@ export function getModelForAgent(agentName: string): string | undefined {
   const envOverride = config.MODEL_OVERRIDES[envKey];
   if (envOverride) return envOverride;
 
-  const mapped = AGENT_MODEL_MAP[agentName];
+  const mapped = (providerName ?? config.LLM_PROVIDER) === 'copilot'
+    ? AGENT_MODEL_MAP[agentName]
+    : undefined;
   if (mapped) return mapped;
 
   const global = config.LLM_MODEL;

@@ -4,7 +4,7 @@ import { joinSession } from "@github/copilot-sdk/extension";
 await joinSession({
     hooks: {
         onPreToolUse: async (input) => {
-            if (input.toolName !== "powershell") return;
+            if (input.toolName !== "powershell" && input.toolName !== "bash") return;
             const command = String(input.toolArgs?.command ?? "");
             if (!/\b(?:git\s+commit|npm\s+run\s+commit)\b/.test(command)) return;
             const files = execFileSync("git", ["diff", "--cached", "--name-only"], {

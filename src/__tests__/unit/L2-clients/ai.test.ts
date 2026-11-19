@@ -111,7 +111,8 @@ describe('ClaudeProvider.createSession uses createAnthropic wrapper', () => {
 })
 
 describe('CopilotProvider.createSession uses createCopilotClient wrapper', () => {
-  test('CopilotProvider.REQ-001: requests the supported default model when none is specified', async () => {
+  test.each(['copilot', 'claude', 'openai'])('CopilotProvider.REQ-001: requests its own default when global provider is %s', async (llmProvider) => {
+    initConfig({ llmProvider, llmModel: '' })
     const { CopilotProvider } = await import('../../../L2-clients/llm/CopilotProvider.js')
     const provider = new CopilotProvider()
     await provider.createSession({ systemPrompt: 'test', tools: [] })

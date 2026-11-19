@@ -13,6 +13,8 @@ import { vi, describe, test, expect, afterEach } from 'vitest'
 vi.mock('../../../L1-infra/config/environment.js', () => ({
   getConfig: () => ({
     LLM_PROVIDER: 'openai',
+    LLM_MODEL: '',
+    MODEL_OVERRIDES: {},
     OPENAI_API_KEY: 'test-integration-key',
     ANTHROPIC_API_KEY: '',
     GEMINI_API_KEY: '',
@@ -21,6 +23,7 @@ vi.mock('../../../L1-infra/config/environment.js', () => ({
 
 // providerFactory wraps L2 functions — this tests the L3→L2 chain
 import { getProvider, resetProvider, getProviderName } from '../../../L3-services/llm/providerFactory.js'
+import { getModelForAgent } from '../../../L1-infra/config/modelConfig.js'
 
 describe('L3 Integration: providerFactory → L2 provider chain', () => {
   afterEach(async () => {
@@ -32,6 +35,13 @@ describe('L3 Integration: providerFactory → L2 provider chain', () => {
     expect(provider).toBeDefined()
     expect(provider.name).toBe('openai')
     expect(provider.getDefaultModel()).toBe('gpt-4o')
+  })
+
+  test('modelConfig.REQ-002: direct provider factory selection retains its own model default', () => {
+    const provider = getProvider()
+    const sessionModel = getModelForAgent('ShortsAgent', provider.name)
+    expect(sessionModel).toBeUndefined()
+    expect(sessionModel ?? provider.getDefaultModel()).toBe('gpt-4o')
   })
 
   test('getProvider creates CopilotProvider that defers createCopilotClient', () => {

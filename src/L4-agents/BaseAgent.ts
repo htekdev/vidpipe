@@ -104,7 +104,7 @@ export abstract class BaseAgent {
             systemPrompt: this.systemPrompt,
             tools: this.getTools(),
             streaming: true,
-            model: this.model ?? getModelForAgent(this.agentName),
+            model: this.model ?? getModelForAgent(this.agentName, this.provider.name),
             timeoutMs: this.getTimeoutMs(),
             mcpServers: this.getMcpServers(),
             onUserInputRequest: this.getUserInputHandler(),
