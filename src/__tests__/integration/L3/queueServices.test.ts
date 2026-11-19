@@ -23,6 +23,10 @@ import { describe, test, expect, vi, beforeEach } from 'vitest'
 const mockReadTextFile = vi.hoisted(() => vi.fn())
 const mockWriteTextFile = vi.hoisted(() => vi.fn())
 const mockRemoveFile = vi.hoisted(() => vi.fn())
+const mockConfig = vi.hoisted(() => ({
+  LATE_API_KEY: 'test-queue-integration-key',
+  LATE_PROFILE_ID: '',
+}))
 
 vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
   readTextFile: mockReadTextFile,
@@ -38,7 +42,7 @@ vi.mock('../../../L1-infra/paths/paths.js', () => ({
 }))
 
 vi.mock('../../../L1-infra/config/environment.js', () => ({
-  getConfig: () => ({ LATE_API_KEY: 'test-queue-integration-key' }),
+  getConfig: () => mockConfig,
   initConfig: vi.fn(),
 }))
 
@@ -98,16 +102,17 @@ function makeQueueCache(
   return {
     mappings,
     profileId,
+    configuredProfileId: '',
     fetchedAt: fetchedAt ?? new Date().toISOString(),
   }
 }
 
 /** Build the JSON shape that the Late API /queue/slots endpoint returns. */
-function queuesApiBody(queues: Array<{ _id: string; name: string; slots?: Array<{ dayOfWeek: number; time: string }>; active?: boolean }>) {
+function queuesApiBody(queues: Array<{ _id: string; name: string; slots?: Array<{ dayOfWeek: number; time: string }>; active?: boolean }>, profileId = 'profile-1') {
   return {
     queues: queues.map((q) => ({
       _id: q._id,
-      profileId: 'profile-1',
+      profileId,
       name: q.name,
       timezone: 'America/Chicago',
       slots: q.slots ?? [],
@@ -146,7 +151,7 @@ function stubFetchForRefresh(
 ) {
   mockFetch
     .mockResolvedValueOnce(fakeResponse(profilesApiBody(profiles)))
-    .mockResolvedValueOnce(fakeResponse(queuesApiBody(queues)))
+    .mockResolvedValueOnce(fakeResponse(queuesApiBody(queues, profiles[0]?._id)))
 }
 
 const SCHEDULE_WITH_CLIP_TYPES: ScheduleConfig = {
@@ -190,6 +195,10 @@ const SCHEDULE_WITH_CLIP_TYPES: ScheduleConfig = {
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
+
+beforeEach(() => {
+  mockConfig.LATE_PROFILE_ID = ''
+})
 
 describe('L3 Integration: queueMapping cache lifecycle', () => {
   beforeEach(async () => {
@@ -394,6 +403,112 @@ describe('L3 Integration: queueSync with schedule config', () => {
     await clearQueueCache()
     clearScheduleCache()
     vi.clearAllMocks()
+  })
+
+  test('LateProfileRouting.REQ-007: real client scopes create, update, delete and refreshed lookups to an explicit non-first profile', async () => {
+    mockConfig.LATE_PROFILE_ID = 'selected-profile'
+    const profiles = [
+      { _id: 'other-profile', name: 'Other', isDefault: true },
+      { _id: 'selected-profile', name: 'Selected' },
+    ]
+    mockReadTextFile.mockResolvedValueOnce(JSON.stringify({
+      timezone: 'UTC',
+      platforms: {
+        youtube: {
+          slots: [], avoidDays: [],
+          byClipType: {
+            shorts: { slots: [{ days: ['mon'], time: '10:00', label: 'Short' }], avoidDays: [] },
+            video: { slots: [{ days: ['tue'], time: '11:00', label: 'Video' }], avoidDays: [] },
+          },
+        },
+      },
+    }))
+    const refreshedQueues = queuesApiBody([
+      { _id: 'selected-short', name: 'youtube-shorts' },
+      { _id: 'selected-video', name: 'youtube-video' },
+    ], 'selected-profile')
+    mockFetch
+      .mockResolvedValueOnce(fakeResponse({ profiles }))
+      .mockResolvedValueOnce(fakeResponse(queuesApiBody([
+        { _id: 'selected-short', name: 'youtube-shorts' },
+        { _id: 'selected-orphan', name: 'obsolete' },
+      ], 'selected-profile')))
+      .mockResolvedValueOnce(fakeResponse({ success: true }))
+      .mockResolvedValueOnce(fakeResponse({ success: true }))
+      .mockResolvedValueOnce(fakeResponse({ success: true }))
+      .mockResolvedValueOnce(fakeResponse({ profiles }))
+      .mockResolvedValueOnce(fakeResponse({
+        queues: [
+          ...refreshedQueues.queues,
+          ...queuesApiBody([{ _id: 'foreign-short', name: 'youtube-shorts' }], 'other-profile').queues,
+        ],
+      }))
+    mockWriteTextFile.mockResolvedValue(undefined)
+
+    const result = await syncQueuesToLate({ deleteOrphans: true })
+
+    expect(result).toEqual({
+      created: ['youtube-video'], updated: ['youtube-shorts'], deleted: ['obsolete'],
+      unchanged: [], errors: [],
+    })
+    const queueCalls = (mockFetch.mock.calls as Array<[string, RequestInit]>)
+      .filter(([url]) => url.includes('/queue/slots'))
+    expect(queueCalls.map(([, options]) => options.method ?? 'GET'))
+      .toEqual(['GET', 'PUT', 'POST', 'DELETE', 'GET'])
+    for (const [url, options] of queueCalls) {
+      if (options.method === 'PUT' || options.method === 'POST') {
+        expect(JSON.parse(options.body as string)).toMatchObject({ profileId: 'selected-profile' })
+      } else {
+        expect(new URL(url).searchParams.get('profileId')).toBe('selected-profile')
+      }
+    }
+    expect(JSON.parse(queueCalls[1][1].body as string)).toMatchObject({ queueId: 'selected-short' })
+    expect(new URL(queueCalls[3][0]).searchParams.get('queueId')).toBe('selected-orphan')
+    expect(await getQueueId('youtube', 'shorts')).toBe('selected-short')
+    expect(await getQueueId('youtube', 'video')).toBe('selected-video')
+    expect(await getQueueId('obsolete', 'shorts')).toBeNull()
+    expect(await getProfileId()).toBe('selected-profile')
+    expect(mockFetch).toHaveBeenCalledTimes(7)
+    expect(JSON.parse(mockWriteTextFile.mock.calls.at(-1)![1] as string)).toMatchObject({
+      configuredProfileId: 'selected-profile',
+      profileId: 'selected-profile',
+      mappings: { 'youtube-shorts': 'selected-short', 'youtube-video': 'selected-video' },
+    })
+  })
+
+  test.each([
+    { configured: 'missing', profiles: [{ _id: 'other', name: 'Other' }], error: 'Configured LATE_PROFILE_ID is not accessible' },
+    { configured: 'missing', profiles: [], error: 'Configured LATE_PROFILE_ID is not accessible' },
+    { configured: '', profiles: [], error: 'No Late API profiles found' },
+    { configured: '', profiles: [{ _id: 'one', name: 'One' }, { _id: 'two', name: 'Two' }], error: 'Multiple Late profiles found' },
+    { configured: '', profiles: [{ _id: 'one', name: 'One', isDefault: true }, { _id: 'two', name: 'Two', isDefault: true }], error: 'Multiple Late profiles found' },
+  ])('LateProfileRouting.REQ-008: real client fails before queue requests or cache writes on unsafe selection (%j)', async ({ configured, profiles, error }) => {
+    mockConfig.LATE_PROFILE_ID = configured
+    mockReadTextFile.mockResolvedValueOnce(JSON.stringify(SCHEDULE_WITH_CLIP_TYPES))
+    mockFetch.mockResolvedValueOnce(fakeResponse({ profiles }))
+
+    await expect(syncQueuesToLate({ deleteOrphans: true })).rejects.toThrow(error)
+
+    expect(mockFetch).toHaveBeenCalledExactlyOnceWith(
+      expect.stringContaining('/profiles'), expect.objectContaining({ headers: expect.any(Object) }),
+    )
+    expect(mockWriteTextFile).not.toHaveBeenCalled()
+  })
+
+  test('LateProfileRouting.REQ-008: real client uses the unique non-first default without explicit configuration', async () => {
+    mockReadTextFile.mockResolvedValueOnce(JSON.stringify(SCHEDULE_WITH_CLIP_TYPES))
+    mockFetch
+      .mockResolvedValueOnce(fakeResponse({ profiles: [
+        { _id: 'other', name: 'Other' },
+        { _id: 'default-profile', name: 'Default', isDefault: true },
+      ] }))
+      .mockResolvedValueOnce(fakeResponse(queuesApiBody([], 'default-profile')))
+
+    await syncQueuesToLate({ dryRun: true, deleteOrphans: true })
+
+    expect(mockFetch).toHaveBeenCalledTimes(2)
+    expect(new URL(mockFetch.mock.calls[1][0] as string).searchParams.get('profileId')).toBe('default-profile')
+    expect(mockWriteTextFile).not.toHaveBeenCalled()
   })
 
   test('sync creates queues from schedule config byClipType definitions', async () => {

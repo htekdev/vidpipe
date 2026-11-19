@@ -7,9 +7,11 @@ const mockGetRunId = vi.hoisted(() => vi.fn().mockReturnValue('test-run-id'))
 const mockMigrateLocalContent = vi.hoisted(() => vi.fn().mockResolvedValue({ uploaded: 0, errors: [] }))
 const mockPushConfig = vi.hoisted(() => vi.fn().mockResolvedValue({ uploaded: 3 }))
 const mockPullConfig = vi.hoisted(() => vi.fn().mockResolvedValue({ downloaded: 3 }))
+const mockGetStorageProviderName = vi.hoisted(() => vi.fn().mockReturnValue('azure'))
 
-vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
-  isAzureConfigured: mockIsAzureConfigured,
+vi.mock('../../../L3-services/storage/storageService.js', () => ({
+  isStorageConfigured: mockIsAzureConfigured,
+  getStorageProviderName: mockGetStorageProviderName,
   uploadRawVideo: mockUploadRawVideo,
   uploadPublishQueue: mockUploadPublishQueue,
   getRunId: mockGetRunId,
@@ -36,6 +38,7 @@ import {
 describe('L4 Unit: Cloud Storage Operations', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockGetStorageProviderName.mockReturnValue('azure')
   })
 
   test('isCloudEnabled returns true when Azure configured', () => {
@@ -90,5 +93,26 @@ describe('L4 Unit: Cloud Storage Operations', () => {
     const result = await migrateLocalContent('/output')
     expect(result).toEqual({ uploaded: 0, errors: [] })
     expect(mockMigrateLocalContent).toHaveBeenCalledWith('/output')
+  })
+
+  test('cloudStorageOperations.REQ-001: AWS pipeline uploads use selected storage', async () => {
+    mockGetStorageProviderName.mockReturnValue('aws')
+    expect(isCloudEnabled()).toBe(true)
+    const result = await uploadPipelineResults('/videos/video.mp4', '/queue', 'my-video', {
+      originalFilename: 'video.mp4', size: 1024,
+    })
+    expect(result.videoUploaded).toBe(true)
+    expect(mockUploadRawVideo).toHaveBeenCalledWith('/videos/video.mp4', 'test-run-id', {
+      originalFilename: 'video.mp4', slug: 'my-video', size: 1024,
+    })
+    expect(mockUploadPublishQueue).toHaveBeenCalledWith('/queue', 'my-video', 'test-run-id')
+  })
+
+  test('cloudStorageOperations.REQ-002: AWS cannot synchronize Azure configuration', async () => {
+    mockGetStorageProviderName.mockReturnValue('aws')
+    await expect(pushConfig('/source')).rejects.toThrow('not supported')
+    await expect(pullConfig('/target')).rejects.toThrow('not supported')
+    expect(mockPushConfig).not.toHaveBeenCalled()
+    expect(mockPullConfig).not.toHaveBeenCalled()
   })
 })

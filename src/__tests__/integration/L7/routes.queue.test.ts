@@ -8,6 +8,9 @@ const mockPreviewQueue = vi.hoisted(() => vi.fn())
 const mockFindNextSlot = vi.hoisted(() => vi.fn())
 const mockGetIdeasByIds = vi.hoisted(() => vi.fn())
 const mockGetGroupedItems = vi.hoisted(() => vi.fn().mockResolvedValue([]))
+const identityMocks = vi.hoisted(() => ({
+  getItemById: vi.fn(), updateItem: vi.fn(), rejectItem: vi.fn(), approveItem: vi.fn(), getMediaStream: vi.fn(), findContentItemByRowKey: vi.fn(), getContentItems: vi.fn().mockResolvedValue([]),
+}))
 
 // ── Mocks (L0, L1, L3 — valid for L7 unit tests) ───────────────────────
 
@@ -19,6 +22,9 @@ vi.mock('../../../L1-infra/logger/configLogger.js', () => ({
 vi.mock('../../../L1-infra/config/environment.js', () => ({
   getConfig: () => ({ OUTPUT_DIR: 'C:\\test-output', LATE_API_KEY: 'test-key' }),
   initConfig: () => ({ OUTPUT_DIR: 'C:\\test-output', LATE_API_KEY: 'test-key' }),
+}))
+vi.mock('../../../L1-infra/fileSystem/fileSystem.js', () => ({
+  ensureDirectory: vi.fn(), removeDirectory: vi.fn(),
 }))
 
 const mockPriorityShiftQueue = vi.hoisted(() => vi.fn().mockResolvedValue(null))
@@ -57,18 +63,19 @@ vi.mock('../../../L3-services/scheduler/scheduleConfig.js', () => ({
   loadScheduleConfig: async () => ({ timezone: 'America/Chicago', platforms: {} }),
 }))
 
-vi.mock('../../../L3-services/azureStorage/azureReviewDataSource.js', () => ({
+vi.mock('../../../L3-services/storage/reviewDataSource.js', () => ({
   listPendingItems: vi.fn().mockResolvedValue([]),
   getGroupedItems: mockGetGroupedItems,
-  getItemById: vi.fn().mockResolvedValue(null),
-  updateItem: vi.fn().mockResolvedValue(undefined),
-  rejectItem: vi.fn().mockResolvedValue(undefined),
-  getMediaStream: vi.fn().mockRejectedValue(new Error('Not found')),
+  getItemById: identityMocks.getItemById,
+  updateItem: identityMocks.updateItem,
+  rejectItem: identityMocks.rejectItem,
+  approveItem: identityMocks.approveItem,
+  getMediaStream: identityMocks.getMediaStream,
 }))
 
-vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
-  getContentItems: vi.fn().mockResolvedValue([]),
-  findContentItemByRowKey: vi.fn().mockResolvedValue(null),
+vi.mock('../../../L3-services/storage/storageService.js', () => ({
+  getContentItems: identityMocks.getContentItems,
+  findContentItemByRowKey: identityMocks.findContentItemByRowKey,
 }))
 
 // ── Import after mocks ─────────────────────────────────────────────────
@@ -76,6 +83,7 @@ vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
 import express from 'express'
 import request from 'supertest'
 import { createRouter } from '../../../L7-app/review/routes.js'
+import { Readable } from 'node:stream'
 
 // ── Test helpers ────────────────────────────────────────────────────────
 
@@ -85,6 +93,47 @@ function buildApp() {
   app.use(createRouter())
   return app
 }
+
+describe('scoped review identities', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    identityMocks.getContentItems.mockResolvedValue([])
+  })
+  it('ReviewStorage.REQ-005: scoped text, media, editing, rejection and approval preserve the displayed video partition', async () => {
+    const older = { id: 'duplicate', videoSlug: 'older', postContent: 'Pending card text', ideaIds: [] }
+    identityMocks.findContentItemByRowKey.mockResolvedValue({ partitionKey: 'newer', rowKey: 'duplicate', status: 'published' })
+    identityMocks.getItemById.mockImplementation(async (slug: string) => slug === 'older' ? older : { ...older, videoSlug: 'newer', postContent: 'Published text' })
+    identityMocks.updateItem.mockResolvedValue({ ...older, postContent: 'Edited pending text' })
+    identityMocks.getMediaStream.mockResolvedValue({ stream: Readable.from('old media'), contentType: 'image/png' })
+    const app = buildApp()
+    expect((await request(app).get('/api/posts/duplicate?videoSlug=older')).body).toMatchObject(older)
+    await request(app).get('/api/media/duplicate/media.png?videoSlug=older').expect(200)
+    expect(identityMocks.getMediaStream).toHaveBeenLastCalledWith('duplicate', 'media.png', undefined, 'older')
+    await request(app).put('/api/posts/duplicate?videoSlug=older').send({ postContent: 'Edited pending text' }).expect(200)
+    expect(identityMocks.updateItem).toHaveBeenLastCalledWith('older', 'duplicate', { postContent: 'Edited pending text' })
+    await request(app).post('/api/posts/duplicate/reject?videoSlug=older').send({}).expect(200)
+    expect(identityMocks.rejectItem).toHaveBeenLastCalledWith('older', 'duplicate')
+    await request(app).post('/api/posts/duplicate/approve?videoSlug=older').send({}).expect(202)
+    expect(identityMocks.approveItem).toHaveBeenCalledWith('older', 'duplicate')
+    expect(identityMocks.findContentItemByRowKey).not.toHaveBeenCalled()
+  })
+
+  it('ReviewStorage.REQ-005: bulk approval and rejection retain per-item partitions instead of newer published duplicates', async () => {
+    identityMocks.getItemById.mockResolvedValue({ id: 'duplicate', videoSlug: 'older' })
+    identityMocks.getContentItems.mockImplementation(async filters => filters ? [] : [
+      { rowKey: 'duplicate', partitionKey: 'older', status: 'approved', createdAt: '2025-01-01' },
+      { rowKey: 'duplicate', partitionKey: 'newer', status: 'published', createdAt: '2026-01-01' },
+    ])
+    const app = buildApp()
+    const body = { itemIds: ['duplicate'], videoSlugs: { duplicate: 'older' } }
+    await request(app).post('/api/posts/bulk-approve').send(body).expect(202)
+    expect(identityMocks.approveItem).toHaveBeenCalledWith('older', 'duplicate')
+    await request(app).post('/api/posts/bulk-reject').send(body).expect(202)
+    await vi.waitFor(() => expect(identityMocks.rejectItem).toHaveBeenCalledWith('older', 'duplicate'))
+    expect(identityMocks.rejectItem).not.toHaveBeenCalledWith('newer', 'duplicate')
+    expect(identityMocks.findContentItemByRowKey).not.toHaveBeenCalled()
+  })
+})
 
 // ── Tests ───────────────────────────────────────────────────────────────
 

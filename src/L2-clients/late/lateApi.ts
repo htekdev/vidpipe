@@ -26,12 +26,13 @@ export interface LateAccount {
   displayName: string
   username: string
   isActive: boolean
-  profileId: { _id: string; name: string }
+  profileId: string | { _id: string; name: string }
 }
 
 export interface LateProfile {
   _id: string
   name: string
+  isDefault?: boolean
 }
 
 export interface LatePost {

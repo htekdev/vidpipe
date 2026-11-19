@@ -25,14 +25,14 @@ vi.mock('../../../L1-infra/config/environment.js', () => ({
 }))
 
 const mockGetContentItems = vi.hoisted(() => vi.fn())
-vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
+vi.mock('../../../L3-services/storage/storageService.js', () => ({
   getContentItems: mockGetContentItems,
 }))
 
 const mockAzureApproveItem = vi.hoisted(() => vi.fn())
 const mockMarkPublished = vi.hoisted(() => vi.fn())
 const mockDownloadMediaToFile = vi.hoisted(() => vi.fn())
-vi.mock('../../../L3-services/azureStorage/azureReviewDataSource.js', () => ({
+vi.mock('../../../L3-services/storage/reviewDataSource.js', () => ({
   getItemById: vi.fn(),
   approveItem: mockAzureApproveItem,
   markPublished: mockMarkPublished,
@@ -128,8 +128,47 @@ beforeEach(() => {
 // ── Tests ───────────────────────────────────────────────────────────────
 
 describe('enqueueApproval', () => {
+  it('ReviewStorage.REQ-006: legacy callers keep pending text, media, thumbnail and writes on the selected duplicate', async () => {
+    const pending = makeContentRecord({
+      rowKey: 'duplicate', partitionKey: 'pending-video', postContent: 'Pending text',
+      createdAt: '2025-01-01', thumbnailFilename: 'thumb.png',
+    })
+    const published = makeContentRecord({
+      rowKey: 'duplicate', partitionKey: 'published-video', status: 'published',
+      postContent: 'Published text', createdAt: '2026-01-01', thumbnailFilename: 'thumb.png',
+    })
+    mockGetContentItems.mockImplementation(async (filter?: { status?: string }) =>
+      filter?.status === 'pending_review' ? [pending] : [pending, published])
+
+    const result = await enqueueApproval(['duplicate'])
+
+    expect(result.scheduled).toBe(1)
+    expect(mockCreatePost).toHaveBeenCalledWith(expect.objectContaining({ content: 'Pending text' }))
+    expect(mockDownloadMediaToFile.mock.calls).toEqual([
+      ['duplicate', 'media.mp4', expect.any(String), 'pending-video'],
+      ['duplicate', 'thumb.png', expect.any(String), 'pending-video'],
+    ])
+    expect(mockAzureApproveItem.mock.calls).toEqual([['pending-video', 'duplicate']])
+    expect(mockMarkPublished.mock.calls).toEqual([
+      ['pending-video', 'duplicate', expect.objectContaining({ latePostId: 'late-post-001' })],
+    ])
+  })
+
+  it('ReviewStorage.REQ-005: approval preserves the requested duplicate partition for text, media and final raw-ID status writes', async () => {
+    const older = makeContentRecord({ rowKey: 'duplicate', partitionKey: 'older', status: 'approved', postContent: 'Pending displayed text', createdAt: '2025-01-01', thumbnailFilename: 'thumb.png' })
+    const newer = makeContentRecord({ rowKey: 'duplicate', partitionKey: 'newer', status: 'published', postContent: 'Published history', createdAt: '2026-01-01' })
+    mockGetContentItems.mockResolvedValueOnce([]).mockResolvedValueOnce([older, newer])
+    const result = await enqueueApproval(['duplicate'], { videoSlugs: { duplicate: 'older' } })
+    expect(result.scheduled).toBe(1)
+    expect(mockCreatePost).toHaveBeenCalledWith(expect.objectContaining({ content: 'Pending displayed text' }))
+    expect(mockDownloadMediaToFile).toHaveBeenCalledWith('duplicate', 'media.mp4', expect.any(String), 'older')
+    expect(mockDownloadMediaToFile).toHaveBeenCalledWith('duplicate', 'thumb.png', expect.any(String), 'older')
+    expect(mockAzureApproveItem).toHaveBeenCalledWith('older', 'duplicate')
+    expect(mockMarkPublished).toHaveBeenCalledWith('older', 'duplicate', expect.objectContaining({ latePostId: 'late-post-001' }))
+    expect(mockMarkPublished).not.toHaveBeenCalledWith('newer', expect.anything(), expect.anything())
+  })
   describe('successful approval', () => {
-    it('downloads media from Azure, creates post, and schedules', async () => {
+    it('ReviewStorage.REQ-003: worker downloads media and updates selected-provider content', async () => {
       const record = makeContentRecord({ rowKey: 'approve-1' })
       mockGetContentItems.mockResolvedValue([record])
 
@@ -263,7 +302,7 @@ describe('enqueueApproval', () => {
       await enqueueApproval(['blob-media'])
 
       expect(mockDownloadMediaToFile).toHaveBeenCalledWith(
-        'blob-media', 'source-media.mp4', expect.stringContaining('blob-media-source-media.mp4'),
+        'blob-media', 'source-media.mp4', expect.stringContaining('blob-media-source-media.mp4'), 'test-video',
       )
       expect(mockUploadMedia).toHaveBeenCalled()
     })

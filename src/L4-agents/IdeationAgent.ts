@@ -1,7 +1,6 @@
 import { readJsonFile } from '../L1-infra/fileSystem/fileSystem.js'
 import { getBrandConfig } from '../L1-infra/config/brand.js'
 import { getConfig } from '../L1-infra/config/environment.js'
-import { getModelForAgent } from '../L1-infra/config/modelConfig.js'
 import logger from '../L1-infra/logger/configLogger.js'
 import {
   createIdea,
@@ -551,7 +550,7 @@ class IdeationAgent extends BaseAgent {
   private finalized = false
 
   constructor(systemPrompt: string, context: IdeationAgentContext, model?: string) {
-    super('IdeationAgent', systemPrompt, getProvider(), model ?? getModelForAgent('IdeationAgent'))
+    super('IdeationAgent', systemPrompt, getProvider(), model)
     this.brandContext = context.brandContext
     this.existingIdeas = [...context.existingIdeas]
     this.ideaRepo = context.ideaRepo

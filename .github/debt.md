@@ -6,6 +6,7 @@
 
 | Date | File | Severity | Description | Status |
 |------|------|----------|-------------|--------|
+| 2026-11-19 | .github/extensions/test-enforcer/extension.mjs:8-11 | high | PR #182 scoped review: standalone allowlist rejects `npm run commit -- -F "C:\Temp\commit-message.txt"` and standard `-m` plus repeated `-m`/`--trailer`, preventing the required message-file/trailer workflow even with staged regression tests. Add narrow literal message-file and trailer support and regression tests without allowing staging or target overrides. | resolved 2026-11-19 in reviewed unstaged delta atop be52df5; not yet committed |
 | 2026-02-22 | src/L4-agents/BlogAgent.ts:330 | medium | BlogAgent return type changed from file path to markdown content - semantic breaking change that may affect callers | open |
 | 2026-02-22 | specs/L4-agents/VisualEnhancement.md | low | Spec file exists but no corresponding test file in specs/__tests__/ | open |
 | 2026-02-22 | specs/L7-app/CLI.md | low | Spec file exists but no corresponding test file in specs/__tests__/ | open |
@@ -21,3 +22,4 @@
 
 | Date Found | Date Resolved | File | Description |
 |------------|--------------|------|-------------|
+| 2026-11-19 | 2026-11-19 | .github/extensions/test-enforcer/extension.mjs:7-44 | PR #182 local re-review: literal token validation now accepts repeated message options, quoted Windows message-file paths and quoted trailers, while retaining anchored staged-test enforcement and rejection of unsupported commands before Git. Regression cases cover these forms for both shell tool names and all three index states. Resolution applies to the unstaged delta atop be52df5, not a delivered commit; reported test executions were not rerun by this reviewer. |

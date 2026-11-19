@@ -594,6 +594,7 @@
     // ── App ──
     function App() {
       const [allGroups, setAllGroups] = useState(null) // null = loading
+      const [loadError, setLoadError] = useState(null)
       const [accounts, setAccounts] = useState({})
       const [profileName, setProfileName] = useState(null)
       const [index, setIndex] = useState(0)
@@ -608,8 +609,8 @@
         const fetchAll = async () => {
           try {
             const res = await fetch('/api/init')
-            if (!res.ok) throw new Error(`HTTP ${res.status}`)
             const data = await res.json()
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
 
             setAllGroups(data.groups || [])
 
@@ -622,16 +623,16 @@
             if (data.profile && data.profile.name) setProfileName(data.profile.name)
           } catch (err) {
             showToast(`Failed to load: ${err.message}`, 'error')
-            setAllGroups([])
+            setLoadError(err.message)
           }
         }
         fetchAll()
       }, [])
 
       const currentGroup = allGroups && allGroups[index] || null
-      const isLoading = allGroups === null
+      const isLoading = !loadError && allGroups === null
       const isEmpty = allGroups !== null && allGroups.length === 0
-      const allDone = !isEmpty && !isLoading && index >= allGroups.length
+      const allDone = !loadError && !isEmpty && !isLoading && index >= allGroups.length
 
       // Auto-select all platforms with connected accounts when group changes
       useEffect(() => {
@@ -672,7 +673,7 @@
         fetch('/api/posts/bulk-approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ itemIds: selectedPlatforms, priority }),
+          body: JSON.stringify({ itemIds: selectedPlatforms, priority, videoSlugs: Object.fromEntries(currentGroup.items.map(item => [item.id, item.videoSlug])) }),
         }).catch(err => showToast(`Approve failed: ${err.message}`, 'error'))
         
         setStats(s => ({ ...s, approved: s.approved + count }))
@@ -694,7 +695,7 @@
         fetch('/api/posts/bulk-reject', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ itemIds: allIds }),
+          body: JSON.stringify({ itemIds: allIds, videoSlugs: Object.fromEntries(currentGroup.items.map(item => [item.id, item.videoSlug])) }),
         }).catch(err => showToast(`Reject failed: ${err.message}`, 'error'))
         
         setStats(s => ({ ...s, rejected: s.rejected + allIds.length }))
@@ -731,7 +732,15 @@
 
       // Main content
       let mainContent
-      if (isLoading) {
+      if (loadError) {
+        mainContent = html`
+          <section role="alert" class="rounded-lg p-6 max-w-xl"
+            style="color: var(--fgColor-danger, #f85149); background: var(--bgColor-danger-muted, #16213e); border: var(--borderWidth-thin, 1px) solid var(--borderColor-danger-emphasis, #f85149)">
+            <h2 class="font-semibold mb-2">Unable to load the review queue</h2>
+            <p>${loadError}</p>
+            <p class="mt-2">Check the selected storage configuration and credentials, then reload this page.</p>
+          </section>`
+      } else if (isLoading) {
         mainContent = html`<${SkeletonCard} />`
       } else if (isEmpty) {
         mainContent = html`<${EmptyState} />`

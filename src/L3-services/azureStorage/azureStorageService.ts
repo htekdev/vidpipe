@@ -5,45 +5,13 @@ import logger from '../../L1-infra/logger/configLogger.js'
 import { getConfig } from '../../L1-infra/config/environment.js'
 import * as blobClient from '../../L2-clients/azure/blobClient.js'
 import * as tableClient from '../../L2-clients/azure/tableClient.js'
+import { resolveVideoSlug } from '../storage/contentMetadata.js'
 
 const VIDEOS_TABLE = 'Videos'
 const CONTENT_TABLE = 'Content'
 
-export interface VideoRecord {
-  [key: string]: unknown
-  originalFilename: string
-  slug: string
-  blobPath: string
-  sourceUrl: string
-  duration: number
-  size: number
-  status: 'processing' | 'completed' | 'failed'
-  contentCount: number
-  processedAt: string
-  createdAt: string
-}
-
-export interface ContentRecord {
-  [key: string]: unknown
-  platform: string
-  clipType: string
-  status: 'pending_review' | 'approved' | 'published' | 'rejected'
-  blobBasePath: string
-  mediaType: string
-  mediaFilename: string
-  postContent: string
-  hashtags: string
-  characterCount: number
-  scheduledFor: string
-  latePostId: string
-  publishedUrl: string
-  sourceVideoRunId: string
-  thumbnailFilename: string
-  ideaIds: string
-  createdAt: string
-  reviewedAt: string
-  publishedAt: string
-}
+import type { ContentRecord, VideoRecord } from '../../L0-pure/types/index.js'
+export type { ContentRecord, VideoRecord } from '../../L0-pure/types/index.js'
 
 export async function uploadVideoFile(
   localPath: string,
@@ -173,6 +141,7 @@ export async function uploadPublishQueue(
   publishQueueDir: string,
   videoSlug: string,
   runId: string,
+  options?: { sourceVideoSlug: string },
 ): Promise<{ uploaded: number; errors: string[] }> {
   const errors: string[] = []
   let uploaded = 0
@@ -195,7 +164,7 @@ export async function uploadPublishQueue(
       const meta = JSON.parse(metaContent) as Record<string, unknown>
       const sourceVideo = String(meta.sourceVideo || '')
       // Match if sourceVideo path ends with the video slug
-      if (sourceVideo && !sourceVideo.endsWith(videoSlug)) {
+      if (options ? resolveVideoSlug(meta, itemId) !== options.sourceVideoSlug : sourceVideo && !sourceVideo.endsWith(videoSlug)) {
         continue // skip — belongs to a different recording
       }
     } catch {

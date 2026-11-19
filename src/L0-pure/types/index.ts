@@ -1211,3 +1211,53 @@ export {
   applySkipFlags,
   resolveFromFlags,
 } from '../pipelineSpec/index.js'
+/** Provider-neutral metadata for an uploaded source video. */
+export interface VideoRecord {
+  [key: string]: unknown
+  originalFilename: string
+  slug: string
+  blobPath: string
+  sourceUrl: string
+  duration: number
+  size: number
+  status: 'processing' | 'completed' | 'failed'
+  contentCount: number
+  processedAt: string
+  createdAt: string
+}
+
+/** Review metadata; original source metadata is retained alongside normalized fields. */
+export interface ContentRecord {
+  [key: string]: unknown
+  platform: string
+  clipType: string
+  status: 'pending_review' | 'approved' | 'published' | 'rejected'
+  blobBasePath: string
+  mediaType: string
+  mediaFilename: string
+  postContent: string
+  hashtags: string
+  characterCount: number
+  scheduledFor: string
+  latePostId: string
+  publishedUrl: string
+  sourceVideoRunId: string
+  thumbnailFilename: string
+  ideaIds: string
+  createdAt: string
+  reviewedAt: string
+  publishedAt: string
+}
+
+export type StoredContentRecord = ContentRecord & { partitionKey: string; rowKey: string }
+export type StoredVideoRecord = VideoRecord & { partitionKey: string; rowKey: string }
+
+/** Counts are reported for both live and read-only local migration runs. */
+export interface StorageMigrationResult {
+  uploaded: number
+  skipped: number
+  eligible: number
+  invalid: number
+  failed: number
+  errors: string[]
+}

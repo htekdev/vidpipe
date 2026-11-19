@@ -1,12 +1,15 @@
 import { vi, describe, test, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { Platform, type Idea, type SocialPost } from '../../../L0-pure/types/index.js'
-import { initConfig } from '../../../L1-infra/config/environment.js'
+import { getConfig, initConfig } from '../../../L1-infra/config/environment.js'
+
+const worktreeRoot = fileURLToPath(new URL('../../../../', import.meta.url))
 
 const mockState = vi.hoisted(() => ({
+  model: undefined as string | undefined,
   tools: [] as Array<{
     name: string
     handler: (args: Record<string, unknown>) => Promise<unknown>
@@ -42,11 +45,13 @@ vi.mock('../../../L2-clients/llm/index.js', () => ({
     isAvailable: () => true,
     getDefaultModel: () => 'mock-model',
     createSession: async (config: {
+      model?: string
       tools: Array<{
         name: string
         handler: (args: Record<string, unknown>) => Promise<unknown>
       }>
     }) => {
+      mockState.model = config.model
       mockState.tools = config.tools
       return {
         on: () => {},
@@ -224,7 +229,7 @@ async function captureIdeationTools(): Promise<void> {
 
 describe('L4-L6 Integration: ideation and queue builder', () => {
   beforeEach(async () => {
-    sandboxDir = await mkdtemp(join(tmpdir(), 'vidpipe-ideation-int-'))
+    sandboxDir = await mkdtemp(join(worktreeRoot, '.ideation-integration-'))
     brandPath = join(sandboxDir, 'brand.json')
     outputDir = join(sandboxDir, 'recordings')
 
@@ -237,6 +242,7 @@ describe('L4-L6 Integration: ideation and queue builder', () => {
     })
 
     mockState.tools = []
+    mockState.model = undefined
     mockCreateIssue.mockReset()
     mockListIssues.mockReset()
     mockListComments.mockReset()
@@ -249,6 +255,18 @@ describe('L4-L6 Integration: ideation and queue builder', () => {
 
   afterEach(async () => {
     await rm(sandboxDir, { recursive: true, force: true })
+  })
+
+  test('IdeationAgent.REQ-015 - L4 agent and real L3 factory use the actual L2 fallback model mapping', async () => {
+    const config = getConfig()
+    config.LLM_PROVIDER = 'claude'
+    config.LLM_MODEL = 'claude-sonnet-4-20250514'
+    config.MODEL_OVERRIDES = {}
+    config.EXA_API_KEY = ''
+    config.YOUTUBE_API_KEY = ''
+    config.PERPLEXITY_API_KEY = ''
+    await captureIdeationTools()
+    expect(mockState.model).toBe('gpt-6.1-sol')
   })
 
   test('IdeationAgent create_idea tool handler uses L3 createIdea and mocked L2 createIssue', async () => {

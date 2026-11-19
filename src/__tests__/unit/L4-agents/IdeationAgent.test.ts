@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { mkdtemp, rm, writeFile } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { Platform, type CreateIdeaInput, type Idea } from '../../../L0-pure/types/index.js'
-import { getConfig } from '../../../L1-infra/config/environment.js'
+import { getConfig, initConfig } from '../../../L1-infra/config/environment.js'
+import { getProvider } from '../../../L3-services/llm/providerFactory.js'
+
+const worktreeRoot = fileURLToPath(new URL('../../../../', import.meta.url))
 
 const mockState = vi.hoisted(() => ({
   systemPrompt: '',
+  model: undefined as string | undefined,
   lastUserMessage: '',
   mcpServers: undefined as Record<string, unknown> | undefined,
   tools: [] as Array<{
@@ -36,16 +40,18 @@ vi.mock('../../../L3-services/ideaService/ideaService.js', () => ({
 
 vi.mock('../../../L3-services/llm/providerFactory.js', async () => {
   return {
-    getProvider: () => ({
+    getProvider: vi.fn(() => ({
       name: 'copilot',
       isAvailable: () => true,
       getDefaultModel: () => 'mock-model',
       createSession: async (config: {
         systemPrompt: string
+        model?: string
         tools: Array<{ name: string; parameters?: Record<string, unknown>; handler: (args: Record<string, unknown>) => Promise<unknown> }>
         mcpServers?: Record<string, unknown>
       }) => {
         mockState.systemPrompt = config.systemPrompt
+        mockState.model = config.model
         mockState.mcpServers = config.mcpServers
         mockState.tools = config.tools
 
@@ -110,7 +116,7 @@ vi.mock('../../../L3-services/llm/providerFactory.js', async () => {
           },
         }
       },
-    }),
+    })),
   }
 })
 
@@ -165,7 +171,7 @@ describe('IdeationAgent', () => {
   }
 
   beforeEach(async () => {
-    sandboxDir = await mkdtemp(join(tmpdir(), 'ideation-agent-'))
+    sandboxDir = await mkdtemp(join(worktreeRoot, '.ideation-agent-'))
     ideasDir = join(sandboxDir, 'ideas')
     brandPath = join(sandboxDir, 'brand.json')
     config = getConfig()
@@ -174,6 +180,7 @@ describe('IdeationAgent', () => {
     config.YOUTUBE_API_KEY = ''
     config.PERPLEXITY_API_KEY = ''
     mockState.systemPrompt = ''
+    mockState.model = undefined
     mockState.lastUserMessage = ''
     mockState.mcpServers = undefined
     mockState.tools = []
@@ -231,6 +238,39 @@ describe('IdeationAgent', () => {
 
   afterEach(async () => {
     await rm(sandboxDir, { recursive: true, force: true })
+  })
+
+  test.each([
+    { configured: 'claude', globalModel: 'claude-sonnet-4-20250514', agentModel: undefined },
+    { configured: 'openai', globalModel: 'gpt-4o', agentModel: undefined },
+    { configured: 'claude', globalModel: 'claude-sonnet-4-20250514', agentModel: 'pinned-agent-model' },
+  ])('IdeationAgent.REQ-015 - actual $configured factory fallback resolves the session model with agent override $agentModel', async ({ configured, globalModel, agentModel }) => {
+    const actualFactory = await vi.importActual<typeof import('../../../L3-services/llm/providerFactory.js')>(
+      '../../../L3-services/llm/providerFactory.js',
+    )
+    const factoryMock = vi.mocked(getProvider)
+    const defaultImplementation = factoryMock.getMockImplementation()!
+    try {
+      config = initConfig({ llmProvider: configured, llmModel: globalModel, openaiKey: '', anthropicKey: '' })
+      config.MODEL_OVERRIDES = agentModel ? { MODEL_IDEATION_AGENT: agentModel } : {}
+      config.EXA_API_KEY = ''
+      config.YOUTUBE_API_KEY = ''
+      config.PERPLEXITY_API_KEY = ''
+      const provider = actualFactory.getProvider()
+      expect(provider.name).toBe('copilot')
+      expect(actualFactory.getProviderName()).toBe('copilot')
+      // Real factory selection and config; replace only session I/O with the existing fake.
+      provider.createSession = getProvider().createSession
+      factoryMock.mockReturnValueOnce(provider)
+      const { generateIdeas } = await import('../../../L4-agents/IdeationAgent.js')
+      mockState.runScenario = 'inspect'
+      await generateIdeas({ count: 3, brandPath, ideasDir })
+      expect(mockState.model).toBe(agentModel ?? provider.getDefaultModel())
+    } finally {
+      factoryMock.mockReset().mockImplementation(defaultImplementation)
+      await actualFactory.resetProvider()
+      initConfig()
+    }
   })
 
   test('IdeationAgent.REQ-001 - generateIdeas includes seed topics, content pillars, and publish-by guidance in the prompt', async () => {

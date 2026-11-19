@@ -71,11 +71,11 @@ vi.mock('../../../L3-services/scheduler/realign.js', () => ({
   executeRealignPlan: mockExecuteRealignPlan,
 }))
 
-vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
+vi.mock('../../../L3-services/storage/storageService.js', () => ({
   getContentItems: mockGetContentItems,
 }))
 
-vi.mock('../../../L3-services/azureStorage/azureReviewDataSource.js', () => ({
+vi.mock('../../../L3-services/storage/reviewDataSource.js', () => ({
   listPendingItems: vi.fn().mockResolvedValue([]),
   getGroupedItems: vi.fn().mockResolvedValue([]),
   getItemById: vi.fn(),

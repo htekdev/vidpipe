@@ -22,14 +22,14 @@ vi.mock('../../../L1-infra/paths/paths.js', () => ({
 }))
 
 const mockGetContentItems = vi.hoisted(() => vi.fn())
-vi.mock('../../../L3-services/azureStorage/azureStorageService.js', () => ({
+vi.mock('../../../L3-services/storage/storageService.js', () => ({
   getContentItems: mockGetContentItems,
 }))
 
 const mockAzureApproveItem = vi.hoisted(() => vi.fn())
 const mockMarkPublished = vi.hoisted(() => vi.fn())
 const mockDownloadMediaToFile = vi.hoisted(() => vi.fn())
-vi.mock('../../../L3-services/azureStorage/azureReviewDataSource.js', () => ({
+vi.mock('../../../L3-services/storage/reviewDataSource.js', () => ({
   getItemById: vi.fn(),
   approveItem: mockAzureApproveItem,
   markPublished: mockMarkPublished,

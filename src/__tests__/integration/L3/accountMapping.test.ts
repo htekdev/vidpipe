@@ -29,6 +29,10 @@ vi.mock('../../../L1-infra/paths/paths.js', () => ({
   sep: '/',
 }))
 
+vi.mock('../../../L1-infra/config/environment.js', () => ({
+  getConfig: () => ({ LATE_API_KEY: '', LATE_PROFILE_ID: '' }),
+}))
+
 // Logger is auto-mocked by global setup.ts
 
 // ── Import after mocks ───────────────────────────────────────────────
@@ -71,6 +75,8 @@ describe('L3 Integration: accountMapping', () => {
 
   test('getAllAccountMappings loads from file cache when valid', async () => {
     const cacheData = {
+      profileId: 'profile-1',
+      configuredProfileId: '',
       accounts: { twitter: 'acc-123', linkedin: 'acc-456' },
       fetchedAt: new Date().toISOString(),
     }
@@ -86,6 +92,8 @@ describe('L3 Integration: accountMapping', () => {
 
   test('getAccountId returns correct ID from file cache', async () => {
     const cacheData = {
+      profileId: 'profile-1',
+      configuredProfileId: '',
       accounts: { twitter: 'acc-x', linkedin: 'acc-li', tiktok: 'acc-tt' },
       fetchedAt: new Date().toISOString(),
     }
@@ -98,6 +106,8 @@ describe('L3 Integration: accountMapping', () => {
 
   test('getAccountId returns null for unconnected platform from cache', async () => {
     const cacheData = {
+      profileId: 'profile-1',
+      configuredProfileId: '',
       accounts: { twitter: 'acc-x' },
       fetchedAt: new Date().toISOString(),
     }
@@ -112,13 +122,14 @@ describe('L3 Integration: accountMapping', () => {
   test('stale file cache is ignored', async () => {
     const staleDate = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString() // 25 hours ago
     const cacheData = {
+      profileId: 'profile-1',
+      configuredProfileId: '',
       accounts: { twitter: 'acc-old' },
       fetchedAt: staleDate,
     }
     mockReadTextFile.mockResolvedValueOnce(JSON.stringify(cacheData))
 
-    // After stale cache, falls through to L2 fetch — if LATE_API_KEY is set,
-    // real data is returned; otherwise empty. Both are valid.
+    // Missing test API credentials prevent accidental live requests on a cache miss.
     const mappings = await getAllAccountMappings()
     expect(typeof mappings).toBe('object')
     expect(mappings).not.toBeNull()
@@ -129,8 +140,7 @@ describe('L3 Integration: accountMapping', () => {
   test('invalid file cache JSON is ignored', async () => {
     mockReadTextFile.mockResolvedValueOnce('not json')
 
-    // Falls through to L2 fetch — if LATE_API_KEY is set, real data is returned;
-    // otherwise empty mappings. Both are valid in integration context.
+    // A cache miss with no test API credentials returns empty mappings.
     const mappings = await getAllAccountMappings()
     expect(typeof mappings).toBe('object')
     expect(mappings).not.toBeNull()
@@ -139,8 +149,7 @@ describe('L3 Integration: accountMapping', () => {
   test('missing file cache falls through gracefully', async () => {
     mockReadTextFile.mockRejectedValueOnce(new Error('ENOENT'))
 
-    // Falls through to L2 fetch — if LATE_API_KEY is set, real data is returned;
-    // otherwise empty mappings. Both are valid in integration context.
+    // A cache miss with no test API credentials returns empty mappings.
     const mappings = await getAllAccountMappings()
     expect(typeof mappings).toBe('object')
     expect(mappings).not.toBeNull()
@@ -150,6 +159,8 @@ describe('L3 Integration: accountMapping', () => {
 
   test('second call uses memory cache without re-reading file', async () => {
     const cacheData = {
+      profileId: 'profile-1',
+      configuredProfileId: '',
       accounts: { linkedin: 'acc-mem' },
       fetchedAt: new Date().toISOString(),
     }
@@ -165,10 +176,14 @@ describe('L3 Integration: accountMapping', () => {
 
   test('clearAccountCache forces file re-read on next call', async () => {
     const cacheA = {
+      profileId: 'profile-1',
+      configuredProfileId: '',
       accounts: { linkedin: 'acc-a' },
       fetchedAt: new Date().toISOString(),
     }
     const cacheB = {
+      profileId: 'profile-1',
+      configuredProfileId: '',
       accounts: { linkedin: 'acc-b' },
       fetchedAt: new Date().toISOString(),
     }

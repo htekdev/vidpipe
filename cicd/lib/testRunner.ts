@@ -109,6 +109,11 @@ function findTestBlockLines(filePath: string): number[] {
   try {
     const content = readFileSync(filePath, 'utf-8');
     const lines = content.split('\n');
+    // Multiline tables register tests at the later invocation, not the setup line.
+    if (lines.some(line =>
+      /^\s*(?:describe|it|test)(?:\.\w+)*\.each\s*(?:\(|`)/.test(line) && !/\)\s*\(|`\s*\(/.test(line))) {
+      return [];
+    }
     const testLines: number[] = [];
 
     // Match describe(), it(), test() — including variants like describe.skipIf()
