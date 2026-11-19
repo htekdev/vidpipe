@@ -1,48 +1,47 @@
 # Code Review
 
-**Reviewed:** 2026-11-19T01:50:49.2883787-06:00
+**Reviewed:** 2026-11-19T02:49:53.6656020-06:00
 **Reviewer:** code-reviewer
 **Branch:** fix/gpt-6.1-sol-model
+**HEAD:** 9ca36c2
 
-**Scope:** PR #182, HEAD be52df588c98ffbb6b80db6f7e19c59f33bf437b; only the unstaged delta in the three files below, in C:\Repos\htekdev\video-auto-note-taker\workdir\fix--gpt-6.1-sol-model. Narrow correctness review of the latest required commit-option correction. Model code and the original PR changes were not re-reviewed. Outcome: no meaningful blocking findings in this scope.
+**Scope:** Local review ONLY of the latest unstaged and untracked six-file delta in `C:\Repos\htekdev\video-auto-note-taker\workdir\fix--gpt-6.1-sol-model`. Existing committed changes, model changes and the full PR are not certified by this review.
 
 ## Files Reviewed
 - .github/extensions/test-enforcer/extension.mjs
-- src/__tests__/unit/L2-clients/testEnforcer.test.ts
+- cicd/lib/commitGate.ts
 - specs/hooks/testEnforcer.md
+- specs/cicd/commitGate.md (untracked)
+- src/__tests__/unit/L2-clients/testEnforcer.test.ts
+- src/__tests__/unit/L2-clients/commitGate.test.ts (untracked)
 
 ## Findings
 
 ### Fixed
-- .github/extensions/test-enforcer/extension.mjs:7-44 — prior local compatibility blocker is resolved in the reviewed unstaged changes: supported literal option/value pairs include repeated -m/--message, -F/--file with quoted absolute Windows paths, and quoted --trailer values containing Co-authored-by angle brackets. The accepted forms still reach the anchored staged-test check.
-- .github/extensions/test-enforcer/extension.mjs:5,53-64 — compound, directory-changing, index-mutating, target-overriding and expansion-bearing unsupported forms are rejected before the Git index read; its cwd is anchored to the extension repository.
-- No source fixes were made by this reviewer.
-
-### Blocking Issues
-- None found within the narrowly scoped review.
+- .github/extensions/test-enforcer/extension.mjs:102 — the reviewed delta adds `--diff-filter=ACMR` to the anchored staged-path query. Deleted tests no longer satisfy the regression requirement for active source changes, and deleted source alone no longer triggers it.
+- cicd/lib/commitGate.ts:29-33 — the reviewed delta replaces shell-interpolated commit execution with `execFileSync('git', ['commit', ...commitArgs], { shell: false, ... })`, preserving literal argument boundaries, existing dry-run behavior and caught failure reporting.
+- These fixes were already present in the submitted delta; this reviewer made no source fixes.
 
 ### Acknowledged (Tech Debt)
-- Previous related blocker marked resolved in .github/debt.md for this unstaged delta; unrelated backlog entries were not reviewed or changed. No new tech debt recorded.
+- No real new tech debt found in this delta. Existing backlog entries were not re-reviewed; `.github/debt.md` is unchanged.
 
 ### No Issues
-- .github/extensions/test-enforcer/extension.mjs — required literal message-file/trailer forms are supported without executing token values; the documented conservative lexical boundary is preserved.
-- src/__tests__/unit/L2-clients/testEnforcer.test.ts — regression cases cover both shell tool names, required options, empty/source-only/source-and-test indexes, anchored cwd and rejection before Git. Tests import this worktree's real hook with mocked subprocess execution.
-- specs/hooks/testEnforcer.md — requirements and supported/unsupported examples agree with the correction.
+- .github/extensions/test-enforcer/extension.mjs — the narrow deletion filter preserves the existing command boundary and worktree-anchored index read.
+- cicd/lib/commitGate.ts — direct argv execution avoids shell reconstruction without changing gate validation.
+- src/__tests__/unit/L2-clients/testEnforcer.test.ts — new real-index deletion cases compare against a baseline tree without commits; cover deleted tests with modified source, deleted source alone, and modified source with modified tests for both shell tool labels; fixture cleanup is in `finally`.
+- src/__tests__/unit/L2-clients/commitGate.test.ts — focused mocked subprocess assertions cover literal separators, quotes, repeated messages, Windows paths, trailers, dry runs and failure without shell fallback.
+- specs/hooks/testEnforcer.md — REQ-009 matches deletion handling and the real-index regressions.
+- specs/cicd/commitGate.md — REQ-001 through REQ-003 match the scoped execution change and focused tests.
 
 ## Validation
-- Independently read the complete scoped diff and current files. Read-only supporting inspection of package.json, cicd/commit.ts and the executeCommit path in cicd/lib/commitGate.ts confirms the required options are forwarded through the existing npm commit gate; that gate was not executed.
-- Independently ran scoped git diff --check: passed (only an LF-to-CRLF advisory).
-- Parent-reported results, not independently rerun: 170 focused tests passed; 24 red-phase failures before correction; typecheck and syntax checks passed.
-- No tests were executed in this review: the focused suite creates/stages fixture repositories, outside the permitted write scope. Full-suite results, runtime shell argument transport and coverage thresholds are not independently certified.
-- Only review metadata was edited. No staging, commits, push, remote actions, subagents or source edits were performed.
+- Independently inspected the complete unstaged delta and both untracked files, with read-only supporting context.
+- Independently passed source TypeScript checking: locally resolved TypeScript compiler with `--noEmit --incremental false`.
+- Independently passed standalone CI/CD entry-point TypeScript checking: locally resolved compiler with `--ignoreConfig --noEmit --incremental false --target ES2022 --module NodeNext --moduleResolution NodeNext --strict --esModuleInterop --skipLibCheck --types node cicd/commit.ts`.
+- Initial compiler invocation assumed worktree-local node_modules and failed to locate it; resolution through existing ancestor dependencies succeeded. Initial standalone CI/CD invocation omitted Node types; the corrected explicit Node environment passed. Neither required repository edits or dependency installation.
+- Independently passed `node --check .github/extensions/test-enforcer/extension.mjs` and `git diff --check` (only the existing LF-to-CRLF advisory).
+- Parent-reported evidence supplied with this review request: **243 focused tests passed; 108 CI/CD tests passed; typechecks, syntax and diff checks green; red-first failures reproduced**. Test counts and red-first execution were not independently reproduced by this reviewer.
+- No tests were run: the hook suite writes and stages fixture repositories, outside this review's certificate-only write/no-staging restriction. Both shell labels exercise hook decisions, not actual shell transport. Full-suite coverage thresholds are not independently certified.
+- The index was empty when inspected. Only this worktree's `.github/reviewed.md` was written; no source/debt edits, staging, commits, push, remote access or subagents. The original parent worktree was not modified.
 
 ## Summary
-No meaningful bug blockers found in the three-file unstaged delta atop be52df5; the previous required commit-option blocker is resolved locally. This is a local, scope-limited review certificate, not full-PR or execution/coverage certification; gated commit and push remain with the parent.
-
-## Fixture Correction Validation
-- `src/__tests__/unit/L1-infra/fileSystem-extra.test.ts` — corrected the test fixture to close a raw descriptor opened with `openSync`, then verify `fstatSync` throws `EBADF`, avoiding a second close by a still-live `FileHandle` owner.
-- Validation: targeted file test passed (33 tests); `npm run test:unit:coverage` passed (2,299 tests, 6 skipped; statements 78.41%, branches 70.14%, functions 80.96%, lines 78.83%).
-
-## Command Detection Follow-up
-- Reviewed the scoped hook, specification and regression-test diff atop `200ffb4`: candidate detection inspects executable/subcommand positions instead of matching filenames or ordinary argument values. Compound-command rejection and anchored index reads remain unchanged. No blocking correctness issue found in this delta.
-- Reported regression evidence: 44 failures before correction, then 232 focused tests passed; typecheck, syntax and diff checks passed. These commands were run by review-triage, not independently repeated during this direct diff review.
+No meaningful blocking bugs found in the six-file local delta atop `9ca36c2`. This is a scope-limited local certificate with independently green typechecks/syntax/diff checks and clearly attributed parent-reported test evidence; publication remains with the parent.

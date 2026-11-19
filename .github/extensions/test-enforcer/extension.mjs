@@ -99,7 +99,7 @@ await joinSession({
                     permissionDecisionReason: "Only standalone `git commit` or `npm run commit` invocations with literal ASCII values for -m/--message, -F/--file and --trailer are supported. Use a session rooted in the target worktree, stage source and regression tests in a separate tool call, then run `npm run commit` alone. Compound commands, directory changes, target overrides, shell expansion and other options are not supported.",
                 };
             }
-            const files = execFileSync("git", ["diff", "--cached", "--name-only"], {
+            const files = execFileSync("git", ["diff", "--cached", "--name-only", "--diff-filter=ACMR"], {
                 cwd: repositoryRoot,
                 encoding: "utf8",
                 windowsHide: true,

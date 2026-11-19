@@ -48,7 +48,7 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
     async (command) => {
       const result = await onPreToolUse({ toolName, toolArgs: { command } })
       expect(execFileSync).toHaveBeenCalledWith(
-        'git', ['diff', '--cached', '--name-only'], expect.objectContaining({ encoding: 'utf8' }),
+        'git', ['diff', '--cached', '--name-only', '--diff-filter=ACMR'], expect.objectContaining({ encoding: 'utf8' }),
       )
       expect(result?.permissionDecision).toBe('deny')
       expect(result?.permissionDecisionReason).toContain('staged regression tests')
@@ -81,7 +81,7 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
   it('testEnforcer.REQ-005: anchors Git index reads to the extension worktree', async () => {
     await onPreToolUse({ toolName, toolArgs: { command: 'npm run commit' } })
     expect(execFileSync).toHaveBeenCalledExactlyOnceWith(
-      'git', ['diff', '--cached', '--name-only'], expect.objectContaining({
+      'git', ['diff', '--cached', '--name-only', '--diff-filter=ACMR'], expect.objectContaining({
         cwd: worktreeRoot,
         encoding: 'utf8',
         windowsHide: true,
@@ -103,34 +103,36 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
     expect(execFileSync).toHaveBeenCalledTimes(2)
   })
 
-  it.each([
-    String.raw`npm run commit -- -F "C:\repo worktree\commit-message.txt"`,
-    String.raw`npm run commit -- -F 'C:\repo worktree\commit-message.txt'`,
-    String.raw`npm run commit -- --file "C:\repo\commit-message.txt"`,
-    String.raw`git commit -F "C:\repo worktree\commit-message.txt"`,
-    'git commit --file commit-message.txt',
-    'npm run commit -- -m "fix: hook arguments" -m "Regression coverage; literal && separators"',
-    'git commit -m "fix: hook arguments" -m "Body | literal separators"',
-    'npm run commit -- --message fix --message "Second paragraph"',
-    'npm run commit -- -m fix --trailer "Co-authored-by: Copilot <copilot@github.com>"',
-    'npm run commit -- -m fix --trailer "Co-authored-by: Copilot <copilot@github.com>" --trailer "Copilot-Session: session-id"',
-    'git commit --trailer "Copilot-Session: session-id" -m fix',
-    String.raw`npm run commit -- -F "C:\repo\commit-message.txt" --trailer "Co-authored-by: Copilot <copilot@github.com>"`,
-  ])('testEnforcer.REQ-007: validates required option/value pairs without executing values: %s', async (command) => {
-    for (const files of [stagedIndexes[2], stagedIndexes[1], stagedIndexes[0]]) {
-      execFileSync.mockClear().mockReturnValue(files)
-      const result = await onPreToolUse({ toolName, toolArgs: { command } })
-      if (files === stagedIndexes[1]) {
-        expect(result?.permissionDecision).toBe('deny')
-        expect(result?.permissionDecisionReason).toContain('staged regression tests')
-      } else {
-        expect(result).toBeUndefined()
+  it('testEnforcer.REQ-007: validates required option/value pairs without executing values', async () => {
+    for (const command of [
+      String.raw`npm run commit -- -F "C:\repo worktree\commit-message.txt"`,
+      String.raw`npm run commit -- -F 'C:\repo worktree\commit-message.txt'`,
+      String.raw`npm run commit -- --file "C:\repo\commit-message.txt"`,
+      String.raw`git commit -F "C:\repo worktree\commit-message.txt"`,
+      'git commit --file commit-message.txt',
+      'npm run commit -- -m "fix: hook arguments" -m "Regression coverage; literal && separators"',
+      'git commit -m "fix: hook arguments" -m "Body | literal separators"',
+      'npm run commit -- --message fix --message "Second paragraph"',
+      'npm run commit -- -m fix --trailer "Co-authored-by: Copilot <copilot@github.com>"',
+      'npm run commit -- -m fix --trailer "Co-authored-by: Copilot <copilot@github.com>" --trailer "Copilot-Session: session-id"',
+      'git commit --trailer "Copilot-Session: session-id" -m fix',
+      String.raw`npm run commit -- -F "C:\repo\commit-message.txt" --trailer "Co-authored-by: Copilot <copilot@github.com>"`,
+    ]) {
+      for (const files of [stagedIndexes[2], stagedIndexes[1], stagedIndexes[0]]) {
+        execFileSync.mockClear().mockReturnValue(files)
+        const result = await onPreToolUse({ toolName, toolArgs: { command } })
+        if (files === stagedIndexes[1]) {
+          expect(result?.permissionDecision).toBe('deny')
+          expect(result?.permissionDecisionReason).toContain('staged regression tests')
+        } else {
+          expect(result).toBeUndefined()
+        }
+        expect(execFileSync).toHaveBeenCalledExactlyOnceWith(
+          'git', ['diff', '--cached', '--name-only', '--diff-filter=ACMR'], {
+            cwd: worktreeRoot, encoding: 'utf8', windowsHide: true,
+          },
+        )
       }
-      expect(execFileSync).toHaveBeenCalledExactlyOnceWith(
-        'git', ['diff', '--cached', '--name-only'], {
-          cwd: worktreeRoot, encoding: 'utf8', windowsHide: true,
-        },
-      )
     }
   })
 
@@ -234,6 +236,55 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
       execFileSync.mockReturnValue(files)
       expect((await onPreToolUse({ toolName, toolArgs: { command } }))?.permissionDecision).toBe('deny')
       expect(execFileSync).not.toHaveBeenCalled()
+    }
+  })
+})
+
+describe.each(['bash', 'powershell'])('staged deletions: %s', (toolName) => {
+  it.each([
+    { change: 'deleted test with modified source', denied: true, statuses: ['D\tsrc/__tests__/model.test.ts', 'M\tsrc/model.ts'] },
+    { change: 'deleted source only', denied: false, statuses: ['D\tsrc/model.ts'] },
+    { change: 'modified source and test', denied: false, statuses: ['M\tsrc/__tests__/model.test.ts', 'M\tsrc/model.ts'] },
+  ])('testEnforcer.REQ-009: classifies a real index with $change', async ({ change, denied, statuses }) => {
+    const { execFileSync: git } = await vi.importActual<typeof import('node:child_process')>('node:child_process')
+    const cwd = mkdtempSync(resolve(worktreeRoot, '.test-enforcer-deletion-'))
+    try {
+      git('git', ['init', '--quiet', cwd], { windowsHide: true })
+      mkdirSync(resolve(cwd, 'src/__tests__'), { recursive: true })
+      writeFileSync(resolve(cwd, 'src/model.ts'), 'export const model = "baseline"\n')
+      writeFileSync(resolve(cwd, 'src/__tests__/model.test.ts'), '// baseline test\n')
+      git('git', ['add', 'src'], { cwd, windowsHide: true })
+      // A real baseline tree permits staged-deletion diffs without creating commits.
+      const baseline = git('git', ['write-tree'], { cwd, encoding: 'utf8', windowsHide: true }).trim()
+      if (change === 'deleted source only') {
+        rmSync(resolve(cwd, 'src/model.ts'))
+      } else {
+        writeFileSync(resolve(cwd, 'src/model.ts'), 'export const model = "changed"\n')
+        if (change === 'deleted test with modified source') {
+          rmSync(resolve(cwd, 'src/__tests__/model.test.ts'))
+        } else {
+          writeFileSync(resolve(cwd, 'src/__tests__/model.test.ts'), '// changed regression test\n')
+        }
+      }
+      git('git', ['add', '-A'], { cwd, windowsHide: true })
+      expect(git('git', ['diff', '--cached', baseline, '--name-status'], {
+        cwd, encoding: 'utf8', windowsHide: true,
+      }).trim().split(/\r?\n/)).toEqual(statuses)
+      execFileSync.mockImplementation((executable, args, options) => {
+        expect(options.cwd).toBe(worktreeRoot)
+        // Compare the actual staged index to the baseline tree instead of HEAD.
+        return git(executable, [...args.slice(0, 2), baseline, ...args.slice(2)], { ...options, cwd })
+      })
+      const result = await onPreToolUse({ toolName, toolArgs: { command: 'npm run commit' } })
+      if (denied) {
+        expect(result?.permissionDecision).toBe('deny')
+        expect(result?.permissionDecisionReason).toContain('staged regression tests')
+      } else {
+        expect(result).toBeUndefined()
+      }
+      expect(execFileSync).toHaveBeenCalledOnce()
+    } finally {
+      rmSync(cwd, { recursive: true, force: true })
     }
   })
 })
