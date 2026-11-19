@@ -7,13 +7,18 @@ const repositoryRoot = fileURLToPath(new URL("../../../", import.meta.url));
 const valueOptions = new Set(["-m", "--message", "-F", "--file", "--trailer"]);
 
 // Only inspect command heads and their subcommands, never arbitrary argument text.
-function hasCommitCommand(command) {
-    const pending = [command];
+function hasCommitCommand(command, shell) {
+    const pending = [{ command, shell }];
     const separator = /^[;&|(){}\r\n]$/;
     const literal = (token = "") => /^(['"])[\s\S]*\1$/.test(token) ? token.slice(1, -1) : token;
     while (pending.length) {
-        // Consume token-boundary line comments before their quotes or separators.
-        const tokens = pending.pop().match(/#[^\r\n]*|(?:[^\s;&|(){}'"]+|'[^']*'|"(?:\\.|[^"\\])*")+|[;&|(){}\r\n]/g) ?? [];
+        const next = pending.pop();
+        // PowerShell uses backtick escapes and permits comments after closed quotes.
+        // Keep escaped characters literal; only maintain quote/comment boundaries.
+        const pattern = next.shell === "powershell"
+            ? /#[^\r\n]*|(?:(?!#)(?:`[\s\S]|[^\s;&|(){}'"`])+|'[^']*'|"(?:`[\s\S]|[^"`])*")+|[;&|(){}\r\n]/g
+            : /#[^\r\n]*|(?:[^\s;&|(){}'"]+|'[^']*'|"(?:\\.|[^"\\])*")+|[;&|(){}\r\n]/g;
+        const tokens = next.command.match(pattern) ?? [];
         let atCommand = true;
         for (let index = 0; index < tokens.length; index++) {
             if (tokens[index].startsWith("#")) continue;
@@ -33,7 +38,10 @@ function hasCommitCommand(command) {
                     const body = tokens[index + flag + 2];
                     // Inspect only explicit command arguments, not ordinary quoted values.
                     // Each queued body is a shorter substring; no expansion or execution.
-                    pending.push(literal(body) === body ? tokens.slice(index + flag + 2, end).join(" ") : literal(body));
+                    pending.push({
+                        command: literal(body) === body ? tokens.slice(index + flag + 2, end).join(" ") : literal(body),
+                        shell: /^(?:powershell|pwsh)$/.test(executable) ? "powershell" : "bash",
+                    });
                 }
             }
             if (executable !== "git" && executable !== "npm") continue;
@@ -100,7 +108,7 @@ await joinSession({
         onPreToolUse: async (input) => {
             if (input.toolName !== "powershell" && input.toolName !== "bash") return;
             const command = String(input.toolArgs?.command ?? "");
-            if (!hasCommitCommand(command)) return;
+            if (!hasCommitCommand(command, input.toolName)) return;
             if (!isStandaloneCommit(command)) {
                 return {
                     permissionDecision: "deny",

@@ -155,6 +155,21 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
     }
   })
 
+  it('testEnforcer.REQ-012: explicit shell wrappers retain their named inner lexical mode', async () => {
+    for (const { command, denied } of [
+      { command: `powershell -NoProfile -Command 'Write-Output "ready"# "\ngit -C target commit -m "fix"'`, denied: true },
+      { command: 'pwsh -Command \'Write-Output `"\nnpm run --prefix target commit -- -m "fix"\'', denied: true },
+      { command: `bash -c 'echo "ready"# "\ngit commit -m fix"'`, denied: false },
+    ]) {
+      for (const files of stagedIndexes) {
+        execFileSync.mockClear().mockReturnValue(files)
+        const result = await onPreToolUse({ toolName, toolArgs: { command } })
+        expect.soft(result?.permissionDecision, command).toBe(denied ? 'deny' : undefined)
+        expect(execFileSync).not.toHaveBeenCalled()
+      }
+    }
+  })
+
   it.each([
     'git commit',
     'git commit --message fix',
@@ -308,6 +323,54 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
       expect(execFileSync).not.toHaveBeenCalled()
     }
   })
+})
+
+describe('PowerShell literal candidate boundaries', () => {
+  it('testEnforcer.REQ-012: detects literal commits after native quotes, comments and call operators before any index read', async () => {
+    for (const command of [
+      'Write-Output "ready"# "\ngit -C target commit -m "fix"',
+      'Write-Output `"\ngit -C target commit -m "fix"',
+      'Write-Output `"\nnpm run --prefix target commit -- -m "fix"',
+      String.raw`& git -C "C:\target\" commit -m "fix"`,
+      '& \'git\' commit -m "fix"',
+      '& "npm" run commit -- -m "fix"',
+      'npm run --prefix="target path" commit -- -m "fix"',
+    ]) {
+      for (const files of stagedIndexes) {
+        execFileSync.mockClear().mockReturnValue(files)
+        const result = await onPreToolUse({ toolName: 'powershell', toolArgs: { command } })
+        expect.soft(result?.permissionDecision, command).toBe('deny')
+        expect(execFileSync).not.toHaveBeenCalled()
+      }
+    }
+  })
+
+  it('testEnforcer.REQ-012: does not reinterpret escaped quotes, comment text or ordinary arguments as PowerShell commits', async () => {
+    for (const command of [
+      'Write-Output "ready"# "; git commit -m "fix"',
+      'Write-Output "literal `" ; git commit -m fix"',
+      'Write-Output "literal `"\n git commit -m fix"',
+      "Write-Output 'it''s # ; git commit'",
+      'Write-Output foo#bar',
+      "& 'git' diff -- cicd/commit.ts",
+      '& "npm" run lint -- commit',
+    ]) {
+      for (const files of stagedIndexes) {
+        execFileSync.mockClear().mockReturnValue(files)
+        expect.soft(await onPreToolUse({ toolName: 'powershell', toolArgs: { command } }), command).toBeUndefined()
+        expect(execFileSync).not.toHaveBeenCalled()
+      }
+    }
+  })
+})
+
+it('testEnforcer.REQ-012: retains Bash quote concatenation instead of applying PowerShell comment boundaries', async () => {
+  const command = 'echo "ready"# "\ngit commit -m fix"'
+  for (const files of stagedIndexes) {
+    execFileSync.mockClear().mockReturnValue(files)
+    expect(await onPreToolUse({ toolName: 'bash', toolArgs: { command } })).toBeUndefined()
+    expect(execFileSync).not.toHaveBeenCalled()
+  }
 })
 
 describe.each(['bash', 'powershell'])('staged deletions: %s', (toolName) => {
