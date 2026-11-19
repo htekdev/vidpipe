@@ -104,6 +104,57 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
     )
   })
 
+  it('testEnforcer.REQ-011: comment quotes cannot hide following compound or target-changing commits', async () => {
+    for (const command of [
+      '# "\ncd target; git commit -m "fix"',
+      "# '\ncd target; npm run commit -- -m 'fix'",
+      'echo ready # "\ngit -C target commit -m "fix"',
+      '# "\nnpm run --prefix target commit -- -m "fix"',
+    ]) {
+      for (const files of stagedIndexes) {
+        execFileSync.mockClear().mockReturnValue(files)
+        const result = await onPreToolUse({ toolName, toolArgs: { command } })
+        expect.soft(result?.permissionDecision, command).toBe('deny')
+        expect(execFileSync).not.toHaveBeenCalled()
+      }
+    }
+  })
+
+  it('testEnforcer.REQ-011: ignores comment contents without treating quoted physical lines as commands', async () => {
+    for (const command of [
+      '# comment; git commit -m "fix"; npm run commit',
+      'echo ready # comment; git commit -m "fix"',
+      'git diff -- cicd/commit.ts # "; git commit -m "fix"',
+      'git add "cicd/#commit.ts"',
+      'git log --grep="# git commit; npm run commit"',
+      'echo "# comment\n git commit -m fix\n npm run commit"',
+      'echo issue#"\n git commit -m fix\n npm run commit"',
+    ]) {
+      for (const files of stagedIndexes) {
+        execFileSync.mockClear().mockReturnValue(files)
+        expect.soft(await onPreToolUse({ toolName, toolArgs: { command } }), command).toBeUndefined()
+        expect(execFileSync).not.toHaveBeenCalled()
+      }
+    }
+  })
+
+  it('testEnforcer.REQ-011: still inspects standalone commits with literal quoted hash values', async () => {
+    for (const command of [
+      'git commit -m "# literal; git commit"',
+      'npm run commit -- -m "fix # literal; npm run commit"',
+    ]) {
+      for (const files of stagedIndexes) {
+        execFileSync.mockClear().mockReturnValue(files)
+        const result = await onPreToolUse({ toolName, toolArgs: { command } })
+        expect(result?.permissionDecision).toBe(files === stagedIndexes[1] ? 'deny' : undefined)
+        expect(execFileSync).toHaveBeenCalledExactlyOnceWith(
+          'git', ['diff', '--cached', '--name-only', '--diff-filter=ACMR'],
+          expect.objectContaining({ cwd: worktreeRoot }),
+        )
+      }
+    }
+  })
+
   it.each([
     'git commit',
     'git commit --message fix',

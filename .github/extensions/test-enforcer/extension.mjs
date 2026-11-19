@@ -12,9 +12,11 @@ function hasCommitCommand(command) {
     const separator = /^[;&|(){}\r\n]$/;
     const literal = (token = "") => /^(['"])[\s\S]*\1$/.test(token) ? token.slice(1, -1) : token;
     while (pending.length) {
-        const tokens = pending.pop().match(/(?:[^\s;&|(){}'"]+|'[^']*'|"(?:\\.|[^"\\])*")+|[;&|(){}\r\n]/g) ?? [];
+        // Consume token-boundary line comments before their quotes or separators.
+        const tokens = pending.pop().match(/#[^\r\n]*|(?:[^\s;&|(){}'"]+|'[^']*'|"(?:\\.|[^"\\])*")+|[;&|(){}\r\n]/g) ?? [];
         let atCommand = true;
         for (let index = 0; index < tokens.length; index++) {
+            if (tokens[index].startsWith("#")) continue;
             if (separator.test(tokens[index])) {
                 atCommand = true;
                 continue;
