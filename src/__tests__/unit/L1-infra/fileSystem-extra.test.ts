@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { promises as fsp } from 'fs'
+import { promises as fsp, openSync, fstatSync } from 'fs'
 import os from 'os'
 import { join } from 'path'
 import {
@@ -361,7 +361,8 @@ describe('closeFileDescriptor', () => {
     const dir = await createTempDir()
     const fp = join(dir, 'fd.txt')
     await fsp.writeFile(fp, '')
-    const fh = await fsp.open(fp, 'r')
-    closeFileDescriptor(fh.fd)
+    const fd = openSync(fp, 'r')
+    closeFileDescriptor(fd)
+    expect(() => fstatSync(fd)).toThrow(expect.objectContaining({ code: 'EBADF' }))
   })
 })

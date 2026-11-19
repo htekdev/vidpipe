@@ -38,3 +38,7 @@
 
 ## Summary
 No meaningful bug blockers found in the three-file unstaged delta atop be52df5; the previous required commit-option blocker is resolved locally. This is a local, scope-limited review certificate, not full-PR or execution/coverage certification; gated commit and push remain with the parent.
+
+## Fixture Correction Validation
+- `src/__tests__/unit/L1-infra/fileSystem-extra.test.ts` — corrected the test fixture to close a raw descriptor opened with `openSync`, then verify `fstatSync` throws `EBADF`, avoiding a second close by a still-live `FileHandle` owner.
+- Validation: targeted file test passed (33 tests); `npm run test:unit:coverage` passed (2,299 tests, 6 skipped; statements 78.41%, branches 70.14%, functions 80.96%, lines 78.83%).
