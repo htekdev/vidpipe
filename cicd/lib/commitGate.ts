@@ -2,7 +2,7 @@
  * Orchestrates the commit gate: analyze → validate → run tests → check coverage → commit.
  */
 
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import { globSync } from 'node:fs';
 import { analyzeStagedChanges } from './diffAnalyzer.js';
 import { validateTestTiers, formatMissingTiers } from './layerTestMapper.js';
@@ -26,10 +26,10 @@ function executeCommit(commitArgs: string[], dryRun: boolean): boolean {
 
   console.log('✅ All checks passed -- committing...\n');
   try {
-    const escapedArgs = commitArgs.map(a => a.includes(' ') ? `"${a}"` : a);
-    const output = execSync(`git commit ${escapedArgs.join(' ')}`, {
+    const output = execFileSync('git', ['commit', ...commitArgs], {
       encoding: 'utf-8',
       stdio: ['inherit', 'pipe', 'pipe'],
+      shell: false,
     });
     console.log(output);
     return true;

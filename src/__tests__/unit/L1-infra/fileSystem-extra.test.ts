@@ -363,6 +363,6 @@ describe('closeFileDescriptor', () => {
     await fsp.writeFile(fp, '')
     const fd = openSync(fp, 'r')
     closeFileDescriptor(fd)
-    expect(() => fstatSync(fd)).toThrow()
+    expect(() => fstatSync(fd)).toThrow(expect.objectContaining({ code: 'EBADF' }))
   })
 })

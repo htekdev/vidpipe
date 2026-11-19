@@ -14,6 +14,7 @@ import { createCopilotClient } from './ai.js'
 import type { SessionEvent } from './ai.js'
 import type { CopilotClient, CopilotSession } from '../../L1-infra/ai/copilot.js'
 import { approveAll, resolveCopilotCliPath } from '../../L1-infra/ai/copilot.js'
+import { PREMIUM_MODEL } from '../../L1-infra/config/modelConfig.js'
 import logger from '../../L1-infra/logger/configLogger.js'
 import type {
   LLMProvider,
@@ -29,7 +30,7 @@ import type {
   UserInputRequest,
 } from './types'
 
-const DEFAULT_MODEL = 'claude-opus-4.5'
+const DEFAULT_MODEL = PREMIUM_MODEL
 const DEFAULT_TIMEOUT_MS = 300_000 // 5 minutes
 const SESSION_CREATE_TIMEOUT_MS = 30_000 // 30 seconds — createSession can hang when Copilot SDK can't connect
 
@@ -75,7 +76,7 @@ export class CopilotProvider implements LLMProvider {
           SESSION_CREATE_TIMEOUT_MS,
         )
         this.client!.createSession({
-          model: config.model,
+          model: config.model ?? DEFAULT_MODEL,
           mcpServers: config.mcpServers,
           systemMessage: { mode: 'replace', content: config.systemPrompt },
           tools: config.tools.map((t) => ({

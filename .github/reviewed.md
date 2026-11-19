@@ -1,70 +1,35 @@
 # Code Review
 
-**Reviewed:** 2026-11-17T18:53:56-06:00
+**Reviewed:** 2026-11-19T08:08:14.008-06:00
 **Reviewer:** code-reviewer
-**Branch:** feature/aws-storage
-**HEAD:** c41bc8595215f8100d2f45d1575ff56e4cf935e0
-**PR:** htekdev/vidpipe#180
-**Scope:** Only the combined uncommitted post-PR patch since this HEAD, its regressions/specifications, and necessary immediate caller/client context. The unchanged 85-file feature was not reviewed again.
-**Reviewed state:** Working changes include two new untracked regression files. No staging, commit or push performed.
-**Verdict:** Approved; no blocking findings in this bounded patch. Ready for the parent's final validation and normal commit gates.
+**Branch:** fix/gpt-6.1-sol-model
+**HEAD:** 28a15b9
+
+**Scope:** Local review of the latest three-file staged-path fix atop merge commit `28a15b9`. The certificate also records that the prior merge conflict resolution was preserved; it does not certify unrelated AWS-storage feature changes from `origin/main`.
+
+## Conflicts Reviewed
+- `.github/reviewed.md` — replaced with this fresh merge-scoped certificate rather than certifying either side's unrelated feature review.
+- `src/__tests__/unit/L1-infra/fileSystem-extra.test.ts` — preserved the existing `fstatSync` import order and the stronger `EBADF` assertion while removing conflict markers.
 
 ## Files Reviewed
-
-- `src/L1-infra/config/environment.ts`
-- `src/L2-clients/aws/s3Client.ts`
-- `src/L3-services/storage/storageService.ts`
-- `src/L7-app/review/approvalQueue.ts`
-- `src/L7-app/sdk/VidPipeSDK.ts`
-- `src/__tests__/unit/L1-infra/environment.scope.test.ts` (new)
-- `src/__tests__/unit/L2-clients/awsClients.test.ts`
-- `src/__tests__/unit/L3-services/storageService.test.ts`
-- `src/__tests__/integration/L7/VidPipeSDK.cloudIsolation.test.ts` (new)
-- `src/__tests__/integration/L7/VidPipeSDK.test.ts`
-- `src/__tests__/integration/L7/approvalQueue.test.ts`
-- `src/__tests__/e2e/awsStorageRoundtrip.test.ts`
-- `specs/L1-infra/config/environment.md`
-- `specs/L2-clients/aws/awsClients.md`
-- `specs/L3-services/storage/storageService.md`
-- `specs/L7-app/commands/CloudStorage.md`
-- `specs/L7-app/review/ReviewStorage.md`
-- `.github/copilot-instructions.md`
-- Immediate unchanged context: AWS storage/DynamoDB clients, Azure blob/Table/config clients, and SDK configuration refresh/temporary overrides.
+- `.github/extensions/test-enforcer/extension.mjs`
+- `specs/hooks/testEnforcer.md`
+- `src/__tests__/unit/L2-clients/testEnforcer.test.ts`
 
 ## Findings
 
-### Fixed
-
-- `src/L1-infra/config/environment.ts:104`, `src/L7-app/sdk/VidPipeSDK.ts:577,954`: Instance configuration snapshots and `AsyncLocalStorage.run()` cover all seven SDK cloud methods. Downstream reads retain provider, region, bucket/prefix, table and Azure resource settings across awaits and overlapping instances; scoped failures restore the enclosing context. Default Azure and early AWS unsupported-operation guards remain intact.
-- `src/L7-app/review/approvalQueue.ts:252,261`: Both primary media and thumbnail downloads always use the selected pending entry's `(videoSlug, rowKey)`, including legacy callers without a slug map, consistent with text selection and status mutations.
-- `src/L2-clients/aws/s3Client.ts:16`, `src/L3-services/storage/storageService.ts:77`: Linear edge scanning replaces potentially expensive slash-trimming expressions without changing prefix normalization, literal-percent handling or namespace/traversal rejection.
-- `src/__tests__/e2e/awsStorageRoundtrip.test.ts`: Offline endpoint failures return fixed generic plain text rather than reflecting attacker-controlled request/error details.
-
-### Acknowledged (Tech Debt)
-
-- None newly identified in this bounded patch.
-
 ### No Issues
-
-- No correctness, concurrency or resource-isolation findings remain in the reviewed patch.
-- Prefix changes preserve the existing one-decode S3 URL contract; malformed encoding, foreign namespaces, decoded traversal, backslashes, controls, query and fragment remain rejected.
-- Changed tests, specifications and living architecture instructions match the implementation.
+- The hook now consumes NUL-delimited Git paths without trimming or newline splitting, preserving the anchored `cwd`, `--diff-filter=ACMR`, and exact source/test prefix and suffix checks.
+- Regression coverage exercises Unicode, embedded newlines, whitespace, misleading suffixes and real Git indexes for both shell labels.
+- The source conflict is test-only and the resulting assertion remains compatible with the existing close-descriptor behavior.
+- The certificate explicitly excludes unreviewed `origin/main` feature changes and retains the prior local review facts only as historical context.
+- No source, specification or test changes were introduced beyond resolving the reported conflicts.
 
 ## Validation
-
-- **Independently run on this patch:** six non-server regression files listed above (all except the offline E2E file): **166 tests passed**. Includes SDK overlap, nested/failing scopes, legacy approval identity, long-prefix normalization, literal-percent round trips and namespace-negative cases.
-- **Independently run:** `npm run typecheck` and `git diff --check`, both passed.
-- Test execution used a nonexistent process-local `VIDPIPE_CONFIG_DIR`, cleared credential/token environment values, and disabled EC2 metadata discovery. No persisted configuration was changed.
-- **Implementer-reported, not independently rerun as separate runs:** security-fixer **74 unit + 4 E2E passed**, affected coverage **95.79% statements / 89.37% branches / 95.12% functions / 97.51% lines**; review-triage **143 focused passed**. These reports are not independent full-suite or full-coverage verification.
-- Offline E2E fixture/negative regressions were inspected, not executed, to avoid server lifecycle operations. No full suite, coverage run, live API, cloud or social operation was performed by this reviewer.
+- Inspected the scoped three-file diff and the merge status/conflict diffs.
+- Resolved the two conflict paths with `apply_patch`; no checkout-ours/theirs operation was used.
+- Parent-reported evidence for this fix: **1 red-first failure with 14 assertions, then 188 hook tests and 5 commit-gate tests passed; plain `it` selectors, typecheck, syntax and diff checks passed**.
+- No remote comments, review requests or unrelated worktree changes were made.
 
 ## Summary
-
-The combined post-PR patch is approved with no blocking findings. Only this existing review artifact was changed by the reviewer; implementation/test/spec changes, index, live resources and servers were left untouched for the parent's final validation and commit/push workflow.
-
-## Merge Follow-up: Queue Synchronization Profile (2026-11-18)
-
-- Direct source/specification review found no blocking issues in the queue synchronization follow-up. The existing shared selector resolves the configured profile before queue lookup or mutation, replacing the first-profile assumption.
-- Provisioning retains the selected profile ID for subsequent operations; inaccessible or ambiguous profile selection fails before queue effects.
-- Implementer-reported validation: 12 new regression failures before the fix, then 59 passing unit/integration tests. Reported queue synchronization coverage is 100% statements, functions and lines, with 88.09% branches. Typecheck and diff check passed.
-- This follow-up review did not execute live API operations or independently repeat those tests. Normal commit/push gates remain required.
+The staged-path fix is reviewed with no blocking findings, and the prior merge conflicts remain resolved. This certificate does not certify unrelated `origin/main` features.

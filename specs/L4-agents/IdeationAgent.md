@@ -13,6 +13,7 @@ IdeationAgent researches timely topics and manages draft content ideas as GitHub
 | REQ-003 | The agent must configure Exa, YouTube, and Perplexity MCP servers only when their corresponding API keys are available. | P1 |
 | REQ-004 | `create_idea` must require a `publishBy` ISO 8601 date and persist it on every generated idea. | P0 |
 | REQ-005 | The agent must expose GitHub-backed idea discovery and management tools for listing, searching, finding related ideas, updating issues, and organizing issue metadata. | P1 |
+| REQ-015 | Defer default model resolution to BaseAgent using the actual selected provider, including a factory fallback from an unavailable direct provider to Copilot. Do not promote the configured direct provider's global model into an explicit constructor override; Copilot's built-in agent mapping must apply after fallback. Preserve explicit constructor models and per-agent overrides. | P0 |
 
 ## Architectural Constraints
 

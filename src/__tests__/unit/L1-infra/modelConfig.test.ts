@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   getModelForAgent,
   AGENT_MODEL_MAP,
@@ -6,16 +6,21 @@ import {
 } from '../../../L1-infra/config/modelConfig.js'
 import { initConfig } from '../../../L1-infra/config/environment.js'
 
+beforeEach(() => {
+  vi.stubEnv('MODEL_SHORTS_AGENT', '')
+  initConfig({ llmProvider: 'copilot', llmModel: '' })
+})
+
 afterEach(() => {
   vi.unstubAllEnvs()
   initConfig()
 })
 
 describe('getModelForAgent', () => {
-  it('returns correct model for each tier', () => {
-    expect(getModelForAgent('ShortsAgent')).toBe('claude-opus-4.5')
-    expect(getModelForAgent('BlogAgent')).toBe('claude-opus-4.5')
-    expect(getModelForAgent('ChapterAgent')).toBe('claude-opus-4.5')
+  it('modelConfig.REQ-001: selects GPT-6.1 Sol for every built-in Copilot agent', () => {
+    for (const agentName of Object.keys(AGENT_MODEL_MAP)) {
+      expect(getModelForAgent(agentName)).toBe('gpt-6.1-sol')
+    }
   })
 
   it('returns undefined for unknown agents', () => {
@@ -33,6 +38,31 @@ describe('getModelForAgent', () => {
     vi.stubEnv('LLM_MODEL', 'custom-model')
     initConfig()
     expect(getModelForAgent('UnknownAgent')).toBe('custom-model')
+  })
+
+  it.each(['claude', 'openai'])('modelConfig.REQ-002: %s built-ins defer to the configured provider default', (provider) => {
+    initConfig({ llmProvider: provider, llmModel: '' })
+    for (const agentName of Object.keys(AGENT_MODEL_MAP)) {
+      expect(getModelForAgent(agentName)).toBeUndefined()
+    }
+  })
+
+  it('modelConfig.REQ-003: actual provider takes precedence over global provider selection', () => {
+    expect(getModelForAgent('ShortsAgent', 'claude')).toBeUndefined()
+    expect(getModelForAgent('ShortsAgent', 'openai')).toBeUndefined()
+    initConfig({ llmProvider: 'claude', llmModel: '' })
+    expect(getModelForAgent('ShortsAgent', 'copilot')).toBe('gpt-6.1-sol')
+  })
+
+  it.each(['copilot', 'claude', 'openai'])('modelConfig.REQ-004: preserves per-agent overrides for %s', (provider) => {
+    vi.stubEnv('MODEL_SHORTS_AGENT', 'explicit-agent-model')
+    initConfig({ llmProvider: provider, llmModel: 'global-model' })
+    expect(getModelForAgent('ShortsAgent', provider)).toBe('explicit-agent-model')
+  })
+
+  it.each(['claude', 'openai'])('modelConfig.REQ-004: uses explicit global fallback for %s', (provider) => {
+    initConfig({ llmProvider: provider, llmModel: 'explicit-global-model' })
+    expect(getModelForAgent('ShortsAgent', provider)).toBe('explicit-global-model')
   })
 })
 
