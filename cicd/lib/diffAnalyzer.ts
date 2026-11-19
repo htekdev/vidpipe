@@ -69,6 +69,10 @@ function parseTestTier(filePath: string): { tier: string; layer: number } | null
     return { tier: 'unit', layer: parseInt(unitMatch[1], 10) };
   }
 
+  if (filePath.startsWith('src/__tests__/unit/hooks/')) {
+    return { tier: 'unit', layer: -1 };
+  }
+
   if (filePath.startsWith('src/__tests__/integration/L3/')) {
     return { tier: 'integration-L3', layer: 3 };
   }

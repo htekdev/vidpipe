@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest'
-import { promises as fsp, openSync, fstatSync } from 'fs'
+import { fstatSync, openSync, promises as fsp } from 'fs'
 import os from 'os'
 import { join } from 'path'
 import {

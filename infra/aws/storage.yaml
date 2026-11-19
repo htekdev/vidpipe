@@ -1,0 +1,229 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Private VidPipe S3 media and DynamoDB metadata storage with a runtime-only managed policy.
+
+Parameters:
+  ObjectPrefix:
+    Type: String
+    Default: ''
+    MaxLength: 512
+    AllowedPattern: '^$|^[A-Za-z0-9_-]+(/[A-Za-z0-9_-]+)*$'
+    ConstraintDescription: Use an empty prefix or slash-separated letters, digits, underscores and hyphens, with no leading or trailing slash.
+    Description: Optional object namespace; configure AWS_S3_PREFIX to this exact value.
+
+Conditions:
+  HasObjectPrefix:
+    Fn::Not:
+      - Fn::Equals:
+          - Ref: ObjectPrefix
+          - ''
+
+Resources:
+  StorageBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: AbortAbandonedUploads
+            Status: Enabled
+            Prefix:
+              Fn::If:
+                - HasObjectPrefix
+                - Fn::Sub: '${ObjectPrefix}/'
+                - ''
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+
+  StorageBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      Bucket:
+        Ref: StorageBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - Fn::GetAtt: [StorageBucket, Arn]
+              - Fn::Sub: '${StorageBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+  ContentTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      AttributeDefinitions:
+        - AttributeName: itemId
+          AttributeType: S
+        - AttributeName: videoSlug
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: statusSortKey
+          AttributeType: S
+      KeySchema:
+        - AttributeName: itemId
+          KeyType: HASH
+        - AttributeName: videoSlug
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: status-createdAt-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: statusSortKey
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: videoSlug-itemId-index
+          KeySchema:
+            - AttributeName: videoSlug
+              KeyType: HASH
+            - AttributeName: itemId
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  VideosTable:
+    Type: AWS::DynamoDB::Table
+    DependsOn: ContentTable
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      SSESpecification:
+        SSEEnabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      AttributeDefinitions:
+        - AttributeName: runId
+          AttributeType: S
+        - AttributeName: status
+          AttributeType: S
+        - AttributeName: createdAt
+          AttributeType: S
+      KeySchema:
+        - AttributeName: runId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: status-createdAt-index
+          KeySchema:
+            - AttributeName: status
+              KeyType: HASH
+            - AttributeName: createdAt
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  RuntimePolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: VidPipe runtime data access only; attach separately to your chosen principal.
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: ObjectAccess
+            Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:AbortMultipartUpload
+              - s3:ListMultipartUploadParts
+            Resource:
+              Fn::If:
+                - HasObjectPrefix
+                - Fn::Sub: '${StorageBucket.Arn}/${ObjectPrefix}/*'
+                - Fn::Sub: '${StorageBucket.Arn}/*'
+          - Sid: ListNamespace
+            Effect: Allow
+            Action:
+              - s3:ListBucket
+            Resource:
+              Fn::GetAtt: [StorageBucket, Arn]
+            Condition:
+              StringLike:
+                s3:prefix:
+                  Fn::If:
+                    - HasObjectPrefix
+                    - - Ref: ObjectPrefix
+                      - Fn::Sub: '${ObjectPrefix}/*'
+                    - - '*'
+          - Sid: TableAccess
+            Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:Query
+              - dynamodb:Scan
+              - dynamodb:DescribeTable
+            Resource:
+              - Fn::GetAtt: [ContentTable, Arn]
+              - Fn::GetAtt: [VideosTable, Arn]
+          - Sid: IndexAccess
+            Effect: Allow
+            Action:
+              - dynamodb:Query
+              - dynamodb:Scan
+            Resource:
+              - Fn::Sub: '${ContentTable.Arn}/index/status-createdAt-index'
+              - Fn::Sub: '${ContentTable.Arn}/index/videoSlug-itemId-index'
+              - Fn::Sub: '${VideosTable.Arn}/index/status-createdAt-index'
+
+Outputs:
+  StorageProvider:
+    Description: STORAGE_PROVIDER
+    Value: aws
+  AwsRegion:
+    Description: AWS_REGION
+    Value:
+      Ref: AWS::Region
+  AwsS3Bucket:
+    Description: AWS_S3_BUCKET
+    Value:
+      Ref: StorageBucket
+  AwsS3Prefix:
+    Description: AWS_S3_PREFIX
+    Value:
+      Ref: ObjectPrefix
+  AwsDynamodbContentTable:
+    Description: AWS_DYNAMODB_CONTENT_TABLE
+    Value:
+      Ref: ContentTable
+  AwsDynamodbVideosTable:
+    Description: AWS_DYNAMODB_VIDEOS_TABLE
+    Value:
+      Ref: VideosTable
+  RuntimePolicyArn:
+    Description: RuntimePolicyArn
+    Value:
+      Ref: RuntimePolicy

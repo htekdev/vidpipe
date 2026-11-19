@@ -10,10 +10,10 @@
         "type": "command"
       },
       {
-        "bash": ".github/hooks/post-spec-change.sh",
+        "bash": "node .github/hooks/spec-governance.mjs post",
         "comment": "Output context reminder when files in specs/ folder are changed",
         "cwd": ".",
-        "powershell": ".github/hooks/post-spec-change.ps1",
+        "powershell": "node .github/hooks/spec-governance.mjs post",
         "timeoutSec": 5,
         "type": "command"
       },
@@ -82,10 +82,10 @@
         "type": "command"
       },
       {
-        "bash": ".github/hooks/pre-spec-test-coverage.sh",
-        "comment": "Enforce spec requirements have corresponding test cases (specs/{name}.md → specs/__tests__/{name}.test.ts)",
+        "bash": "node .github/hooks/spec-governance.mjs pre",
+        "comment": "Require staged spec requirement changes to have matching staged test references in src/__tests__/ before committing or pushing",
         "cwd": ".",
-        "powershell": ".github/hooks/pre-spec-test-coverage.ps1",
+        "powershell": "node .github/hooks/spec-governance.mjs pre",
         "timeoutSec": 10,
         "type": "command"
       },

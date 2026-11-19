@@ -1,6 +1,7 @@
 import { vi, describe, test, expect, beforeEach, afterEach } from 'vitest'
 import { promises as fs } from 'fs'
 import path from 'path'
+import { initConfig } from '../../../L1-infra/config/environment.js'
 
 // ── L2 Mock ────────────────────────────────────────────────────────────
 
@@ -49,12 +50,76 @@ describe('queueMapping', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks()
+    vi.stubEnv('LATE_PROFILE_ID', '')
+    initConfig().LATE_PROFILE_ID = ''
     await clearQueueCache()
   })
 
   afterEach(async () => {
     await clearQueueCache()
+    vi.unstubAllEnvs()
+    initConfig()
     try { await fs.unlink(cacheFile) } catch { /* file may not exist */ }
+  })
+
+  test('LateProfileRouting.REQ-003: uses explicit profile, filters foreign queues and never falls back', async () => {
+    vi.stubEnv('LATE_PROFILE_ID', 'profile-123')
+    initConfig()
+    mockListProfiles.mockResolvedValue([{ _id: 'other' }, ...PROFILES])
+    mockListQueues.mockResolvedValue({
+      queues: [...QUEUES_RESPONSE.queues, { _id: 'foreign', name: 'youtube-shorts', profileId: 'other' }],
+    })
+    expect(await getQueueId('youtube', 'shorts')).toBe('q1')
+    expect(await getProfileId()).toBe('profile-123')
+    expect(mockListQueues).toHaveBeenCalledWith('profile-123', true)
+    vi.stubEnv('LATE_PROFILE_ID', 'missing')
+    initConfig()
+    expect(await getQueueId('youtube', 'shorts')).toBeNull()
+    expect(await getProfileId()).toBe('')
+  })
+
+  test('LateProfileRouting.REQ-004: invalidates memory and file cache after profile switch', async () => {
+    setupDefaultMocks()
+    await getQueueId('youtube', 'shorts')
+    vi.stubEnv('LATE_PROFILE_ID', 'other')
+    initConfig()
+    mockListProfiles.mockResolvedValue([{ _id: 'other' }, ...PROFILES])
+    mockListQueues.mockResolvedValue({ queues: [{ _id: 'other-queue', name: 'youtube-shorts', profileId: 'other' }] })
+    expect(await getQueueId('youtube', 'shorts')).toBe('other-queue')
+    expect(await getProfileId()).toBe('other')
+    expect(mockListQueues).toHaveBeenCalledTimes(2)
+  })
+
+  test('LateProfileRouting.REQ-004: ignores legacy file cache without configuration scope', async () => {
+    setupDefaultMocks()
+    await fs.writeFile(cacheFile, JSON.stringify({
+      profileId: 'other', mappings: { 'youtube-shorts': 'unsafe' }, fetchedAt: new Date().toISOString(),
+    }))
+    expect(await getQueueId('youtube', 'shorts')).toBe('q1')
+    expect(mockListQueues).toHaveBeenCalledTimes(1)
+  })
+
+  test.each([
+    { configuredProfileId: 'other', profileId: 'other' },
+    { configuredProfileId: 'profile-123', profileId: 'other' },
+  ])('LateProfileRouting.REQ-004: rejects foreign or contradictory file cache owner (%j)', async (scope) => {
+    vi.stubEnv('LATE_PROFILE_ID', 'profile-123')
+    initConfig()
+    setupDefaultMocks()
+    await fs.writeFile(cacheFile, JSON.stringify({
+      ...scope, mappings: { 'youtube-shorts': 'unsafe' }, fetchedAt: new Date().toISOString(),
+    }))
+    expect(await getQueueId('youtube', 'shorts')).toBe('q1')
+    expect(await getProfileId()).toBe('profile-123')
+  })
+
+  test('LateProfileRouting.REQ-005: chooses unique default and rejects ambiguous profiles', async () => {
+    mockListProfiles.mockResolvedValue([{ _id: 'other' }, { ...PROFILES[0], isDefault: true }])
+    mockListQueues.mockResolvedValue(QUEUES_RESPONSE)
+    expect(await getProfileId()).toBe('profile-123')
+    await clearQueueCache()
+    mockListProfiles.mockResolvedValue([{ _id: 'other' }, ...PROFILES])
+    expect(await getProfileId()).toBe('')
   })
 
   describe('getQueueId', () => {

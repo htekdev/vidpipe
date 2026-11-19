@@ -45,6 +45,15 @@ export function resolveConfig(cliOptions: Partial<CLIOptions> = {}): AppEnvironm
     process.env.REPO_ROOT,
     process.cwd(),
   )
+  const storageProvider = resolveString(
+    cliOptions.storageProvider,
+    process.env.STORAGE_PROVIDER,
+    globalConfig.defaults.storageProvider,
+    'azure',
+  )
+  if (storageProvider !== 'azure' && storageProvider !== 'aws') {
+    throw new Error(`Invalid STORAGE_PROVIDER "${storageProvider}". Expected azure or aws.`)
+  }
 
   return {
     OPENAI_API_KEY: resolveString(
@@ -187,6 +196,32 @@ export function resolveConfig(cliOptions: Partial<CLIOptions> = {}): AppEnvironm
       globalConfig.credentials.githubToken,
     ),
     MODEL_OVERRIDES: resolveModelOverrides(),
+    STORAGE_PROVIDER: storageProvider,
+    AWS_REGION: resolveString(
+      cliOptions.awsRegion,
+      process.env.AWS_REGION,
+      globalConfig.defaults.awsRegion,
+    ),
+    AWS_S3_BUCKET: resolveString(
+      cliOptions.awsS3Bucket,
+      process.env.AWS_S3_BUCKET,
+      globalConfig.defaults.awsS3Bucket,
+    ),
+    AWS_S3_PREFIX: resolveString(
+      cliOptions.awsS3Prefix,
+      process.env.AWS_S3_PREFIX,
+      globalConfig.defaults.awsS3Prefix,
+    ),
+    AWS_DYNAMODB_CONTENT_TABLE: resolveString(
+      cliOptions.awsDynamodbContentTable,
+      process.env.AWS_DYNAMODB_CONTENT_TABLE,
+      globalConfig.defaults.awsDynamodbContentTable,
+    ),
+    AWS_DYNAMODB_VIDEOS_TABLE: resolveString(
+      cliOptions.awsDynamodbVideosTable,
+      process.env.AWS_DYNAMODB_VIDEOS_TABLE,
+      globalConfig.defaults.awsDynamodbVideosTable,
+    ),
     AZURE_STORAGE_ACCOUNT_NAME: resolveString(
       cliOptions.azureStorageAccountName,
       process.env.AZURE_STORAGE_ACCOUNT_NAME,

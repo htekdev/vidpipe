@@ -41,6 +41,12 @@ const defaultKeys = [
   'lateProfileId',
   'geminiModel',
   'scheduleConfig',
+  'storageProvider',
+  'awsRegion',
+  'awsS3Bucket',
+  'awsS3Prefix',
+  'awsDynamodbContentTable',
+  'awsDynamodbVideosTable',
 ] as const satisfies readonly DefaultKey[]
 
 const allowedProviders = ['copilot', 'openai', 'claude'] as const
@@ -63,6 +69,12 @@ export const KEY_MAP = {
   'late-profile-id': { section: 'defaults', key: 'lateProfileId' },
   'gemini-model': { section: 'defaults', key: 'geminiModel' },
   'schedule-config': { section: 'defaults', key: 'scheduleConfig' },
+  'storage-provider': { section: 'defaults', key: 'storageProvider' },
+  'aws-region': { section: 'defaults', key: 'awsRegion' },
+  'aws-s3-bucket': { section: 'defaults', key: 'awsS3Bucket' },
+  'aws-s3-prefix': { section: 'defaults', key: 'awsS3Prefix' },
+  'aws-dynamodb-content-table': { section: 'defaults', key: 'awsDynamodbContentTable' },
+  'aws-dynamodb-videos-table': { section: 'defaults', key: 'awsDynamodbVideosTable' },
 } as const satisfies Record<string, ConfigKeyTarget>
 
 function isCredentialTarget(target: ConfigKeyTarget): target is Extract<ConfigKeyTarget, { section: 'credentials' }> {
@@ -356,6 +368,11 @@ export async function runConfigure(subcommand?: string, args: string[] = []): Pr
       const target = resolveKeyTarget(rawKey)
       if (!target) {
         printUnknownKeyError(rawKey)
+        return
+      }
+
+      if (target.section === 'defaults' && target.key === 'storageProvider' && value !== 'azure' && value !== 'aws') {
+        printUsageError(`Invalid STORAGE_PROVIDER "${value}". Expected azure or aws.`)
         return
       }
 

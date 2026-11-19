@@ -3,14 +3,14 @@ import {
   listPendingItems,
   getGroupedItems,
   getItemById,
-  updateItem as azureUpdateItem,
-  rejectItem as azureRejectItem,
-  approveItem as azureApproveItem,
+  updateItem,
+  rejectItem,
+  approveItem,
   getMediaStream,
   type ReviewItem,
   type ReviewGroup,
-} from '../../L3-services/azureStorage/azureReviewDataSource.js'
-import { getContentItems, findContentItemByRowKey } from '../../L3-services/azureStorage/azureStorageService.js'
+} from '../../L3-services/storage/reviewDataSource.js'
+import { getContentItems, findContentItemByRowKey } from '../../L3-services/storage/storageService.js'
 import { getIdeasByIds } from '../../L3-services/ideation/ideaService.js'
 import { findNextSlot, getScheduleCalendar } from '../../L3-services/scheduler/scheduler.js'
 import { createLateApiClient, type LateApiClient, type LateAccount, type LateProfile } from '../../L3-services/lateApi/lateApiService.js'
@@ -18,6 +18,8 @@ import { normalizePlatformString } from '../../L0-pure/types/index.js'
 import logger from '../../L1-infra/logger/configLogger.js'
 import { getQueueId, getProfileId } from '../../L3-services/queueMapping/queueMapping.js'
 import { enqueueApproval } from './approvalQueue.js'
+import { getConfig } from '../../L1-infra/config/environment.js'
+import { selectLateProfile } from '../../L3-services/socialPosting/profileSelection.js'
 
 // ── Simple in-memory cache (avoids repeated Late API calls) ────────────
 const CACHE_TTL_MS = 5 * 60 * 1000 // 5 minutes
@@ -32,6 +34,29 @@ function getCached<T>(key: string): T | undefined {
 
 function setCache(key: string, data: unknown, ttl = CACHE_TTL_MS): void {
   cache.set(key, { data, expiry: Date.now() + ttl })
+}
+
+async function loadReviewProfile(scope: string): Promise<LateProfile | null> {
+  const key = `profile:${scope}`
+  const cached = getCached<LateProfile | null>(key)
+  if (cached !== undefined) return cached
+  const profiles = await createLateApiClient().listProfiles()
+  const profile = selectLateProfile(profiles, scope)
+  setCache(key, profile)
+  return profile
+}
+
+async function loadReviewAccounts(scope: string): Promise<LateAccount[]> {
+  const key = `accounts:${scope}`
+  const cached = getCached<LateAccount[]>(key)
+  if (cached) return cached
+  const profile = await loadReviewProfile(scope)
+  if (!profile) return []
+  const accounts = (await createLateApiClient().listAccounts()).filter(account =>
+    (typeof account.profileId === 'string' ? account.profileId : account.profileId?._id) === profile._id,
+  )
+  setCache(key, accounts)
+  return accounts
 }
 
 type ReviewQueueItem = ReviewItem & { ideaPublishBy?: string }
@@ -111,26 +136,51 @@ function enrichGroupedItems(groups: ReviewGroup[]): ReviewGroupedItem[] {
   })
 }
 
+async function findRequestedItem(itemId: string, videoSlug: unknown): Promise<{ partitionKey: string; rowKey: string } | null> {
+  if (typeof videoSlug === 'string' && videoSlug) {
+    const item = await getItemById(videoSlug, itemId)
+    return item ? { partitionKey: item.videoSlug, rowKey: item.id } : null
+  }
+  return findContentItemByRowKey(itemId)
+}
+
 export function createRouter(): Router {
   const router = Router()
 
-  // GET /api/media/:itemId/:filename — proxy media from Azure blob storage
+  // GET /api/media/:itemId/:filename — proxy media from selected cloud storage
   router.get('/api/media/:itemId/:filename', async (req, res) => {
     try {
       const { itemId, filename } = req.params
-      const { stream, contentType } = await getMediaStream(itemId, filename)
+      const videoSlug = typeof req.query.videoSlug === 'string' ? req.query.videoSlug : undefined
+      const { stream, contentType, contentLength, contentRange, statusCode, acceptRanges } = videoSlug
+        ? await getMediaStream(itemId, filename, req.headers.range, videoSlug)
+        : await getMediaStream(itemId, filename, req.headers.range)
+      if (res.destroyed) {
+        stream.destroy()
+        return
+      }
       res.setHeader('Content-Type', contentType)
-      res.setHeader('Cache-Control', 'public, max-age=3600')
-      stream.pipe(res)
+      res.setHeader('Cache-Control', 'private, max-age=3600')
+      if (contentLength !== undefined) res.setHeader('Content-Length', contentLength)
+      if (contentRange) res.setHeader('Content-Range', contentRange)
+      if (acceptRanges) res.setHeader('Accept-Ranges', acceptRanges)
+      if (statusCode) res.status(statusCode)
+      res.on('close', () => stream.destroy())
       stream.on('error', () => {
         if (!res.headersSent) {
-          res.status(500).json({ error: 'Stream error' })
+          res.removeHeader('Content-Length')
+          res.removeHeader('Content-Range')
+          res.status(500).type('json').json({ error: 'Stream error' })
+        } else {
+          res.destroy()
         }
       })
+      stream.pipe(res)
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (!res.headersSent) {
-        res.status(404).json({ error: msg })
+        const status = err instanceof Error && 'statusCode' in err && err.statusCode === 416 ? 416 : 404
+        res.status(status).json({ error: msg })
       }
     }
   })
@@ -149,28 +199,19 @@ export function createRouter(): Router {
 
   // GET /api/init — combined endpoint for initial page load (1 request instead of 3)
   router.get('/api/init', async (req, res) => {
+    const scope = getConfig().LATE_PROFILE_ID || ''
     const [groupsResult, accountsResult, profileResult] = await Promise.allSettled([
       (async () => enrichGroupedItems(await getGroupedItems()))(),
-      (async () => {
-        const cached = getCached<LateAccount[]>('accounts')
-        if (cached) return cached
-        const client = createLateApiClient()
-        const accounts = await client.listAccounts()
-        setCache('accounts', accounts)
-        return accounts
-      })(),
-      (async () => {
-        const cached = getCached<LateProfile | null>('profile')
-        if (cached !== undefined) return cached
-        const client = createLateApiClient()
-        const profiles = await client.listProfiles()
-        const profile = profiles[0] || null
-        setCache('profile', profile)
-        return profile
-      })(),
+      loadReviewAccounts(scope),
+      loadReviewProfile(scope),
     ])
 
-    const groups = groupsResult.status === 'fulfilled' ? groupsResult.value : []
+    if (groupsResult.status === 'rejected') {
+      const message = groupsResult.reason instanceof Error ? groupsResult.reason.message : 'Storage unavailable'
+      logger.error(`Review storage initialization failed: ${String(message).replace(/[\r\n]/g, '')}`)
+      return res.status(503).json({ error: `Unable to load review storage: ${message}` })
+    }
+    const groups = groupsResult.value
     const accounts = accountsResult.status === 'fulfilled' ? accountsResult.value : []
     const profile = profileResult.status === 'fulfilled' ? profileResult.value : null
 
@@ -180,7 +221,7 @@ export function createRouter(): Router {
   // GET /api/posts/:id — get single post with full content
   router.get('/api/posts/:id', async (req, res) => {
     // Look up the item by RowKey (direct query, not full table scan)
-    const match = await findContentItemByRowKey(req.params.id)
+    const match = await findRequestedItem(req.params.id, req.query.videoSlug)
     if (!match) return res.status(404).json({ error: 'Item not found' })
 
     const item = await getItemById(match.partitionKey, match.rowKey)
@@ -196,9 +237,9 @@ export function createRouter(): Router {
 
     // Immediately mark as approved so it disappears from pending review
     try {
-      const match = await findContentItemByRowKey(itemId)
+      const match = await findRequestedItem(itemId, req.query.videoSlug ?? req.body?.videoSlug)
       if (match) {
-        await azureApproveItem(match.partitionKey, match.rowKey)
+        await approveItem(match.partitionKey, match.rowKey)
       }
     } catch {
       // Non-fatal — approval queue will also try to update status
@@ -206,7 +247,8 @@ export function createRouter(): Router {
 
     res.status(202).json({ accepted: true })
 
-    enqueueApproval([itemId], { priority }).then(result => {
+    const scope = req.query.videoSlug ?? req.body?.videoSlug
+    enqueueApproval([itemId], { priority, ...(typeof scope === 'string' && scope ? { videoSlugs: { [itemId]: scope } } : {}) }).then(result => {
       if (result.scheduled > 0) {
         logger.info(`Single approve completed: ${String(itemId).replace(/[\r\n]/g, '')} → ${result.results[0]?.scheduledFor}`)
       } else {
@@ -218,7 +260,7 @@ export function createRouter(): Router {
   // POST /api/posts/bulk-approve — mark approved immediately, then process Late API scheduling in background
   // Body: { itemIds: string[], priority?: boolean }
   router.post('/api/posts/bulk-approve', async (req, res) => {
-    const { itemIds, priority } = req.body
+    const { itemIds, priority, videoSlugs } = req.body
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
       return res.status(400).json({ error: 'itemIds must be a non-empty array' })
     }
@@ -226,9 +268,9 @@ export function createRouter(): Router {
     // Immediately mark all items as approved so they disappear from pending review
     for (const itemId of itemIds) {
       try {
-        const match = await findContentItemByRowKey(itemId)
+        const match = await findRequestedItem(itemId, videoSlugs?.[itemId])
         if (match) {
-          await azureApproveItem(match.partitionKey, match.rowKey)
+          await approveItem(match.partitionKey, match.rowKey)
         }
       } catch {
         // Non-fatal — approval queue will also try to update status
@@ -237,19 +279,19 @@ export function createRouter(): Router {
 
     res.status(202).json({ accepted: true, count: itemIds.length })
 
-    enqueueApproval(itemIds, { priority: priority === true }).catch(err => {
+    enqueueApproval(itemIds, { priority: priority === true, ...(videoSlugs ? { videoSlugs } : {}) }).catch(err => {
       const msg = err instanceof Error ? err.message : String(err)
       logger.error(`Bulk approve background failed: ${String(msg).replace(/[\r\n]/g, '')}`)
     })
   })
 
-  // POST /api/posts/:id/reject — mark as rejected in Azure
+  // POST /api/posts/:id/reject — mark as rejected in selected storage
   router.post('/api/posts/:id/reject', async (req, res) => {
     try {
-      const match = await findContentItemByRowKey(req.params.id)
+      const match = await findRequestedItem(req.params.id, req.query.videoSlug ?? req.body?.videoSlug)
       if (!match) return res.status(404).json({ error: 'Item not found' })
 
-      await azureRejectItem(match.partitionKey, match.rowKey)
+      await rejectItem(match.partitionKey, match.rowKey)
       res.json({ success: true })
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
@@ -259,7 +301,7 @@ export function createRouter(): Router {
 
   // POST /api/posts/bulk-reject — fire-and-forget: returns 202 immediately, rejects in background
   router.post('/api/posts/bulk-reject', (req, res) => {
-    const { itemIds } = req.body
+    const { itemIds, videoSlugs } = req.body
     if (!Array.isArray(itemIds) || itemIds.length === 0) {
       return res.status(400).json({ error: 'itemIds must be a non-empty array' })
     }
@@ -268,16 +310,18 @@ export function createRouter(): Router {
 
     ;(async () => {
       const allItems = await getContentItems()
-      const itemLookup = new Map(allItems.map(r => [r.rowKey, r.partitionKey]))
       let succeeded = 0
       for (const itemId of itemIds) {
         try {
-          const videoSlug = itemLookup.get(itemId)
+          const matches = allItems.filter(record => record.rowKey === itemId
+            && (!videoSlugs?.[itemId] || record.partitionKey === videoSlugs[itemId]))
+          matches.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.partitionKey.localeCompare(a.partitionKey))
+          const videoSlug = matches[0]?.partitionKey
           if (!videoSlug) {
             logger.error(`Bulk reject: item not found: ${String(itemId).replace(/[\r\n]/g, '')}`)
             continue
           }
-          await azureRejectItem(videoSlug, itemId)
+          await rejectItem(videoSlug, itemId)
           succeeded++
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err)
@@ -293,10 +337,10 @@ export function createRouter(): Router {
     try {
       const { postContent } = req.body
 
-      const match = await findContentItemByRowKey(req.params.id)
+      const match = await findRequestedItem(req.params.id, req.query.videoSlug ?? req.body?.videoSlug)
       if (!match) return res.status(404).json({ error: 'Item not found' })
 
-      const updated = await azureUpdateItem(match.partitionKey, match.rowKey, { postContent })
+      const updated = await updateItem(match.partitionKey, match.rowKey, { postContent })
       if (!updated) return res.status(404).json({ error: 'Item not found' })
       res.json(updated)
     } catch (err) {
@@ -349,12 +393,7 @@ export function createRouter(): Router {
   // GET /api/accounts — list connected Late accounts (cached)
   router.get('/api/accounts', async (req, res) => {
     try {
-      const cached = getCached<LateAccount[]>('accounts')
-      if (cached) return res.json({ accounts: cached })
-
-      const client = createLateApiClient()
-      const accounts = await client.listAccounts()
-      setCache('accounts', accounts)
+      const accounts = await loadReviewAccounts(getConfig().LATE_PROFILE_ID || '')
       res.json({ accounts })
     } catch (err) {
       res.status(500).json({ accounts: [], error: err instanceof Error ? err.message : 'Failed to fetch accounts' })
@@ -364,13 +403,7 @@ export function createRouter(): Router {
   // GET /api/profile — get Late profile info (cached)
   router.get('/api/profile', async (req, res) => {
     try {
-      const cached = getCached<LateProfile | null>('profile')
-      if (cached !== undefined) return res.json({ profile: cached })
-
-      const client = createLateApiClient()
-      const profiles = await client.listProfiles()
-      const profile = profiles[0] || null
-      setCache('profile', profile)
+      const profile = await loadReviewProfile(getConfig().LATE_PROFILE_ID || '')
       res.json({ profile })
     } catch (err) {
       res.status(500).json({ profile: null, error: err instanceof Error ? err.message : 'Failed to fetch profile' })

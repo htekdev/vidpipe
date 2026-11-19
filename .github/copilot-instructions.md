@@ -198,7 +198,15 @@ Two-phase webcam detection:
 
 All FFmpeg tools use `execFile()` with `process.env.FFMPEG_PATH` (not shell commands). Set via `FFMPEG_PATH` / `FFPROBE_PATH` env vars.
 
+### Cloud Storage
+
+Review and pipeline cloud operations use `src/L3-services/storage/storageService.ts` and the shared `reviewDataSource.ts`, not provider-specific services. `STORAGE_PROVIDER` defaults to `azure`; `aws` selects S3 files and DynamoDB metadata using the AWS SDK credential chain. Keep object keys separate from Windows filesystem paths. Migration skips existing identities, imports published items before pending items, supports dry-run, and never modifies local sources or schedules posts. AWS remote processing and configuration synchronization remain unsupported and must fail before side effects. See `docs/aws-storage.md` for resources, configuration, and migration.
+
+SDK cloud methods bind each instance's resolved configuration with `withConfig()` in `L1-infra/config/environment.ts` using Node.js `AsyncLocalStorage.run()`. Preserve provider/resource isolation throughout asynchronous downstream `getConfig()` calls, including overlapping SDK instances; resetting process-global config only at method entry is not sufficient.
+
 ### Social Publishing (Late API)
+
+Publishing account mappings, queue ownership, and review identity must honor `LATE_PROFILE_ID`. Without it, select only a sole profile or unique default; ambiguous profiles fail closed. Account and queue caches carry both the configured profile scope and resolved profile ID; never reuse legacy unscoped caches or fall back to another brand's accounts.
 
 vidpipe publishes social media posts via [Late API](https://getlate.dev). Posts stay **local until approved** through the review web app.
 

@@ -1,36 +1,28 @@
 # Code Review
 
-**Reviewed:** 2026-11-19T04:22:00.228-06:00
+**Reviewed:** 2026-11-19T07:35:20.398-06:00
 **Reviewer:** code-reviewer
 **Branch:** fix/gpt-6.1-sol-model
-**HEAD:** bc036e9
+**HEAD:** 79f79ea
 
-**Scope:** Local review ONLY of the latest three-file delta in `C:\Repos\htekdev\video-auto-note-taker\workdir\fix--gpt-6.1-sol-model`, atop `bc036e9`. Existing committed changes and the full PR are not certified by this review.
+**Scope:** Conflict-resolution review only for the merge of `origin/main` into this worktree. This certificate covers the two resolved conflict paths and the preservation of the previously published model-fix commits; it does not certify the unrelated AWS-storage feature changes brought in from `origin/main`.
 
-## Files Reviewed
-- .github/extensions/test-enforcer/extension.mjs
-- specs/hooks/testEnforcer.md
-- src/__tests__/unit/L2-clients/testEnforcer.test.ts
+## Conflicts Reviewed
+- `.github/reviewed.md` — replaced with this fresh merge-scoped certificate rather than certifying either side's unrelated feature review.
+- `src/__tests__/unit/L1-infra/fileSystem-extra.test.ts` — preserved the existing `fstatSync` import order and the stronger `EBADF` assertion while removing conflict markers.
 
 ## Findings
 
-### Fixed
-- `.github/extensions/test-enforcer/extension.mjs` now uses explicit shell modes for candidate lexing, preserving Bash behavior while handling PowerShell backtick escapes, comments after closed quotes, call operators and literal Windows backslashes.
-- `specs/hooks/testEnforcer.md` adds REQ-012 for bounded PowerShell lexical behavior and explicit-wrapper shell selection.
-- `src/__tests__/unit/L2-clients/testEnforcer.test.ts` adds regression coverage for PowerShell quote/comment boundaries, escaped quotes, trailing backslashes, call operators and Bash preservation across all staged-index fixtures.
-- These fixes were already present in the submitted delta; this reviewer made no source fixes.
-
-### Acknowledged (Tech Debt)
-- No new blocking tech debt found in this scoped delta. Existing backlog entries were not re-reviewed; `.github/debt.md` is unchanged.
-
 ### No Issues
-- Shell-specific tokenization is selected only from the actual tool or explicit wrapper executable; it does not decode escapes or broaden the standalone commit allowlist.
-- The regression cases preserve the existing anchored staged-index read and reject unsupported candidates before inspecting any index.
+- The source conflict is test-only and the resulting assertion remains compatible with the existing close-descriptor behavior.
+- The certificate explicitly excludes unreviewed `origin/main` feature changes and retains the prior local review facts only as historical context.
+- No source, specification or test changes were introduced beyond resolving the reported conflicts.
 
 ## Validation
-- Inspected the complete three-file delta and verified it is limited to the requested files before updating this certificate.
-- Parent-reported evidence supplied with this review request: **4 red-first failures, then 183 focused tests passed; 187 hook tests and 5 commit-gate tests passed; typecheck, syntax and diff checks passed**.
-- No remote comments, review requests, unrelated worktrees or source changes outside the requested scope were made.
+- Inspected the merge status and combined conflict diffs.
+- Resolved only the two conflict paths with `apply_patch`; no checkout-ours/theirs operation was used.
+- The pre-merge branch had passed its required commit/push gates through `79f79ea`; post-merge full gates remain required.
+- No remote comments, review requests or unrelated worktree changes were made.
 
 ## Summary
-No meaningful blocking bugs found in the three-file local delta atop `bc036e9`. This is a scope-limited local certificate with the reported focused validation and review of the requested implementation and tests; publication remains with the parent.
+The two reported merge conflicts are resolved without certifying the unreviewed `origin/main` feature set. This certificate is limited to conflict resolution and preservation of the existing model-fix branch state.

@@ -2,6 +2,8 @@ import { LateApiClient } from '../../L2-clients/late/lateApi.js'
 import type { DayOfWeek } from '../scheduler/scheduleConfig.js'
 import { loadScheduleConfig } from '../scheduler/scheduleConfig.js'
 import { refreshQueueMappings } from '../queueMapping/queueMapping.js'
+import { selectLateProfile } from '../socialPosting/profileSelection.js'
+import { getConfig } from '../../L1-infra/config/environment.js'
 import logger from '../../L1-infra/logger/configLogger.js'
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -116,11 +118,12 @@ export async function syncQueuesToLate(options?: {
   // 2. Get Late API client and profile ID
   const client = new LateApiClient()
   const profiles = await client.listProfiles()
-  if (profiles.length === 0) {
+  const profile = selectLateProfile(profiles, getConfig().LATE_PROFILE_ID || '')
+  if (!profile) {
     throw new Error('No Late API profiles found — cannot sync queues')
   }
-  const profileId = profiles[0]._id
-  logger.info(`Using Late profile "${profiles[0].name}" (${profileId})`)
+  const profileId = profile._id
+  logger.info(`Using Late profile "${profile.name}" (${profileId})`)
 
   // 3. Build desired queue definitions from schedule config
   const desiredQueues = buildDesiredQueues(config)
