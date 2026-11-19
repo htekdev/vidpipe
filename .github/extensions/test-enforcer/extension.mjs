@@ -115,13 +115,13 @@ await joinSession({
                     permissionDecisionReason: "Only standalone `git commit` or `npm run commit` invocations with literal ASCII values for -m/--message, -F/--file and --trailer are supported. Use a session rooted in the target worktree, stage source and regression tests in a separate tool call, then run `npm run commit` alone. Compound commands, directory changes, target overrides, shell expansion and other options are not supported.",
                 };
             }
-            const files = execFileSync("git", ["diff", "--cached", "--name-only", "--diff-filter=ACMR"], {
+            const files = execFileSync("git", ["diff", "--cached", "--name-only", "-z", "--diff-filter=ACMR"], {
                 cwd: repositoryRoot,
                 encoding: "utf8",
                 windowsHide: true,
-            }).trim().split(/\r?\n/);
-            const hasSource = files.some((file) => /^src\/(?!__tests__\/).*\.tsx?$/.test(file));
-            const hasTests = files.some((file) => /^src\/__tests__\/.*\.test\.tsx?$/.test(file));
+            }).split("\0");
+            const hasSource = files.some((file) => file.startsWith("src/") && !file.startsWith("src/__tests__/") && (file.endsWith(".ts") || file.endsWith(".tsx")));
+            const hasTests = files.some((file) => file.startsWith("src/__tests__/") && (file.endsWith(".test.ts") || file.endsWith(".test.tsx")));
             if (hasSource && !hasTests) {
                 return {
                     permissionDecision: "deny",

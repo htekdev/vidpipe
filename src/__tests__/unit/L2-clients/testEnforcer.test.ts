@@ -24,14 +24,14 @@ const extensionUrl = new URL(extensionPath, import.meta.url)
 const worktreeRoot = fileURLToPath(new URL('../../../../', import.meta.url))
 const stagedIndexes = [
   '',
-  'src/L1-infra/config/modelConfig.ts\n',
-  'src/L1-infra/config/modelConfig.ts\nsrc/__tests__/unit/L1-infra/modelConfig.test.ts\n',
+  'src/L1-infra/config/modelConfig.ts\0',
+  'src/L1-infra/config/modelConfig.ts\0src/__tests__/unit/L1-infra/modelConfig.test.ts\0',
 ]
 
 beforeEach(async () => {
   vi.resetModules()
   vi.clearAllMocks()
-  execFileSync.mockReturnValue('src/L1-infra/config/modelConfig.ts\n')
+  execFileSync.mockReturnValue('src/L1-infra/config/modelConfig.ts\0')
   await import(extensionUrl.href)
   onPreToolUse = joinSession.mock.calls[0][0].hooks.onPreToolUse
 })
@@ -48,7 +48,7 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
     async (command) => {
       const result = await onPreToolUse({ toolName, toolArgs: { command } })
       expect(execFileSync).toHaveBeenCalledWith(
-        'git', ['diff', '--cached', '--name-only', '--diff-filter=ACMR'], expect.objectContaining({ encoding: 'utf8' }),
+        'git', ['diff', '--cached', '--name-only', '-z', '--diff-filter=ACMR'], expect.objectContaining({ encoding: 'utf8' }),
       )
       expect(result?.permissionDecision).toBe('deny')
       expect(result?.permissionDecisionReason).toContain('staged regression tests')
@@ -96,7 +96,7 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
   it('testEnforcer.REQ-005: anchors Git index reads to the extension worktree', async () => {
     await onPreToolUse({ toolName, toolArgs: { command: 'npm run commit' } })
     expect(execFileSync).toHaveBeenCalledExactlyOnceWith(
-      'git', ['diff', '--cached', '--name-only', '--diff-filter=ACMR'], expect.objectContaining({
+      'git', ['diff', '--cached', '--name-only', '-z', '--diff-filter=ACMR'], expect.objectContaining({
         cwd: worktreeRoot,
         encoding: 'utf8',
         windowsHide: true,
@@ -148,7 +148,7 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
         const result = await onPreToolUse({ toolName, toolArgs: { command } })
         expect(result?.permissionDecision).toBe(files === stagedIndexes[1] ? 'deny' : undefined)
         expect(execFileSync).toHaveBeenCalledExactlyOnceWith(
-          'git', ['diff', '--cached', '--name-only', '--diff-filter=ACMR'],
+          'git', ['diff', '--cached', '--name-only', '-z', '--diff-filter=ACMR'],
           expect.objectContaining({ cwd: worktreeRoot }),
         )
       }
@@ -209,7 +209,7 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
           expect(result).toBeUndefined()
         }
         expect(execFileSync).toHaveBeenCalledExactlyOnceWith(
-          'git', ['diff', '--cached', '--name-only', '--diff-filter=ACMR'], {
+          'git', ['diff', '--cached', '--name-only', '-z', '--diff-filter=ACMR'], {
             cwd: worktreeRoot, encoding: 'utf8', windowsHide: true,
           },
         )
@@ -257,8 +257,8 @@ describe.each(['bash', 'powershell'])('test-enforcer shell integration: %s', (to
   })
 
   it.each([
-    'src/L1-infra/config/modelConfig.ts\nsrc/__tests__/unit/L1-infra/modelConfig.test.ts\n',
-    'README.md\n',
+    'src/L1-infra/config/modelConfig.ts\0src/__tests__/unit/L1-infra/modelConfig.test.ts\0',
+    'README.md\0',
     '',
   ])('testEnforcer.REQ-002: permits staged files %j', async (files) => {
     execFileSync.mockReturnValue(files)
@@ -373,6 +373,55 @@ it('testEnforcer.REQ-012: retains Bash quote concatenation instead of applying P
   }
 })
 
+it('testEnforcer.REQ-013: classifies Unicode, newline and whitespace filenames from real indexes in both shells', async () => {
+  const { execFileSync: git } = await vi.importActual<typeof import('node:child_process')>('node:child_process')
+  const cwd = mkdtempSync(resolve(worktreeRoot, '.test-enforcer-paths-'))
+  const options = { cwd, encoding: 'utf8' as const, windowsHide: true }
+  try {
+    git('git', ['init', '--quiet', cwd], options)
+    git('git', ['config', 'core.quotepath', 'true'], options)
+    // Index-only fixtures can represent Git paths Windows cannot create on disk.
+    git('git', ['config', 'core.protectNTFS', 'false'], options)
+    const blob = git('git', ['hash-object', '-w', '--stdin'], { ...options, input: 'fixture\n' }).trim()
+    for (const { paths, denied } of [
+      { paths: ['src/é.ts'], denied: true },
+      { paths: ['src/model.ts', 'src/__tests__/é.test.ts'], denied: false },
+      { paths: ['src/é.ts', 'src/__tests__/é.test.ts'], denied: false },
+      { paths: ['src/é.tsx'], denied: true },
+      { paths: ['src/model.tsx', 'src/__tests__/é.test.tsx'], denied: false },
+      { paths: ['src/line\nbreak.ts'], denied: true },
+      { paths: ['src/model.ts', 'src/__tests__/line\nbreak.test.ts'], denied: false },
+      { paths: ['src/model.ts', 'notes\nsrc/__tests__/fake.test.ts'], denied: true },
+      { paths: [' src/not-source.ts'], denied: false },
+      { paths: ['src/not-source.ts\n'], denied: false },
+      { paths: ['src/model.ts', 'src/__tests__/not-a-test.test.ts\n'], denied: true },
+    ]) {
+      git('git', ['read-tree', '--empty'], options)
+      git('git', ['update-index', '-z', '--index-info'], {
+        ...options,
+        input: paths.map((path) => `100644 ${blob}\t${path}\0`).join(''),
+      })
+      expect(git('git', ['diff', '--cached', '--name-only', '-z', '--diff-filter=ACMR'], options)
+        .split('\0').slice(0, -1)).toEqual([...paths].sort())
+      if (paths.length === 1 && paths[0] === 'src/é.ts') {
+        expect(git('git', ['diff', '--cached', '--name-only'], options)).toBe('"src/\\303\\251.ts"\n')
+      }
+      execFileSync.mockImplementation((executable, args, hookOptions) => {
+        expect(hookOptions.cwd).toBe(worktreeRoot)
+        return git(executable, args, { ...hookOptions, cwd })
+      })
+      for (const toolName of ['bash', 'powershell']) {
+        execFileSync.mockClear()
+        const result = await onPreToolUse({ toolName, toolArgs: { command: 'npm run commit' } })
+        expect.soft(result?.permissionDecision, `${toolName}: ${JSON.stringify(paths)}`).toBe(denied ? 'deny' : undefined)
+        expect(execFileSync).toHaveBeenCalledOnce()
+      }
+    }
+  } finally {
+    rmSync(cwd, { recursive: true, force: true })
+  }
+})
+
 describe.each(['bash', 'powershell'])('staged deletions: %s', (toolName) => {
   it.each([
     { change: 'deleted test with modified source', denied: true, statuses: ['D\tsrc/__tests__/model.test.ts', 'M\tsrc/model.ts'] },
@@ -450,11 +499,11 @@ describe('different repository indexes', () => {
       git('git', ['add', 'src'], { cwd, windowsHide: true })
     }
     ;[cleanIndex, sourceIndex, testedIndex] = [cleanRoot, sourceRoot, testedRoot].map((cwd) =>
-      git('git', ['diff', '--cached', '--name-only'], { cwd, encoding: 'utf8', windowsHide: true }),
+      git('git', ['diff', '--cached', '--name-only', '-z'], { cwd, encoding: 'utf8', windowsHide: true }),
     )
     expect(cleanIndex).toBe('')
-    expect(sourceIndex).toBe('src/model.ts\n')
-    expect(testedIndex).toContain('src/__tests__/model.test.ts\n')
+    expect(sourceIndex).toBe('src/model.ts\0')
+    expect(testedIndex).toContain('src/__tests__/model.test.ts\0')
   })
 
   afterAll(() => {
